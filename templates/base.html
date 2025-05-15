@@ -6,6 +6,27 @@
     <title>{% block title %}Treasure{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const toggle = document.querySelector(".nav-user-toggle");
+        const menu = document.querySelector(".nav-user-menu");
+    
+        if (toggle && menu) {
+            toggle.addEventListener("click", function () {
+                menu.style.display = menu.style.display === "block" ? "none" : "block";
+            });
+    
+            // Cierra el menú si haces click fuera
+            document.addEventListener("click", function (e) {
+                if (!toggle.contains(e.target) && !menu.contains(e.target)) {
+                    menu.style.display = "none";
+                }
+            });
+        }
+    });
+</script>
+    
 <body class="{% block body_class %}{% endblock %}">
     {% if request.user.is_authenticated and not hide_navbar %}
     <nav class="navbar">
@@ -14,8 +35,15 @@
             <span class="nav-title">Treasure</span>
         </div>
         <div class="navbar-right">
-            <span class="nav-user">Hola, {{ request.user.first_name|default:request.user.username }}</span>
-            <a href="{% url 'logout' %}" class="nav-link">Cerrar sesión</a>
+            <div class="nav-user-dropdown">
+                <span class="nav-user-toggle">
+                    Hola, <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
+                </span>
+                <div class="nav-user-menu">
+                    <a href="{% url 'editar_perfil' %}">Editar perfil</a>
+                    <a href="{% url 'logout' %}">Cerrar sesión</a>
+                </div>
+            </div>
         </div>
     </nav>
     {% endif %}

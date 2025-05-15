@@ -42,6 +42,8 @@ body.dashboard-background {
 }
 
 
+
+
 .login-container {
     background-color: var(--dark-bg);
     padding: 40px;
@@ -51,6 +53,22 @@ body.dashboard-background {
     box-shadow: 0 0 30px var(--glow);
     text-align: center;
 }
+
+.profile-form-container {
+    background-color: var(--dark-bg);
+    padding: 40px;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 500px;
+    box-shadow: 0 0 30px var(--glow);
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* 👈 centro exacto en pantalla */
+    z-index: 10;
+}
+
+
 
 .logo {
     max-width: 160px;
@@ -76,6 +94,23 @@ h1 {
 
 .sub-heading a:hover {
     text-decoration: underline;
+}
+
+.form-group-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+    font-size: 15px;
+    color: var(--text-color);
+}
+
+.form-group-checkbox input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--primary-color); /* si usas navegadores modernos */
 }
 
 .form-group {
@@ -108,6 +143,18 @@ h1 {
     box-shadow: 0 0 12px var(--glow);
     outline: none;
 }
+
+.form-container {
+    background-color: #1a1a1a;
+    padding: 40px;
+    border-radius: 14px;
+    width: 100%;
+    max-width: 500px; /* más ancho si lo deseas */
+    margin: 80px auto;
+    box-shadow: 0 0 30px var(--glow);
+    text-align: left;
+}
+
 
 .forgot-password {
     display: block;
@@ -235,3 +282,61 @@ h1 {
 .nav-link:hover {
     background-color: #8b4ae6;
 }
+
+.help-text {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+}
+
+.error-msg {
+    color: #ff4d4f;
+    font-size: 13px;
+    margin: 4px 0;
+}
+
+.nav-user-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.nav-user-toggle {
+    cursor: pointer;
+    color: #fff;
+    font-weight: bold;
+}
+
+.nav-user-toggle:hover {
+    color: var(--primary-color);
+}
+
+.nav-user-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    background-color: #1f1f1f;
+    box-shadow: 0 0 10px rgba(162, 89, 255, 0.2);
+    border-radius: 8px;
+    margin-top: 10px;
+    min-width: 160px;
+    z-index: 1001;
+}
+
+.nav-user-menu a {
+    display: block;
+    padding: 10px 16px;
+    color: white;
+    text-decoration: none;
+    font-size: 14px;
+    border-bottom: 1px solid #333;
+}
+
+.nav-user-menu a:last-child {
+    border-bottom: none;
+}
+
+.nav-user-menu a:hover {
+    background-color: #292929;
+    color: var(--primary-color);
+}
+

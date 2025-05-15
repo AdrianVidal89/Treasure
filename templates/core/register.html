@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Crear cuenta - Treasure{% endblock %}
+{% block body_class %}login-background{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <img src="{% static 'img/logo_treasure_4.png' %}" alt="Treasure Logo" class="logo">
+    <h1>Crea tu cuenta</h1>
+
+    <form method="post">
+        {% csrf_token %}
+        {% if form.errors %}
+            <p class="error-msg">Por favor revisa los campos marcados</p>
+        {% endif %}
+        <div class="form-group">
+            <label for="{{ form.username.id_for_label }}">Usuario</label>
+            {{ form.username }}
+            {% if form.username.help_text %}
+                <small class="help-text">{{ form.username.help_text }}</small>
+            {% endif %}
+            {% for error in form.username.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.first_name.id_for_label }}">Nombre</label>
+            {{ form.first_name }}
+            {% for error in form.first_name.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.email.id_for_label }}">Correo electrónico</label>
+            {{ form.email }}
+            {% for error in form.email.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.password1.id_for_label }}">Contraseña</label>
+            {{ form.password1 }}
+            {% if form.password1.help_text %}
+                <small class="help-text">{{ form.password1.help_text }}</small>
+            {% endif %}
+            {% for error in form.password1.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+        
+        <div class="form-group">
+            <label for="{{ form.password2.id_for_label }}">Confirmar contraseña</label>
+            {{ form.password2 }}
+            {% for error in form.password2.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+    
+        <button type="submit" class="btn btn-primary">Registrarme</button>
+    </form>
+    <div class="sub-heading" style="margin-top: 20px;">
+        ¿Ya tienes cuenta? <a href="{% url 'login' %}">Inicia sesión aquí</a>
+    </div>
+</div>
+{% endblock %}

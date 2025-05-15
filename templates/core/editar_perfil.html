@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Editar Perfil - Treasure{% endblock %}
+
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="profile-form-container"> {# Cambiamos a una clase más específica para evitar conflictos con .login-container si tiene estilos diferentes #}
+    <h2>Editar perfil personal</h2>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            <div class="form-errors">
+                {% for error in form.non_field_errors %}
+                    <p class="error-msg">{{ error }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <div class="form-group">
+            {{ form.idioma.label_tag }}
+            {{ form.idioma }}
+            {% for error in form.idioma.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.moneda.label_tag }}
+            {{ form.moneda }}
+            {% for error in form.moneda.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.inflacion_referencia.label_tag }}
+            {{ form.inflacion_referencia }}
+            {% for error in form.inflacion_referencia.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.porcentaje_max_endeudamiento.label_tag }}
+            {{ form.porcentaje_max_endeudamiento }}
+            {% for error in form.porcentaje_max_endeudamiento.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        {# Checkboxes: Etiqueta a la izquierda, input a la derecha #}
+        <div class="form-group form-group-checkbox">
+            {{ form.permitir_apis_externas.label_tag }}
+            {{ form.permitir_apis_externas }}
+            {% for error in form.permitir_apis_externas.errors %}
+                <p class="error-msg error-msg-checkbox">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-group form-group-checkbox">
+            {{ form.mostrar_alertas.label_tag }}
+            {{ form.mostrar_alertas }}
+            {% for error in form.mostrar_alertas.errors %}
+                <p class="error-msg error-msg-checkbox">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-group form-group-checkbox">
+            {{ form.recibir_emails.label_tag }}
+            {{ form.recibir_emails }}
+            {% for error in form.recibir_emails.errors %}
+                <p class="error-msg error-msg-checkbox">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.avatar.label_tag }}
+            {{ form.avatar }}
+            {% for error in form.avatar.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-submit-profile">Guardar cambios</button>
+    </form>
+</div>
+{% endblock %}
