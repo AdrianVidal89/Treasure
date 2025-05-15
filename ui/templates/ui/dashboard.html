@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Dashboard - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+
+{% block content %}
+<div class="dashboard-container">
+    <h2>Bienvenido, {{ user.first_name|default:user.username }}</h2>
+    <p>Este es tu panel de control personal.</p>
+    <p>Aquí verás tu capital, evolución financiera y simulaciones.</p>
+</div>
+{% endblock %}
