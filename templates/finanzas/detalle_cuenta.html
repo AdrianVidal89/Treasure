@@ -6,7 +6,6 @@
 <div class="profile-form-container">
     <h2>💼 {{ cuenta.nombre }} ({{ cuenta.moneda }})</h2>
     <p>Mes actual: {{ registro.mes }}/{{ registro.anio }}</p>
-
     {% if saldo_obj %}
         <p>Saldo actual registrado: <strong>{{ saldo_obj.saldo }} €</strong></p>
     {% endif %}
@@ -23,7 +22,11 @@
             <label for="id_saldo">Saldo</label>
             {{ form.saldo }}
         </div>
-        <button type="submit" class="btn btn-primary">Guardar saldo</button>
+        <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
+            <button type="submit" class="btn btn-primary">Guardar saldo</button>
+            <button type="button" class="btn btn-danger" onclick="window.location.href='{% url 'gestionar_cuentas' %}'">Cancelar y volver</button>
+        </div>
+                
     </form>
 </div>
 {% endblock %}

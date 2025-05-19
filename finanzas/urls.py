@@ -9,5 +9,5 @@ urlpatterns = [
     path('cuenta/nueva/', nueva_cuenta_bancaria, name='nueva_cuenta'),
     path('cuenta/saldo/', views.nuevo_saldo, name='nuevo_saldo'),
     path('cuenta/<int:cuenta_id>/', views.detalle_cuenta, name='detalle_cuenta'),
-
+    path('cuentas/<int:cuenta_id>/eliminar/', views.eliminar_cuenta, name='eliminar_cuenta')
 ]

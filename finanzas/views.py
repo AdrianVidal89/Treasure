@@ -1,11 +1,12 @@
-from django.shortcuts import render, redirect
-from django.shortcuts import get_object_or_404
+from django.shortcuts import render, redirect, get_object_or_404
 from django.http import HttpResponse
 from datetime import datetime
 from .models import RegistroMensual
 from .models import CuentaBancaria, CuentaCredito, PrestamoSimple, SaldoMensualCuenta
 from django.contrib.auth.decorators import login_required
 from .forms import CuentaBancariaForm, SaldoMensualCuentaForm
+from django.contrib import messages
+
 
 
 def index(request):
@@ -131,3 +132,10 @@ def detalle_cuenta(request, cuenta_id):
         'form': form,
         'registro': registro
     })
+
+@login_required
+def eliminar_cuenta(request, cuenta_id):
+    cuenta = get_object_or_404(CuentaBancaria, id=cuenta_id, usuario=request.user)
+    cuenta.delete()
+    messages.success(request, "La cuenta fue eliminada correctamente.")
+    return redirect('gestionar_cuentas')

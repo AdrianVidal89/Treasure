@@ -168,11 +168,11 @@ h1 {
     color: var(--primary-color);
 }
 
-.btn {
+/*.btn {
     /* width: 100%; */ /* Comentado o eliminado */
-    display: inline-block; /* Añadido para permitir centrado por text-align del padre */
-    padding: 12px 40px; /* Ajusta el padding horizontal según necesites (ej. 40px) */
-    text-align: center;
+    /*display: inline-block; /* Añadido para permitir centrado por text-align del padre */
+    /*padding: 12px 40px; /* Ajusta el padding horizontal según necesites (ej. 40px) */
+    /*text-align: center;
     border: none;
     border-radius: 8px;
     font-size: 15px;
@@ -181,12 +181,49 @@ h1 {
     cursor: pointer;
     margin-bottom: 15px;
     transition: box-shadow 0.3s ease, background-color 0.3s ease;
+}*/
+
+.btn {
+    display: inline-block;
+    padding: 12px 40px;
+    text-align: center;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: bold;
+    text-transform: uppercase;
+    cursor: pointer;
+    /* margin-bottom: 15px; */ /* Considera si esto es siempre necesario */
+    transition: box-shadow 0.3s ease, background-color 0.3s ease;
+    text-decoration: none; /* Asegura que los <a> con clase .btn no estén subrayados */
+    color: var(--text-color); /* Un color de texto base para botones, será sobrescrito por .btn-primary o .btn-danger */
 }
+
 
 .btn-primary {
     background-color: var(--primary-color);
     color: white;
 }
+
+.btn-secondary {
+    background-color: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 500;
+    text-transform: none;
+    transition: 0.2s all ease-in-out;
+    display: inline-block;
+    text-decoration: none;
+}
+
+.btn-secondary:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    text-shadow: 0 0 8px var(--glow);
+}
+
 
 .btn-primary:hover {
     background-color: #8b4ae6;
@@ -202,6 +239,27 @@ h1 {
 .btn-social:hover {
     background-color: #222;
 }
+
+.btn-danger {
+    background-color: #e53935;
+    color: white !important; /* Mantenemos !important por si hay estilos de link muy genéricos */
+    /* padding, border, border-radius, font-size, font-weight, text-transform, cursor, display, text-align
+       son heredados de .btn */
+    /* margin-left: 12px;  <-- ELIMINA ESTA LÍNEA */
+    /* text-decoration: none;  <-- MOVIDO A .btn para que todos los <a>.btn lo tengan */
+    /* transition, etc. ya están en .btn */
+}
+
+/* Asegúrate que el hover también esté bien definido (ya lo tienes, solo para confirmar) */
+.btn-danger:hover {
+    background-color: #c62828;
+    box-shadow: 0 0 14px rgba(255, 77, 77, 0.6);
+}
+.btn-danger:hover {
+    background-color: #c62828;
+    box-shadow: 0 0 14px rgba(255, 77, 77, 0.6);
+}
+
 
 .social-separator {
     display: flex;
@@ -388,4 +446,82 @@ h1 {
 .cuenta-link:hover {
     color: var(--primary-color);
     text-decoration: underline;
+}
+
+.btn-inline-danger {
+    background: transparent;
+    color: #888;
+    border: none;
+    font-size: 0.9rem;
+    padding: 0 6px;
+    cursor: pointer;
+    transition: color 0.2s ease;
+    vertical-align: middle;
+}
+
+.btn-inline-danger:hover {
+    color: #ff5f5f;
+}
+
+.dashboard-scroll-wrapper {
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    padding: 20px;
+    background-color: var(--dark-bg);
+}
+
+.section-title {
+    color: var(--text-color);
+    font-size: 1.5rem;
+    margin-bottom: 20px;
+}
+
+.cuentas-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.cuenta-card {
+    background-color: var(--input-bg);
+    border: 1px solid var(--border);
+    padding: 20px;
+    border-radius: 16px;
+    box-shadow: 0 0 10px var(--glow);
+    color: var(--text-color);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px; /* Asegura separación entre tarjetas */
+}
+
+
+.cuenta-nombre {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.cuenta-detalle {
+    font-size: 1rem;
+    color: var(--text-color);
+}
+
+.cuenta-acciones {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+@media (max-width: 600px) {
+    .cuenta-card {
+        padding: 15px;
+    }
+    .cuenta-nombre {
+        font-size: 1rem;
+    }
+    .cuenta-detalle {
+        font-size: 0.9rem;
+    }
 }
