@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Gestionar cuentas{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% load static %}
+{% load humanize %}
+{% load custom_filters %}  {# si usas un filtro como get_item, debes definirlo #}
+
+
+{% block content %}
+<div class="dashboard-container">
+    <h2>Gestionar cuentas</h2>
+
+    <h3>Cuentas bancarias</h3>
+    <ul>
+    {% for cuenta in cuentas_bancarias %}
+        <li>
+            <a href="{% url 'detalle_cuenta' cuenta.id %}" class="cuenta-link">
+                {{ cuenta.nombre }} — {{ cuenta.moneda }}
+                {% if not cuenta.activa %}(Inactiva){% endif %}
+            </a>
+            {% if saldos|get_item:cuenta.id %}
+                — Saldo actual: {{ saldos|get_item:cuenta.id }} €
+            {% else %}
+                — Sin saldo este mes
+            {% endif %}
+        </li>
+    {% empty %}
+        <li>No tienes cuentas bancarias registradas.</li>
+    {% endfor %}
+    </ul>
+    
+    <h3>Cuentas de crédito</h3>
+    <ul>
+        {% for cuenta in cuentas_credito %}
+            <li>{{ cuenta.nombre }} {% if cuenta.entidad %}— {{ cuenta.entidad }}{% endif %}</li>
+        {% empty %}
+            <li>No tienes cuentas de crédito registradas.</li>
+        {% endfor %}
+    </ul>
+
+    <h3>Préstamos simples</h3>
+    <ul>
+        {% for prestamo in prestamos %}
+            <li>{{ prestamo.nombre }} — {{ prestamo.entidad }}: {{ prestamo.total_pendiente }}€</li>
+        {% empty %}
+            <li>No tienes préstamos registrados.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

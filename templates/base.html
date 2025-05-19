@@ -9,23 +9,28 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        const toggle = document.querySelector(".nav-user-toggle");
-        const menu = document.querySelector(".nav-user-menu");
+        const toggles = document.querySelectorAll(".nav-user-toggle");
     
-        if (toggle && menu) {
-            toggle.addEventListener("click", function () {
-                menu.style.display = menu.style.display === "block" ? "none" : "block";
-            });
+        toggles.forEach(function(toggle) {
+            const menu = toggle.nextElementSibling;
     
-            // Cierra el menú si haces click fuera
-            document.addEventListener("click", function (e) {
-                if (!toggle.contains(e.target) && !menu.contains(e.target)) {
-                    menu.style.display = "none";
-                }
+            toggle.addEventListener("click", function (e) {
+                e.stopPropagation();
+                // Cierra todos los menús antes de abrir el actual
+                document.querySelectorAll(".nav-user-menu").forEach(m => m.style.display = "none");
+                menu.style.display = "block";
             });
-        }
+        });
+    
+        // Cierra todos los menús si haces click fuera
+        document.addEventListener("click", function () {
+            document.querySelectorAll(".nav-user-menu").forEach(menu => {
+                menu.style.display = "none";
+            });
+        });
     });
-</script>
+    </script>
+    
     
 <body class="{% block body_class %}{% endblock %}">
     {% if request.user.is_authenticated and not hide_navbar %}
@@ -33,6 +38,14 @@
         <div class="navbar-left">
             <img src="{% static 'img/logo_treasure_3.png' %}" class="nav-logo" alt="Treasure Logo">
             <span class="nav-title">Treasure</span>
+            <div class="nav-user-dropdown">
+                <span class="nav-user-toggle">Gestionar cuentas</span>
+                <div class="nav-user-menu">
+                    <a href="{% url 'nueva_cuenta' %}">➕ Añadir cuenta bancaria</a>
+                    <a href="#">➕ Añadir préstamo</a>
+                    <a href="{% url 'gestionar_cuentas' %}">⚙️ Ver todas</a>
+                </div>
+            </div>         
         </div>
         <div class="navbar-right">
             <div class="nav-user-dropdown">
@@ -47,8 +60,9 @@
         </div>
     </nav>
     {% endif %}
-    
+
     {% block content %}
-    {% endblock %}
+    {% endblock %}    
 </body>
+    
 </html>

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ cuenta.nombre }} - Saldo{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="profile-form-container">
+    <h2>💼 {{ cuenta.nombre }} ({{ cuenta.moneda }})</h2>
+    <p>Mes actual: {{ registro.mes }}/{{ registro.anio }}</p>
+
+    {% if saldo_obj %}
+        <p>Saldo actual registrado: <strong>{{ saldo_obj.saldo }} €</strong></p>
+    {% endif %}
+
+    <form method="post">
+        {% csrf_token %}
+        {% if form.errors %}
+            <div class="form-errors">
+                {{ form.errors }}
+            </div>
+        {% endif %}
+
+        <div class="form-group">
+            <label for="id_saldo">Saldo</label>
+            {{ form.saldo }}
+        </div>
+        <button type="submit" class="btn btn-primary">Guardar saldo</button>
+    </form>
+</div>
+{% endblock %}

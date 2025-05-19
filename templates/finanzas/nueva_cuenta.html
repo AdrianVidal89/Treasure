@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Nueva cuenta bancaria{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="profile-form-container">
+    <h2>➕ Nueva cuenta bancaria</h2>
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="id_nombre">Nombre de la cuenta</label>
+            {{ form.nombre }}
+        </div>
+        <div class="form-group">
+            <label for="id_moneda">Moneda</label>
+            {{ form.moneda }}
+        </div>
+        <div class="form-group form-group-checkbox">
+            {{ form.activa }}
+            <label for="id_activa">Cuenta activa</label>
+        </div>
+        <button type="submit" class="btn btn-primary">Guardar</button>
+    </form>
+</div>
+{% endblock %}

@@ -269,16 +269,6 @@ h1 {
     font-size: 14px;
 }
 
-.nav-link {
-    color: #fff;
-    text-decoration: none;
-    font-weight: bold;
-    padding: 6px 12px;
-    border-radius: 6px;
-    background-color: var(--primary-color);
-    transition: background 0.3s ease;
-}
-
 .nav-link:hover {
     background-color: #8b4ae6;
 }
@@ -340,3 +330,62 @@ h1 {
     color: var(--primary-color);
 }
 
+/* Enlaces de navegación */
+.nav-link {
+    color: #fff;
+    text-decoration: none;
+    margin-left: 20px;
+    font-size: 15px;
+    font-weight: 500;
+    position: relative;
+    transition: color 0.3s ease, text-shadow 0.3s ease;
+    cursor: pointer;
+}
+
+.nav-link:hover {
+    color: var(--primary-color);
+    text-shadow: 0 0 10px var(--glow);
+}
+
+/* Dropdown de navegación */
+.nav-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.nav-dropdown-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: #1a1a1a;
+    box-shadow: 0 0 10px rgba(162, 89, 255, 0.2);
+    border-radius: 6px;
+    padding: 8px 0;
+    z-index: 999;
+    min-width: 220px;
+}
+
+.nav-dropdown-menu a {
+    display: block;
+    color: #eee;
+    padding: 10px 16px;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.nav-dropdown-menu a:hover {
+    background-color: #292929;
+    color: var(--primary-color);
+}
+
+.cuenta-link {
+    color: #fff;
+    text-decoration: none;
+    font-size: 15px;
+}
+
+.cuenta-link:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
