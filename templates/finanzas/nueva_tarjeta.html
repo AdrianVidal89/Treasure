@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Añadir Tarjeta de Crédito{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="profile-form-container">
+    <h2>➕ Añadir Tarjeta de Crédito</h2>
+    <form method="post">
+        {% csrf_token %}
+        {% if form.errors %}
+            <div class="form-errors">
+                {{ form.errors }}
+            </div>
+        {% endif %}
+        <div class="form-group">
+            <label for="id_nombre">Nombre</label>
+            {{ form.nombre }}
+        </div>
+        <div class="form-group">
+            <label for="id_entidad">Entidad</label>
+            {{ form.entidad }}
+        </div>
+        <div class="form-group">
+            <label for="id_activa">Activa</label>
+            {{ form.activa }}
+        </div>
+        <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
+            <button type="submit" class="btn btn-primary">Guardar tarjeta</button>
+            <button type="button" class="btn btn-danger" onclick="window.location.href='{% url 'gestionar_tarjetas' %}'">Cancelar</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

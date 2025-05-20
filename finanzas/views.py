@@ -1,18 +1,31 @@
-from django.shortcuts import render, redirect, get_object_or_404
-from django.http import HttpResponse
-from datetime import datetime
-from .models import RegistroMensual
-from .models import CuentaBancaria, CuentaCredito, PrestamoSimple, SaldoMensualCuenta
-from django.contrib.auth.decorators import login_required
-from .forms import CuentaBancariaForm, SaldoMensualCuentaForm
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.timezone import now
+
+from .forms import (
+    CuentaBancariaForm,
+    SaldoMensualCuentaForm,
+    SaldoMensualTarjetaForm,
+    TarjetaCreditoForm,
+)
+
+from .models import (
+    CuentaBancaria,
+    CuentaCredito,
+    PrestamoSimple,
+    RegistroMensual,
+    SaldoMensualCuenta,
+    SaldoMensualTarjeta,
+    TarjetaCredito,
+)
+
 
 
 
 def index(request):
     return HttpResponse("Bienvenido a finanzas")
-
-
 
 def resumen_mensual(request, anio, mes):
     usuario = request.user
@@ -31,16 +44,17 @@ def resumen_mensual(request, anio, mes):
     }
     return render(request, 'finanzas/resumen_mensual.html', context)
 
-
 @login_required
 def gestionar_cuentas(request):
     usuario = request.user
     cuentas_bancarias = CuentaBancaria.objects.filter(usuario=usuario)
     cuentas_credito = CuentaCredito.objects.filter(usuario=usuario)
     prestamos = PrestamoSimple.objects.filter(usuario=usuario)
+    tarjetas = TarjetaCredito.objects.filter(usuario=usuario)
 
-    anio = datetime.now().year
-    mes = datetime.now().month
+    hoy = now().date()
+    anio = hoy.year
+    mes = hoy.month
 
     try:
         registro = RegistroMensual.objects.get(usuario=usuario, anio=anio, mes=mes)
@@ -48,6 +62,8 @@ def gestionar_cuentas(request):
         registro = None
 
     saldos = {}
+    # Añadir saldos de tarjetas
+    saldos_tarjetas = {}
     if registro:
         for cuenta in cuentas_bancarias:
             try:
@@ -55,14 +71,22 @@ def gestionar_cuentas(request):
                 saldos[cuenta.id] = saldo.saldo
             except SaldoMensualCuenta.DoesNotExist:
                 saldos[cuenta.id] = None
+        for tarjeta in tarjetas:
+            try:
+                saldo = SaldoMensualTarjeta.objects.get(tarjeta=tarjeta, registro=registro)
+                saldos_tarjetas[tarjeta.id] = saldo.saldo
+            except SaldoMensualTarjeta.DoesNotExist:
+                saldos_tarjetas[tarjeta.id] = None
+
 
     return render(request, 'finanzas/gestionar_cuentas.html', {
         'cuentas_bancarias': cuentas_bancarias,
         'cuentas_credito': cuentas_credito,
         'prestamos': prestamos,
+        'tarjetas': tarjetas,
         'saldos': saldos,
+        'saldos_tarjetas': saldos_tarjetas,
     })
-
 
 @login_required
 def nueva_cuenta_bancaria(request):
@@ -78,12 +102,12 @@ def nueva_cuenta_bancaria(request):
 
     return render(request, 'finanzas/nueva_cuenta.html', {'form': form})
 
-
 @login_required
 def nuevo_saldo(request):
     usuario = request.user
-    anio = datetime.now().year
-    mes = datetime.now().month
+    hoy = now().date()
+    anio = hoy.year
+    mes = hoy.month
 
     # Obtener o crear el registro mensual del mes actual
     registro, _ = RegistroMensual.objects.get_or_create(usuario=usuario, anio=anio, mes=mes)
@@ -100,32 +124,56 @@ def nuevo_saldo(request):
 
     return render(request, 'finanzas/nuevo_saldo.html', {'form': form})
 
-
 @login_required
 def detalle_cuenta(request, cuenta_id):
     cuenta = get_object_or_404(CuentaBancaria, id=cuenta_id, usuario=request.user)
-    anio = datetime.now().year
-    mes = datetime.now().month
-
-    # Obtener o crear registro mensual
-    registro, _ = RegistroMensual.objects.get_or_create(usuario=request.user, anio=anio, mes=mes)
-
-    # Obtener o crear saldo mensual para esta cuenta y mes
-    try:
-        saldo_obj = SaldoMensualCuenta.objects.get(cuenta=cuenta, registro=registro)
-    except SaldoMensualCuenta.DoesNotExist:
-        saldo_obj = None
+    hoy = now().date()
+    registro = None  # inicializamos para evitar UnboundLocalError
 
     if request.method == 'POST':
-        form = SaldoMensualCuentaForm(request.POST, instance=saldo_obj)
+        form = SaldoMensualCuentaForm(request.POST)
         if form.is_valid():
-            saldo = form.save(commit=False)
-            saldo.cuenta = cuenta
-            saldo.registro = registro
-            saldo.save()
-            return redirect('gestionar_cuentas')
+            mes = int(form.cleaned_data['mes'])
+            anio = int(form.cleaned_data['anio'])
+
+            # Validar que no sea una fecha futura
+            if anio > hoy.year or (anio == hoy.year and mes > hoy.month):
+                form.add_error(None, "No puedes registrar saldos en el futuro.")
+            else:
+                registro, _ = RegistroMensual.objects.get_or_create(
+                    usuario=request.user, anio=anio, mes=mes
+                )
+                SaldoMensualCuenta.objects.update_or_create(
+                    cuenta=cuenta,
+                    registro=registro,
+                    defaults={'saldo': form.cleaned_data['saldo']}
+                )
+                messages.success(request, "Saldo guardado correctamente.")
+                return redirect('gestionar_cuentas')
+        else:
+            # Si el form no es válido, intentamos obtener el registro para la vista
+            try:
+                mes = int(request.POST.get('mes'))
+                anio = int(request.POST.get('anio'))
+                registro = RegistroMensual.objects.filter(
+                    usuario=request.user, anio=anio, mes=mes
+                ).first()
+            except:
+                registro = None
     else:
-        form = SaldoMensualCuentaForm(instance=saldo_obj)
+        # GET: vista inicial con mes/año actuales
+        anio = hoy.year
+        mes = hoy.month
+        registro, _ = RegistroMensual.objects.get_or_create(
+            usuario=request.user, anio=anio, mes=mes
+        )
+        saldo_obj = SaldoMensualCuenta.objects.filter(cuenta=cuenta, registro=registro).first()
+
+        form = SaldoMensualCuentaForm(initial={
+            'saldo': saldo_obj.saldo if saldo_obj else '',
+            'mes': mes,
+            'anio': anio
+        })
 
     return render(request, 'finanzas/detalle_cuenta.html', {
         'cuenta': cuenta,
@@ -139,3 +187,110 @@ def eliminar_cuenta(request, cuenta_id):
     cuenta.delete()
     messages.success(request, "La cuenta fue eliminada correctamente.")
     return redirect('gestionar_cuentas')
+
+@login_required
+def obtener_saldo_ajax(request):
+    cuenta_id = request.GET.get('cuenta_id')
+    anio = request.GET.get('anio')
+    mes = request.GET.get('mes')
+
+    try:
+        registro = RegistroMensual.objects.get(usuario=request.user, anio=anio, mes=mes)
+        saldo = SaldoMensualCuenta.objects.get(cuenta_id=cuenta_id, registro=registro)
+        return JsonResponse({'success': True, 'saldo': float(saldo.saldo)})
+    except (RegistroMensual.DoesNotExist, SaldoMensualCuenta.DoesNotExist):
+        return JsonResponse({'success': False, 'saldo': None})
+
+
+@login_required
+def gestionar_tarjetas(request):
+    tarjetas = TarjetaCredito.objects.filter(usuario=request.user)
+    hoy = now().date()
+    registro = RegistroMensual.objects.filter(usuario=request.user, anio=hoy.year, mes=hoy.month).first()
+    saldos = {
+        t.id: SaldoMensualTarjeta.objects.filter(tarjeta=t, registro=registro).first()
+        for t in tarjetas
+    } if registro else {}
+    return render(request, 'finanzas/gestionar_cuentas.html', {
+        'tarjetas': tarjetas,
+        'saldos': saldos,
+        'registro': registro
+    })
+
+@login_required
+def nueva_tarjeta(request):
+    if request.method == 'POST':
+        form = TarjetaCreditoForm(request.POST)
+        if form.is_valid():
+            tarjeta = form.save(commit=False)
+            tarjeta.usuario = request.user
+            tarjeta.save()
+        return redirect('gestionar_cuentas')
+    else:
+        form = TarjetaCreditoForm()
+    return render(request, 'finanzas/nueva_tarjeta.html', {'form': form})
+
+@login_required
+def detalle_tarjeta(request, tarjeta_id):
+    tarjeta = get_object_or_404(TarjetaCredito, id=tarjeta_id, usuario=request.user)
+    hoy = now().date()
+    registro = None
+
+    if request.method == 'POST':
+        form = SaldoMensualTarjetaForm(request.POST)
+        if form.is_valid():
+            mes = int(form.cleaned_data['mes'])
+            anio = int(form.cleaned_data['anio'])
+
+            if anio > hoy.year or (anio == hoy.year and mes > hoy.month):
+                form.add_error(None, "No puedes registrar saldos en el futuro.")
+            else:
+                registro, _ = RegistroMensual.objects.get_or_create(usuario=request.user, anio=anio, mes=mes)
+                SaldoMensualTarjeta.objects.update_or_create(
+                    tarjeta=tarjeta,
+                    registro=registro,
+                    defaults={'saldo': form.cleaned_data['saldo']}
+                )
+                return redirect('gestionar_cuentas')
+    else:
+        anio = hoy.year
+        mes = hoy.month
+        registro, _ = RegistroMensual.objects.get_or_create(usuario=request.user, anio=anio, mes=mes)
+        saldo = SaldoMensualTarjeta.objects.filter(tarjeta=tarjeta, registro=registro).first()
+
+        form = SaldoMensualTarjetaForm(initial={
+            'saldo': saldo.saldo if saldo else '',
+            'mes': mes,
+            'anio': anio
+        })
+
+    return render(request, 'finanzas/detalle_tarjeta.html', {
+        'tarjeta': tarjeta,
+        'form': form,
+        'registro': registro
+    })
+
+@login_required
+def eliminar_tarjeta(request, tarjeta_id):
+    tarjeta = get_object_or_404(TarjetaCredito, id=tarjeta_id, usuario=request.user)
+    tarjeta.delete()
+    return redirect('gestionar_cuentas')
+
+from django.http import JsonResponse
+from .models import SaldoMensualTarjeta, RegistroMensual
+
+@login_required
+def obtener_saldo_tarjeta_ajax(request):
+    tarjeta_id = request.GET.get('tarjeta_id')
+    anio = request.GET.get('anio')
+    mes = request.GET.get('mes')
+
+    try:
+        registro = RegistroMensual.objects.get(usuario=request.user, anio=anio, mes=mes)
+        saldo = SaldoMensualTarjeta.objects.filter(tarjeta_id=tarjeta_id, registro=registro).order_by('-id').first()
+        if saldo:
+            return JsonResponse({'success': True, 'saldo': float(saldo.saldo)})
+        else:
+            return JsonResponse({'success': False, 'saldo': None})
+    except RegistroMensual.DoesNotExist:
+        return JsonResponse({'success': False, 'saldo': None})

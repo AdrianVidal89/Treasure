@@ -7,8 +7,152 @@
 
 {% block content %}
 <div class="dashboard-container">
-    <h2>Bienvenido, {{ user.first_name|default:user.username }}</h2>
-    <p>Este es tu panel de control personal.</p>
-    <p>Aquí verás tu capital, evolución financiera y simulaciones.</p>
+    <div class="chart-section">
+
+        <div class="chart-controls">
+            <fieldset class="filtro-checkboxes">
+                <legend>Categorías:</legend>
+                <label class="checkbox-label">
+                    <input type="checkbox" name="categoria" value="total">
+                    Patrimonio Total
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" name="categoria" value="liquido">
+                    Capital Líquido
+                </label>
+                <label class="checkbox-label">
+                    <input type="checkbox" name="categoria" value="inversiones">
+                    Inversiones
+                </label>
+            </fieldset>
+        
+            <label for="filtro-periodo">Periodo:</label>
+            <select id="filtro-periodo" class="cyber-select">
+                <option value="6">Últimos 6 meses</option>
+                <option value="12" selected>Últimos 12 meses</option>
+                <option value="24">Últimos 24 meses</option>
+                <option value="todos">Todo el historial</option>
+            </select>
+        </div>
+                
+        <canvas id="grafico-evolucion" height="200"></canvas>
+    </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const ctx = document.getElementById('grafico-evolucion').getContext('2d');
+    const periodoSelect = document.getElementById('filtro-periodo');
+    const categoriaCheckboxes = document.querySelectorAll('input[name="categoria"]');
+    let chart;
+
+    // 🔁 Restaurar selección desde localStorage
+    if (localStorage.getItem("periodo")) {
+        periodoSelect.value = localStorage.getItem("periodo");
+    }
+
+    categoriaCheckboxes.forEach(cb => {
+        const key = `categoria_${cb.value}`;
+        if (localStorage.getItem(key) === "true") {
+            cb.checked = true;
+        }
+    });
+
+    // 🧠 Guardar selección al cambiar
+    periodoSelect.addEventListener("change", function () {
+        localStorage.setItem("periodo", this.value);
+    });
+
+    categoriaCheckboxes.forEach(cb => {
+        cb.addEventListener("change", function () {
+            localStorage.setItem(`categoria_${this.value}`, this.checked);
+        });
+    });
+
+    function obtenerCategoriasSeleccionadas() {
+        return Array.from(document.querySelectorAll('input[name="categoria"]:checked')).map(c => c.value);
+    }
+
+    function cargarDatos() {
+        const categorias = obtenerCategoriasSeleccionadas();
+        const periodo = periodoSelect.value;
+
+        const params = new URLSearchParams();
+        categorias.forEach(cat => params.append('categorias[]', cat));
+        params.append('periodo', periodo);
+
+        fetch(`/ui/dashboard/datos-evolucion/?${params.toString()}`)
+            .then(res => res.json())
+            .then(data => {
+                const colores = {
+                    total: '#00ffcc',
+                    liquido: '#00bfff',
+                    inversiones: '#ff00cc'
+                };
+
+                const datasets = Object.entries(data.series).map(([key, valores]) => ({
+                    label: key === 'total' ? 'Patrimonio Total'
+                          : key === 'liquido' ? 'Capital Líquido'
+                          : 'Inversiones',
+                    data: valores,
+                    borderColor: colores[key],
+                    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                    tension: 0.3,
+                    fill: false,
+                    pointRadius: 3,
+                    pointBackgroundColor: colores[key]
+                }));
+
+                if (chart) {
+                    chart.data.labels = data.labels;
+                    chart.data.datasets = datasets;
+                    chart.update();
+                } else {
+                    chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: data.labels,
+                            datasets: datasets
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: {
+                                    labels: { color: '#eaeaea' }
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    ticks: { color: '#aaa' },
+                                    grid: { color: '#333' }
+                                },
+                                y: {
+                                    ticks: { color: '#aaa' },
+                                    grid: { color: '#333' }
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+    }
+
+    // 🔁 Inicializar gráfico después de restaurar filtros
+    cargarDatos();
+
+    // Escuchar cambios en filtros
+    periodoSelect.addEventListener('change', cargarDatos);
+    categoriaCheckboxes.forEach(cb => {
+        cb.addEventListener('change', cargarDatos);
+    });
+});
+</script>
+
+
 {% endblock %}
+

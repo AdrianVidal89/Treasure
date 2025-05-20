@@ -1,14 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{{ cuenta.nombre }} - Saldo{% endblock %}
+{% block title %}{{ tarjeta.nombre }} - Saldo{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
 {% block content %}
 <div class="profile-form-container">
-    <h2>💼 {{ cuenta.nombre }} ({{ cuenta.moneda }})</h2>
+    <h2>💳 {{ tarjeta.nombre }} {% if tarjeta.entidad %}({{ tarjeta.entidad }}){% endif %}</h2>
     <p>Mes actual: {{ registro.mes }}/{{ registro.anio }}</p>
-    {% if saldo_obj %}
-        <p>Saldo actual registrado: <strong>{{ saldo_obj.saldo }} €</strong></p>
-    {% endif %}
 
     <form method="post">
         {% csrf_token %}
@@ -17,32 +14,30 @@
                 {{ form.errors }}
             </div>
         {% endif %}
-    
+
         <div class="form-group">
             <label for="id_saldo">Saldo</label>
             {{ form.saldo }}
         </div>
-    
         <div class="form-group">
             <label for="id_mes">Mes</label>
             {{ form.mes }}
         </div>
-    
         <div class="form-group">
             <label for="id_anio">Año</label>
             {{ form.anio }}
         </div>
-    
+
         <div style="display: flex; justify-content: center; gap: 20px; margin-top: 20px;">
             <button type="submit" class="btn btn-primary">Guardar saldo</button>
-            <button type="button" class="btn btn-danger" onclick="window.location.href='{% url 'gestionar_cuentas' %}'">Cancelar y volver</button>
+            <button type="button" class="btn btn-danger" onclick="window.location.href='{% url 'gestionar_cuentas' %}'">Cancelar</button>
         </div>
     </form>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const cuentaId = '{{ cuenta.id }}';
+        const tarjetaId = '{{ tarjeta.id }}';
         const mesSelect = document.getElementById('id_mes');
         const anioSelect = document.getElementById('id_anio');
         const saldoInput = document.getElementById('id_saldo');
@@ -51,7 +46,7 @@
             const mes = mesSelect.value;
             const anio = anioSelect.value;
     
-            fetch(`/finanzas/ajax/obtener-saldo/?cuenta_id=${cuentaId}&mes=${mes}&anio=${anio}`)
+            fetch("{% url 'obtener_saldo_tarjeta_ajax' %}?tarjeta_id=" + tarjetaId + "&mes=" + mes + "&anio=" + anio)
                 .then(response => response.json())
                 .then(data => {
                     if (data.success && data.saldo !== null) {
@@ -59,6 +54,10 @@
                     } else {
                         saldoInput.value = '';
                     }
+    
+                    // Glow visual
+                    saldoInput.classList.add('glow-temporal');
+                    setTimeout(() => saldoInput.classList.remove('glow-temporal'), 700);
                 });
         }
     
@@ -67,6 +66,3 @@
     });
     </script>    
 {% endblock %}
-
-
-

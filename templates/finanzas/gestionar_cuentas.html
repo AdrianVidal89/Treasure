@@ -9,7 +9,31 @@
 
 {% block content %}
 <div class="dashboard-scroll-wrapper">
-    <h2 class="section-title">Cuentas Bancarias</h2>
+
+    <h2 class="section-title">💳 Tarjetas de Crédito</h2>
+    <div class="cuentas-container">
+        {% for tarjeta in tarjetas %}
+        <div class="cuenta-card">
+            <div class="cuenta-tipo">💳 Tarjeta de Crédito</div>
+            <div class="cuenta-nombre">{{ tarjeta.nombre }} {% if tarjeta.entidad %}— {{ tarjeta.entidad }}{% endif %}</div>
+            <div class="cuenta-detalle">
+                {% if saldos_tarjetas|get_item:tarjeta.id %}
+                    Saldo actual: {{ saldos_tarjetas|get_item:tarjeta.id }} €
+                {% else %}
+                    Sin saldo este mes
+                {% endif %}
+            </div>
+            <div class="cuenta-acciones">
+                <a href="{% url 'detalle_tarjeta' tarjeta.id %}" class="btn btn-primary">Modificar</a>
+                <a href="{% url 'eliminar_tarjeta' tarjeta.id %}" class="btn btn-danger">Eliminar</a>
+            </div>
+        </div>
+        {% empty %}
+        <p>No tienes tarjetas de crédito registradas.</p>
+        {% endfor %}
+    </div>
+    
+    <h2 class="section-title">💰 Cuentas Bancarias</h2>
 
     <div class="cuentas-container">
         {% for cuenta in cuentas_bancarias %}
@@ -32,7 +56,7 @@
         <p>No tienes cuentas bancarias registradas.</p>
         {% endfor %}
         <div style="text-align: center; margin-top: 40px;">
-            <button type="button" class="btn btn-danger" onclick="window.location.href='{% url 'dashboard' %}'">Volver al Dashboard Principal</button>
+            <button type="button" class="btn btn-primary" onclick="window.location.href='{% url 'dashboard' %}'">Volver al Dashboard Principal</button>
         </div>        
     </div>
 </div>
