@@ -29,9 +29,7 @@
             });
         });
     });
-    </script>
-    
-    
+</script>
 <body class="{% block body_class %}{% endblock %}">
     {% if request.user.is_authenticated and not hide_navbar %}
     <nav class="navbar">
@@ -39,9 +37,9 @@
             <img src="{% static 'img/logo_treasure_3.png' %}" class="nav-logo" alt="Treasure Logo">
             <span class="nav-title">Treasure</span>
             <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">Gestion Cuentas / Tarjetas</span>
+                <span class="nav-user-toggle">Cuentas / Tarjetas</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'gestionar_cuentas' %}">Ver todas</a>
+                    <a href="{% url 'gestionar_cuentas' %}">Gestión</a>
                     <a href="{% url 'nueva_cuenta' %}">➕ Añadir cuenta bancaria</a>
                     <a href="{% url 'nueva_tarjeta' %}">➕ Añadir tarjeta de crédito</a>
                 </div>

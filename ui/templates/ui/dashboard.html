@@ -6,40 +6,146 @@
 
 
 {% block content %}
-<div class="dashboard-container">
-    <div class="chart-section">
 
-        <div class="chart-controls">
-            <fieldset class="filtro-checkboxes">
-                <legend>Categorías:</legend>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="categoria" value="total">
-                    Patrimonio Total
-                </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="categoria" value="liquido">
-                    Capital Líquido
-                </label>
-                <label class="checkbox-label">
-                    <input type="checkbox" name="categoria" value="inversiones">
-                    Inversiones
-                </label>
-            </fieldset>
-        
-            <label for="filtro-periodo">Periodo:</label>
-            <select id="filtro-periodo" class="cyber-select">
-                <option value="6">Últimos 6 meses</option>
-                <option value="12" selected>Últimos 12 meses</option>
-                <option value="24">Últimos 24 meses</option>
-                <option value="todos">Todo el historial</option>
-            </select>
-        </div>
-                
-        <canvas id="grafico-evolucion" height="200"></canvas>
+<div class="dashboard-container">  
+    <div class="total-patrimonio-widget">
+        <div class="mini-title">🧮 Patrimonio Neto</div>
+        <div class="total-patrimonio-titulo"></div>
+        <div class="total-patrimonio-valor" id="valor-patrimonio-total">€0.00</div>
     </div>
 </div>
+  
+<div class="dashboard-container">  
 
+    <!-- Título fila de activos -->
+    <h3 class="section-title">💚 Activos</h3>
+    <div class="mini-dashboard-row">
+      <div class="mini-dashboard">
+        <div class="mini-title">💰 Líquido</div>
+        <div class="mini-valor-real" id="valor-liquido">€0.00</div>
+        <div class="mini-variacion" id="label-liquido">+0%</div>
+        <canvas id="bar-liquido" height="60"></canvas>
+      </div>
+      <div class="mini-dashboard">
+        <div class="mini-title">🏡 Propiedades</div>
+        <div class="mini-valor-real" id="valor-activos">€0.00</div>
+        <div class="mini-variacion" id="label-activos">+0%</div>
+        <canvas id="bar-activos" height="60"></canvas>
+      </div>
+      <div class="mini-dashboard">
+        <div class="mini-title">📈 Inversiones</div>
+        <div class="mini-valor-real" id="valor-inversiones">€0.00</div>
+        <div class="mini-variacion" id="label-inversiones">+0%</div>
+        <canvas id="bar-inversiones" height="60"></canvas>
+      </div>
+    </div>
+  
+    <!-- Título fila de pasivos -->
+    <h3 class="section-title">🔻 Pasivos</h3>
+    <div class="mini-dashboard-row">
+      <div class="mini-dashboard">
+        <div class="mini-title">💳 Créditos</div>
+        <div class="mini-valor-real" id="valor-creditos">€0.00</div>
+        <div class="mini-variacion" id="label-creditos">+0%</div>
+        <canvas id="bar-creditos" height="60"></canvas>
+      </div>
+      <div class="mini-dashboard">
+        <div class="mini-title">🏦 Préstamos</div>
+        <div class="mini-valor-real" id="valor-prestamos">€0.00</div>
+        <div class="mini-variacion" id="label-prestamos">+0%</div>
+        <canvas id="bar-prestamos" height="60"></canvas>
+      </div>
+      <div class="mini-dashboard">
+        <div class="mini-title">💷 Hipotecas</div>
+        <div class="mini-valor-real" id="valor-hipotecas">€0.00</div>
+        <div class="mini-variacion" id="label-hipotecas">+0%</div>
+        <canvas id="bar-hipotecas" height="60"></canvas>
+      </div>
+    </div>
+  
+    <!-- Sección del gráfico -->
+    <div class="chart-section">
+      <h2>📊 Gráfico de Evolución</h2>
+      <div class="chart-controls">
+        <fieldset class="filtro-checkboxes">
+          <legend>Categorías:</legend>
+          <label class="checkbox-label">
+            <input type="checkbox" name="categoria" value="total">
+            Patrimonio Total
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="categoria" value="liquido">
+            Capital Líquido
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" name="categoria" value="inversiones">
+            Inversiones
+          </label>
+        </fieldset>
+  
+        <label for="filtro-periodo">Periodo:</label>
+        <select id="filtro-periodo" class="cyber-select">
+          <option value="6">Últimos 6 meses</option>
+          <option value="12" selected>Últimos 12 meses</option>
+          <option value="24">Últimos 24 meses</option>
+          <option value="todos">Todo el historial</option>
+        </select>
+      </div>
+      <canvas id="grafico-evolucion" height="120"></canvas>
+    </div>
+  </div>
+    
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  datos.forEach(({ id, actual, anterior, moneda }) => {
+    const delta = actual - anterior;
+    const porcentaje = anterior !== 0 ? (delta / Math.abs(anterior)) * 100 : 0;
+    const color = porcentaje > 0 ? '#00ff99' : porcentaje < 0 ? '#ff4d4d' : '#888';
+    const ctx = document.getElementById(`bar-${id}`).getContext('2d');
+    const etiqueta = document.getElementById(`label-${id}`);
+    const valorReal = document.getElementById(`valor-${id}`);
+
+    etiqueta.textContent = `${porcentaje > 0 ? '+' : ''}${porcentaje.toFixed(1)}%`;
+    etiqueta.style.color = color;
+    valorReal.textContent = `${moneda}${actual.toLocaleString()}`;
+
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [''],
+        datasets: [{
+          data: [Math.abs(porcentaje)],
+          backgroundColor: color,
+          borderRadius: 6,
+          barPercentage: 0.7
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { enabled: false }
+        },
+        scales: {
+          x: {
+            min: 0,
+            max: 100,
+            ticks: { display: false },
+            grid: { display: false }
+          },
+          y: {
+            ticks: { display: false },
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  });
+});
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const ctx = document.getElementById('grafico-evolucion').getContext('2d');
@@ -75,72 +181,135 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function cargarDatos() {
-        const categorias = obtenerCategoriasSeleccionadas();
-        const periodo = periodoSelect.value;
+    const categorias = obtenerCategoriasSeleccionadas();
+    const periodo = periodoSelect.value;
 
-        const params = new URLSearchParams();
-        categorias.forEach(cat => params.append('categorias[]', cat));
-        params.append('periodo', periodo);
+    const params = new URLSearchParams();
+    categorias.forEach(cat => params.append('categorias[]', cat));
+    params.append('periodo', periodo);
 
-        fetch(`/ui/dashboard/datos-evolucion/?${params.toString()}`)
-            .then(res => res.json())
-            .then(data => {
-                const colores = {
-                    total: '#00ffcc',
-                    liquido: '#00bfff',
-                    inversiones: '#ff00cc'
-                };
+    fetch(`/ui/dashboard/datos-evolucion/?${params.toString()}`)
+        .then(res => res.json())
+        .then(data => {
+            const colores = {
+                total: '#00ffcc',
+                liquido: '#00bfff',
+                inversiones: '#ff00cc'
+            };
 
-                const datasets = Object.entries(data.series).map(([key, valores]) => ({
-                    label: key === 'total' ? 'Patrimonio Total'
-                          : key === 'liquido' ? 'Capital Líquido'
-                          : 'Inversiones',
-                    data: valores,
-                    borderColor: colores[key],
-                    backgroundColor: 'rgba(0, 0, 0, 0.05)',
-                    tension: 0.3,
-                    fill: false,
-                    pointRadius: 3,
-                    pointBackgroundColor: colores[key]
-                }));
+            // 1. Gráfico de evolución
+            const datasets = Object.entries(data.series).map(([key, valores]) => ({
+                label: key === 'total' ? 'Patrimonio Total'
+                      : key === 'liquido' ? 'Capital Líquido'
+                      : 'Inversiones',
+                data: valores,
+                borderColor: colores[key],
+                backgroundColor: 'rgba(0, 0, 0, 0.05)',
+                tension: 0.3,
+                fill: false,
+                pointRadius: 3,
+                pointBackgroundColor: colores[key]
+            }));
 
-                if (chart) {
-                    chart.data.labels = data.labels;
-                    chart.data.datasets = datasets;
-                    chart.update();
-                } else {
-                    chart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: data.labels,
-                            datasets: datasets
-                        },
-                        options: {
-                            responsive: true,
-                            plugins: {
-                                legend: {
-                                    labels: { color: '#eaeaea' }
-                                },
-                                tooltip: {
-                                    mode: 'index',
-                                    intersect: false
-                                }
+            if (chart) {
+                chart.data.labels = data.labels;
+                chart.data.datasets = datasets;
+                chart.update();
+            } else {
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: datasets
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#eaeaea' }
                             },
-                            scales: {
-                                x: {
-                                    ticks: { color: '#aaa' },
-                                    grid: { color: '#333' }
-                                },
-                                y: {
-                                    ticks: { color: '#aaa' },
-                                    grid: { color: '#333' }
-                                }
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false
+                            }
+                        },
+                        scales: {
+                            x: {
+                                ticks: { color: '#aaa' },
+                                grid: { color: '#333' }
+                            },
+                            y: {
+                                ticks: { color: '#aaa' },
+                                grid: { color: '#333' }
                             }
                         }
-                    });
+                    }
+                });
+            }
+
+            // 2. Actualizar mini-dashboard con resumen_actual
+            const resumen = data.resumen_actual;
+            const widgets = [
+                { id: 'liquido', data: resumen.liquido, color: '#00ff99' },
+                { id: 'creditos', data: resumen.creditos, color: '#ff4d4d' },
+                { id: 'activos', data: resumen.activos, color: '#ffaa00' },
+                { id: 'inversiones', data: resumen.inversiones, color: '#b266ff' }
+            ];
+
+            widgets.forEach(({ id, data, color }) => {
+                const delta = data.actual - data.anterior;
+                const pct = data.anterior !== 0 ? (delta / Math.abs(data.anterior)) * 100 : 0;
+
+                let colorFinal;
+                if (id === 'creditos') {
+                    colorFinal = pct > 0 ? '#ff4d4d' : pct < 0 ? '#00ff99' : '#888';  // lógica invertida
+                } else {
+                    colorFinal = pct > 0 ? '#00ff99' : pct < 0 ? '#ff4d4d' : '#888';
                 }
+
+                // texto real + variación %
+                document.getElementById(`valor-${id}`).textContent = `€${data.actual.toLocaleString()}`;
+                const label = document.getElementById(`label-${id}`);
+                label.textContent = `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
+                label.style.color = colorFinal;
+
+                // redibujar el canvas
+                const ctxWidget = document.getElementById(`bar-${id}`).getContext('2d');
+                new Chart(ctxWidget, {
+                    type: 'bar',
+                    data: {
+                        labels: [''],
+                        datasets: [{
+                            data: [Math.abs(pct)],
+                            backgroundColor: colorFinal,
+                            borderRadius: 6,
+                            barPercentage: 0.7
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { enabled: false }
+                        },
+                        scales: {
+                            x: {
+                                min: 0,
+                                max: 100,
+                                ticks: { display: false },
+                                grid: { display: false }
+                            },
+                            y: {
+                                ticks: { display: false },
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
             });
-    }
+        });
+}
 
     // 🔁 Inicializar gráfico después de restaurar filtros
     cargarDatos();
@@ -152,7 +321,5 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 });
 </script>
-
-
 {% endblock %}
 

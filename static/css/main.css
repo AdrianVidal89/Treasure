@@ -41,9 +41,6 @@ body.dashboard-background {
     background-attachment: fixed;
 }
 
-
-
-
 .login-container {
     background-color: var(--dark-bg);
     padding: 40px;
@@ -281,7 +278,7 @@ h1 {
 }
 
 .dashboard-container {
-    max-width: 900px;
+    max-width: 1100px;
     margin: 80px auto;
     padding: 2rem;
     background-color: #1c1c1c;
@@ -540,6 +537,13 @@ h1 {
     margin-top: 2rem;
 }
 
+.chart-section h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: var(--text-color); /* opcional, por coherencia visual */
+}
+
+
 .chart-controls {
     display: flex;
     gap: 1rem;
@@ -582,3 +586,77 @@ h1 {
     width: 16px;
     height: 16px;
 }
+
+.mini-dashboard-row {
+    display: flex;
+    flex-wrap: nowrap; /* fuerza fila única */
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 40px;
+    overflow-x: auto;
+  }
+  
+  .mini-dashboard {
+    flex: 1 1 0;
+    aspect-ratio: 1 / 1;
+    background-color: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    text-align: center;
+    box-shadow: 0 0 10px var(--glow);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-width: 180px;
+    max-width: 220px;
+  }
+  
+  .mini-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-color);
+    margin-bottom: 6px;
+  }
+  
+  .mini-valor-real {
+    font-size: 1.2rem;
+    font-weight: 500;
+    margin-bottom: 4px;
+    color: var(--text-color);
+  }
+  
+  .mini-variacion {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 6px;
+  }
+
+  .total-patrimonio-widget {
+    width: 100%;
+    text-align: center;
+    margin: 30px 0 20px;
+    padding: 20px;
+    background: linear-gradient(135deg, #0f0 10%, #0c3 90%);
+    border: 2px solid #0f0;
+    border-radius: 20px;
+    box-shadow: 0 0 25px #0f08, 0 0 10px #0f08 inset;
+    color: black;
+  }
+  
+  .total-patrimonio-titulo {
+    font-size: 1.6rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  
+  .total-patrimonio-valor {
+    font-size: 2.4rem;
+    font-weight: 800;
+    margin-top: 5px;
+    color: #000;
+    text-shadow: 0 0 8px #0f0;
+  }
+  

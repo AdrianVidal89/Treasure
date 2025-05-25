@@ -58,17 +58,17 @@ def dashboard_view(request):
 
 @login_required
 def datos_evolucion_financiera(request):
-    categorias = request.GET.getlist('categorias[]')  # total, liquido, inversiones
-    periodo = request.GET.get('periodo', '12')  # por defecto 12 meses
+    categorias = request.GET.getlist('categorias[]')
+    periodo = request.GET.get('periodo', '12')
 
     registros = RegistroMensual.objects.filter(usuario=request.user).order_by('anio', 'mes')
 
     if periodo != 'todos':
         try:
             periodo_int = int(periodo)
-            registros = registros[::-1][:periodo_int][::-1]  # últimos N registros
+            registros = registros[::-1][:periodo_int][::-1]
         except ValueError:
-            pass  # por si mandan algo inválido
+            pass
 
     labels = [f"{r.mes:02d}/{r.anio}" for r in registros]
     data = {}
@@ -80,4 +80,34 @@ def datos_evolucion_financiera(request):
     if 'inversiones' in categorias:
         data['inversiones'] = [float(r.total_inversiones) for r in registros]
 
-    return JsonResponse({'labels': labels, 'series': data})
+    # ⬇️ Datos para widgets mini-dashboard
+    actual = registros[-1] if registros else None
+    anterior = registros[-2] if len(registros) >= 2 else None
+
+    def valor(obj, attr):
+        return float(getattr(obj, attr, 0)) if obj else 0
+
+    resumen_actual = {
+        'liquido': {
+            'actual': float(actual.total_liquido) if actual else 0,
+            'anterior': float(anterior.total_liquido) if anterior else 0,
+        },
+        'creditos': {
+            'actual': valor(actual, 'total_creditos'),
+            'anterior': valor(anterior, 'total_creditos'),
+        },
+        'activos': {
+            'actual': valor(actual, 'total_vehiculos'),
+            'anterior': valor(anterior, 'total_vehiculos'),
+        },
+        'inversiones': {
+            'actual': valor(actual, 'total_inversiones'),
+            'anterior': valor(anterior, 'total_inversiones'),
+        }
+    }
+
+    return JsonResponse({
+        'labels': labels,
+        'series': data,
+        'resumen_actual': resumen_actual
+    })

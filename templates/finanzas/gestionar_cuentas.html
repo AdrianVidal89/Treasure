@@ -9,7 +9,9 @@
 
 {% block content %}
 <div class="dashboard-scroll-wrapper">
-
+    <div style="text-align: center; margin-top: 40px;">
+        <button type="button" class="btn btn-primary" onclick="window.location.href='{% url 'dashboard' %}'">Volver al Dashboard Principal</button>
+    </div>        
     <h2 class="section-title">💳 Tarjetas de Crédito</h2>
     <div class="cuentas-container">
         {% for tarjeta in tarjetas %}
@@ -55,9 +57,6 @@
         {% empty %}
         <p>No tienes cuentas bancarias registradas.</p>
         {% endfor %}
-        <div style="text-align: center; margin-top: 40px;">
-            <button type="button" class="btn btn-primary" onclick="window.location.href='{% url 'dashboard' %}'">Volver al Dashboard Principal</button>
-        </div>        
     </div>
 </div>
 
