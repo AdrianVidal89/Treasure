@@ -7,13 +7,10 @@
 
 {% block content %}
 
-<div class="dashboard-container">  
-    <div class="total-patrimonio-widget">
-        <div class="mini-title">🧮 Patrimonio Neto</div>
-        <div class="total-patrimonio-titulo"></div>
-        <div class="total-patrimonio-valor" id="valor-patrimonio-total">€0.00</div>
-    </div>
-</div>
+<div class="total-patrimonio-widget">
+    <div class="total-patrimonio-titulo">🧮 Patrimonio Total</div>
+    <div class="total-patrimonio-valor" id="valor-patrimonio-total">€0.00</div>
+  </div>
   
 <div class="dashboard-container">  
 
@@ -94,7 +91,26 @@
       <canvas id="grafico-evolucion" height="120"></canvas>
     </div>
   </div>
-    
+
+  <script>
+    async function actualizarPatrimonioTotal() {
+      try {
+        const res = await fetch("{% url 'finanzas:patrimonio_total_actual' %}");
+        const data = await res.json();
+        const valor = data.valor.toLocaleString("es-ES", {
+          style: "currency",
+          currency: "EUR",
+          minimumFractionDigits: 2,
+        });
+  
+        document.getElementById("valor-patrimonio-total").textContent = valor;
+      } catch (err) {
+        console.error("Error al cargar el patrimonio total:", err);
+      }
+    }
+  
+    window.addEventListener("DOMContentLoaded", actualizarPatrimonioTotal);
+  </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {

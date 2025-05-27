@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <h2 class="titulo">Añadir Movimiento</h2>
+  <form method="post">
+    {% csrf_token %}
+    <div class="formulario">
+      {{ form.as_p }}
+    </div>
+    <button type="submit" class="btn-glow-primary">Guardar</button>
+    <a href="{% url 'finanzas:detalle' pk=inversion.id %}" class="btn-glow-secundario">Cancelar</a>
+  </form>
+</div>
+{% endblock %}

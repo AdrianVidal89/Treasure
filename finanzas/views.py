@@ -3,6 +3,10 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.timezone import now
+from django.http import JsonResponse
+from django.utils.timezone import now
+from finanzas.models import RegistroMensual
+
 
 from .forms import (
     CuentaBancariaForm,
@@ -20,8 +24,6 @@ from .models import (
     SaldoMensualTarjeta,
     TarjetaCredito,
 )
-
-
 
 
 def index(request):
@@ -96,7 +98,7 @@ def nueva_cuenta_bancaria(request):
             cuenta = form.save(commit=False)
             cuenta.usuario = request.user
             cuenta.save()
-            return redirect('gestionar_cuentas')
+            return redirect('finanzas:gestionar_cuentas')
     else:
         form = CuentaBancariaForm()
 
@@ -118,7 +120,7 @@ def nuevo_saldo(request):
             saldo = form.save(commit=False)
             saldo.registro = registro
             saldo.save()
-            return redirect('gestionar_cuentas')
+            return redirect('finanzasgestionar_cuentas')
     else:
         form = SaldoMensualCuentaForm(usuario=usuario)
 
@@ -149,7 +151,7 @@ def detalle_cuenta(request, cuenta_id):
                     defaults={'saldo': form.cleaned_data['saldo']}
                 )
                 messages.success(request, "Saldo guardado correctamente.")
-                return redirect('gestionar_cuentas')
+                return redirect('finanzas:gestionar_cuentas')
         else:
             # Si el form no es válido, intentamos obtener el registro para la vista
             try:
@@ -186,7 +188,7 @@ def eliminar_cuenta(request, cuenta_id):
     cuenta = get_object_or_404(CuentaBancaria, id=cuenta_id, usuario=request.user)
     cuenta.delete()
     messages.success(request, "La cuenta fue eliminada correctamente.")
-    return redirect('gestionar_cuentas')
+    return redirect('finanzas:gestionar_cuentas')
 
 @login_required
 def obtener_saldo_ajax(request):
@@ -225,7 +227,7 @@ def nueva_tarjeta(request):
             tarjeta = form.save(commit=False)
             tarjeta.usuario = request.user
             tarjeta.save()
-        return redirect('gestionar_cuentas')
+        return redirect('finanzas:gestionar_cuentas')
     else:
         form = TarjetaCreditoForm()
     return render(request, 'finanzas/nueva_tarjeta.html', {'form': form})
@@ -251,7 +253,7 @@ def detalle_tarjeta(request, tarjeta_id):
                     registro=registro,
                     defaults={'saldo': form.cleaned_data['saldo']}
                 )
-                return redirect('gestionar_cuentas')
+                return redirect('finanzas:gestionar_cuentas')
     else:
         anio = hoy.year
         mes = hoy.month
@@ -274,10 +276,8 @@ def detalle_tarjeta(request, tarjeta_id):
 def eliminar_tarjeta(request, tarjeta_id):
     tarjeta = get_object_or_404(TarjetaCredito, id=tarjeta_id, usuario=request.user)
     tarjeta.delete()
-    return redirect('gestionar_cuentas')
+    return redirect('finanzas:gestionar_cuentas')
 
-from django.http import JsonResponse
-from .models import SaldoMensualTarjeta, RegistroMensual
 
 @login_required
 def obtener_saldo_tarjeta_ajax(request):
@@ -294,3 +294,162 @@ def obtener_saldo_tarjeta_ajax(request):
             return JsonResponse({'success': False, 'saldo': None})
     except RegistroMensual.DoesNotExist:
         return JsonResponse({'success': False, 'saldo': None})
+
+@login_required
+def patrimonio_total_actual(request):
+    usuario = request.user
+    fecha = now()
+
+    # Obtiene el último registro del usuario autenticado
+    registro = RegistroMensual.objects.filter(
+        usuario=usuario,
+        anio=fecha.year,
+        mes=fecha.month
+    ).first()
+
+    if not registro:
+        return JsonResponse({'valor': 0})
+
+    return JsonResponse({'valor': float(registro.patrimonio_total)})
+
+
+### Sub-modulo Inversiones ###
+
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.urls import reverse_lazy
+from django.views.generic import ListView, DetailView, CreateView, UpdateView
+from django.shortcuts import get_object_or_404
+from .models import Inversion, MovimientoInversion, ValorActualInversion
+from .forms import InversionForm, MovimientoInversionForm
+from django.views.generic import DetailView
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.shortcuts import get_object_or_404, render
+from .models import ResumenInversionesMensual
+
+
+# 📌 Vista 1: Lista de inversiones del usuario
+class InversionListView(LoginRequiredMixin, ListView):
+    model = Inversion
+    template_name = 'inversiones/inversion_list.html'
+    context_object_name = 'inversiones'
+
+    def get_queryset(self):
+        return Inversion.objects.filter(usuario=self.request.user)
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        inversiones = context['inversiones']
+
+        total_actual = sum(inv.valor_total_actual for inv in inversiones)
+        total_aportado = sum(inv.valor_aportado for inv in inversiones)
+        total_activos = sum(inv.total_activos for inv in inversiones)
+
+        rentabilidad = 0
+        if total_aportado > 0:
+            rentabilidad = ((total_actual - total_aportado) / total_aportado) * 100
+
+        context.update({
+            'total_valor_actual': total_actual,
+            'total_aportado': total_aportado,
+            'total_activos': total_activos,
+            'rentabilidad_total': rentabilidad,
+        })
+        return context
+
+
+# 📌 Vista 2: Detalle de una inversión + movimientos asociados
+class InversionDetailView(LoginRequiredMixin, DetailView):
+    model = Inversion
+    template_name = 'inversiones/inversion_detail.html'
+    context_object_name = 'inversion'
+
+    def get_queryset(self):
+        return Inversion.objects.filter(usuario=self.request.user)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['movimientos'] = MovimientoInversion.objects.filter(inversion=self.object).order_by('-fecha')
+        return context
+
+# 📌 Vista 3: Crear nueva inversión
+class InversionCreateView(LoginRequiredMixin, CreateView):
+    model = Inversion
+    form_class = InversionForm
+    template_name = 'inversiones/inversion_form.html'
+    success_url = reverse_lazy('finanzas:listar')
+
+    def form_valid(self, form):
+        form.instance.usuario = self.request.user
+        response = super().form_valid(form)
+
+        if not form.instance.actualizable:
+            valor_manual = form.cleaned_data.get('valor_unitario_manual')
+            if valor_manual is not None:
+                ValorActualInversion.objects.update_or_create(
+                    inversion=form.instance,
+                    defaults={
+                        'valor_unitario': valor_manual,
+                        'fuente': 'Manual'
+                    }
+                )
+        else:
+            # Si vuelve a marcar como actualizable, borramos el valor manual
+            ValorActualInversion.objects.filter(inversion=form.instance).delete()
+
+        return response
+
+# 📌 Vista 4: Editar inversión existente
+class InversionUpdateView(LoginRequiredMixin, UpdateView):
+    model = Inversion
+    form_class = InversionForm
+    template_name = 'inversiones/inversion_form.html'
+    success_url = reverse_lazy('finanzas:listar')
+
+    def get_queryset(self):
+        return Inversion.objects.filter(usuario=self.request.user)
+    
+    def form_valid(self, form):
+        form.instance.usuario = self.request.user
+        response = super().form_valid(form)
+
+        if not form.instance.actualizable:
+            valor_manual = form.cleaned_data.get('valor_unitario_manual')
+            if valor_manual is not None:
+                ValorActualInversion.objects.update_or_create(
+                    inversion=form.instance,
+                    defaults={
+                        'valor_unitario': valor_manual,
+                        'fuente': 'Manual'
+                    }
+                )
+        else:
+            # Si vuelve a marcar como actualizable, borramos el valor manual
+            ValorActualInversion.objects.filter(inversion=form.instance).delete()
+
+        return response
+
+
+# 📌 Vista 5: Añadir movimiento a una inversión
+class MovimientoCreateView(LoginRequiredMixin, CreateView):
+    model = MovimientoInversion
+    form_class = MovimientoInversionForm
+    template_name = 'inversiones/movimiento_form.html'
+
+    def dispatch(self, request, *args, **kwargs):
+        self.inversion = get_object_or_404(Inversion, id=self.kwargs['pk'], usuario=request.user)
+        return super().dispatch(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        form.instance.inversion = self.inversion
+        return super().form_valid(form)
+
+    def get_success_url(self):
+        return reverse_lazy('inversiones:detalle', kwargs={'pk': self.inversion.id})
+
+class ResumenInversionesMensualView(LoginRequiredMixin, DetailView):
+    model = ResumenInversionesMensual
+    template_name = 'inversiones/resumen_mensual.html'
+    context_object_name = 'resumen'
+
+    def get_queryset(self):
+        return ResumenInversionesMensual.objects.filter(usuario=self.request.user)

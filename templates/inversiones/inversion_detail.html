@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <h2 class="titulo">{{ inversion.nombre }} ({{ inversion.ticker }})</h2>
+  <p><strong>Tipo:</strong> {{ inversion.tipo }} | <strong>Plataforma:</strong> {{ inversion.plataforma }}</p>
+
+  {% if inversion.valor_actual %}
+    <p>💰 Valor actual unitario: {{ inversion.valor_actual.valor_unitario }} {{ inversion.moneda }}</p>
+  {% endif %}
+
+  <a href="{% url 'finanzas:editar' inversion.id %}" class="btn-glow-primary">✏️ Editar inversión</a>
+  <a href="{% url 'finanzas:nuevo_movimiento' inversion.id %}" class="btn-glow-secundario">+ Añadir movimiento</a>
+
+  <h3 class="subtitulo">📈 Movimientos</h3>
+  {% if movimientos %}
+    <table class="tabla-oscura">
+      <thead>
+        <tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Precio</th><th>Comisión</th></tr>
+      </thead>
+      <tbody>
+        {% for m in movimientos %}
+          <tr>
+            <td>{{ m.fecha }}</td>
+            <td>{{ m.get_tipo_display }}</td>
+            <td>{{ m.cantidad }}</td>
+            <td>{{ m.precio_unitario }}</td>
+            <td>{{ m.comision }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="texto-difuso">Sin movimientos registrados aún.</p>
+  {% endif %}
+</div>
+{% endblock %}

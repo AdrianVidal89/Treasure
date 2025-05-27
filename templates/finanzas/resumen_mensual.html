@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <h2 class="titulo-glow">📆 Resumen de Inversiones – {{ resumen.registro.mes }} {{ resumen.registro.anio }}</h2>
+
+  <div class="resumen-grid">
+    <div class="card-glow">
+      <h3 class="subtitulo">💼 Valor total</h3>
+      <p class="dato-grande">{{ resumen.total_valor }} €</p>
+    </div>
+    <div class="card-glow">
+      <h3 class="subtitulo">📥 Aportación neta</h3>
+      <p class="dato-grande">{{ resumen.total_aportado }} €</p>
+    </div>
+    <div class="card-glow">
+      <h3 class="subtitulo">📈 Rentabilidad</h3>
+      <p class="dato-grande">{{ resumen.total_rentabilidad }} €</p>
+    </div>
+    <div class="card-glow">
+      <h3 class="subtitulo">📊 Variación mensual</h3>
+      <p class="dato-grande">{{ resumen.variacion_mensual }} %</p>
+    </div>
+  </div>
+
+  <div class="acciones mt-4">
+    <a href="{% url 'finanzas:listar' %}" class="btn-glow-secundario">← Volver a inversiones</a>
+  </div>
+</div>
+{% endblock %}

@@ -26,8 +26,8 @@
                 {% endif %}
             </div>
             <div class="cuenta-acciones">
-                <a href="{% url 'detalle_tarjeta' tarjeta.id %}" class="btn btn-primary">Modificar</a>
-                <a href="{% url 'eliminar_tarjeta' tarjeta.id %}" class="btn btn-danger">Eliminar</a>
+                <a href="{% url 'finanzas:detalle_tarjeta' tarjeta.id %}" class="btn btn-primary">Modificar</a>
+                <a href="{% url 'finanzas:eliminar_tarjeta' tarjeta.id %}" class="btn btn-danger">Eliminar</a>
             </div>
         </div>
         {% empty %}
@@ -50,8 +50,8 @@
                 {% endif %}
             </div>
             <div class="cuenta-acciones">
-                <a href="{% url 'detalle_cuenta' cuenta.id %}" class="btn btn-primary">Modificar</a>
-                <button class="btn btn-danger" onclick="confirmarEliminacion('{% url 'eliminar_cuenta' cuenta.id %}', '{{ cuenta.nombre }}')">Eliminar</button>
+                <a href="{% url 'finanzas:detalle_cuenta' cuenta.id %}" class="btn btn-primary">Modificar</a>
+                <button class="btn btn-danger" onclick="confirmarEliminacion('{% url 'finanzas:eliminar_cuenta' cuenta.id %}', '{{ cuenta.nombre }}')">Eliminar</button>
             </div>
         </div>
         {% empty %}

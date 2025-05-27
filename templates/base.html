@@ -6,6 +6,7 @@
     <title>{% block title %}Treasure{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
+  
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -39,11 +40,18 @@
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Cuentas / Tarjetas</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'gestionar_cuentas' %}">Gestión</a>
-                    <a href="{% url 'nueva_cuenta' %}">➕ Añadir cuenta bancaria</a>
-                    <a href="{% url 'nueva_tarjeta' %}">➕ Añadir tarjeta de crédito</a>
+                    <a href="{% url 'finanzas:gestionar_cuentas' %}">Gestión</a>
+                    <a href="{% url 'finanzas:nueva_cuenta' %}">➕ Añadir cuenta bancaria</a>
+                    <a href="{% url 'finanzas:nueva_tarjeta' %}">➕ Añadir tarjeta de crédito</a>
                 </div>
-            </div>         
+            </div>
+            <div class="nav-user-dropdown">
+                <span class="nav-user-toggle">Inversiones</span>
+                <div class="nav-user-menu">
+                    <a href="{% url 'finanzas:listar' %}"> Resumen activos</a>
+                    <a href="{% url 'finanzas:crear' %}">➕ Añadir inversión</a>
+                </div>
+              </div>
         </div>
         <div class="navbar-right">
             <div class="nav-user-dropdown">

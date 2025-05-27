@@ -634,29 +634,115 @@ h1 {
   }
 
   .total-patrimonio-widget {
-    width: 100%;
-    text-align: center;
-    margin: 30px 0 20px;
-    padding: 20px;
+    display: inline-block;
+    padding: 14px 28px;
+    margin: 20px auto;
+    border-radius: 16px;
     background: linear-gradient(135deg, #0f0 10%, #0c3 90%);
-    border: 2px solid #0f0;
-    border-radius: 20px;
-    box-shadow: 0 0 25px #0f08, 0 0 10px #0f08 inset;
+    border: 1px solid #0f0;
+    box-shadow: 0 0 15px #0f08, 0 0 6px #0f08 inset;
+    text-align: center;
     color: black;
+    position: relative;
+    left: 50%;
+    transform: translateX(-50%);
   }
   
   .total-patrimonio-titulo {
-    font-size: 1.6rem;
-    font-weight: bold;
+    font-size: 1rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
   }
   
   .total-patrimonio-valor {
-    font-size: 2.4rem;
-    font-weight: 800;
-    margin-top: 5px;
+    font-size: 1.5rem;
+    font-weight: 700;
     color: #000;
-    text-shadow: 0 0 8px #0f0;
+    text-shadow: 0 0 6px #0f0;
+    margin-top: 4px;
+  }
+  
+  .card-glow {
+    background-color: var(--input-bg);
+    border-radius: 16px;
+    box-shadow: 0 0 15px var(--glow);
+    padding: 20px;
+    margin: 12px 0;
+  }
+  
+  .btn-glow-primary {
+    background-color: #00ff88;
+    color: black;
+    padding: 8px 16px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #00ff88;
+    text-decoration: none;
+  }
+  
+  .btn-glow-secundario {
+    background-color: #00d1ff;
+    color: black;
+    padding: 8px 16px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #00d1ff;
+    text-decoration: none;
+  }
+  
+  .tabla-oscura {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text-color);
+  }
+  
+  .tabla-oscura th, .tabla-oscura td {
+    border: 1px solid var(--border);
+    padding: 8px;
+  }
+  
+  .titulo-glow {
+    font-size: 1.8rem;
+    color: var(--text-color);
+    text-shadow: 0 0 10px var(--glow);
+    margin-bottom: 24px;
+  }
+  
+  .resumen-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  
+  .card-glow {
+    background-color: var(--input-bg);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: 0 0 15px var(--glow);
+    text-align: center;
+  }
+  
+  .subtitulo {
+    font-size: 1rem;
+    color: var(--text-color);
+    margin-bottom: 8px;
+  }
+  
+  .dato-grande {
+    font-size: 1.6rem;
+    font-weight: bold;
+    color: var(--accent-color);
+  }
+  
+  .acciones {
+    text-align: center;
+  }
+  
+  .btn-glow-secundario {
+    background-color: #00d1ff;
+    color: black;
+    padding: 10px 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px #00d1ff;
+    text-decoration: none;
   }
   

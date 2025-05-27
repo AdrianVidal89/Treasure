@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+  <h2 class="titulo">{% if form.instance.pk %}Editar inversión{% else %}Nueva inversión{% endif %}</h2>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="formulario">
+
+      {{ form.nombre.label_tag }} {{ form.nombre }}
+      {{ form.ticker.label_tag }} {{ form.ticker }}
+      {{ form.tipo.label_tag }} {{ form.tipo }}
+      {{ form.moneda.label_tag }} {{ form.moneda }}
+      {{ form.plataforma.label_tag }} {{ form.plataforma }}
+      {{ form.cantidad_actual.label_tag }} {{ form.cantidad_actual }}
+      {{ form.actualizable.label_tag }} {{ form.actualizable }}
+
+      <div id="valor-manual-wrapper">
+        {{ form.valor_unitario_manual.label_tag }}
+        {{ form.valor_unitario_manual }}
+        <small>{{ form.valor_unitario_manual.help_text }}</small>
+      </div>
+
+    </div>
+
+    <button type="submit" class="btn-glow-primary">Guardar</button>
+    <a href="{% url 'finanzas:listar' %}" class="btn-glow-secundario">Cancelar</a>
+  </form>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const checkbox = document.getElementById('id_actualizable');
+    const valorManual = document.getElementById('valor-manual-wrapper');
+
+    function toggleValorManual() {
+      valorManual.style.display = checkbox.checked ? 'none' : 'block';
+    }
+
+    checkbox.addEventListener('change', toggleValorManual);
+    toggleValorManual(); // inicial
+  });
+</script>
+{% endblock %}

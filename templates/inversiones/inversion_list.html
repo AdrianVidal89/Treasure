@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Resumen de Inversiones{% endblock %}
+{% block content %}
+<div style="text-align: center; margin-top: 40px;">
+  <button type="button" class="btn btn-primary" onclick="window.location.href='{% url 'dashboard' %}'">Volver al Dashboard Principal</button>
+</div>        
+
+<div class="panel">
+  <h2 class="titulo-glow">📊 Resumen de Activos Invertidos</h2>
+
+    <div class="resumen-grid">
+      <div class="card-glow">
+        <h3>💼 Valor total actual</h3>
+        <p class="dato-grande">{{ total_valor_actual|floatformat:2 }} €</p>
+      </div>
+      <div class="card-glow">
+        <h3>📈 Rentabilidad total</h3>
+        <p class="dato-grande">
+          {% if total_aportado > 0 %}
+            {{ rentabilidad_total|floatformat:2 }} %
+          {% else %}
+            -
+          {% endif %}
+        </p>
+      </div>
+      <div class="card-glow">
+        <h3>📥 Aportación neta</h3>
+        <p class="dato-grande">{{ total_aportado|floatformat:2 }} €</p>
+      </div>
+      <div class="card-glow">
+        <h3>📊 Número de activos</h3>
+        <p class="dato-grande">{{ total_activos|floatformat:2 }}</p>
+      </div>
+    </div>
+  
+  <!-- 🥧 Distribución por tipo (pendiente de JS) -->
+  <div class="card-glow mt-4">
+    <h3 class="subtitulo">📂 Distribución por tipo de inversión</h3>
+    <canvas id="grafico-distribucion" height="200"></canvas>
+  </div>
+
+  <!-- 📄 Lista de inversiones -->
+  <div class="card-glow mt-4">
+    <h3 class="subtitulo">📋 Mis Inversiones</h3>
+    {% if inversiones %}
+      <table class="tabla-oscura">
+        <thead>
+          <tr><th>Nombre</th><th>Ticker</th><th>Tipo</th><th>Valor actual</th><th></th></tr>
+        </thead>
+        <tbody>
+          {% for inv in inversiones %}
+            <tr>
+              <td>{{ inv.nombre }}</td>
+              <td>{{ inv.ticker }}</td>
+              <td>{{ inv.tipo }}</td>
+              <td>
+                {% if inv.valor_actual %}
+                  {{ inv.valor_actual.valor_unitario }} {{ inv.moneda }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'finanzas:detalle' inv.id %}" class="btn-glow-secundario">Detalle</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="texto-difuso">Aún no tienes inversiones registradas.</p>
+    {% endif %}
+  </div>
+
+  <!-- ➕ Acciones -->
+  <div class="acciones mt-4">
+    <a href="{% url 'finanzas:crear' %}" class="btn-glow-primary">➕ Añadir inversión</a>
+  </div>
+</div>
+
+<!-- 📊 Placeholder gráfico JS -->
+<script>
+  const dataDistribucion = {
+    labels: ['Acciones', 'Cripto', 'Fondos'], // Placeholder
+    datasets: [{
+      label: 'Distribución',
+      data: [50, 30, 20],
+      backgroundColor: ['#00ff88', '#00d1ff', '#ff00aa'],
+    }]
+  };
+
+  new Chart(document.getElementById('grafico-distribucion'), {
+    type: 'pie',
+    data: dataDistribucion,
+    options: {
+      plugins: {
+        legend: { position: 'bottom', labels: { color: 'white' } }
+      }
+    }
+  });
+</script>
+{% endblock %}
