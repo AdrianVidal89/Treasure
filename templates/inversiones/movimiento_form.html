@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="panel">
+  <h2 class="titulo">➕ Nuevo movimiento para: {{ view.inversion.nombre }} ({{ view.inversion.ticker }})</h2>
+  <p><strong>Tipo:</strong> {{ view.inversion.tipo }} | <strong>Plataforma:</strong> {{ view.inversion.plataforma }}</p>
+
+  <form method="post" class="formulario-dark">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <div class="form-group">
+      <label for="{{ form.fecha.id_for_label }}">📅 Fecha:</label>
+      {{ form.fecha }}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.tipo.id_for_label }}">📂 Tipo de movimiento:</label>
+      {{ form.tipo }}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.cantidad.id_for_label }}">🔢 Cantidad:</label>
+      {{ form.cantidad }}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.precio_unitario.id_for_label }}">💲 Precio unitario:</label>
+      {{ form.precio_unitario }}
+    </div>
+
+    <div class="form-group">
+      <label for="{{ form.comision.id_for_label }}">💸 Comisión:</label>
+      {{ form.comision }}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="btn-glow-primary">💾 Guardar</button>
+      <a href="{% url 'inversiones:detalle' view.inversion.id %}" class="btn-glow-secundario">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

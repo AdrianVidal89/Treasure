@@ -95,4 +95,11 @@ class InversionForm(forms.ModelForm):
 class MovimientoInversionForm(forms.ModelForm):
     class Meta:
         model = MovimientoInversion
-        exclude = []
+        fields = ['fecha', 'tipo', 'cantidad', 'precio_unitario', 'comision']
+        widgets = {
+            'fecha': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+            'tipo': forms.Select(attrs={'class': 'form-control'}),
+            'cantidad': forms.NumberInput(attrs={'step': '0.0001', 'class': 'form-control'}),
+            'precio_unitario': forms.NumberInput(attrs={'step': '0.0001', 'class': 'form-control'}),
+            'comision': forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control'}),
+        }

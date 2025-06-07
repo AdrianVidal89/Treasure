@@ -202,6 +202,10 @@ class MovimientoInversion(models.Model):
         return (self.cantidad * self.precio_unitario) + self.comision
     
     def clean(self):
+        # No validar si todavía no hay inversión asociada
+        if not self.inversion_id:
+            return
+
         if self.tipo == self.VENTA:
             total_comprado = MovimientoInversion.objects.filter(
                 inversion=self.inversion,
@@ -215,7 +219,7 @@ class MovimientoInversion(models.Model):
 
             if self.cantidad > (total_comprado - total_vendido):
                 raise ValidationError("No se pueden vender más unidades de las que se han comprado.")
-  
+
 class ValorActualInversion(models.Model):
     inversion = models.OneToOneField(Inversion, on_delete=models.CASCADE, related_name='valor_actual')
     valor_unitario = models.DecimalField(max_digits=20, decimal_places=8)

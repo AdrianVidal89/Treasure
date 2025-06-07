@@ -23,7 +23,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', lambda request: redirect('login', permanent=False)),  # Redirige a la vista con name='login'
     path('core/', include('core.urls')),
-    path('finanzas/', include('finanzas.urls')),
+    path('finanzas/', include('finanzas.urls', namespace='inversiones')),    
     path('ui/', include('ui.urls')),
     path('exportador/', include('exportador.urls')),
     path('integraciones/', include('integraciones.urls')),
