@@ -1,4 +1,3 @@
-from django import forms
 from .models import SaldoMensualCuenta, CuentaBancaria
 import datetime
 from .models import TarjetaCredito
@@ -67,9 +66,6 @@ class SaldoMensualTarjetaForm(forms.ModelForm):
         self.initial.setdefault('anio', hoy.year)
 
 ### Sub-modulo Inversiones ###
-from django import forms
-from .models import Inversion
-
 class InversionForm(forms.ModelForm):
     valor_unitario_manual = forms.DecimalField(
         required=False,
@@ -89,7 +85,7 @@ class InversionForm(forms.ModelForm):
         if instance and not instance.actualizable:
             try:
                 self.fields['valor_unitario_manual'].initial = instance.valor_actual.valor_unitario
-            except:
+            except AttributeError:
                 pass
 
 class MovimientoInversionForm(forms.ModelForm):

@@ -49,12 +49,6 @@ def dashboard_view(request):
         liquido.append(float(r.total_liquido))
         inversiones.append(float(r.total_inversiones))
     
-    print("LABELS:", labels)
-    print("PATRIMONIO:", patrimonio)
-    print("LIQUIDO:", liquido)
-    print("INVERSIONES:", inversiones)
-
-
     return render(request, 'ui/dashboard.html', {
         'labels': labels,
         'patrimonio': patrimonio,

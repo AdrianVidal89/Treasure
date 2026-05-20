@@ -3,8 +3,6 @@ from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.timezone import now
-from django.http import JsonResponse
-from django.utils.timezone import now
 from finanzas.models import RegistroMensual
 
 
@@ -29,6 +27,7 @@ from .models import (
 def index(request):
     return HttpResponse("Bienvenido a finanzas")
 
+@login_required
 def resumen_mensual(request, anio, mes):
     usuario = request.user
 
@@ -120,7 +119,7 @@ def nuevo_saldo(request):
             saldo = form.save(commit=False)
             saldo.registro = registro
             saldo.save()
-            return redirect('finanzasgestionar_cuentas')
+            return redirect('finanzas:gestionar_cuentas')
     else:
         form = SaldoMensualCuentaForm(usuario=usuario)
 
@@ -160,8 +159,9 @@ def detalle_cuenta(request, cuenta_id):
                 registro = RegistroMensual.objects.filter(
                     usuario=request.user, anio=anio, mes=mes
                 ).first()
-            except:
-                registro = None
+            except (ValueError, TypeError):
+                        registro = None
+
     else:
         # GET: vista inicial con mes/año actuales
         anio = hoy.year
@@ -318,11 +318,8 @@ def patrimonio_total_actual(request):
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
-from django.shortcuts import get_object_or_404
 from .models import Inversion, MovimientoInversion, ValorActualInversion
 from .forms import InversionForm, MovimientoInversionForm
-from django.views.generic import DetailView
-from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, render
 from .models import ResumenInversionesMensual
 
