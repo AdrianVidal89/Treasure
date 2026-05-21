@@ -55,3 +55,4 @@ class UserProfile(models.Model):
     @property
     def es_viewer(self):
         return self.rol == 'viewer'
+    

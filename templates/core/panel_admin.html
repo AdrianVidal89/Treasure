@@ -19,7 +19,11 @@
     <!-- HEADER HOGARES -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <h2 style="color: var(--text-color); margin: 0;">🏠 Hogares</h2>
-        <a href="{% url 'crear_hogar' %}" class="btn btn-primary">➕ Crear hogar</a>
+        <div style="display: flex; gap: 12px;">
+            <a href="{% url 'crear_hogar' %}" class="btn btn-primary">➕ Crear hogar</a>
+            <a href="{% url 'crear_usuario' %}" class="btn btn-primary">👤 Crear usuario</a>
+        </div>
+
     </div>
 
     <!-- GRID DE HOGARES -->

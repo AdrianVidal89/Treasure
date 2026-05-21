@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Crear Usuario - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" style="max-width: 500px;">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">👤 Crear nuevo usuario</h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">Crea un usuario y asígnalo directamente a un hogar.</p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);">
+        <form method="post">
+            {% csrf_token %}
+
+            {% for field in form %}
+            <div class="form-group">
+                <label>{{ field.label }}</label>
+                {% if field.field.widget.input_type == 'password' %}
+                <input type="password" name="{{ field.html_name }}" value="{{ field.value|default:'' }}"
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                       required>
+                {% elif field.field.widget.input_type == 'select' or field.name == 'hogar' or field.name == 'rol' %}
+                <select name="{{ field.html_name }}" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                    {% for value, label in field.field.choices %}
+                    <option value="{{ value }}" {% if field.value|stringformat:"s" == value|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="{{ field.field.widget.input_type|default:'text' }}" name="{{ field.html_name }}" value="{{ field.value|default:'' }}"
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                       {% if field.field.required %}required{% endif %}>
+                {% endif %}
+                {% if field.errors %}
+                <p class="error-msg">{{ field.errors.0 }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <div style="display: flex; gap: 12px; margin-top: 24px;">
+                <button type="submit" class="btn btn-primary">👤 Crear usuario</button>
+                <a href="{% url 'panel_admin' %}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+
+</div>
+{% endblock %}

@@ -164,3 +164,34 @@ def eliminar_miembro(request, profile_id):
     miembro_profile.save()
     messages.success(request, f"{miembro_profile.user.username} eliminado del hogar.")
     return redirect('panel_admin')
+
+from .forms import CrearUsuarioDesdeAdminForm
+
+@login_required
+def crear_usuario(request):
+    profile = getattr(request.user, 'userprofile', None)
+    if not request.user.is_superuser and (not profile or not profile.es_admin):
+        messages.error(request, "No tienes permisos para crear usuarios.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        form = CrearUsuarioDesdeAdminForm(request.POST)
+        if form.is_valid():
+            user = User.objects.create_user(
+                username=form.cleaned_data['username'],
+                first_name=form.cleaned_data['first_name'],
+                email=form.cleaned_data['email'],
+                password=form.cleaned_data['password'],
+            )
+            # El signal ya crea el UserProfile, lo actualizamos
+            profile = user.userprofile
+            profile.hogar = form.cleaned_data['hogar']
+            profile.rol = form.cleaned_data['rol']
+            profile.save()
+
+            messages.success(request, f"Usuario '{user.username}' creado correctamente.")
+            return redirect('panel_admin')
+    else:
+        form = CrearUsuarioDesdeAdminForm()
+
+    return render(request, 'core/crear_usuario.html', {'form': form})

@@ -255,3 +255,158 @@ class HistorialValorInversion(models.Model):
 
     def __str__(self):
         return f"{self.inversion} @ {self.fecha} → {self.valor_unitario} x {self.cantidad_activos}"
+
+### Módulo de Ingresos ###
+
+class TablaIRPF(models.Model):
+    """Tramos fiscales por país. Preparado para multi-país."""
+    pais = models.CharField(max_length=5, choices=[
+        ('ES', 'España'),
+        ('US', 'Estados Unidos'),
+        ('UK', 'Reino Unido'),
+        ('FR', 'Francia'),
+        ('DE', 'Alemania'),
+        ('PT', 'Portugal'),
+        ('IT', 'Italia'),
+        ('MX', 'México'),
+        ('CO', 'Colombia'),
+        ('AR', 'Argentina'),
+    ], default='ES')
+    tramo_desde = models.DecimalField(max_digits=12, decimal_places=2)
+    tramo_hasta = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Dejar vacío para el último tramo (sin límite)")
+    porcentaje = models.DecimalField(max_digits=5, decimal_places=2,
+        help_text="Tipo impositivo del tramo en %")
+    año = models.IntegerField(help_text="Año fiscal de aplicación")
+
+    class Meta:
+        ordering = ['pais', 'año', 'tramo_desde']
+        unique_together = ('pais', 'año', 'tramo_desde')
+
+    def __str__(self):
+        hasta = f"€{self.tramo_hasta}" if self.tramo_hasta else "∞"
+        return f"{self.pais} {self.año}: €{self.tramo_desde} - {hasta} → {self.porcentaje}%"
+
+
+class CotizacionSS(models.Model):
+    """Cotización a la Seguridad Social por país."""
+    pais = models.CharField(max_length=5, choices=[
+        ('ES', 'España'),
+    ], default='ES')
+    concepto = models.CharField(max_length=100,
+        help_text="Ej: Contingencias comunes, Desempleo, Formación...")
+    porcentaje_trabajador = models.DecimalField(max_digits=5, decimal_places=2)
+    año = models.IntegerField()
+
+    class Meta:
+        ordering = ['pais', 'año', 'concepto']
+
+    def __str__(self):
+        return f"{self.pais} {self.año}: {self.concepto} → {self.porcentaje_trabajador}%"
+
+
+class DestinoIngreso(models.Model):
+    """Categorías de destino para ingresos no mensuales. Flexible por hogar."""
+    PREDEFINIDOS = ['Ahorro', 'Inversión', 'Fondo de emergencia']
+
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='destinos_ingreso')
+    nombre = models.CharField(max_length=100)
+    es_predefinido = models.BooleanField(default=False)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = ('hogar', 'nombre')
+
+    def __str__(self):
+        return self.nombre
+
+
+PERIODICIDAD_CHOICES = [
+    ('diaria', 'Diaria'),
+    ('semanal', 'Semanal'),
+    ('mensual', 'Mensual'),
+    ('trimestral', 'Trimestral'),
+    ('semestral', 'Semestral'),
+    ('anual', 'Anual'),
+    ('puntual', 'Puntual'),
+]
+
+MESES_CHOICES = [
+    (1, 'Enero'), (2, 'Febrero'), (3, 'Marzo'), (4, 'Abril'),
+    (5, 'Mayo'), (6, 'Junio'), (7, 'Julio'), (8, 'Agosto'),
+    (9, 'Septiembre'), (10, 'Octubre'), (11, 'Noviembre'), (12, 'Diciembre'),
+]
+
+
+class FuenteIngreso(models.Model):
+    """Cada fuente de ingreso de un miembro del hogar."""
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='fuentes_ingreso')
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='fuentes_ingreso')
+
+    nombre = models.CharField(max_length=150,
+        help_text="Ej: Schneider Electric, Ventas de pan, Alquiler piso...")
+    importe = models.DecimalField(max_digits=12, decimal_places=2,
+        help_text="Importe por periodo")
+    es_bruto = models.BooleanField(default=True,
+        help_text="Si es bruto, se calcularán retenciones automáticamente")
+    pais_fiscal = models.CharField(max_length=5, choices=[
+        ('ES', 'España'),
+        ('US', 'Estados Unidos'),
+        ('UK', 'Reino Unido'),
+        ('FR', 'Francia'),
+        ('DE', 'Alemania'),
+        ('PT', 'Portugal'),
+        ('IT', 'Italia'),
+        ('MX', 'México'),
+        ('CO', 'Colombia'),
+        ('AR', 'Argentina'),
+    ], default='ES')
+    periodicidad = models.CharField(max_length=20, choices=PERIODICIDAD_CHOICES, default='mensual')
+    mes_cobro = models.IntegerField(choices=MESES_CHOICES, null=True, blank=True,
+        help_text="Mes en que se cobra. Solo para ingresos no mensuales.")
+
+    # Destino para ingresos no mensuales
+    destino = models.ForeignKey(DestinoIngreso, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='fuentes',
+        help_text="Solo para ingresos no mensuales: a dónde va este dinero.")
+
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['usuario', '-periodicidad', 'nombre']
+
+    def __str__(self):
+        return f"{self.nombre} ({self.usuario.username}) - {self.get_periodicidad_display()}"
+
+    @property
+    def es_mensual(self):
+        return self.periodicidad == 'mensual'
+
+    @property
+    def importe_mensual_equivalente(self):
+        """Convierte cualquier periodicidad a mensual."""
+        multiplicadores = {
+            'diaria': 30,
+            'semanal': 4.33,
+            'mensual': 1,
+            'trimestral': 1 / 3,
+            'semestral': 1 / 6,
+            'anual': 1 / 12,
+            'puntual': 0,
+        }
+        return round(self.importe * multiplicadores.get(self.periodicidad, 0), 2)
+
+    @property
+    def importe_anual(self):
+        """Proyección anual del ingreso."""
+        multiplicadores = {
+            'diaria': 365,
+            'semanal': 52,
+            'mensual': 12,
+            'trimestral': 4,
+            'semestral': 2,
+            'anual': 1,
+            'puntual': 1,
+        }
+        return round(self.importe * multiplicadores.get(self.periodicidad, 0), 2)
