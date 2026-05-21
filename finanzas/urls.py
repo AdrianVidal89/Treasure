@@ -1,12 +1,12 @@
 from django.urls import path
 from . import views
+from . import views_ingresos
 from .views import nueva_cuenta_bancaria, patrimonio_total_actual
-from django.urls import path
-from . import views
 
 app_name = 'finanzas'
 
 urlpatterns = [
+    # Resumen y cuentas
     path('resumen/<int:anio>/<int:mes>/', views.resumen_mensual, name='resumen_mensual'),
     path('gestionar/', views.gestionar_cuentas, name='gestionar_cuentas'),
     path('cuenta/nueva/', nueva_cuenta_bancaria, name='nueva_cuenta'),
@@ -14,16 +14,30 @@ urlpatterns = [
     path('cuenta/<int:cuenta_id>/', views.detalle_cuenta, name='detalle_cuenta'),
     path('cuentas/<int:cuenta_id>/eliminar/', views.eliminar_cuenta, name='eliminar_cuenta'),
     path('ajax/obtener-saldo/', views.obtener_saldo_ajax, name='obtener_saldo_ajax'),
+
+    # Tarjetas
     path('tarjetas/', views.gestionar_tarjetas, name='gestionar_tarjetas'),
     path('tarjeta/nueva/', views.nueva_tarjeta, name='nueva_tarjeta'),
     path('tarjeta/<int:tarjeta_id>/', views.detalle_tarjeta, name='detalle_tarjeta'),
     path('tarjeta/<int:tarjeta_id>/eliminar/', views.eliminar_tarjeta, name='eliminar_tarjeta'),
     path('ajax/obtener-saldo-tarjeta/', views.obtener_saldo_tarjeta_ajax, name='obtener_saldo_tarjeta_ajax'),
-    path("api/patrimonio-total/", patrimonio_total_actual, name="patrimonio_total_actual"),
-    path('', views.InversionListView.as_view(), name='listar'),
-    path('nueva/', views.InversionCreateView.as_view(), name='crear'),
-    path('<int:pk>/', views.InversionDetailView.as_view(), name='detalle'),
-    path('<int:pk>/editar/', views.InversionUpdateView.as_view(), name='editar'),
-    path('<int:pk>/movimiento/', views.MovimientoCreateView.as_view(), name='nuevo_movimiento'),
-    path('resumen/<int:pk>/', views.ResumenInversionesMensualView.as_view(), name='resumen'),
+
+    # API patrimonio
+    path('api/patrimonio-total/', patrimonio_total_actual, name='patrimonio_total_actual'),
+
+    # Inversiones
+    path('inversiones/', views.InversionListView.as_view(), name='listar'),
+    path('inversiones/nueva/', views.InversionCreateView.as_view(), name='crear'),
+    path('inversiones/<int:pk>/', views.InversionDetailView.as_view(), name='detalle'),
+    path('inversiones/<int:pk>/editar/', views.InversionUpdateView.as_view(), name='editar'),
+    path('inversiones/<int:pk>/movimiento/', views.MovimientoCreateView.as_view(), name='nuevo_movimiento'),
+    path('inversiones/resumen/<int:pk>/', views.ResumenInversionesMensualView.as_view(), name='resumen'),
+
+    # Ingresos
+    path('ingresos/', views_ingresos.listar_ingresos, name='listar_ingresos'),
+    path('ingresos/crear/', views_ingresos.crear_ingreso, name='crear_ingreso'),
+    path('ingresos/<int:ingreso_id>/editar/', views_ingresos.editar_ingreso, name='editar_ingreso'),
+    path('ingresos/<int:ingreso_id>/eliminar/', views_ingresos.eliminar_ingreso, name='eliminar_ingreso'),
+    path('ingresos/destino/crear/', views_ingresos.crear_destino, name='crear_destino'),
+    path('ingresos/ajax/simular-neto/', views_ingresos.simular_neto, name='simular_neto'),
 ]

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Ingresos - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">💰 Ingresos del Hogar</h1>
+    <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- RESUMEN GLOBAL -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px;">
+        <div style="background: linear-gradient(135deg, #0f0 10%, #0c3 90%); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,255,0,0.3);">
+            <div style="font-size: 0.85rem; font-weight: 600; text-transform: uppercase; color: #000;">Mensual Recurrente</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: #000;">€{{ total_mensual_hogar|floatformat:2 }}</div>
+        </div>
+        <div style="background: linear-gradient(135deg, var(--primary-color) 10%, #7c3aed 90%); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px var(--glow);">
+            <div style="font-size: 0.85rem; font-weight: 600; text-transform: uppercase; color: #fff;">Anual Proyectado</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: #fff;">€{{ total_anual_hogar|floatformat:2 }}</div>
+        </div>
+    </div>
+
+    <!-- BOTONES -->
+    <div style="display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;">
+        <a href="{% url 'finanzas:crear_ingreso' %}" class="btn btn-primary">➕ Nuevo ingreso</a>
+        <button onclick="document.getElementById('modal-destino').style.display='flex'" class="btn btn-secondary">🏷️ Crear destino</button>
+    </div>
+
+    <!-- POR MIEMBRO -->
+    {% for grupo in ingresos_por_miembro %}
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.2); margin-bottom: 24px;">
+
+        <!-- Header miembro -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a;">
+            <div>
+                <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">👤 {{ grupo.miembro.user.first_name|default:grupo.miembro.user.username }}</span>
+                <span style="margin-left: 12px; font-size: 0.75rem; padding: 2px 8px; border-radius: 20px; background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid #00ff88;">{{ grupo.miembro.get_rol_display }}</span>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 0.75rem; color: var(--muted);">Mensual recurrente</div>
+                <div style="font-size: 1rem; font-weight: 700; color: #00ff88;">€{{ grupo.total_mensual|floatformat:2 }}</div>
+            </div>
+        </div>
+
+        <!-- Fuentes de ingreso -->
+        {% for item in grupo.fuentes %}
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #121212; border-radius: 10px; margin-bottom: 8px;">
+            <div style="flex: 1;">
+                <div style="font-size: 0.95rem; color: var(--text-color); font-weight: 600;">{{ item.fuente.nombre }}</div>
+                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                    {{ item.fuente.get_periodicidad_display }}
+                    {% if item.fuente.es_bruto %}<span style="color: #ffaa00;">· Bruto</span>{% else %}<span style="color: #00ff88;">· Neto</span>{% endif %}
+                    {% if item.fuente.mes_cobro %} · Mes {{ item.fuente.mes_cobro }}{% endif %}
+                    {% if item.fuente.destino %} · 🏷️ {{ item.fuente.destino.nombre }}{% endif %}
+                    {% if item.tipo_efectivo > 0 %} · IRPF {{ item.tipo_efectivo }}%{% endif %}
+                </div>
+            </div>
+            <div style="text-align: right; min-width: 140px;">
+                <div style="font-size: 0.85rem; color: var(--text-color);">€{{ item.fuente.importe|floatformat:2 }}
+                    <span style="color: var(--muted); font-size: 0.7rem;">{% if item.fuente.es_bruto %}bruto{% else %}neto{% endif %}</span>
+                </div>
+                <div style="font-size: 1rem; font-weight: 700; color: #00ff88;">€{{ item.neto_mensual|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
+            </div>
+            <div style="display: flex; gap: 6px; margin-left: 12px;">
+                <a href="{% url 'finanzas:editar_ingreso' item.fuente.id %}" style="color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;" title="Editar">✏️</a>
+                <form method="post" action="{% url 'finanzas:eliminar_ingreso' item.fuente.id %}" style="margin: 0;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-inline-danger" title="Eliminar" onclick="return confirm('¿Eliminar {{ item.fuente.nombre }}?')">🗑️</button>
+                </form>
+            </div>
+        </div>
+        {% empty %}
+        <div style="color: var(--muted); font-style: italic; padding: 12px;">Sin ingresos registrados.</div>
+        {% endfor %}
+
+    </div>
+    {% endfor %}
+
+    <!-- Destinos existentes -->
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 12px rgba(162, 89, 255, 0.1);">
+        <h2 style="color: var(--text-color); font-size: 1rem; margin-top: 0;">🏷️ Destinos configurados</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            {% for destino in destinos %}
+            <div style="background: #121212; border: 1px solid #333; border-radius: 8px; padding: 6px 14px; font-size: 0.85rem; color: var(--text-color);">
+                {{ destino.nombre }}
+                {% if destino.es_predefinido %}<span style="color: var(--muted); font-size: 0.7rem;"> · base</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+<!-- MODAL CREAR DESTINO -->
+<div id="modal-destino" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;">
+    <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 32px; box-shadow: 0 0 30px var(--glow); max-width: 400px; width: 90%;">
+        <h2 style="color: var(--primary-color); margin-top: 0;">🏷️ Nuevo destino</h2>
+        <form method="post" action="{% url 'finanzas:crear_destino' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Nombre del destino</label>
+                <input type="text" name="nombre" placeholder="Ej: Vacaciones, Reforma casa..."
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                       required>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">Crear</button>
+                <button type="button" onclick="document.getElementById('modal-destino').style.display='none'" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

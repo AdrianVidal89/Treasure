@@ -1,7 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-
+from decimal import Decimal
 ### Modulo general de finanzas ###
 
 class RegistroMensual(models.Model):
@@ -382,31 +382,35 @@ class FuenteIngreso(models.Model):
     @property
     def es_mensual(self):
         return self.periodicidad == 'mensual'
-
     @property
     def importe_mensual_equivalente(self):
         """Convierte cualquier periodicidad a mensual."""
         multiplicadores = {
-            'diaria': 30,
-            'semanal': 4.33,
-            'mensual': 1,
-            'trimestral': 1 / 3,
-            'semestral': 1 / 6,
-            'anual': 1 / 12,
-            'puntual': 0,
+            'diaria': Decimal('30'),
+            'semanal': Decimal('4.33'),
+            'mensual': Decimal('1'),
+            # Dividir Decimales preserva el tipo y la precisión
+            'trimestral': Decimal('1') / Decimal('3'),
+            'semestral': Decimal('1') / Decimal('6'),
+            'anual': Decimal('1') / Decimal('12'),
+            'puntual': Decimal('0'),
         }
-        return round(self.importe * multiplicadores.get(self.periodicidad, 0), 2)
+        factor = multiplicadores.get(self.periodicidad, Decimal('0'))
+        return round(self.importe * factor, 2)
 
     @property
     def importe_anual(self):
         """Proyección anual del ingreso."""
         multiplicadores = {
-            'diaria': 365,
-            'semanal': 52,
-            'mensual': 12,
-            'trimestral': 4,
-            'semestral': 2,
-            'anual': 1,
-            'puntual': 1,
+            # Los enteros (int) sí pueden multiplicarse por Decimales en Python,
+            # pero por coherencia y robustez, unificamos tipos.
+            'diaria': Decimal('365'),
+            'semanal': Decimal('52'),
+            'mensual': Decimal('12'),
+            'trimestral': Decimal('4'),
+            'semestral': Decimal('2'),
+            'anual': Decimal('1'),
+            'puntual': Decimal('1'),
         }
-        return round(self.importe * multiplicadores.get(self.periodicidad, 0), 2)
+        factor = multiplicadores.get(self.periodicidad, Decimal('0'))
+        return round(self.importe * factor, 2)

@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Nuevo Ingreso - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" style="max-width: 600px;">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">➕ Nuevo Ingreso</h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">{{ hogar.nombre }}</p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);">
+        <form method="post" id="form-ingreso">
+            {% csrf_token %}
+
+            <!-- Miembro -->
+            <div class="form-group">
+                <label>¿Quién recibe este ingreso?</label>
+                <select name="usuario_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                    {% for miembro in miembros %}
+                    <option value="{{ miembro.user.id }}">{{ miembro.user.first_name|default:miembro.user.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Nombre -->
+            <div class="form-group">
+                <label>Concepto del ingreso</label>
+                <input type="text" name="nombre" placeholder="Ej: Schneider Electric, Alquiler piso, Ventas..."
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                       required>
+            </div>
+
+            <!-- Importe + Bruto/Neto -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>Importe (€)</label>
+                    <input type="number" name="importe" id="importe" step="0.01" min="0" placeholder="0.00"
+                           style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                           required>
+                </div>
+                <div class="form-group">
+                    <label>Tipo de importe</label>
+                    <select name="es_bruto" id="es_bruto" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        <option value="true">Bruto</option>
+                        <option value="false">Neto</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- País fiscal + Periodicidad -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>País fiscal</label>
+                    <select name="pais_fiscal" id="pais_fiscal" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        <option value="ES">🇪🇸 España</option>
+                        <option value="US">🇺🇸 Estados Unidos</option>
+                        <option value="UK">🇬🇧 Reino Unido</option>
+                        <option value="FR">🇫🇷 Francia</option>
+                        <option value="DE">🇩🇪 Alemania</option>
+                        <option value="PT">🇵🇹 Portugal</option>
+                        <option value="IT">🇮🇹 Italia</option>
+                        <option value="MX">🇲🇽 México</option>
+                        <option value="CO">🇨🇴 Colombia</option>
+                        <option value="AR">🇦🇷 Argentina</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Periodicidad</label>
+                    <select name="periodicidad" id="periodicidad" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        <option value="diaria">Diaria</option>
+                        <option value="semanal">Semanal</option>
+                        <option value="mensual" selected>Mensual</option>
+                        <option value="trimestral">Trimestral</option>
+                        <option value="semestral">Semestral</option>
+                        <option value="anual">Anual</option>
+                        <option value="puntual">Puntual</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Campos condicionales: mes cobro + destino -->
+            <div id="campos-no-mensual" style="display: none;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="form-group">
+                        <label>Mes de cobro</label>
+                        <select name="mes_cobro" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                            <option value="">— No especificado —</option>
+                            <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Destino del ingreso</label>
+                        <select name="destino_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                            <option value="">— Sin asignar —</option>
+                            {% for destino in destinos %}
+                            <option value="{{ destino.id }}">{{ destino.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div style="background: #121212; border: 1px solid #333; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;">
+                    <span style="color: #ffaa00; font-size: 0.85rem;">⚠️ Este ingreso no es recurrente mensual. No se contará en tu presupuesto mensual. Elige a qué destino quieres asignar este dinero.</span>
+                </div>
+            </div>
+
+            <!-- Simulador fiscal -->
+            <div id="simulador-fiscal" style="display: none; background: #121212; border: 1px solid var(--primary-color); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-color); margin-bottom: 12px;">📊 Simulación fiscal</div>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                    <div>
+                        <div style="font-size: 0.7rem; color: var(--muted);">Bruto anual</div>
+                        <div style="font-size: 1rem; color: var(--text-color);" id="sim-bruto">—</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.7rem; color: var(--muted);">IRPF</div>
+                        <div style="font-size: 1rem; color: #ff4d4d;" id="sim-irpf">—</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.7rem; color: var(--muted);">Seguridad Social</div>
+                        <div style="font-size: 1rem; color: #ffaa00;" id="sim-ss">—</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.7rem; color: var(--muted);">Tipo efectivo</div>
+                        <div style="font-size: 1rem; color: var(--text-color);" id="sim-tipo">—</div>
+                    </div>
+                    <div style="grid-column: span 2; border-top: 1px solid #333; padding-top: 12px; margin-top: 4px;">
+                        <div style="font-size: 0.7rem; color: var(--muted);">Neto mensual estimado</div>
+                        <div style="font-size: 1.3rem; font-weight: 700; color: #00ff88;" id="sim-neto">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 24px;">
+                <button type="submit" class="btn btn-primary">💾 Guardar ingreso</button>
+                <a href="{% url 'finanzas:listar_ingresos' %}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+
+</div>
+
+<script>
+const periodicidadSelect = document.getElementById('periodicidad');
+const camposNoMensual = document.getElementById('campos-no-mensual');
+const importeInput = document.getElementById('importe');
+const esBrutoSelect = document.getElementById('es_bruto');
+const paisSelect = document.getElementById('pais_fiscal');
+const simulador = document.getElementById('simulador-fiscal');
+
+// Mostrar/ocultar campos no mensuales
+periodicidadSelect.addEventListener('change', function() {
+    camposNoMensual.style.display = this.value === 'mensual' ? 'none' : 'block';
+    actualizarSimulador();
+});
+
+// Simulador fiscal en tiempo real
+let timeout;
+function actualizarSimulador() {
+    clearTimeout(timeout);
+    const importe = parseFloat(importeInput.value) || 0;
+    const esBruto = esBrutoSelect.value === 'true';
+    const periodicidad = periodicidadSelect.value;
+
+    if (importe <= 0 || !esBruto) {
+        simulador.style.display = 'none';
+        return;
+    }
+
+    // Calcular bruto anual
+    const multiplicadores = {
+        'diaria': 365, 'semanal': 52, 'mensual': 12,
+        'trimestral': 4, 'semestral': 2, 'anual': 1, 'puntual': 1
+    };
+    const brutoAnual = importe * (multiplicadores[periodicidad] || 1);
+
+    timeout = setTimeout(() => {
+        fetch(`{% url 'finanzas:simular_neto' %}?bruto=${brutoAnual}&pais=${paisSelect.value}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    simulador.style.display = 'block';
+                    document.getElementById('sim-bruto').textContent = `€${data.neto + data.irpf + data.ss > 0 ? brutoAnual.toLocaleString('es-ES', {minimumFractionDigits: 2}) : '—'}`;
+                    document.getElementById('sim-irpf').textContent = `-€${data.irpf.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+                    document.getElementById('sim-ss').textContent = `-€${data.ss.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+                    document.getElementById('sim-tipo').textContent = `${data.tipo_efectivo.toFixed(1)}%`;
+                    document.getElementById('sim-neto').textContent = `€${data.neto_mensual.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+                }
+            });
+    }, 400);
+}
+
+importeInput.addEventListener('input', actualizarSimulador);
+esBrutoSelect.addEventListener('change', actualizarSimulador);
+paisSelect.addEventListener('change', actualizarSimulador);
+periodicidadSelect.addEventListener('change', actualizarSimulador);
+</script>
+
+{% endblock %}
