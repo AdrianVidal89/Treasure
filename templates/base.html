@@ -53,13 +53,18 @@
                 </div>
               </div>
         </div>
+
         <div class="navbar-right">
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">
                     Hola, <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
                 </span>
                 <div class="nav-user-menu">
+                    <a href="{% url 'mi_hogar' %}">🏠 Mi hogar</a>
                     <a href="{% url 'editar_perfil' %}">Editar perfil</a>
+                    {% if request.user.is_superuser or request.user.userprofile.es_admin %}
+                    <a href="{% url 'panel_admin' %}">⚙️ Panel Admin</a>
+                    {% endif %}
                     <a href="{% url 'logout' %}">Cerrar sesión</a>
                 </div>
             </div>

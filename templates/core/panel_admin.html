@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Panel de Administración - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">⚙️ Panel de Administración</h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">Gestiona hogares y usuarios de la plataforma.</p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- HEADER HOGARES -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h2 style="color: var(--text-color); margin: 0;">🏠 Hogares</h2>
+        <a href="{% url 'crear_hogar' %}" class="btn btn-primary">➕ Crear hogar</a>
+    </div>
+
+    <!-- GRID DE HOGARES -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; margin-bottom: 40px;">
+        {% for hogar in hogares %}
+        <div style="background-color: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25); position: relative;">
+
+            <!-- Header card -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+                <div>
+                    <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color); text-shadow: 0 0 8px var(--glow);">{{ hogar.nombre }}</div>
+                    <div style="font-size: 0.8rem; color: var(--muted); margin-top: 4px;">{{ hogar.moneda_principal }} · Creado por {{ hogar.creado_por.username }}</div>
+                </div>
+                <a href="{% url 'editar_hogar' hogar.id %}" style="font-size: 1.1rem; color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid #333;" title="Editar hogar">✏️</a>
+            </div>
+
+            <!-- Miembros -->
+            <div style="margin-bottom: 16px;">
+                {% for miembro in hogar.miembros.all %}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #121212; border-radius: 8px; margin-bottom: 6px;">
+                    <div>
+                        <span style="color: var(--text-color); font-size: 0.9rem;">{{ miembro.user.username }}</span>
+                        <span style="
+                            margin-left: 8px; font-size: 0.75rem; padding: 2px 8px; border-radius: 20px;
+                            {% if miembro.rol == 'admin' %}background: rgba(162,89,255,0.2); color: var(--primary-color); border: 1px solid var(--primary-color);
+                            {% elif miembro.rol == 'viewer' %}background: rgba(0,209,255,0.1); color: #00d1ff; border: 1px solid #00d1ff;
+                            {% else %}background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid #00ff88;{% endif %}
+                        ">{{ miembro.get_rol_display }}</span>
+                    </div>
+                    <form method="post" action="{% url 'eliminar_miembro' miembro.id %}" style="margin: 0;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-inline-danger" title="Quitar del hogar" onclick="return confirm('¿Quitar a {{ miembro.user.username }} del hogar?')">🗑️</button>
+                    </form>
+                </div>
+                {% empty %}
+                <div style="color: var(--muted); font-size: 0.85rem; font-style: italic;">Sin miembros asignados.</div>
+                {% endfor %}
+            </div>
+
+            <!-- Añadir miembro al hogar -->
+            <form method="post" action="{% url 'asignar_usuario' %}" style="border-top: 1px solid #2a2a2a; padding-top: 16px;">
+                {% csrf_token %}
+                <input type="hidden" name="hogar_id" value="{{ hogar.id }}">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <select name="usuario_id" class="cyber-select" style="flex: 1; min-width: 120px;">
+                        <option value="">— Usuario —</option>
+                        {% for profile in usuarios_sin_hogar %}
+                        <option value="{{ profile.user.id }}">{{ profile.user.username }}</option>
+                        {% endfor %}
+                    </select>
+                    <select name="rol" class="cyber-select">
+                        <option value="admin">Admin</option>
+                        <option value="miembro" selected>Miembro</option>
+                        <option value="viewer">Viewer</option>
+                    </select>
+                    <button type="submit" class="btn btn-primary" style="padding: 8px 16px; font-size: 0.85rem;">➕ Añadir</button>
+                </div>
+            </form>
+
+        </div>
+        {% empty %}
+        <div style="color: var(--muted); font-style: italic;">No hay hogares creados todavía.</div>
+        {% endfor %}
+    </div>
+
+    <!-- USUARIOS SIN HOGAR -->
+    {% if usuarios_sin_hogar %}
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 12px rgba(255,170,0,0.15);">
+        <h2 style="color: #ffaa00; margin-top: 0; font-size: 1rem;">⚠️ Usuarios sin hogar asignado ({{ usuarios_sin_hogar|length }})</h2>
+        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            {% for profile in usuarios_sin_hogar %}
+            <div style="background: #121212; border: 1px solid #333; border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; color: var(--text-color);">
+                {{ profile.user.username }}
+                {% if profile.user.email %}<span style="color: var(--muted)"> · {{ profile.user.email }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

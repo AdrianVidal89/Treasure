@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Asignar Usuario - Treasure{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h1>👤 Asignar usuario a hogar</h1>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="section-card">
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Usuario</label>
+                <select name="usuario_id" class="form-control">
+                    {% for profile in usuarios %}
+                    <option value="{{ profile.user.id }}" {% if request.GET.usuario_id == profile.user.id|stringformat:"s" %}selected{% endif %}>
+                        {{ profile.user.username }} {% if profile.hogar %}({{ profile.hogar.nombre }}){% else %}(sin hogar){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Hogar</label>
+                <select name="hogar_id" class="form-control">
+                    {% for hogar in hogares %}
+                    <option value="{{ hogar.id }}">{{ hogar.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Rol</label>
+                <select name="rol" class="form-control">
+                    <option value="admin">Administrador</option>
+                    <option value="miembro" selected>Miembro</option>
+                    <option value="viewer">Solo lectura</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Asignar</button>
+                <a href="{% url 'panel_admin' %}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

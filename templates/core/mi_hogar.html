@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Mi Hogar - Treasure{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h1>🏠 {{ hogar.nombre }}</h1>
+    <p class="text-muted">Moneda principal: {{ hogar.moneda_principal }}</p>
+
+    <div class="section-card">
+        <h2>👥 Miembros</h2>
+        <table class="tabla-miembros">
+            <thead>
+                <tr>
+                    <th>Usuario</th>
+                    <th>Rol</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for miembro in miembros %}
+                <tr>
+                    <td>{{ miembro.user.username }}</td>
+                    <td><span class="rol-badge rol-{{ miembro.rol }}">{{ miembro.get_rol_display }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

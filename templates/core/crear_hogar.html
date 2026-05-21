@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Crear Hogar - Treasure{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h1>🏠 Crear nuevo hogar</h1>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="section-card">
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Nombre del hogar</label>
+                <input type="text" name="nombre" class="form-control" placeholder="Ej: Familia García" required>
+            </div>
+            <div class="form-group">
+                <label>Moneda principal</label>
+                <select name="moneda" class="form-control">
+                    <option value="EUR">€ Euro</option>
+                    <option value="USD">$ Dólar</option>
+                    <option value="BTC">₿ Bitcoin</option>
+                </select>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Crear hogar</button>
+                <a href="{% url 'panel_admin' %}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
