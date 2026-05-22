@@ -24,11 +24,11 @@ def listar_ingresos(request):
             defaults={'es_predefinido': True}
         )
 
-    # Ingresos de todos los miembros del hogar
     miembros = hogar.miembros.select_related('user').all()
     ingresos_por_miembro = []
 
     total_mensual_hogar = Decimal('0')
+    total_ponderado_hogar = Decimal('0')
     total_anual_hogar = Decimal('0')
 
     for miembro in miembros:
@@ -37,39 +37,65 @@ def listar_ingresos(request):
         ).select_related('destino')
 
         total_mensual = Decimal('0')
+        total_ponderado = Decimal('0')
         total_anual = Decimal('0')
         fuentes_detalle = []
 
+
         for f in fuentes:
-            # Calcular neto si es bruto
-            if f.es_bruto and f.importe_anual > 0:
-                resultado = calcular_neto_anual(f.importe_anual, f.pais_fiscal)
-                neto_anual = resultado['neto']
-                neto_mensual = round(neto_anual / 12, 2)
+            bruto_anual = f.importe_anual_bruto
+            estimado_anual = f.importe_anual_estimado
+
+            if f.es_bruto and bruto_anual > 0:
+                resultado = calcular_neto_anual(bruto_anual, f.pais_fiscal)
+                ratio_neto = resultado['neto'] / bruto_anual if bruto_anual > 0 else Decimal('1')
+
+                # Base mensual neta = base bruta * ratio
+                neto_mensual_base = round(f.importe_mensual_base * ratio_neto, 2)
+                # Ponderado neto = estimado anual * ratio / 12
+                neto_mensual_ponderado = round(estimado_anual * ratio_neto / Decimal('12'), 2)
+                # Neto anual
+                neto_anual = round(estimado_anual * ratio_neto, 2)
+                # Neto por cobro (lo que llega cada vez)
+                neto_por_cobro = round(f.importe_neto_por_cobro * ratio_neto, 2)
+
                 tipo_efectivo = resultado['tipo_efectivo']
+                irpf = resultado['irpf']
+                ss = resultado['ss']
             else:
-                neto_anual = f.importe_anual
-                neto_mensual = f.importe_mensual_equivalente
+                neto_mensual_base = f.importe_mensual_base
+                neto_mensual_ponderado = f.importe_mensual_ponderado
+                neto_anual = estimado_anual
+                neto_por_cobro = f.importe_neto_por_cobro
                 tipo_efectivo = Decimal('0')
+                irpf = Decimal('0')
+                ss = Decimal('0')
 
             fuentes_detalle.append({
                 'fuente': f,
-                'neto_mensual': neto_mensual,
+                'neto_mensual_base': neto_mensual_base,
+                'neto_mensual_ponderado': neto_mensual_ponderado,
                 'neto_anual': neto_anual,
+                'neto_por_cobro': neto_por_cobro,
                 'tipo_efectivo': tipo_efectivo,
+                'irpf': irpf,
+                'ss': ss,
             })
 
-            if f.es_mensual:
-                total_mensual += neto_mensual
+            if f.es_mensual_recurrente and f.incluir_en_mensual:
+                total_mensual += neto_mensual_base
+            total_ponderado += neto_mensual_ponderado
             total_anual += neto_anual
 
         total_mensual_hogar += total_mensual
+        total_ponderado_hogar += total_ponderado
         total_anual_hogar += total_anual
 
         ingresos_por_miembro.append({
             'miembro': miembro,
             'fuentes': fuentes_detalle,
             'total_mensual': total_mensual,
+            'total_ponderado': total_ponderado,
             'total_anual': total_anual,
         })
 
@@ -78,11 +104,11 @@ def listar_ingresos(request):
     return render(request, 'finanzas/ingresos/listar.html', {
         'ingresos_por_miembro': ingresos_por_miembro,
         'total_mensual_hogar': total_mensual_hogar,
+        'total_ponderado_hogar': total_ponderado_hogar,
         'total_anual_hogar': total_anual_hogar,
         'destinos': destinos,
         'hogar': hogar,
     })
-
 
 @login_required
 def crear_ingreso(request):
@@ -97,28 +123,41 @@ def crear_ingreso(request):
     if request.method == 'POST':
         usuario_id = request.POST.get('usuario_id')
         nombre = request.POST.get('nombre', '').strip()
-        importe = request.POST.get('importe')
+        tipo = request.POST.get('tipo', 'fijo')
+        modo_entrada = request.POST.get('modo_entrada', 'anual')
+        importe_declarado = request.POST.get('importe_declarado')
         es_bruto = request.POST.get('es_bruto') == 'true'
         pais_fiscal = request.POST.get('pais_fiscal', 'ES')
-        periodicidad = request.POST.get('periodicidad')
-        mes_cobro = request.POST.get('mes_cobro') or None
+        num_pagas = int(request.POST.get('num_pagas', 12))
+        meses_pagas_extras = request.POST.get('meses_pagas_extras', '6,12')
+        periodicidad = request.POST.get('periodicidad', 'mensual')
+        meses_cobro_list = request.POST.getlist('meses_cobro')
+        meses_cobro = ','.join(meses_cobro_list) if meses_cobro_list else ''
+        porcentaje_variabilidad = request.POST.get('porcentaje_variabilidad') or '0'
+        incluir_en_mensual = 'incluir_en_mensual' in request.POST
         destino_id = request.POST.get('destino_id') or None
 
-        if not nombre or not importe:
+        if not nombre or not importe_declarado:
             messages.error(request, "Nombre e importe son obligatorios.")
         else:
             from django.contrib.auth.models import User
             usuario = get_object_or_404(User, id=usuario_id)
 
-            fuente = FuenteIngreso.objects.create(
+            FuenteIngreso.objects.create(
                 usuario=usuario,
                 hogar=hogar,
                 nombre=nombre,
-                importe=Decimal(importe),
+                tipo=tipo,
+                modo_entrada=modo_entrada,
+                importe_declarado=Decimal(importe_declarado),
                 es_bruto=es_bruto,
                 pais_fiscal=pais_fiscal,
+                num_pagas=num_pagas,
+                meses_pagas_extras=meses_pagas_extras,
                 periodicidad=periodicidad,
-                mes_cobro=int(mes_cobro) if mes_cobro else None,
+                meses_cobro=meses_cobro,
+                porcentaje_variabilidad=Decimal(porcentaje_variabilidad),
+                incluir_en_mensual=incluir_en_mensual,
                 destino_id=int(destino_id) if destino_id else None,
             )
             messages.success(request, f"Ingreso '{nombre}' creado.")
@@ -144,12 +183,19 @@ def editar_ingreso(request, ingreso_id):
     if request.method == 'POST':
         fuente.usuario_id = request.POST.get('usuario_id')
         fuente.nombre = request.POST.get('nombre', '').strip()
-        fuente.importe = Decimal(request.POST.get('importe', '0'))
+        fuente.tipo = request.POST.get('tipo', 'fijo')
+        fuente.modo_entrada = request.POST.get('modo_entrada', 'anual')
+        fuente.importe_declarado = Decimal(request.POST.get('importe_declarado', '0'))
         fuente.es_bruto = request.POST.get('es_bruto') == 'true'
         fuente.pais_fiscal = request.POST.get('pais_fiscal', 'ES')
-        fuente.periodicidad = request.POST.get('periodicidad')
-        mes_cobro = request.POST.get('mes_cobro')
-        fuente.mes_cobro = int(mes_cobro) if mes_cobro else None
+        fuente.num_pagas = int(request.POST.get('num_pagas', 12))
+        fuente.meses_pagas_extras = request.POST.get('meses_pagas_extras', '6,12')
+        fuente.periodicidad = request.POST.get('periodicidad', 'mensual')
+        meses_cobro_list = request.POST.getlist('meses_cobro')
+        fuente.meses_cobro = ','.join(meses_cobro_list) if meses_cobro_list else ''
+        porcentaje_var = request.POST.get('porcentaje_variabilidad') or '0'
+        fuente.porcentaje_variabilidad = Decimal(porcentaje_var)
+        fuente.incluir_en_mensual = 'incluir_en_mensual' in request.POST
         destino_id = request.POST.get('destino_id')
         fuente.destino_id = int(destino_id) if destino_id else None
         fuente.save()

@@ -53,6 +53,6 @@ class DestinoIngresoAdmin(admin.ModelAdmin):
 
 @admin.register(FuenteIngreso)
 class FuenteIngresoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'usuario', 'hogar', 'importe', 'es_bruto', 'periodicidad', 'activo')
+    list_display = ('nombre', 'usuario', 'hogar', 'importe_declarado', 'es_bruto', 'modo_entrada', 'periodicidad', 'activo')
     list_filter = ('hogar', 'periodicidad', 'es_bruto')
     search_fields = ('nombre', 'usuario__username')

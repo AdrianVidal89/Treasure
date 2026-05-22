@@ -339,71 +339,77 @@ MESES_CHOICES = [
 
 
 class FuenteIngreso(models.Model):
-    """Cada fuente de ingreso de un miembro del hogar."""
+    TIPO_CHOICES = [
+        ('fijo', 'Fijo'),
+        ('variable', 'Variable estimado'),
+    ]
+
+    MODO_ENTRADA_CHOICES = [
+        ('anual', 'Declaro el total anual'),
+        ('periodo', 'Declaro por periodo'),
+    ]
+
+    REPARTO_CHOICES = [
+        (12, '12 pagas'),
+        (14, '14 pagas (extras en junio y diciembre)'),
+        (15, '15 pagas'),
+    ]
+
     usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='fuentes_ingreso')
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='fuentes_ingreso')
 
     nombre = models.CharField(max_length=150,
-        help_text="Ej: Schneider Electric, Ventas de pan, Alquiler piso...")
-    importe = models.DecimalField(max_digits=12, decimal_places=2,
-        help_text="Importe por periodo")
-    es_bruto = models.BooleanField(default=True,
-        help_text="Si es bruto, se calcularán retenciones automáticamente")
-    pais_fiscal = models.CharField(max_length=5, choices=[
-        ('ES', 'España'),
-        ('US', 'Estados Unidos'),
-        ('UK', 'Reino Unido'),
-        ('FR', 'Francia'),
-        ('DE', 'Alemania'),
-        ('PT', 'Portugal'),
-        ('IT', 'Italia'),
-        ('MX', 'México'),
-        ('CO', 'Colombia'),
-        ('AR', 'Argentina'),
-    ], default='ES')
-    periodicidad = models.CharField(max_length=20, choices=PERIODICIDAD_CHOICES, default='mensual')
-    mes_cobro = models.IntegerField(choices=MESES_CHOICES, null=True, blank=True,
-        help_text="Mes en que se cobra. Solo para ingresos no mensuales.")
+        help_text="Ej: Schneider Electric, Guardias hospital, Alquiler piso...")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='fijo')
 
-    # Destino para ingresos no mensuales
+    # Entrada flexible
+    modo_entrada = models.CharField(max_length=10, choices=MODO_ENTRADA_CHOICES, default='anual')
+    importe_declarado = models.DecimalField(max_digits=12, decimal_places=2,
+        help_text="Importe tal como lo introduce el usuario (anual o por periodo)")
+    es_bruto = models.BooleanField(default=True)
+    pais_fiscal = models.CharField(max_length=5, choices=[
+        ('ES', 'España'), ('US', 'Estados Unidos'), ('UK', 'Reino Unido'),
+        ('FR', 'Francia'), ('DE', 'Alemania'), ('PT', 'Portugal'),
+        ('IT', 'Italia'), ('MX', 'México'), ('CO', 'Colombia'), ('AR', 'Argentina'),
+    ], default='ES')
+
+    # Si modo_entrada = 'anual': cómo se reparte
+    num_pagas = models.IntegerField(default=12,
+        help_text="Reparto del anual en pagas.")
+    meses_pagas_extras = models.CharField(max_length=50, blank=True, default='6,12',
+        help_text="Meses de pagas extras separados por coma. Ej: 6,12 para junio y diciembre")
+
+    # Si modo_entrada = 'periodo': periodicidad y meses
+    periodicidad = models.CharField(max_length=20, choices=PERIODICIDAD_CHOICES, default='mensual')
+    meses_cobro = models.CharField(max_length=50, blank=True, default='',
+        help_text="Meses de cobro separados por coma. Ej: 3,6,9,12 para trimestral")
+
+    # Variabilidad
+    porcentaje_variabilidad = models.DecimalField(max_digits=5, decimal_places=2,
+        default=Decimal('0'),
+        help_text="% de variabilidad. Ej: 40 = +40% sobre la base.")
+
+    incluir_en_mensual = models.BooleanField(default=True,
+        help_text="Si False, solo aparece en el ponderado, no en el mensual base.")
     destino = models.ForeignKey(DestinoIngreso, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='fuentes',
-        help_text="Solo para ingresos no mensuales: a dónde va este dinero.")
-
+        help_text="Destino para ingresos no recurrentes mensuales.")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['usuario', '-periodicidad', 'nombre']
+        ordering = ['usuario', 'nombre']
 
     def __str__(self):
-        return f"{self.nombre} ({self.usuario.username}) - {self.get_periodicidad_display()}"
+        return f"{self.nombre} ({self.usuario.username})"
 
     @property
-    def es_mensual(self):
-        return self.periodicidad == 'mensual'
-    @property
-    def importe_mensual_equivalente(self):
-        """Convierte cualquier periodicidad a mensual."""
-        multiplicadores = {
-            'diaria': Decimal('30'),
-            'semanal': Decimal('4.33'),
-            'mensual': Decimal('1'),
-            # Dividir Decimales preserva el tipo y la precisión
-            'trimestral': Decimal('1') / Decimal('3'),
-            'semestral': Decimal('1') / Decimal('6'),
-            'anual': Decimal('1') / Decimal('12'),
-            'puntual': Decimal('0'),
-        }
-        factor = multiplicadores.get(self.periodicidad, Decimal('0'))
-        return round(self.importe * factor, 2)
+    def importe_anual_bruto(self):
+        """Total anual bruto: fuente de verdad calculada desde lo declarado."""
+        if self.modo_entrada == 'anual':
+            return self.importe_declarado
 
-    @property
-    def importe_anual(self):
-        """Proyección anual del ingreso."""
         multiplicadores = {
-            # Los enteros (int) sí pueden multiplicarse por Decimales en Python,
-            # pero por coherencia y robustez, unificamos tipos.
             'diaria': Decimal('365'),
             'semanal': Decimal('52'),
             'mensual': Decimal('12'),
@@ -412,5 +418,88 @@ class FuenteIngreso(models.Model):
             'anual': Decimal('1'),
             'puntual': Decimal('1'),
         }
-        factor = multiplicadores.get(self.periodicidad, Decimal('0'))
-        return round(self.importe * factor, 2)
+        return round(self.importe_declarado * multiplicadores.get(self.periodicidad, Decimal('1')), 2)
+
+    @property
+    def importe_anual_estimado(self):
+        """Anual bruto ajustado por variabilidad."""
+        base = self.importe_anual_bruto
+        if self.porcentaje_variabilidad > 0:
+            return round(base * (Decimal('1') + self.porcentaje_variabilidad / Decimal('100')), 2)
+        return base
+
+
+    @property
+    def importe_mensual_base(self):
+        """Lo que llega a tu cuenta cada mes (sin extras).
+        Para modo anual: anual / num_pagas (es lo que cobras 12 veces).
+        Para modo periodo mensual: el importe declarado.
+        Para otros periodos: 0 (no es recurrente mensual)."""
+        if not self.incluir_en_mensual:
+            return Decimal('0')
+
+        if self.modo_entrada == 'anual':
+            # Cada mes llega anual / num_pagas
+            return round(self.importe_declarado / Decimal(str(self.num_pagas)), 2)
+
+        if self.periodicidad == 'mensual':
+            return self.importe_declarado
+
+        return Decimal('0')
+
+
+
+    @property
+    def importe_mensual_ponderado(self):
+        """Anual estimado / 12. Reparte todo uniformemente incluidas extras."""
+        return round(self.importe_anual_estimado / Decimal('12'), 2)
+
+
+    @property
+    def pagas_extras_meses(self):
+        """Lista de meses de pagas extras."""
+        if not self.meses_pagas_extras:
+            return []
+        try:
+            return [int(m.strip()) for m in self.meses_pagas_extras.split(',') if m.strip()]
+        except ValueError:
+            return []
+
+    @property
+    def cobro_meses(self):
+        """Lista de meses de cobro para ingresos por periodo."""
+        if not self.meses_cobro:
+            return []
+        try:
+            return [int(m.strip()) for m in self.meses_cobro.split(',') if m.strip()]
+        except ValueError:
+            return []
+
+    @property
+    def importe_paga_extra(self):
+        """Importe de cada paga extra si num_pagas > 12."""
+        if self.modo_entrada == 'anual' and self.num_pagas > 12:
+            return round(self.importe_declarado / Decimal(str(self.num_pagas)), 2)
+        return Decimal('0')
+
+    @property
+    def num_pagas_extras(self):
+        """Cuántas pagas extras tiene."""
+        if self.modo_entrada == 'anual':
+            return max(0, self.num_pagas - 12)
+        return 0
+
+    @property
+    def es_mensual_recurrente(self):
+        """True si es un ingreso que llega cada mes."""
+        if self.modo_entrada == 'anual':
+            return True  # El salario siempre tiene parte mensual
+        return self.periodicidad == 'mensual'
+    
+    @property
+    def importe_neto_por_cobro(self):
+        """Importe neto que recibes cada vez que cobras.
+        Para pagos no mensuales, muestra cuánto recibes en cada pago."""
+        if self.modo_entrada == 'anual':
+            return round(self.importe_declarado / Decimal(str(self.num_pagas)), 2)
+        return self.importe_declarado

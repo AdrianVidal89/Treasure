@@ -195,3 +195,22 @@ def crear_usuario(request):
         form = CrearUsuarioDesdeAdminForm()
 
     return render(request, 'core/crear_usuario.html', {'form': form})
+
+@login_required
+def eliminar_hogar(request, hogar_id):
+    profile = getattr(request.user, 'userprofile', None)
+    if not request.user.is_superuser and (not profile or not profile.es_admin):
+        messages.error(request, "No tienes permisos para eliminar hogares.")
+        return redirect('panel_admin')
+
+    hogar = get_object_or_404(Hogar, id=hogar_id)
+
+    if request.method == 'POST':
+        nombre = hogar.nombre
+        # Desasignar miembros antes de borrar
+        hogar.miembros.update(hogar=None, rol='miembro')
+        hogar.delete()
+        messages.success(request, f"Hogar '{nombre}' eliminado correctamente.")
+        return redirect('panel_admin')
+
+    return render(request, 'core/confirmar_eliminar_hogar.html', {'hogar': hogar})

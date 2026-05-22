@@ -3,16 +3,14 @@
 {% block body_class %}dashboard-background{% endblock %}
 
 {% block content %}
-<div class="dashboard-container" style="max-width: 600px;">
+<div class="dashboard-container" style="max-width: 620px;">
 
     <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">✏️ Editar Ingreso</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">{{ hogar.nombre }}</p>
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
-            {{ message }}
-        </div>
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">{{ message }}</div>
         {% endfor %}
     {% endif %}
 
@@ -20,34 +18,57 @@
         <form method="post" id="form-ingreso">
             {% csrf_token %}
 
-            <!-- Miembro -->
-            <div class="form-group">
-                <label>¿Quién recibe este ingreso?</label>
-                <select name="usuario_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
-                    {% for miembro in miembros %}
-                    <option value="{{ miembro.user.id }}" {% if miembro.user.id == fuente.usuario_id %}selected{% endif %}>{{ miembro.user.first_name|default:miembro.user.username }}</option>
-                    {% endfor %}
-                </select>
+            <!-- Miembro + Tipo -->
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label>¿Quién recibe este ingreso?</label>
+                    <select name="usuario_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        {% for miembro in miembros %}
+                        <option value="{{ miembro.user.id }}" {% if miembro.user.id == fuente.usuario_id %}selected{% endif %}>{{ miembro.user.first_name|default:miembro.user.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Tipo</label>
+                    <select name="tipo" id="tipo" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        <option value="fijo" {% if fuente.tipo == 'fijo' %}selected{% endif %}>Fijo</option>
+                        <option value="variable" {% if fuente.tipo == 'variable' %}selected{% endif %}>Variable estimado</option>
+                    </select>
+                </div>
             </div>
 
             <!-- Nombre -->
             <div class="form-group">
                 <label>Concepto del ingreso</label>
                 <input type="text" name="nombre" value="{{ fuente.nombre }}"
-                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
-                       required>
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;" required>
+            </div>
+
+            <!-- SWITCH: Modo de entrada -->
+            <div class="form-group">
+                <label>¿Cómo quieres declarar este ingreso?</label>
+                <div id="modo-switch" style="display: flex; border-radius: 10px; overflow: hidden; border: 1px solid #333;">
+                    <button type="button" data-modo="anual" class="modo-btn {% if fuente.modo_entrada == 'anual' %}modo-activo{% endif %}"
+                            style="flex: 1; padding: 12px; text-align: center; font-weight: 600; font-size: 0.9rem; border: none; cursor: pointer; transition: all 0.2s;">
+                        💰 Total anual
+                    </button>
+                    <button type="button" data-modo="periodo" class="modo-btn {% if fuente.modo_entrada == 'periodo' %}modo-activo{% endif %}"
+                            style="flex: 1; padding: 12px; text-align: center; font-weight: 600; font-size: 0.9rem; border: none; cursor: pointer; transition: all 0.2s;">
+                        📅 Por periodo
+                    </button>
+                </div>
+                <input type="hidden" name="modo_entrada" id="modo_entrada" value="{{ fuente.modo_entrada }}">
             </div>
 
             <!-- Importe + Bruto/Neto -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="form-group">
-                    <label>Importe (€)</label>
-                    <input type="number" name="importe" id="importe" step="0.01" min="0" value="{{ fuente.importe }}"
-                           style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
-                           required>
+                    <label id="label-importe">Importe (€)</label>
+                    <input type="number" name="importe_declarado" id="importe_declarado" step="0.01" min="0" value="{{ fuente.importe_declarado }}"
+                           style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;" required>
                 </div>
                 <div class="form-group">
-                    <label>Tipo de importe</label>
+                    <label>¿Bruto o neto?</label>
                     <select name="es_bruto" id="es_bruto" class="cyber-select" style="width: 100%; padding: 12px 16px;">
                         <option value="true" {% if fuente.es_bruto %}selected{% endif %}>Bruto</option>
                         <option value="false" {% if not fuente.es_bruto %}selected{% endif %}>Neto</option>
@@ -55,74 +76,135 @@
                 </div>
             </div>
 
-            <!-- País fiscal + Periodicidad -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <!-- === BLOQUE ANUAL === -->
+            <div id="bloque-anual" style="display: {% if fuente.modo_entrada == 'anual' %}block{% else %}none{% endif %};">
                 <div class="form-group">
-                    <label>País fiscal</label>
-                    <select name="pais_fiscal" id="pais_fiscal" class="cyber-select" style="width: 100%; padding: 12px 16px;">
-                        <option value="ES" {% if fuente.pais_fiscal == 'ES' %}selected{% endif %}>🇪🇸 España</option>
-                        <option value="US" {% if fuente.pais_fiscal == 'US' %}selected{% endif %}>🇺🇸 Estados Unidos</option>
-                        <option value="UK" {% if fuente.pais_fiscal == 'UK' %}selected{% endif %}>🇬🇧 Reino Unido</option>
-                        <option value="FR" {% if fuente.pais_fiscal == 'FR' %}selected{% endif %}>🇫🇷 Francia</option>
-                        <option value="DE" {% if fuente.pais_fiscal == 'DE' %}selected{% endif %}>🇩🇪 Alemania</option>
-                        <option value="PT" {% if fuente.pais_fiscal == 'PT' %}selected{% endif %}>🇵🇹 Portugal</option>
-                        <option value="IT" {% if fuente.pais_fiscal == 'IT' %}selected{% endif %}>🇮🇹 Italia</option>
-                        <option value="MX" {% if fuente.pais_fiscal == 'MX' %}selected{% endif %}>🇲🇽 México</option>
-                        <option value="CO" {% if fuente.pais_fiscal == 'CO' %}selected{% endif %}>🇨🇴 Colombia</option>
-                        <option value="AR" {% if fuente.pais_fiscal == 'AR' %}selected{% endif %}>🇦🇷 Argentina</option>
+                    <label>¿En cuántas pagas se reparte?</label>
+                    <select name="num_pagas" id="num_pagas" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        <option value="12" {% if fuente.num_pagas == 12 %}selected{% endif %}>12 pagas</option>
+                        <option value="14" {% if fuente.num_pagas == 14 %}selected{% endif %}>14 pagas (extras en junio y diciembre)</option>
+                        <option value="15" {% if fuente.num_pagas == 15 %}selected{% endif %}>15 pagas</option>
+                        <option value="custom" {% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}selected{% endif %}>Personalizado...</option>
                     </select>
                 </div>
+                <div id="bloque-pagas-custom" style="display: {% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}block{% else %}none{% endif %};"></div>
+                    <div class="form-group">
+                        <label>Número de pagas personalizado</label>
+                        value="{% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}{{ fuente.num_pagas }}{% endif %}"
+                               style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;">
+                    </div>
+                </div>
+                <div id="bloque-meses-extras" style="display: {% if fuente.num_pagas > 12 %}block{% else %}none{% endif %};">
+                    <div class="form-group">
+                        <label>¿En qué meses recibes las pagas extras?</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;" id="grid-meses-extras">
+                            {% for num, nombre_mes in meses %}
+                            <label class="mes-chip"><input type="checkbox" value="{{ num }}" {% if num|stringformat:"s" in fuente.meses_pagas_extras %}checked{% endif %}> {{ nombre_mes|truncatechars:3 }}</label>
+                            {% endfor %}
+                        </div>
+                        <input type="hidden" name="meses_pagas_extras" id="meses_pagas_extras" value="{{ fuente.meses_pagas_extras }}">
+                    </div>
+                </div>
+                <div id="resumen-anual" style="display: none; background: #121212; border: 1px solid #333; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Paga mensual:</span> <span style="color: #00ff88; font-weight: 700;" id="calc-mensual">—</span></div>
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Paga extra:</span> <span style="color: #00d1ff; font-weight: 700;" id="calc-extra">—</span></div>
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Extras/año:</span> <span style="color: var(--text-color); font-weight: 700;" id="calc-num-extras">—</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- === BLOQUE PERIODO === -->
+            <div id="bloque-periodo" style="display: {% if fuente.modo_entrada == 'periodo' %}block{% else %}none{% endif %};">
                 <div class="form-group">
                     <label>Periodicidad</label>
                     <select name="periodicidad" id="periodicidad" class="cyber-select" style="width: 100%; padding: 12px 16px;">
                         <option value="diaria" {% if fuente.periodicidad == 'diaria' %}selected{% endif %}>Diaria</option>
                         <option value="semanal" {% if fuente.periodicidad == 'semanal' %}selected{% endif %}>Semanal</option>
                         <option value="mensual" {% if fuente.periodicidad == 'mensual' %}selected{% endif %}>Mensual</option>
-                        <option value="trimestral" {% if fuente.periodicidad == 'trimestral' %}selected{% endif %}>Trimestral</option>
-                        <option value="semestral" {% if fuente.periodicidad == 'semestral' %}selected{% endif %}>Semestral</option>
-                        <option value="anual" {% if fuente.periodicidad == 'anual' %}selected{% endif %}>Anual</option>
+                        <option value="trimestral" {% if fuente.periodicidad == 'trimestral' %}selected{% endif %}>Trimestral (4/año)</option>
+                        <option value="semestral" {% if fuente.periodicidad == 'semestral' %}selected{% endif %}>Semestral (2/año)</option>
+                        <option value="anual" {% if fuente.periodicidad == 'anual' %}selected{% endif %}>Anual (1/año)</option>
                         <option value="puntual" {% if fuente.periodicidad == 'puntual' %}selected{% endif %}>Puntual</option>
+                    </select>
+                </div>
+                <div id="bloque-meses-cobro" style="display: {% if fuente.periodicidad in 'trimestral,semestral,anual,puntual' %}block{% else %}none{% endif %};">
+                    <div class="form-group">
+                        <label>¿En qué meses lo cobras?</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px;" id="grid-meses-cobro">
+                            {% for num, nombre_mes in meses %}
+                            <label class="mes-chip"><input type="checkbox" name="meses_cobro" value="{{ num }}" {% if num|stringformat:"s" in fuente.meses_cobro %}checked{% endif %}> {{ nombre_mes|truncatechars:3 }}</label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <div id="resumen-periodo" style="display: none; background: #121212; border: 1px solid #333; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Cada pago:</span> <span style="color: #00ff88; font-weight: 700;" id="calc-pago">—</span></div>
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Pagos/año:</span> <span style="color: var(--text-color); font-weight: 700;" id="calc-pagos-anio">—</span></div>
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Total anual:</span> <span style="color: var(--primary-color); font-weight: 700;" id="calc-total-anual">—</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- País fiscal -->
+            <div class="form-group">
+                <label>País fiscal</label>
+                <select name="pais_fiscal" id="pais_fiscal" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                    <option value="ES" {% if fuente.pais_fiscal == 'ES' %}selected{% endif %}>🇪🇸 España</option>
+                    <option value="US" {% if fuente.pais_fiscal == 'US' %}selected{% endif %}>🇺🇸 Estados Unidos</option>
+                    <option value="UK" {% if fuente.pais_fiscal == 'UK' %}selected{% endif %}>🇬🇧 Reino Unido</option>
+                    <option value="FR" {% if fuente.pais_fiscal == 'FR' %}selected{% endif %}>🇫🇷 Francia</option>
+                    <option value="DE" {% if fuente.pais_fiscal == 'DE' %}selected{% endif %}>🇩🇪 Alemania</option>
+                    <option value="PT" {% if fuente.pais_fiscal == 'PT' %}selected{% endif %}>🇵🇹 Portugal</option>
+                    <option value="IT" {% if fuente.pais_fiscal == 'IT' %}selected{% endif %}>🇮🇹 Italia</option>
+                    <option value="MX" {% if fuente.pais_fiscal == 'MX' %}selected{% endif %}>🇲🇽 México</option>
+                    <option value="CO" {% if fuente.pais_fiscal == 'CO' %}selected{% endif %}>🇨🇴 Colombia</option>
+                    <option value="AR" {% if fuente.pais_fiscal == 'AR' %}selected{% endif %}>🇦🇷 Argentina</option>
+                </select>
+            </div>
+
+            <!-- Variabilidad -->
+            <div id="grupo-variabilidad" style="display: {% if fuente.tipo == 'variable' %}block{% else %}none{% endif %};">
+                <div class="form-group">
+                    <label>% de variabilidad estimada</label>
+                    <input type="number" name="porcentaje_variabilidad" id="porcentaje_variabilidad"
+                           step="0.1" min="0" max="200" value="{{ fuente.porcentaje_variabilidad }}"
+                           style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;">
+                    <small style="color: var(--muted);">Para guardias, comisiones, bonos...</small>
+                </div>
+            </div>
+
+            <!-- Destino -->
+            <div id="grupo-destino" style="display: {% if not fuente.es_mensual_recurrente %}block{% else %}none{% endif %};">
+                <div class="form-group">
+                    <label>Destino del ingreso</label>
+                    <select name="destino_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        <option value="">— Sin asignar —</option>
+                        {% for destino in destinos %}
+                        <option value="{{ destino.id }}" {% if fuente.destino_id == destino.id %}selected{% endif %}>{{ destino.nombre }}</option>
+                        {% endfor %}
                     </select>
                 </div>
             </div>
 
-            <!-- Campos condicionales: mes cobro + destino -->
-            <div id="campos-no-mensual" style="display: {% if fuente.periodicidad != 'mensual' %}block{% else %}none{% endif %};">
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                    <div class="form-group">
-                        <label>Mes de cobro</label>
-                        <select name="mes_cobro" class="cyber-select" style="width: 100%; padding: 12px 16px;">
-                            <option value="">— No especificado —</option>
-                            {% for num, nombre_mes in meses %}
-                            <option value="{{ num }}" {% if fuente.mes_cobro == num %}selected{% endif %}>{{ nombre_mes }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Destino del ingreso</label>
-                        <select name="destino_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
-                            <option value="">— Sin asignar —</option>
-                            {% for destino in destinos %}
-                            <option value="{{ destino.id }}" {% if fuente.destino_id == destino.id %}selected{% endif %}>{{ destino.nombre }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-                <div style="background: #121212; border: 1px solid #333; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;">
-                    <span style="color: #ffaa00; font-size: 0.85rem;">⚠️ Este ingreso no es recurrente mensual. No se contará en tu presupuesto mensual.</span>
-                </div>
+            <!-- Incluir en mensual -->
+            <div class="form-group" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
+                <input type="checkbox" name="incluir_en_mensual" id="incluir_en_mensual" {% if fuente.incluir_en_mensual %}checked{% endif %}
+                       style="width: 18px; height: 18px; accent-color: var(--primary-color);">
+                <label for="incluir_en_mensual" style="margin: 0; cursor: pointer;">Incluir en el mensual base</label>
             </div>
 
             <!-- Simulador fiscal -->
             <div id="simulador-fiscal" style="display: none; background: #121212; border: 1px solid var(--primary-color); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-color); margin-bottom: 12px;">📊 Simulación fiscal</div>
+                <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-color); margin-bottom: 12px;">📊 Simulación fiscal en tiempo real</div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
                     <div>
                         <div style="font-size: 0.7rem; color: var(--muted);">Bruto anual</div>
                         <div style="font-size: 1rem; color: var(--text-color);" id="sim-bruto">—</div>
                     </div>
                     <div>
-                        <div style="font-size: 0.7rem; color: var(--muted);">IRPF</div>
+                        <div style="font-size: 0.7rem; color: var(--muted);">IRPF (por tramos)</div>
                         <div style="font-size: 1rem; color: #ff4d4d;" id="sim-irpf">—</div>
                     </div>
                     <div>
@@ -133,9 +215,13 @@
                         <div style="font-size: 0.7rem; color: var(--muted);">Tipo efectivo</div>
                         <div style="font-size: 1rem; color: var(--text-color);" id="sim-tipo">—</div>
                     </div>
-                    <div style="grid-column: span 2; border-top: 1px solid #333; padding-top: 12px; margin-top: 4px;">
-                        <div style="font-size: 0.7rem; color: var(--muted);">Neto mensual estimado</div>
-                        <div style="font-size: 1.3rem; font-weight: 700; color: #00ff88;" id="sim-neto">—</div>
+                    <div>
+                        <div style="font-size: 0.7rem; color: var(--muted);">Neto mensual base</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: #00ff88;" id="sim-neto-base">—</div>
+                    </div>
+                    <div>
+                        <div style="font-size: 0.7rem; color: var(--muted);">Neto mensual ponderado</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: #00d1ff;" id="sim-neto-pond">—</div>
                     </div>
                 </div>
             </div>
@@ -146,39 +232,150 @@
             </div>
         </form>
     </div>
-
 </div>
 
+<style>
+.modo-btn { background: #121212; color: var(--muted); }
+.modo-activo { background: var(--primary-color) !important; color: #fff !important; }
+.mes-chip {
+    display: flex; align-items: center; gap: 4px; padding: 6px 12px;
+    background: #121212; border: 1px solid #333; border-radius: 8px;
+    font-size: 0.85rem; color: var(--text-color); cursor: pointer; user-select: none;
+}
+.mes-chip:has(input:checked) { border-color: var(--primary-color); background: rgba(162,89,255,0.15); }
+.mes-chip input { accent-color: var(--primary-color); }
+</style>
+
 <script>
-const periodicidadSelect = document.getElementById('periodicidad');
-const camposNoMensual = document.getElementById('campos-no-mensual');
-const importeInput = document.getElementById('importe');
+const modoInput = document.getElementById('modo_entrada');
+const bloqueAnual = document.getElementById('bloque-anual');
+const bloquePeriodo = document.getElementById('bloque-periodo');
+const importeInput = document.getElementById('importe_declarado');
+const labelImporte = document.getElementById('label-importe');
 const esBrutoSelect = document.getElementById('es_bruto');
 const paisSelect = document.getElementById('pais_fiscal');
+const tipoSelect = document.getElementById('tipo');
+const numPagasSelect = document.getElementById('num_pagas');
+const numPagasCustom = document.getElementById('num_pagas_custom');
+const bloquePagasCustom = document.getElementById('bloque-pagas-custom');
+const bloqueMesesExtras = document.getElementById('bloque-meses-extras');
+const mesesPagasExtrasInput = document.getElementById('meses_pagas_extras');
+const periodicidadSelect = document.getElementById('periodicidad');
+const bloqueMesesCobro = document.getElementById('bloque-meses-cobro');
+const grupoVariabilidad = document.getElementById('grupo-variabilidad');
+const grupoDestino = document.getElementById('grupo-destino');
+const variabilidadInput = document.getElementById('porcentaje_variabilidad');
 const simulador = document.getElementById('simulador-fiscal');
 
-periodicidadSelect.addEventListener('change', function() {
-    camposNoMensual.style.display = this.value === 'mensual' ? 'none' : 'block';
-    actualizarSimulador();
+document.querySelectorAll('.modo-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        document.querySelectorAll('.modo-btn').forEach(b => b.classList.remove('modo-activo'));
+        this.classList.add('modo-activo');
+        const modo = this.dataset.modo;
+        modoInput.value = modo;
+        bloqueAnual.style.display = modo === 'anual' ? 'block' : 'none';
+        bloquePeriodo.style.display = modo === 'periodo' ? 'block' : 'none';
+        actualizarLabel();
+        actualizarTodo();
+    });
 });
 
+function actualizarLabel() {
+    const modo = modoInput.value;
+    const tipo = esBrutoSelect.value === 'true' ? 'bruto' : 'neto';
+    labelImporte.textContent = modo === 'anual' ? `Importe ${tipo} anual (€)` : `Importe ${tipo} por periodo (€)`;
+}
+
+esBrutoSelect.addEventListener('change', function() {
+    actualizarLabel();
+    actualizarTodo();
+});
+
+numPagasSelect.addEventListener('change', function() {
+    const isCustom = this.value === 'custom';
+    bloquePagasCustom.style.display = isCustom ? 'block' : 'none';
+    bloqueMesesExtras.style.display = (this.value !== '12' || isCustom) ? 'block' : 'none';
+    actualizarTodo();
+});
+
+numPagasCustom.addEventListener('input', actualizarTodo);
+
+document.querySelectorAll('#grid-meses-extras input').forEach(cb => {
+    cb.addEventListener('change', function() {
+        const checked = Array.from(document.querySelectorAll('#grid-meses-extras input:checked')).map(c => c.value);
+        mesesPagasExtrasInput.value = checked.join(',');
+        actualizarTodo();
+    });
+});
+
+periodicidadSelect.addEventListener('change', function() {
+    const necesitaMeses = ['trimestral', 'semestral', 'anual', 'puntual'].includes(this.value);
+    const esMensual = this.value === 'mensual';
+    bloqueMesesCobro.style.display = necesitaMeses ? 'block' : 'none';
+    grupoDestino.style.display = !esMensual ? 'block' : 'none';
+    actualizarTodo();
+});
+
+tipoSelect.addEventListener('change', function() {
+    grupoVariabilidad.style.display = this.value === 'variable' ? 'block' : 'none';
+    actualizarTodo();
+});
+
+if (variabilidadInput) variabilidadInput.addEventListener('input', actualizarTodo);
+importeInput.addEventListener('input', actualizarTodo);
+paisSelect.addEventListener('change', actualizarTodo);
+
+function getNumPagasReal() {
+    if (numPagasSelect.value === 'custom') return parseInt(numPagasCustom.value) || 12;
+    return parseInt(numPagasSelect.value) || 12;
+}
+
+function getBrutoAnual() {
+    const importe = parseFloat(importeInput.value) || 0;
+    if (modoInput.value === 'anual') return importe;
+    const mult = { 'diaria': 365, 'semanal': 52, 'mensual': 12, 'trimestral': 4, 'semestral': 2, 'anual': 1, 'puntual': 1 };
+    return importe * (mult[periodicidadSelect.value] || 1);
+}
+
 let timeout;
-function actualizarSimulador() {
+function actualizarTodo() {
     clearTimeout(timeout);
     const importe = parseFloat(importeInput.value) || 0;
+    const modo = modoInput.value;
     const esBruto = esBrutoSelect.value === 'true';
-    const periodicidad = periodicidadSelect.value;
+    const variabilidad = parseFloat(variabilidadInput ? variabilidadInput.value : 0) || 0;
+    const numPagas = getNumPagasReal();
+    const brutoAnual = getBrutoAnual();
+    const brutoEstimado = brutoAnual * (1 + variabilidad / 100);
 
-    if (importe <= 0 || !esBruto) {
+    const resumenAnual = document.getElementById('resumen-anual');
+    if (modo === 'anual' && importe > 0) {
+        resumenAnual.style.display = 'block';
+        const mensual = importe / numPagas;
+        const numExtras = Math.max(0, numPagas - 12);
+        document.getElementById('calc-mensual').textContent = `€${mensual.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+        document.getElementById('calc-extra').textContent = numExtras > 0 ? `€${mensual.toLocaleString('es-ES', {minimumFractionDigits: 2})}` : 'N/A';
+        document.getElementById('calc-num-extras').textContent = numExtras > 0 ? numExtras : 'Sin extras';
+    } else {
+        resumenAnual.style.display = 'none';
+    }
+
+    const resumenPeriodo = document.getElementById('resumen-periodo');
+    if (modo === 'periodo' && importe > 0) {
+        resumenPeriodo.style.display = 'block';
+        const mult = { 'diaria': 365, 'semanal': 52, 'mensual': 12, 'trimestral': 4, 'semestral': 2, 'anual': 1, 'puntual': 1 };
+        const pagosAnio = mult[periodicidadSelect.value] || 1;
+        document.getElementById('calc-pago').textContent = `€${importe.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+        document.getElementById('calc-pagos-anio').textContent = pagosAnio;
+        document.getElementById('calc-total-anual').textContent = `€${(importe * pagosAnio).toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+    } else {
+        resumenPeriodo.style.display = 'none';
+    }
+
+    if (brutoAnual <= 0 || !esBruto) {
         simulador.style.display = 'none';
         return;
     }
-
-    const multiplicadores = {
-        'diaria': 365, 'semanal': 52, 'mensual': 12,
-        'trimestral': 4, 'semestral': 2, 'anual': 1, 'puntual': 1
-    };
-    const brutoAnual = importe * (multiplicadores[periodicidad] || 1);
 
     timeout = setTimeout(() => {
         fetch(`{% url 'finanzas:simular_neto' %}?bruto=${brutoAnual}&pais=${paisSelect.value}`)
@@ -186,23 +383,23 @@ function actualizarSimulador() {
             .then(data => {
                 if (data.success) {
                     simulador.style.display = 'block';
+                    const netoBase = modo === 'anual' ? data.neto / numPagas : data.neto_mensual;
+                    const ratio = data.neto / (data.neto + data.irpf + data.ss);
+                    const netoPond = (brutoEstimado * ratio) / 12;
+
                     document.getElementById('sim-bruto').textContent = `€${brutoAnual.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
                     document.getElementById('sim-irpf').textContent = `-€${data.irpf.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
                     document.getElementById('sim-ss').textContent = `-€${data.ss.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
                     document.getElementById('sim-tipo').textContent = `${data.tipo_efectivo.toFixed(1)}%`;
-                    document.getElementById('sim-neto').textContent = `€${data.neto_mensual.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+                    document.getElementById('sim-neto-base').textContent = `€${netoBase.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
+                    document.getElementById('sim-neto-pond').textContent = `€${netoPond.toLocaleString('es-ES', {minimumFractionDigits: 2})}`;
                 }
             });
     }, 400);
 }
 
-importeInput.addEventListener('input', actualizarSimulador);
-esBrutoSelect.addEventListener('change', actualizarSimulador);
-paisSelect.addEventListener('change', actualizarSimulador);
-periodicidadSelect.addEventListener('change', actualizarSimulador);
-
-// Trigger inicial si ya hay datos
-actualizarSimulador();
+actualizarLabel();
+actualizarTodo();
 </script>
 
 {% endblock %}

@@ -37,7 +37,11 @@
                     <div style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color); text-shadow: 0 0 8px var(--glow);">{{ hogar.nombre }}</div>
                     <div style="font-size: 0.8rem; color: var(--muted); margin-top: 4px;">{{ hogar.moneda_principal }} · Creado por {{ hogar.creado_por.username }}</div>
                 </div>
-                <a href="{% url 'editar_hogar' hogar.id %}" style="font-size: 1.1rem; color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid #333;" title="Editar hogar">✏️</a>
+                <div style="display: flex; gap: 6px;">
+                    <a href="{% url 'editar_hogar' hogar.id %}" style="font-size: 1.1rem; color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid #333;" title="Editar hogar">✏️</a>
+                    <a href="{% url 'eliminar_hogar' hogar.id %}" style="font-size: 1.1rem; color: #ff4d4d; text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid #ff4d4d;" title="Eliminar hogar">🗑️</a>
+                </div>
+            
             </div>
 
             <!-- Miembros -->
