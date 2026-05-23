@@ -59,7 +59,14 @@
                     <a href="{% url 'finanzas:crear_ingreso' %}">➕ Añadir ingreso</a>
                 </div>
             </div>
-
+            
+             <div class="nav-user-dropdown">
+                <span class="nav-user-toggle">Gastos</span>
+                <div class="nav-user-menu">
+                    <a href="{% url 'finanzas:listar_gastos' %}">📋 Presupuesto</a>
+                    <a href="{% url 'finanzas:crear_partida' %}">➕ Gasto</a>
+                </div>
+            </div>
         </div>
 
         <div class="navbar-right">
