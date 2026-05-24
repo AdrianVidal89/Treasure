@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import CuentaBancaria, SaldoMensualCuenta, RegistroMensual, TarjetaCredito
 from .models import Inversion, MovimientoInversion, ValorActualInversion, ResumenInversionesMensual, HistorialValorInversion
 from .models import TablaIRPF, CotizacionSS, DestinoIngreso, FuenteIngreso
-from .models import CategoriaGasto, PartidaGasto
+from .models import CategoriaGasto, PartidaGasto, ReglaReparto
 
 admin.site.register(CuentaBancaria)
 admin.site.register(SaldoMensualCuenta)
@@ -64,5 +64,10 @@ class CategoriaGastoAdmin(admin.ModelAdmin):
 
 @admin.register(PartidaGasto)
 class PartidaGastoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'categoria', 'hogar', 'importe', 'activo')
+    list_display = ('nombre', 'categoria', 'hogar', 'importe', 'periodicidad', 'activo')
     list_filter = ('categoria__tipo', 'hogar')
+
+@admin.register(ReglaReparto)
+class ReglaRepartoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'hogar', 'porcentaje', 'color', 'orden', 'activo')
+    list_filter = ('hogar',)

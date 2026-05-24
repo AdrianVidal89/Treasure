@@ -17,13 +17,11 @@
     
             toggle.addEventListener("click", function (e) {
                 e.stopPropagation();
-                // Cierra todos los menús antes de abrir el actual
                 document.querySelectorAll(".nav-user-menu").forEach(m => m.style.display = "none");
                 menu.style.display = "block";
             });
         });
     
-        // Cierra todos los menús si haces click fuera
         document.addEventListener("click", function () {
             document.querySelectorAll(".nav-user-menu").forEach(menu => {
                 menu.style.display = "none";
@@ -48,11 +46,11 @@
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Inversiones</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:listar' %}"> Resumen activos</a>
+                    <a href="{% url 'finanzas:listar' %}">Resumen activos</a>
                     <a href="{% url 'finanzas:crear' %}">&#10133; Inversion</a>
                 </div>
-              </div>
-              <div class="nav-user-dropdown">
+            </div>
+            <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Ingresos</span>
                 <div class="nav-user-menu">
                     <a href="{% url 'finanzas:listar_ingresos' %}">&#128176; Ver ingresos</a>
@@ -66,7 +64,7 @@
                     <a href="{% url 'finanzas:crear_partida' %}">&#10133; Gasto</a>
                 </div>
             </div>
-
+            <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle" style="text-decoration: none;">&#128176; Distribucion</a>
         </div>
 
         <div class="navbar-right">

@@ -580,3 +580,24 @@ class PartidaGasto(models.Model):
         }
         mult = multiplicadores.get(self.periodicidad, Decimal('12'))
         return round(self.importe * mult, 2)
+        
+        
+        ### Modulo de Distribucion y Ahorro ###
+
+class ReglaReparto(models.Model):
+    """Reglas personalizadas de reparto del dinero libre despues de gastos."""
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='reglas_reparto')
+    nombre = models.CharField(max_length=100,
+        help_text="Ej: Ahorro, Inversion, Fondo emergencia, Ocio libre...")
+    porcentaje = models.DecimalField(max_digits=5, decimal_places=2,
+        help_text="Porcentaje del dinero libre asignado a esta regla")
+    color = models.CharField(max_length=7, default='#a259ff',
+        help_text="Color hex para visualizacion")
+    orden = models.IntegerField(default=0)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['orden', 'nombre']
+
+    def __str__(self):
+        return f"{self.nombre} ({self.porcentaje}%)"

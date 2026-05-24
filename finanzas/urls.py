@@ -2,6 +2,7 @@ from django.urls import path
 from . import views
 from . import views_ingresos
 from . import views_gastos
+from . import views_distribucion
 from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 
 app_name = 'finanzas'
@@ -48,4 +49,10 @@ urlpatterns = [
     path('gastos/<int:partida_id>/editar/', views_gastos.editar_partida, name='editar_partida'),
     path('gastos/<int:partida_id>/eliminar/', views_gastos.eliminar_partida, name='eliminar_partida'),
     path('gastos/categoria/crear/', views_gastos.crear_categoria, name='crear_categoria'),
+
+    # Distribucion y Ahorro
+    path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
+    path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
+    path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
+    path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
 ]
