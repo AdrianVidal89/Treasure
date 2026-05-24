@@ -1,8 +1,8 @@
 from django.contrib import admin
 from .models import CuentaBancaria, SaldoMensualCuenta, RegistroMensual, TarjetaCredito
-from django.contrib import admin
 from .models import Inversion, MovimientoInversion, ValorActualInversion, ResumenInversionesMensual, HistorialValorInversion
 from .models import TablaIRPF, CotizacionSS, DestinoIngreso, FuenteIngreso
+from .models import CategoriaGasto, PartidaGasto
 
 admin.site.register(CuentaBancaria)
 admin.site.register(SaldoMensualCuenta)
@@ -38,13 +38,13 @@ class HistorialValorInversionAdmin(admin.ModelAdmin):
 
 @admin.register(TablaIRPF)
 class TablaIRPFAdmin(admin.ModelAdmin):
-    list_display = ('pais', 'año', 'tramo_desde', 'tramo_hasta', 'porcentaje')
-    list_filter = ('pais', 'año')
+    list_display = ('pais', 'tramo_desde', 'tramo_hasta', 'porcentaje')
+    list_filter = ('pais',)
 
 @admin.register(CotizacionSS)
 class CotizacionSSAdmin(admin.ModelAdmin):
-    list_display = ('pais', 'año', 'concepto', 'porcentaje_trabajador')
-    list_filter = ('pais', 'año')
+    list_display = ('pais', 'concepto', 'porcentaje_trabajador')
+    list_filter = ('pais',)
 
 @admin.register(DestinoIngreso)
 class DestinoIngresoAdmin(admin.ModelAdmin):
@@ -56,3 +56,13 @@ class FuenteIngresoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'usuario', 'hogar', 'importe_declarado', 'es_bruto', 'modo_entrada', 'periodicidad', 'activo')
     list_filter = ('hogar', 'periodicidad', 'es_bruto')
     search_fields = ('nombre', 'usuario__username')
+
+@admin.register(CategoriaGasto)
+class CategoriaGastoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'tipo', 'hogar', 'es_predefinida', 'activo')
+    list_filter = ('tipo', 'hogar')
+
+@admin.register(PartidaGasto)
+class PartidaGastoAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'categoria', 'hogar', 'importe', 'activo')
+    list_filter = ('categoria__tipo', 'hogar')

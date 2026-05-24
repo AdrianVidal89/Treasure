@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Gastos - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">📋 Presupuesto de Gastos</h1>
+    <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- RESUMEN GLOBAL -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 32px;">
+        <div style="background: #1a1a1a; border: 1px solid #ff4d4d; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(255,77,77,0.2);">
+            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #ff4d4d; margin-bottom: 6px;">Total Mensual</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: #ff4d4d;">&euro;{{ total_mensual|floatformat:2 }}</div>
+            <div style="font-size: 0.65rem; color: var(--muted); margin-top: 4px;">Fijos + Provision + Variables</div>
+        </div>
+        <div style="background: #1a1a1a; border: 1px solid #ffaa00; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(255,170,0,0.15);">
+            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #ffaa00; margin-bottom: 6px;">Fijos Mensuales</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: #ffaa00;">&euro;{{ total_fijos|floatformat:2 }}</div>
+        </div>
+        <div style="background: #1a1a1a; border: 1px solid #00d1ff; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,209,255,0.15);">
+            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #00d1ff; margin-bottom: 6px;">Provision Anuales</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: #00d1ff;">&euro;{{ total_provision|floatformat:2 }}</div>
+            <div style="font-size: 0.65rem; color: var(--muted); margin-top: 4px;">Total anual: &euro;{{ total_anuales|floatformat:2 }}</div>
+        </div>
+        <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px var(--glow);">
+            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 6px;">Variables</div>
+            <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}</div>
+        </div>
+    </div>
+
+    <!-- BOTONES -->
+    <div style="display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;">
+        <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary">&#10133; Nuevo gasto</a>
+        <button onclick="document.getElementById('modal-categoria').style.display='flex'" class="btn btn-secondary">&#128193; Nueva categoria</button>
+    </div>
+
+    <!-- GASTOS FIJOS MENSUALES -->
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(255,170,0,0.15); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a;">
+            <div>
+                <span style="font-size: 1.1rem; font-weight: 700; color: #ffaa00;">&#128204; Gastos Fijos Mensuales</span>
+                <span style="font-size: 0.75rem; color: var(--muted); margin-left: 12px;">Se pagan cada mes, importe constante</span>
+            </div>
+            <div style="font-size: 1rem; font-weight: 700; color: #ffaa00;">&euro;{{ total_fijos|floatformat:2 }}/mes</div>
+        </div>
+
+        {% for grupo in gastos_fijos %}
+            {% if grupo.partidas %}
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">{{ grupo.categoria.nombre }}</div>
+                {% for p in grupo.partidas %}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #121212; border-radius: 10px; margin-bottom: 4px;">
+                    <span style="color: var(--text-color); font-size: 0.9rem;">{{ p.nombre }}</span>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="color: #ffaa00; font-weight: 700;">&euro;{{ p.importe|floatformat:2 }}</span>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" style="color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">&#9998;&#65039;</a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin: 0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-inline-danger" onclick="return confirm('Eliminar {{ p.nombre }}?')">&#128465;&#65039;</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% empty %}
+        <div style="color: var(--muted); font-style: italic; padding: 12px;">Sin gastos fijos. <a href="{% url 'finanzas:crear_partida' %}" style="color: var(--primary-color);">Crear uno</a></div>
+        {% endfor %}
+    </div>
+
+    <!-- GASTOS ANUALES (PROVISION) -->
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(0,209,255,0.15); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a;">
+            <div>
+                <span style="font-size: 1.1rem; font-weight: 700; color: #00d1ff;">&#128197; Gastos Anuales</span>
+                <span style="font-size: 0.75rem; color: var(--muted); margin-left: 12px;">Se provisionan mensualmente</span>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-size: 1rem; font-weight: 700; color: #00d1ff;">&euro;{{ total_provision|floatformat:2 }}/mes</div>
+                <div style="font-size: 0.7rem; color: var(--muted);">Total anual: &euro;{{ total_anuales|floatformat:2 }}</div>
+            </div>
+        </div>
+
+        {% for grupo in gastos_anuales %}
+            {% if grupo.partidas %}
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">{{ grupo.categoria.nombre }}</div>
+                {% for p in grupo.partidas %}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #121212; border-radius: 10px; margin-bottom: 4px;">
+                    <div>
+                        <span style="color: var(--text-color); font-size: 0.9rem;">{{ p.nombre }}</span>
+                        {% if p.mes_pago %}<span style="font-size: 0.7rem; color: var(--muted); margin-left: 8px;">&#128197; Mes {{ p.get_mes_pago_display }}</span>{% endif %}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <div style="text-align: right;">
+                            <div style="color: #00d1ff; font-weight: 700;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size: 0.65rem; color: var(--muted);">/anual</span></div>
+                            <div style="font-size: 0.75rem; color: var(--muted);">&euro;{{ p.provision_mensual|floatformat:2 }}/mes</div>
+                        </div>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" style="color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">&#9998;&#65039;</a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin: 0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-inline-danger" onclick="return confirm('Eliminar {{ p.nombre }}?')">&#128465;&#65039;</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% empty %}
+        <div style="color: var(--muted); font-style: italic; padding: 12px;">Sin gastos anuales. <a href="{% url 'finanzas:crear_partida' %}" style="color: var(--primary-color);">Crear uno</a></div>
+        {% endfor %}
+    </div>
+
+    <!-- GASTOS VARIABLES -->
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.15); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a;">
+            <div>
+                <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">&#128200; Gastos Variables</span>
+                <span style="font-size: 0.75rem; color: var(--muted); margin-left: 12px;">Estimados mensuales, pueden variar</span>
+            </div>
+            <div style="font-size: 1rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}/mes</div>
+        </div>
+
+        {% for grupo in gastos_variables %}
+            {% if grupo.partidas %}
+            <div style="margin-bottom: 12px;">
+                <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">{{ grupo.categoria.nombre }}</div>
+                {% for p in grupo.partidas %}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #121212; border-radius: 10px; margin-bottom: 4px;">
+                    <span style="color: var(--text-color); font-size: 0.9rem;">{{ p.nombre }}</span>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <span style="color: var(--primary-color); font-weight: 700;">&euro;{{ p.importe|floatformat:2 }}</span>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" style="color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">&#9998;&#65039;</a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin: 0;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-inline-danger" onclick="return confirm('Eliminar {{ p.nombre }}?')">&#128465;&#65039;</button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% empty %}
+        <div style="color: var(--muted); font-style: italic; padding: 12px;">Sin gastos variables. <a href="{% url 'finanzas:crear_partida' %}" style="color: var(--primary-color);">Crear uno</a></div>
+        {% endfor %}
+    </div>
+
+</div>
+
+<!-- MODAL CREAR CATEGORIA -->
+<div id="modal-categoria" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;">
+    <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 32px; box-shadow: 0 0 30px var(--glow); max-width: 400px; width: 90%;">
+        <h2 style="color: var(--primary-color); margin-top: 0;">&#128193; Nueva categoria</h2>
+        <form method="post" action="{% url 'finanzas:crear_categoria' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Nombre</label>
+                <input type="text" name="nombre" placeholder="Ej: Mascotas, Educacion..."
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                       required>
+            </div>
+            <div class="form-group">
+                <label>Tipo</label>
+                <select name="tipo" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                    <option value="fijo">Fijo Mensual</option>
+                    <option value="anual">Anual (provision)</option>
+                    <option value="variable" selected>Variable</option>
+                </select>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 16px;">
+                <button type="submit" class="btn btn-primary">Crear</button>
+                <button type="button" onclick="document.getElementById('modal-categoria').style.display='none'" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}

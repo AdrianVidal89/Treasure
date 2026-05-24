@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import views_ingresos
+from . import views_gastos
 from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 
 app_name = 'finanzas'
@@ -40,4 +41,11 @@ urlpatterns = [
     path('ingresos/<int:ingreso_id>/eliminar/', views_ingresos.eliminar_ingreso, name='eliminar_ingreso'),
     path('ingresos/destino/crear/', views_ingresos.crear_destino, name='crear_destino'),
     path('ingresos/ajax/simular-neto/', views_ingresos.simular_neto, name='simular_neto'),
+
+    # Gastos
+    path('gastos/', views_gastos.listar_gastos, name='listar_gastos'),
+    path('gastos/crear/', views_gastos.crear_partida, name='crear_partida'),
+    path('gastos/<int:partida_id>/editar/', views_gastos.editar_partida, name='editar_partida'),
+    path('gastos/<int:partida_id>/eliminar/', views_gastos.eliminar_partida, name='eliminar_partida'),
+    path('gastos/categoria/crear/', views_gastos.crear_categoria, name='crear_categoria'),
 ]

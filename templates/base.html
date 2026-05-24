@@ -40,33 +40,33 @@
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Cuentas / Tarjetas</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:gestionar_cuentas' %}">Gestión</a>
-                    <a href="{% url 'finanzas:nueva_cuenta' %}">➕ Añadir cuenta bancaria</a>
-                    <a href="{% url 'finanzas:nueva_tarjeta' %}">➕ Añadir tarjeta de crédito</a>
+                    <a href="{% url 'finanzas:gestionar_cuentas' %}">Gestion</a>
+                    <a href="{% url 'finanzas:nueva_cuenta' %}">&#10133; Cuenta bancaria</a>
+                    <a href="{% url 'finanzas:nueva_tarjeta' %}">&#10133; Tarjeta de credito</a>
                 </div>
             </div>
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Inversiones</span>
                 <div class="nav-user-menu">
                     <a href="{% url 'finanzas:listar' %}"> Resumen activos</a>
-                    <a href="{% url 'finanzas:crear' %}">➕ Añadir inversión</a>
+                    <a href="{% url 'finanzas:crear' %}">&#10133; Inversion</a>
                 </div>
               </div>
               <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Ingresos</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:listar_ingresos' %}">💰 Ver ingresos</a>
-                    <a href="{% url 'finanzas:crear_ingreso' %}">➕ Añadir ingreso</a>
+                    <a href="{% url 'finanzas:listar_ingresos' %}">&#128176; Ver ingresos</a>
+                    <a href="{% url 'finanzas:crear_ingreso' %}">&#10133; Ingreso</a>
                 </div>
             </div>
-            
-             <div class="nav-user-dropdown">
+            <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Gastos</span>
                 <div class="nav-user-menu">
-                    <a href="#">📋 Presupuesto</a>
-                    <a href="#">➕ Gasto</a>
+                    <a href="{% url 'finanzas:listar_gastos' %}">&#128203; Presupuesto</a>
+                    <a href="{% url 'finanzas:crear_partida' %}">&#10133; Gasto</a>
                 </div>
             </div>
+
         </div>
 
         <div class="navbar-right">
@@ -75,12 +75,12 @@
                     Hola, <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
                 </span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'mi_hogar' %}">🏠 Mi hogar</a>
+                    <a href="{% url 'mi_hogar' %}">&#127968; Mi hogar</a>
                     <a href="{% url 'editar_perfil' %}">Editar perfil</a>
                     {% if request.user.is_superuser or request.user.userprofile.es_admin %}
-                    <a href="{% url 'panel_admin' %}">⚙️ Panel Admin</a>
+                    <a href="{% url 'panel_admin' %}">&#9881;&#65039; Panel Admin</a>
                     {% endif %}
-                    <a href="{% url 'logout' %}">Cerrar sesión</a>
+                    <a href="{% url 'logout' %}">Cerrar sesion</a>
                 </div>
             </div>
         </div>

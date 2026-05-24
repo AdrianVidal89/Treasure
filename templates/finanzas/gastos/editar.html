@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Editar Gasto - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container" style="max-width: 550px;">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">&#9998;&#65039; Editar Gasto</h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">{{ hogar.nombre }}</p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);">
+        <form method="post" id="form-gasto">
+            {% csrf_token %}
+
+            <!-- Categoria -->
+            <div class="form-group">
+                <label>Categoria</label>
+                <select name="categoria_id" id="categoria_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                    <optgroup label="Fijos Mensuales">
+                        {% for cat in categorias %}{% if cat.tipo == 'fijo' %}
+                        <option value="{{ cat.id }}" data-tipo="fijo" {% if partida.categoria_id == cat.id %}selected{% endif %}>{{ cat.nombre }}</option>
+                        {% endif %}{% endfor %}
+                    </optgroup>
+                    <optgroup label="Anuales (provision)">
+                        {% for cat in categorias %}{% if cat.tipo == 'anual' %}
+                        <option value="{{ cat.id }}" data-tipo="anual" {% if partida.categoria_id == cat.id %}selected{% endif %}>{{ cat.nombre }}</option>
+                        {% endif %}{% endfor %}
+                    </optgroup>
+                    <optgroup label="Variables">
+                        {% for cat in categorias %}{% if cat.tipo == 'variable' %}
+                        <option value="{{ cat.id }}" data-tipo="variable" {% if partida.categoria_id == cat.id %}selected{% endif %}>{{ cat.nombre }}</option>
+                        {% endif %}{% endfor %}
+                    </optgroup>
+                </select>
+            </div>
+
+            <!-- Nombre -->
+            <div class="form-group">
+                <label>Concepto del gasto</label>
+                <input type="text" name="nombre" value="{{ partida.nombre }}"
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                       required>
+            </div>
+
+            <!-- Importe -->
+            <div class="form-group">
+                <label id="label-importe">Importe (&euro;)</label>
+                <input type="number" name="importe" id="importe" step="0.01" min="0" value="{{ partida.importe }}"
+                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
+                       required>
+            </div>
+
+            <!-- Mes de pago (solo anuales) -->
+            <div id="bloque-mes-pago" style="display: {% if partida.categoria.tipo == 'anual' %}block{% else %}none{% endif %};">
+                <div class="form-group">
+                    <label>Mes de pago</label>
+                    <select name="mes_pago" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                        <option value="">-- No especificado --</option>
+                        {% for num, nombre_mes in meses %}
+                        <option value="{{ num }}" {% if partida.mes_pago == num %}selected{% endif %}>{{ nombre_mes }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div id="provision-info" style="background: #121212; border: 1px solid #333; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: none;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--muted); font-size: 0.85rem;">Provision mensual:</span>
+                        <span style="color: #00d1ff; font-weight: 700;" id="calc-provision">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 24px;">
+                <button type="submit" class="btn btn-primary">&#128190; Guardar cambios</button>
+                <a href="{% url 'finanzas:listar_gastos' %}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+const categoriaSelect = document.getElementById('categoria_id');
+const bloqueMesPago = document.getElementById('bloque-mes-pago');
+const labelImporte = document.getElementById('label-importe');
+const importeInput = document.getElementById('importe');
+const provisionInfo = document.getElementById('provision-info');
+const calcProvision = document.getElementById('calc-provision');
+
+function actualizarUI() {
+    const selected = categoriaSelect.options[categoriaSelect.selectedIndex];
+    const tipo = selected ? selected.dataset.tipo : '';
+
+    if (tipo === 'anual') {
+        bloqueMesPago.style.display = 'block';
+        labelImporte.textContent = 'Importe anual (\u20ac)';
+    } else {
+        bloqueMesPago.style.display = 'none';
+        labelImporte.textContent = 'Importe mensual (\u20ac)';
+    }
+    calcularProvision();
+}
+
+function calcularProvision() {
+    const selected = categoriaSelect.options[categoriaSelect.selectedIndex];
+    const tipo = selected ? selected.dataset.tipo : '';
+    const importe = parseFloat(importeInput.value) || 0;
+
+    if (tipo === 'anual' && importe > 0) {
+        provisionInfo.style.display = 'block';
+        const provision = (importe / 12).toFixed(2);
+        calcProvision.textContent = '\u20ac' + parseFloat(provision).toLocaleString('es-ES', {minimumFractionDigits: 2});
+    } else {
+        provisionInfo.style.display = 'none';
+    }
+}
+
+categoriaSelect.addEventListener('change', actualizarUI);
+importeInput.addEventListener('input', calcularProvision);
+actualizarUI();
+</script>
+
+{% endblock %}
