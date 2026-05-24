@@ -3,7 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from decimal import Decimal
 
-from .models import CategoriaGasto, PartidaGasto, MESES_CHOICES
+from .models import CategoriaGasto, PartidaGasto, MESES_CHOICES, PERIODICIDAD_GASTO_CHOICES
 
 
 CATEGORIAS_PREDEFINIDAS = [
@@ -32,7 +32,6 @@ CATEGORIAS_PREDEFINIDAS = [
 
 
 def _crear_categorias_predefinidas(hogar):
-    """Crea categorias predefinidas si no existen para el hogar."""
     for tipo, nombre in CATEGORIAS_PREDEFINIDAS:
         CategoriaGasto.objects.get_or_create(
             hogar=hogar, nombre=nombre,
@@ -57,34 +56,40 @@ def listar_gastos(request):
     gastos_variables = []
 
     total_fijos = Decimal('0')
-    total_anuales = Decimal('0')
+    total_anuales_anual = Decimal('0')
     total_provision = Decimal('0')
     total_variables = Decimal('0')
 
     for cat in categorias:
         partidas = cat.partidas.filter(activo=True)
-        subtotal = sum(p.importe for p in partidas)
+        if not partidas.exists():
+            continue
+
         subtotal_mensual = sum(p.importe_mensual for p in partidas)
+        subtotal_anual = sum(p.importe_anual for p in partidas)
+        num_partidas = partidas.count()
 
         entrada = {
             'categoria': cat,
             'partidas': partidas,
-            'subtotal': subtotal,
             'subtotal_mensual': subtotal_mensual,
+            'subtotal_anual': subtotal_anual,
+            'num_partidas': num_partidas,
         }
 
         if cat.tipo == 'fijo':
             gastos_fijos.append(entrada)
-            total_fijos += subtotal
+            total_fijos += subtotal_mensual
         elif cat.tipo == 'anual':
             gastos_anuales.append(entrada)
-            total_anuales += subtotal
+            total_anuales_anual += subtotal_anual
             total_provision += subtotal_mensual
         elif cat.tipo == 'variable':
             gastos_variables.append(entrada)
-            total_variables += subtotal
+            total_variables += subtotal_mensual
 
     total_mensual = total_fijos + total_provision + total_variables
+    total_anual_todo = (total_fijos + total_variables) * 12 + total_anuales_anual
 
     return render(request, 'finanzas/gastos/listar.html', {
         'hogar': hogar,
@@ -92,10 +97,11 @@ def listar_gastos(request):
         'gastos_anuales': gastos_anuales,
         'gastos_variables': gastos_variables,
         'total_fijos': total_fijos,
-        'total_anuales': total_anuales,
+        'total_anuales_anual': total_anuales_anual,
         'total_provision': total_provision,
         'total_variables': total_variables,
         'total_mensual': total_mensual,
+        'total_anual_todo': total_anual_todo,
     })
 
 
@@ -112,6 +118,7 @@ def crear_partida(request):
         categoria_id = request.POST.get('categoria_id')
         nombre = request.POST.get('nombre', '').strip()
         importe = request.POST.get('importe', '0')
+        periodicidad = request.POST.get('periodicidad', 'mensual')
         mes_pago = request.POST.get('mes_pago') or None
 
         if not nombre or not importe:
@@ -123,6 +130,7 @@ def crear_partida(request):
                 categoria=categoria,
                 nombre=nombre,
                 importe=Decimal(importe),
+                periodicidad=periodicidad,
                 mes_pago=int(mes_pago) if mes_pago else None,
             )
             messages.success(request, f"Gasto '{nombre}' creado.")
@@ -132,6 +140,7 @@ def crear_partida(request):
         'categorias': categorias,
         'hogar': hogar,
         'meses': MESES_CHOICES,
+        'periodicidades': PERIODICIDAD_GASTO_CHOICES,
     })
 
 
@@ -149,6 +158,7 @@ def editar_partida(request, partida_id):
         partida.categoria_id = request.POST.get('categoria_id')
         partida.nombre = request.POST.get('nombre', '').strip()
         partida.importe = Decimal(request.POST.get('importe', '0'))
+        partida.periodicidad = request.POST.get('periodicidad', 'mensual')
         mes_pago = request.POST.get('mes_pago')
         partida.mes_pago = int(mes_pago) if mes_pago else None
         partida.save()
@@ -160,6 +170,7 @@ def editar_partida(request, partida_id):
         'categorias': categorias,
         'hogar': hogar,
         'meses': MESES_CHOICES,
+        'periodicidades': PERIODICIDAD_GASTO_CHOICES,
     })
 
 

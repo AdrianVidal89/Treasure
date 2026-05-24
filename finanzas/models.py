@@ -505,12 +505,20 @@ class FuenteIngreso(models.Model):
         return self.importe_declarado
         
         
-        ### Modulo de Gastos ###
+### Modulo de Gastos ###
 
 TIPO_GASTO_CHOICES = [
-    ('fijo', 'Gasto Fijo Mensual'),
+    ('fijo', 'Gasto Fijo'),
     ('anual', 'Gasto Anual (provision)'),
     ('variable', 'Gasto Variable'),
+]
+
+PERIODICIDAD_GASTO_CHOICES = [
+    ('mensual', 'Mensual'),
+    ('bimensual', 'Bimensual'),
+    ('trimestral', 'Trimestral'),
+    ('semestral', 'Semestral'),
+    ('anual', 'Anual'),
 ]
 
 class CategoriaGasto(models.Model):
@@ -532,9 +540,12 @@ class PartidaGasto(models.Model):
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='partidas_gasto')
     categoria = models.ForeignKey(CategoriaGasto, on_delete=models.CASCADE, related_name='partidas')
     nombre = models.CharField(max_length=150)
-    importe = models.DecimalField(max_digits=12, decimal_places=2)
+    importe = models.DecimalField(max_digits=12, decimal_places=2,
+        help_text="Importe por periodo declarado")
+    periodicidad = models.CharField(max_length=20, choices=PERIODICIDAD_GASTO_CHOICES, default='mensual',
+        help_text="Cada cuanto se paga este gasto")
     mes_pago = models.IntegerField(choices=MESES_CHOICES, null=True, blank=True,
-        help_text="Solo para gastos anuales: mes en que se paga.")
+        help_text="Para gastos no mensuales: mes principal de pago.")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
 
@@ -545,11 +556,27 @@ class PartidaGasto(models.Model):
         return f"{self.nombre} - {self.importe}"
 
     @property
-    def provision_mensual(self):
-        if self.categoria.tipo == 'anual':
-            return round(self.importe / Decimal('12'), 2)
-        return self.importe
+    def importe_mensual(self):
+        """Impacto mensual real: convierte cualquier periodicidad a mensual."""
+        divisores = {
+            'mensual': Decimal('1'),
+            'bimensual': Decimal('2'),
+            'trimestral': Decimal('3'),
+            'semestral': Decimal('6'),
+            'anual': Decimal('12'),
+        }
+        divisor = divisores.get(self.periodicidad, Decimal('1'))
+        return round(self.importe / divisor, 2)
 
     @property
-    def importe_mensual(self):
-        return self.provision_mensual
+    def importe_anual(self):
+        """Coste anual total."""
+        multiplicadores = {
+            'mensual': Decimal('12'),
+            'bimensual': Decimal('6'),
+            'trimestral': Decimal('4'),
+            'semestral': Decimal('2'),
+            'anual': Decimal('1'),
+        }
+        mult = multiplicadores.get(self.periodicidad, Decimal('12'))
+        return round(self.importe * mult, 2)

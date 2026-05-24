@@ -3,186 +3,438 @@
 {% block body_class %}dashboard-background{% endblock %}
 
 {% block content %}
+<style>
+.gasto-card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 16px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 12px rgba(0,0,0,0.3);
+    position: relative;
+    overflow: hidden;
+}
+.gasto-card:hover {
+    border-color: #444;
+    box-shadow: 0 0 20px rgba(162, 89, 255, 0.2);
+    transform: translateY(-2px);
+}
+.gasto-card.tipo-fijo { border-left: 3px solid #ffaa00; }
+.gasto-card.tipo-anual { border-left: 3px solid #00d1ff; }
+.gasto-card.tipo-variable { border-left: 3px solid var(--primary-color); }
+
+.gasto-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.gasto-card-nombre {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-color);
+}
+.gasto-card-monto {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+.gasto-card-sub {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 4px;
+}
+.gasto-card-count {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 6px;
+}
+.gasto-card-detail {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, padding 0.3s ease;
+    padding-top: 0;
+}
+.gasto-card-detail.open {
+    max-height: 2000px;
+    padding-top: 16px;
+    border-top: 1px solid #2a2a2a;
+    margin-top: 12px;
+}
+.gasto-partida {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: #121212;
+    border-radius: 10px;
+    margin-bottom: 6px;
+    gap: 8px;
+}
+.gasto-partida-nombre {
+    color: var(--text-color);
+    font-size: 0.85rem;
+    flex: 1;
+}
+.gasto-partida-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.gasto-partida-monto {
+    font-weight: 700;
+    font-size: 0.9rem;
+    min-width: 80px;
+    text-align: right;
+}
+.gasto-partida-periodo {
+    font-size: 0.65rem;
+    color: var(--muted);
+    min-width: 50px;
+    text-align: right;
+}
+.gasto-partida-mensual {
+    font-size: 0.75rem;
+    color: var(--muted);
+    min-width: 70px;
+    text-align: right;
+}
+.gasto-actions {
+    display: flex;
+    gap: 4px;
+}
+.gasto-actions a, .gasto-actions button {
+    font-size: 0.8rem;
+    padding: 4px 8px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    text-decoration: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+.gasto-actions a:hover, .gasto-actions button:hover {
+    border-color: var(--primary-color);
+}
+.grid-gastos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.section-label {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.chevron {
+    display: inline-block;
+    transition: transform 0.3s;
+    font-size: 0.7rem;
+    color: var(--muted);
+}
+.chevron.open { transform: rotate(90deg); }
+
+/* Modal mejorado */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0,0,0,0.75);
+    z-index: 2000;
+    justify-content: center;
+    align-items: center;
+    backdrop-filter: blur(4px);
+}
+.modal-box {
+    background: #1a1a1a;
+    border: 1px solid var(--primary-color);
+    border-radius: 20px;
+    padding: 36px;
+    box-shadow: 0 0 40px var(--glow), 0 0 80px rgba(162, 89, 255, 0.1);
+    max-width: 440px;
+    width: 92%;
+}
+.modal-box h2 {
+    color: var(--primary-color);
+    margin-top: 0;
+    font-size: 1.2rem;
+}
+.modal-box .form-group { margin-bottom: 18px; }
+.modal-box label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+.modal-box select, .modal-box input[type="text"] {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid #444;
+    border-radius: 10px;
+    background: #0d0d0d;
+    color: var(--text-color);
+    font-size: 1rem;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.modal-box select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+}
+.modal-box select:focus, .modal-box input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 8px var(--glow);
+}
+.modal-btns {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+/* Messages auto-dismiss */
+.msg-toast {
+    background: #1a1a1a;
+    border-left: 3px solid var(--primary-color);
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 16px;
+    color: var(--text-color);
+    animation: fadeInOut 4s ease forwards;
+}
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateY(-10px); }
+    10% { opacity: 1; transform: translateY(0); }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-10px); }
+}
+</style>
+
 <div class="dashboard-container">
 
-    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">📋 Presupuesto de Gastos</h1>
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">&#128203; Presupuesto de Gastos</h1>
     <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
-            {{ message }}
-        </div>
+        <div class="msg-toast">{{ message }}</div>
         {% endfor %}
     {% endif %}
 
     <!-- RESUMEN GLOBAL -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 32px;">
-        <div style="background: #1a1a1a; border: 1px solid #ff4d4d; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(255,77,77,0.2);">
-            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #ff4d4d; margin-bottom: 6px;">Total Mensual</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: #ff4d4d;">&euro;{{ total_mensual|floatformat:2 }}</div>
-            <div style="font-size: 0.65rem; color: var(--muted); margin-top: 4px;">Fijos + Provision + Variables</div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 28px;">
+        <div style="background: #1a1a1a; border: 1px solid #ff4d4d; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px rgba(255,77,77,0.15);">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #ff4d4d; margin-bottom: 4px;">Total Mensual</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #ff4d4d;">&euro;{{ total_mensual|floatformat:2 }}</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid #ffaa00; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(255,170,0,0.15);">
-            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #ffaa00; margin-bottom: 6px;">Fijos Mensuales</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: #ffaa00;">&euro;{{ total_fijos|floatformat:2 }}</div>
+        <div style="background: #1a1a1a; border: 1px solid #ffaa00; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px rgba(255,170,0,0.1);">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #ffaa00; margin-bottom: 4px;">Fijos</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #ffaa00;">&euro;{{ total_fijos|floatformat:2 }}</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid #00d1ff; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,209,255,0.15);">
-            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: #00d1ff; margin-bottom: 6px;">Provision Anuales</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: #00d1ff;">&euro;{{ total_provision|floatformat:2 }}</div>
-            <div style="font-size: 0.65rem; color: var(--muted); margin-top: 4px;">Total anual: &euro;{{ total_anuales|floatformat:2 }}</div>
+        <div style="background: #1a1a1a; border: 1px solid #00d1ff; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px rgba(0,209,255,0.1);">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #00d1ff; margin-bottom: 4px;">Provision</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #00d1ff;">&euro;{{ total_provision|floatformat:2 }}</div>
+            <div style="font-size: 0.6rem; color: var(--muted);">anual: &euro;{{ total_anuales_anual|floatformat:0 }}</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px var(--glow);">
-            <div style="font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 6px;">Variables</div>
-            <div style="font-size: 1.5rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}</div>
+        <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px var(--glow);">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 4px;">Variables</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}</div>
         </div>
     </div>
 
     <!-- BOTONES -->
-    <div style="display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;">
+    <div style="display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap;">
         <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary">&#10133; Nuevo gasto</a>
         <button onclick="document.getElementById('modal-categoria').style.display='flex'" class="btn btn-secondary">&#128193; Nueva categoria</button>
     </div>
 
-    <!-- GASTOS FIJOS MENSUALES -->
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(255,170,0,0.15); margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a;">
-            <div>
-                <span style="font-size: 1.1rem; font-weight: 700; color: #ffaa00;">&#128204; Gastos Fijos Mensuales</span>
-                <span style="font-size: 0.75rem; color: var(--muted); margin-left: 12px;">Se pagan cada mes, importe constante</span>
-            </div>
-            <div style="font-size: 1rem; font-weight: 700; color: #ffaa00;">&euro;{{ total_fijos|floatformat:2 }}/mes</div>
-        </div>
-
+    <!-- GASTOS FIJOS -->
+    {% if gastos_fijos %}
+    <div class="section-label" style="color: #ffaa00;">&#128204; Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
+    <div class="grid-gastos">
         {% for grupo in gastos_fijos %}
-            {% if grupo.partidas %}
-            <div style="margin-bottom: 12px;">
-                <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">{{ grupo.categoria.nombre }}</div>
+        <div class="gasto-card tipo-fijo" onclick="toggleCard(this)">
+            <div class="gasto-card-header">
+                <div>
+                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
+                </div>
+                <div>
+                    <div class="gasto-card-monto" style="color: #ffaa00;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-sub">/mes</div>
+                </div>
+            </div>
+            <div class="gasto-card-detail">
                 {% for p in grupo.partidas %}
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #121212; border-radius: 10px; margin-bottom: 4px;">
-                    <span style="color: var(--text-color); font-size: 0.9rem;">{{ p.nombre }}</span>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="color: #ffaa00; font-weight: 700;">&euro;{{ p.importe|floatformat:2 }}</span>
-                        <a href="{% url 'finanzas:editar_partida' p.id %}" style="color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">&#9998;&#65039;</a>
-                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin: 0;">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-inline-danger" onclick="return confirm('Eliminar {{ p.nombre }}?')">&#128465;&#65039;</button>
-                        </form>
+                <div class="gasto-partida" onclick="event.stopPropagation()">
+                    <span class="gasto-partida-nombre">{{ p.nombre }}</span>
+                    <div class="gasto-partida-info">
+                        {% if p.periodicidad != 'mensual' %}
+                        <span class="gasto-partida-periodo">{{ p.get_periodicidad_display }}</span>
+                        <span class="gasto-partida-monto" style="color: var(--text-color);">&euro;{{ p.importe|floatformat:2 }}</span>
+                        <span class="gasto-partida-mensual">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/m</span>
+                        {% else %}
+                        <span class="gasto-partida-monto" style="color: #ffaa00;">&euro;{{ p.importe|floatformat:2 }}</span>
+                        {% endif %}
+                        <div class="gasto-actions">
+                            <a href="{% url 'finanzas:editar_partida' p.id %}">&#9998;&#65039;</a>
+                            <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0;">
+                                {% csrf_token %}
+                                <button type="submit" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
-            </div>
-            {% endif %}
-        {% empty %}
-        <div style="color: var(--muted); font-style: italic; padding: 12px;">Sin gastos fijos. <a href="{% url 'finanzas:crear_partida' %}" style="color: var(--primary-color);">Crear uno</a></div>
-        {% endfor %}
-    </div>
-
-    <!-- GASTOS ANUALES (PROVISION) -->
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(0,209,255,0.15); margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a;">
-            <div>
-                <span style="font-size: 1.1rem; font-weight: 700; color: #00d1ff;">&#128197; Gastos Anuales</span>
-                <span style="font-size: 0.75rem; color: var(--muted); margin-left: 12px;">Se provisionan mensualmente</span>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-size: 1rem; font-weight: 700; color: #00d1ff;">&euro;{{ total_provision|floatformat:2 }}/mes</div>
-                <div style="font-size: 0.7rem; color: var(--muted);">Total anual: &euro;{{ total_anuales|floatformat:2 }}</div>
             </div>
         </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
+    <!-- GASTOS ANUALES -->
+    {% if gastos_anuales %}
+    <div class="section-label" style="color: #00d1ff;">&#128197; Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
+    <div class="grid-gastos">
         {% for grupo in gastos_anuales %}
-            {% if grupo.partidas %}
-            <div style="margin-bottom: 12px;">
-                <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">{{ grupo.categoria.nombre }}</div>
+        <div class="gasto-card tipo-anual" onclick="toggleCard(this)">
+            <div class="gasto-card-header">
+                <div>
+                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div class="gasto-card-monto" style="color: #00d1ff;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-sub">/mes &middot; &euro;{{ grupo.subtotal_anual|floatformat:0 }}/a</div>
+                </div>
+            </div>
+            <div class="gasto-card-detail">
                 {% for p in grupo.partidas %}
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #121212; border-radius: 10px; margin-bottom: 4px;">
-                    <div>
-                        <span style="color: var(--text-color); font-size: 0.9rem;">{{ p.nombre }}</span>
-                        {% if p.mes_pago %}<span style="font-size: 0.7rem; color: var(--muted); margin-left: 8px;">&#128197; Mes {{ p.get_mes_pago_display }}</span>{% endif %}
+                <div class="gasto-partida" onclick="event.stopPropagation()">
+                    <div style="flex: 1;">
+                        <span class="gasto-partida-nombre">{{ p.nombre }}</span>
+                        {% if p.mes_pago %}<span style="font-size: 0.65rem; color: var(--muted);"> &middot; {{ p.get_mes_pago_display }}</span>{% endif %}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 16px;">
-                        <div style="text-align: right;">
-                            <div style="color: #00d1ff; font-weight: 700;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size: 0.65rem; color: var(--muted);">/anual</span></div>
-                            <div style="font-size: 0.75rem; color: var(--muted);">&euro;{{ p.provision_mensual|floatformat:2 }}/mes</div>
+                    <div class="gasto-partida-info">
+                        <span class="gasto-partida-monto" style="color: #00d1ff;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></span>
+                        <span class="gasto-partida-mensual">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/m</span>
+                        <div class="gasto-actions">
+                            <a href="{% url 'finanzas:editar_partida' p.id %}">&#9998;&#65039;</a>
+                            <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0;">
+                                {% csrf_token %}
+                                <button type="submit" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                            </form>
                         </div>
-                        <a href="{% url 'finanzas:editar_partida' p.id %}" style="color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">&#9998;&#65039;</a>
-                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin: 0;">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-inline-danger" onclick="return confirm('Eliminar {{ p.nombre }}?')">&#128465;&#65039;</button>
-                        </form>
                     </div>
                 </div>
                 {% endfor %}
             </div>
-            {% endif %}
-        {% empty %}
-        <div style="color: var(--muted); font-style: italic; padding: 12px;">Sin gastos anuales. <a href="{% url 'finanzas:crear_partida' %}" style="color: var(--primary-color);">Crear uno</a></div>
+        </div>
         {% endfor %}
     </div>
+    {% endif %}
 
     <!-- GASTOS VARIABLES -->
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.15); margin-bottom: 24px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a;">
-            <div>
-                <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">&#128200; Gastos Variables</span>
-                <span style="font-size: 0.75rem; color: var(--muted); margin-left: 12px;">Estimados mensuales, pueden variar</span>
-            </div>
-            <div style="font-size: 1rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}/mes</div>
-        </div>
-
+    {% if gastos_variables %}
+    <div class="section-label" style="color: var(--primary-color);">&#128200; Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes</div>
+    <div class="grid-gastos">
         {% for grupo in gastos_variables %}
-            {% if grupo.partidas %}
-            <div style="margin-bottom: 12px;">
-                <div style="font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px;">{{ grupo.categoria.nombre }}</div>
+        <div class="gasto-card tipo-variable" onclick="toggleCard(this)">
+            <div class="gasto-card-header">
+                <div>
+                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
+                </div>
+                <div>
+                    <div class="gasto-card-monto" style="color: var(--primary-color);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-sub">/mes</div>
+                </div>
+            </div>
+            <div class="gasto-card-detail">
                 {% for p in grupo.partidas %}
-                <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; background: #121212; border-radius: 10px; margin-bottom: 4px;">
-                    <span style="color: var(--text-color); font-size: 0.9rem;">{{ p.nombre }}</span>
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <span style="color: var(--primary-color); font-weight: 700;">&euro;{{ p.importe|floatformat:2 }}</span>
-                        <a href="{% url 'finanzas:editar_partida' p.id %}" style="color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">&#9998;&#65039;</a>
-                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin: 0;">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-inline-danger" onclick="return confirm('Eliminar {{ p.nombre }}?')">&#128465;&#65039;</button>
-                        </form>
+                <div class="gasto-partida" onclick="event.stopPropagation()">
+                    <span class="gasto-partida-nombre">{{ p.nombre }}</span>
+                    <div class="gasto-partida-info">
+                        {% if p.periodicidad != 'mensual' %}
+                        <span class="gasto-partida-periodo">{{ p.get_periodicidad_display }}</span>
+                        <span class="gasto-partida-monto" style="color: var(--text-color);">&euro;{{ p.importe|floatformat:2 }}</span>
+                        <span class="gasto-partida-mensual">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/m</span>
+                        {% else %}
+                        <span class="gasto-partida-monto" style="color: var(--primary-color);">&euro;{{ p.importe|floatformat:2 }}</span>
+                        {% endif %}
+                        <div class="gasto-actions">
+                            <a href="{% url 'finanzas:editar_partida' p.id %}">&#9998;&#65039;</a>
+                            <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0;">
+                                {% csrf_token %}
+                                <button type="submit" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                            </form>
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
             </div>
-            {% endif %}
-        {% empty %}
-        <div style="color: var(--muted); font-style: italic; padding: 12px;">Sin gastos variables. <a href="{% url 'finanzas:crear_partida' %}" style="color: var(--primary-color);">Crear uno</a></div>
+        </div>
         {% endfor %}
     </div>
+    {% endif %}
+
+    {% if not gastos_fijos and not gastos_anuales and not gastos_variables %}
+    <div style="text-align: center; padding: 60px; color: var(--muted);">
+        <p style="font-size: 1.1rem;">No hay gastos registrados todavia.</p>
+        <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary" style="margin-top: 16px;">&#10133; Crear primer gasto</a>
+    </div>
+    {% endif %}
 
 </div>
 
 <!-- MODAL CREAR CATEGORIA -->
-<div id="modal-categoria" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;">
-    <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 32px; box-shadow: 0 0 30px var(--glow); max-width: 400px; width: 90%;">
-        <h2 style="color: var(--primary-color); margin-top: 0;">&#128193; Nueva categoria</h2>
+<div id="modal-categoria" class="modal-overlay">
+    <div class="modal-box">
+        <h2>&#128193; Nueva categoria</h2>
         <form method="post" action="{% url 'finanzas:crear_categoria' %}">
             {% csrf_token %}
             <div class="form-group">
                 <label>Nombre</label>
-                <input type="text" name="nombre" placeholder="Ej: Mascotas, Educacion..."
-                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
-                       required>
+                <input type="text" name="nombre" placeholder="Ej: Mascotas, Educacion..." required>
             </div>
             <div class="form-group">
-                <label>Tipo</label>
-                <select name="tipo" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                <label>Tipo de gasto</label>
+                <select name="tipo">
                     <option value="fijo">Fijo Mensual</option>
                     <option value="anual">Anual (provision)</option>
                     <option value="variable" selected>Variable</option>
                 </select>
             </div>
-            <div style="display: flex; gap: 12px; margin-top: 16px;">
+            <div class="modal-btns">
                 <button type="submit" class="btn btn-primary">Crear</button>
                 <button type="button" onclick="document.getElementById('modal-categoria').style.display='none'" class="btn btn-secondary">Cancelar</button>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+function toggleCard(card) {
+    const detail = card.querySelector('.gasto-card-detail');
+    const chevron = card.querySelector('.chevron');
+    detail.classList.toggle('open');
+    chevron.classList.toggle('open');
+}
+
+// Auto-dismiss messages
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.msg-toast').forEach(function(el) {
+        setTimeout(function() { el.remove(); }, 4000);
+    });
+});
+</script>
 
 {% endblock %}

@@ -3,7 +3,59 @@
 {% block body_class %}dashboard-background{% endblock %}
 
 {% block content %}
-<div class="dashboard-container" style="max-width: 550px;">
+<style>
+.form-card {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);
+}
+.form-card .form-group { margin-bottom: 20px; }
+.form-card label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin-bottom: 6px;
+}
+.form-card select, .form-card input[type="text"], .form-card input[type="number"] {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid #444;
+    border-radius: 10px;
+    background: #0d0d0d;
+    color: var(--text-color);
+    font-size: 1rem;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+}
+.form-card select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 36px;
+}
+.form-card select:focus, .form-card input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 8px var(--glow);
+}
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.calc-box {
+    background: #121212;
+    border: 1px solid #333;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+}
+.calc-label { color: var(--muted); font-size: 0.85rem; }
+.calc-value { color: #00d1ff; font-weight: 700; font-size: 1rem; }
+</style>
+
+<div class="dashboard-container" style="max-width: 560px;">
 
     <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">&#10133; Nuevo Gasto</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">{{ hogar.nombre }}</p>
@@ -14,15 +66,14 @@
         {% endfor %}
     {% endif %}
 
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);">
+    <div class="form-card">
         <form method="post" id="form-gasto">
             {% csrf_token %}
 
-            <!-- Categoria -->
             <div class="form-group">
                 <label>Categoria</label>
-                <select name="categoria_id" id="categoria_id" class="cyber-select" style="width: 100%; padding: 12px 16px;">
-                    <optgroup label="Fijos Mensuales">
+                <select name="categoria_id" id="categoria_id">
+                    <optgroup label="Fijos">
                         {% for cat in categorias %}{% if cat.tipo == 'fijo' %}
                         <option value="{{ cat.id }}" data-tipo="fijo">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
@@ -40,40 +91,43 @@
                 </select>
             </div>
 
-            <!-- Nombre -->
             <div class="form-group">
                 <label>Concepto del gasto</label>
-                <input type="text" name="nombre" placeholder="Ej: Cuota hipoteca, IBI vivienda, Compra semanal..."
-                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
-                       required>
+                <input type="text" name="nombre" placeholder="Ej: Cuota hipoteca, IBI, Compra semanal..." required>
             </div>
 
-            <!-- Importe -->
-            <div class="form-group">
-                <label id="label-importe">Importe mensual (&euro;)</label>
-                <input type="number" name="importe" id="importe" step="0.01" min="0" placeholder="0.00"
-                       style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;"
-                       required>
+            <div class="form-row">
+                <div class="form-group">
+                    <label id="label-importe">Importe (&euro;)</label>
+                    <input type="number" name="importe" id="importe" step="0.01" min="0" placeholder="0.00" required>
+                </div>
+                <div class="form-group">
+                    <label>Periodicidad</label>
+                    <select name="periodicidad" id="periodicidad">
+                        {% for value, label in periodicidades %}
+                        <option value="{{ value }}" {% if value == 'mensual' %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
 
-            <!-- Mes de pago (solo anuales) -->
+            <!-- Mes de pago (para no mensuales) -->
             <div id="bloque-mes-pago" style="display: none;">
                 <div class="form-group">
-                    <label>Mes de pago</label>
-                    <select name="mes_pago" class="cyber-select" style="width: 100%; padding: 12px 16px;">
+                    <label>Mes de pago principal</label>
+                    <select name="mes_pago">
                         <option value="">-- No especificado --</option>
                         {% for num, nombre_mes in meses %}
                         <option value="{{ num }}">{{ nombre_mes }}</option>
                         {% endfor %}
                     </select>
                 </div>
-                <!-- Calculo provision -->
-                <div id="provision-info" style="background: #121212; border: 1px solid #333; border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; display: none;">
-                    <div style="display: flex; justify-content: space-between;">
-                        <span style="color: var(--muted); font-size: 0.85rem;">Provision mensual:</span>
-                        <span style="color: #00d1ff; font-weight: 700;" id="calc-provision">--</span>
-                    </div>
-                </div>
+            </div>
+
+            <!-- Calculo en tiempo real -->
+            <div id="calc-box" class="calc-box" style="display: none;">
+                <span class="calc-label">Impacto mensual:</span>
+                <span class="calc-value" id="calc-mensual">&euro;0.00</span>
             </div>
 
             <div style="display: flex; gap: 12px; margin-top: 24px;">
@@ -85,44 +139,35 @@
 </div>
 
 <script>
-const categoriaSelect = document.getElementById('categoria_id');
-const bloqueMesPago = document.getElementById('bloque-mes-pago');
-const labelImporte = document.getElementById('label-importe');
+const periodicidadSelect = document.getElementById('periodicidad');
 const importeInput = document.getElementById('importe');
-const provisionInfo = document.getElementById('provision-info');
-const calcProvision = document.getElementById('calc-provision');
+const bloqueMesPago = document.getElementById('bloque-mes-pago');
+const calcBox = document.getElementById('calc-box');
+const calcMensual = document.getElementById('calc-mensual');
 
-function actualizarUI() {
-    const selected = categoriaSelect.options[categoriaSelect.selectedIndex];
-    const tipo = selected ? selected.dataset.tipo : '';
+const divisores = {
+    'mensual': 1, 'bimensual': 2, 'trimestral': 3, 'semestral': 6, 'anual': 12
+};
 
-    if (tipo === 'anual') {
-        bloqueMesPago.style.display = 'block';
-        labelImporte.textContent = 'Importe anual (\u20ac)';
-    } else {
-        bloqueMesPago.style.display = 'none';
-        labelImporte.textContent = 'Importe mensual (\u20ac)';
-    }
-    calcularProvision();
-}
-
-function calcularProvision() {
-    const selected = categoriaSelect.options[categoriaSelect.selectedIndex];
-    const tipo = selected ? selected.dataset.tipo : '';
+function actualizar() {
+    const periodicidad = periodicidadSelect.value;
     const importe = parseFloat(importeInput.value) || 0;
+    const esMensual = periodicidad === 'mensual';
 
-    if (tipo === 'anual' && importe > 0) {
-        provisionInfo.style.display = 'block';
-        const provision = (importe / 12).toFixed(2);
-        calcProvision.textContent = '\u20ac' + parseFloat(provision).toLocaleString('es-ES', {minimumFractionDigits: 2});
+    bloqueMesPago.style.display = esMensual ? 'none' : 'block';
+
+    if (importe > 0 && !esMensual) {
+        calcBox.style.display = 'flex';
+        const mensual = importe / (divisores[periodicidad] || 1);
+        calcMensual.textContent = '\u20ac' + mensual.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     } else {
-        provisionInfo.style.display = 'none';
+        calcBox.style.display = 'none';
     }
 }
 
-categoriaSelect.addEventListener('change', actualizarUI);
-importeInput.addEventListener('input', calcularProvision);
-actualizarUI();
+periodicidadSelect.addEventListener('change', actualizar);
+importeInput.addEventListener('input', actualizar);
+actualizar();
 </script>
 
 {% endblock %}
