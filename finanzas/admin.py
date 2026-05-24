@@ -2,7 +2,7 @@ from django.contrib import admin
 from .models import CuentaBancaria, SaldoMensualCuenta, RegistroMensual, TarjetaCredito
 from .models import Inversion, MovimientoInversion, ValorActualInversion, ResumenInversionesMensual, HistorialValorInversion
 from .models import TablaIRPF, CotizacionSS, DestinoIngreso, FuenteIngreso
-from .models import CategoriaGasto, PartidaGasto, ReglaReparto
+from .models import CategoriaGasto, PartidaGasto, FondoFamiliar, ReglaReparto
 
 admin.site.register(CuentaBancaria)
 admin.site.register(SaldoMensualCuenta)
@@ -64,10 +64,15 @@ class CategoriaGastoAdmin(admin.ModelAdmin):
 
 @admin.register(PartidaGasto)
 class PartidaGastoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'categoria', 'hogar', 'importe', 'periodicidad', 'activo')
+    list_display = ('nombre', 'categoria', 'hogar', 'importe', 'periodicidad', 'responsable', 'activo')
     list_filter = ('categoria__tipo', 'hogar')
+
+@admin.register(FondoFamiliar)
+class FondoFamiliarAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'hogar', 'modo_aportacion', 'color', 'activo')
+    list_filter = ('hogar', 'modo_aportacion')
 
 @admin.register(ReglaReparto)
 class ReglaRepartoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'hogar', 'porcentaje', 'color', 'orden', 'activo')
-    list_filter = ('hogar',)
+    list_display = ('nombre', 'hogar', 'tipo_regla', 'porcentaje', 'importe_fijo', 'fondo', 'activo')
+    list_filter = ('hogar', 'tipo_regla')

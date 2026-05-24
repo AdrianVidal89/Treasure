@@ -539,6 +539,9 @@ class CategoriaGasto(models.Model):
 class PartidaGasto(models.Model):
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='partidas_gasto')
     categoria = models.ForeignKey(CategoriaGasto, on_delete=models.CASCADE, related_name='partidas')
+    responsable = models.ForeignKey(User, on_delete=models.SET_NULL,
+    null=True, blank=True, related_name='gastos_asignados',
+    help_text="Si vacio, es un gasto compartido del hogar.")
     nombre = models.CharField(max_length=150)
     importe = models.DecimalField(max_digits=12, decimal_places=2,
         help_text="Importe por periodo declarado")
@@ -581,18 +584,51 @@ class PartidaGasto(models.Model):
         mult = multiplicadores.get(self.periodicidad, Decimal('12'))
         return round(self.importe * mult, 2)
         
-        
         ### Modulo de Distribucion y Ahorro ###
 
-class ReglaReparto(models.Model):
-    """Reglas personalizadas de reparto del dinero libre despues de gastos."""
-    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='reglas_reparto')
+MODO_APORTACION_CHOICES = [
+    ('igual', 'A partes iguales'),
+    ('proporcional', 'Proporcional al ingreso'),
+    ('fijo', 'Importe fijo por persona'),
+]
+
+
+class FondoFamiliar(models.Model):
+    """Fondos o sobres donde se destina el dinero libre."""
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='fondos')
     nombre = models.CharField(max_length=100,
-        help_text="Ej: Ahorro, Inversion, Fondo emergencia, Ocio libre...")
-    porcentaje = models.DecimalField(max_digits=5, decimal_places=2,
-        help_text="Porcentaje del dinero libre asignado a esta regla")
-    color = models.CharField(max_length=7, default='#a259ff',
-        help_text="Color hex para visualizacion")
+        help_text="Ej: Fondo comun, Ahorro piso, Inversion, Emergencia...")
+    modo_aportacion = models.CharField(max_length=20, choices=MODO_APORTACION_CHOICES, default='proporcional')
+    color = models.CharField(max_length=7, default='#a259ff')
+    orden = models.IntegerField(default=0)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['orden', 'nombre']
+        unique_together = ('hogar', 'nombre')
+
+    def __str__(self):
+        return f"{self.nombre} ({self.get_modo_aportacion_display()})"
+
+
+class ReglaReparto(models.Model):
+    """Asignacion de dinero a un fondo: puede ser % o importe fijo."""
+    TIPO_REGLA_CHOICES = [
+        ('porcentaje', 'Porcentaje del dinero libre'),
+        ('fijo', 'Importe fijo mensual'),
+    ]
+
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='reglas_reparto')
+    fondo = models.ForeignKey(FondoFamiliar, on_delete=models.CASCADE, related_name='reglas',
+        null=True, blank=True,
+        help_text="Fondo al que se destina. Si vacio, es dinero sin asignar a fondo.")
+    nombre = models.CharField(max_length=100)
+    tipo_regla = models.CharField(max_length=20, choices=TIPO_REGLA_CHOICES, default='porcentaje')
+    porcentaje = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0'),
+        help_text="Porcentaje del dinero libre (solo si tipo=porcentaje)")
+    importe_fijo = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text="Importe fijo mensual (solo si tipo=fijo)")
+    color = models.CharField(max_length=7, default='#a259ff')
     orden = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)
 
@@ -600,4 +636,6 @@ class ReglaReparto(models.Model):
         ordering = ['orden', 'nombre']
 
     def __str__(self):
-        return f"{self.nombre} ({self.porcentaje}%)"
+        if self.tipo_regla == 'porcentaje':
+            return f"{self.nombre} ({self.porcentaje}%)"
+        return f"{self.nombre} ({self.importe_fijo} EUR/mes)"

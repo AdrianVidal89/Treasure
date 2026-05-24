@@ -52,6 +52,8 @@ urlpatterns = [
 
     # Distribucion y Ahorro
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
+    path('distribucion/fondo/crear/', views_distribucion.crear_fondo, name='crear_fondo'),
+    path('distribucion/fondo/<int:fondo_id>/eliminar/', views_distribucion.eliminar_fondo, name='eliminar_fondo'),
     path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
     path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),

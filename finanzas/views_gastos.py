@@ -61,7 +61,7 @@ def listar_gastos(request):
     total_variables = Decimal('0')
 
     for cat in categorias:
-        partidas = cat.partidas.filter(activo=True)
+        partidas = cat.partidas.filter(activo=True).select_related('responsable')
         if not partidas.exists():
             continue
 
@@ -89,9 +89,7 @@ def listar_gastos(request):
             total_variables += subtotal_mensual
 
     total_mensual = total_fijos + total_provision + total_variables
-    total_anual_todo = (total_fijos + total_variables) * 12 + total_anuales_anual
 
-    # Cual card abrir automaticamente (tras editar/eliminar)
     open_cat = request.GET.get('open', '')
 
     return render(request, 'finanzas/gastos/listar.html', {
@@ -104,7 +102,6 @@ def listar_gastos(request):
         'total_provision': total_provision,
         'total_variables': total_variables,
         'total_mensual': total_mensual,
-        'total_anual_todo': total_anual_todo,
         'open_cat': open_cat,
     })
 
@@ -117,6 +114,7 @@ def crear_partida(request):
 
     hogar = profile.hogar
     categorias = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
+    miembros = hogar.miembros.select_related('user').all()
 
     if request.method == 'POST':
         categoria_id = request.POST.get('categoria_id')
@@ -124,6 +122,7 @@ def crear_partida(request):
         importe = request.POST.get('importe', '0')
         periodicidad = request.POST.get('periodicidad', 'mensual')
         mes_pago = request.POST.get('mes_pago') or None
+        responsable_id = request.POST.get('responsable_id') or None
 
         if not nombre or not importe:
             messages.error(request, "Nombre e importe son obligatorios.")
@@ -136,12 +135,14 @@ def crear_partida(request):
                 importe=Decimal(importe),
                 periodicidad=periodicidad,
                 mes_pago=int(mes_pago) if mes_pago else None,
+                responsable_id=int(responsable_id) if responsable_id else None,
             )
             messages.success(request, f"Gasto '{nombre}' creado.")
             return redirect(f'/finanzas/gastos/?open={categoria.id}')
 
     return render(request, 'finanzas/gastos/crear.html', {
         'categorias': categorias,
+        'miembros': miembros,
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,
@@ -157,6 +158,7 @@ def editar_partida(request, partida_id):
     hogar = profile.hogar
     partida = get_object_or_404(PartidaGasto, id=partida_id, hogar=hogar)
     categorias = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
+    miembros = hogar.miembros.select_related('user').all()
 
     if request.method == 'POST':
         partida.categoria_id = request.POST.get('categoria_id')
@@ -165,6 +167,8 @@ def editar_partida(request, partida_id):
         partida.periodicidad = request.POST.get('periodicidad', 'mensual')
         mes_pago = request.POST.get('mes_pago')
         partida.mes_pago = int(mes_pago) if mes_pago else None
+        responsable_id = request.POST.get('responsable_id')
+        partida.responsable_id = int(responsable_id) if responsable_id else None
         partida.save()
         messages.success(request, f"Gasto '{partida.nombre}' actualizado.")
         return redirect(f'/finanzas/gastos/?open={partida.categoria_id}')
@@ -172,6 +176,7 @@ def editar_partida(request, partida_id):
     return render(request, 'finanzas/gastos/editar.html', {
         'partida': partida,
         'categorias': categorias,
+        'miembros': miembros,
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,

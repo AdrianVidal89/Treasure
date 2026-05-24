@@ -5,51 +5,25 @@
 {% block content %}
 <style>
 .form-card {
-    background: #1a1a1a;
-    border: 1px solid #2a2a2a;
-    border-radius: 16px;
-    padding: 32px;
-    box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px;
+    padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);
 }
 .form-card .form-group { margin-bottom: 20px; }
-.form-card label {
-    display: block;
-    font-size: 0.85rem;
-    color: var(--muted);
-    margin-bottom: 6px;
-}
+.form-card label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
 .form-card select, .form-card input[type="text"], .form-card input[type="number"] {
-    width: 100%;
-    padding: 14px 16px;
-    border: 1px solid #444;
-    border-radius: 10px;
-    background: #0d0d0d;
-    color: var(--text-color);
-    font-size: 1rem;
-    box-sizing: border-box;
-    appearance: none;
-    -webkit-appearance: none;
+    width: 100%; padding: 14px 16px; border: 1px solid #444; border-radius: 10px;
+    background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;
+    appearance: none; -webkit-appearance: none;
 }
 .form-card select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 14px center;
-    padding-right: 36px;
+    background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px;
 }
-.form-card select:focus, .form-card input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 8px var(--glow);
-}
+.form-card select:focus, .form-card input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 8px var(--glow); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .calc-box {
-    background: #121212;
-    border: 1px solid #333;
-    border-radius: 10px;
-    padding: 14px 16px;
-    margin-bottom: 16px;
-    display: flex;
-    justify-content: space-between;
+    background: #121212; border: 1px solid #333; border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 16px; display: flex; justify-content: space-between;
 }
 .calc-label { color: var(--muted); font-size: 0.85rem; }
 .calc-value { color: #00d1ff; font-weight: 700; font-size: 1rem; }
@@ -67,7 +41,7 @@
     {% endif %}
 
     <div class="form-card">
-        <form method="post" id="form-gasto">
+        <form method="post">
             {% csrf_token %}
 
             <div class="form-group">
@@ -98,7 +72,7 @@
 
             <div class="form-row">
                 <div class="form-group">
-                    <label id="label-importe">Importe (&euro;)</label>
+                    <label>Importe (&euro;)</label>
                     <input type="number" name="importe" id="importe" step="0.01" min="0" placeholder="0.00" required>
                 </div>
                 <div class="form-group">
@@ -111,7 +85,17 @@
                 </div>
             </div>
 
-            <!-- Mes de pago (para no mensuales) -->
+            <!-- Responsable -->
+            <div class="form-group">
+                <label>Quien paga este gasto?</label>
+                <select name="responsable_id">
+                    <option value="">&#127968; Todo el hogar (compartido)</option>
+                    {% for miembro in miembros %}
+                    <option value="{{ miembro.user.id }}">&#128100; {{ miembro.user.first_name|default:miembro.user.username }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
             <div id="bloque-mes-pago" style="display: none;">
                 <div class="form-group">
                     <label>Mes de pago principal</label>
@@ -124,7 +108,6 @@
                 </div>
             </div>
 
-            <!-- Calculo en tiempo real -->
             <div id="calc-box" class="calc-box" style="display: none;">
                 <span class="calc-label">Impacto mensual:</span>
                 <span class="calc-value" id="calc-mensual">&euro;0.00</span>
@@ -144,30 +127,19 @@ const importeInput = document.getElementById('importe');
 const bloqueMesPago = document.getElementById('bloque-mes-pago');
 const calcBox = document.getElementById('calc-box');
 const calcMensual = document.getElementById('calc-mensual');
-
-const divisores = {
-    'mensual': 1, 'bimensual': 2, 'trimestral': 3, 'semestral': 6, 'anual': 12
-};
+const divisores = { 'mensual': 1, 'bimensual': 2, 'trimestral': 3, 'semestral': 6, 'anual': 12 };
 
 function actualizar() {
-    const periodicidad = periodicidadSelect.value;
-    const importe = parseFloat(importeInput.value) || 0;
-    const esMensual = periodicidad === 'mensual';
-
-    bloqueMesPago.style.display = esMensual ? 'none' : 'block';
-
-    if (importe > 0 && !esMensual) {
+    const p = periodicidadSelect.value;
+    const i = parseFloat(importeInput.value) || 0;
+    bloqueMesPago.style.display = p === 'mensual' ? 'none' : 'block';
+    if (i > 0 && p !== 'mensual') {
         calcBox.style.display = 'flex';
-        const mensual = importe / (divisores[periodicidad] || 1);
-        calcMensual.textContent = '\u20ac' + mensual.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    } else {
-        calcBox.style.display = 'none';
-    }
+        calcMensual.textContent = '\u20ac' + (i / (divisores[p] || 1)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    } else { calcBox.style.display = 'none'; }
 }
-
 periodicidadSelect.addEventListener('change', actualizar);
 importeInput.addEventListener('input', actualizar);
 actualizar();
 </script>
-
 {% endblock %}

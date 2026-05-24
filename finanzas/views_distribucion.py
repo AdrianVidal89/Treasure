@@ -3,20 +3,8 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from decimal import Decimal
 
-from .models import ReglaReparto
+from .models import ReglaReparto, FondoFamiliar
 from .distribucion import calcular_distribucion
-
-
-COLORES_PREDEFINIDOS = [
-    '#00ff88',  # verde neon
-    '#00d1ff',  # cyan
-    '#a259ff',  # morado
-    '#ffaa00',  # naranja
-    '#ff4d4d',  # rojo
-    '#ff00cc',  # rosa
-    '#4dff4d',  # lima
-    '#ffd700',  # oro
-]
 
 
 @login_required
@@ -28,12 +16,55 @@ def vista_distribucion(request):
 
     hogar = profile.hogar
     datos = calcular_distribucion(hogar)
+    fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
 
     return render(request, 'finanzas/distribucion/vista.html', {
         'hogar': hogar,
         'd': datos,
         'profile': profile,
+        'fondos': fondos,
     })
+
+
+@login_required
+def crear_fondo(request):
+    profile = getattr(request.user, 'userprofile', None)
+    if not profile or not profile.hogar:
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        nombre = request.POST.get('nombre', '').strip()
+        modo = request.POST.get('modo_aportacion', 'proporcional')
+        color = request.POST.get('color', '#a259ff')
+
+        if not nombre:
+            messages.error(request, "El nombre es obligatorio.")
+        else:
+            max_orden = FondoFamiliar.objects.filter(hogar=profile.hogar).count()
+            FondoFamiliar.objects.get_or_create(
+                hogar=profile.hogar, nombre=nombre,
+                defaults={
+                    'modo_aportacion': modo,
+                    'color': color,
+                    'orden': max_orden,
+                }
+            )
+            messages.success(request, f"Fondo '{nombre}' creado.")
+
+    return redirect('finanzas:vista_distribucion')
+
+
+@login_required
+def eliminar_fondo(request, fondo_id):
+    profile = getattr(request.user, 'userprofile', None)
+    if not profile or not profile.hogar:
+        return redirect('dashboard')
+
+    fondo = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=profile.hogar)
+    nombre = fondo.nombre
+    fondo.delete()
+    messages.success(request, f"Fondo '{nombre}' eliminado.")
+    return redirect('finanzas:vista_distribucion')
 
 
 @login_required
@@ -42,22 +73,25 @@ def crear_regla(request):
     if not profile or not profile.hogar:
         return redirect('dashboard')
 
-    hogar = profile.hogar
-
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
+        tipo_regla = request.POST.get('tipo_regla', 'porcentaje')
         porcentaje = request.POST.get('porcentaje', '0')
+        importe_fijo = request.POST.get('importe_fijo', '0')
+        fondo_id = request.POST.get('fondo_id') or None
         color = request.POST.get('color', '#a259ff')
 
         if not nombre:
             messages.error(request, "El nombre es obligatorio.")
         else:
-            # Calcular orden automatico
-            max_orden = ReglaReparto.objects.filter(hogar=hogar).count()
+            max_orden = ReglaReparto.objects.filter(hogar=profile.hogar).count()
             ReglaReparto.objects.create(
-                hogar=hogar,
+                hogar=profile.hogar,
                 nombre=nombre,
-                porcentaje=Decimal(porcentaje),
+                tipo_regla=tipo_regla,
+                porcentaje=Decimal(porcentaje) if tipo_regla == 'porcentaje' else Decimal('0'),
+                importe_fijo=Decimal(importe_fijo) if tipo_regla == 'fijo' else Decimal('0'),
+                fondo_id=int(fondo_id) if fondo_id else None,
                 color=color,
                 orden=max_orden,
             )
@@ -76,7 +110,11 @@ def editar_regla(request, regla_id):
 
     if request.method == 'POST':
         regla.nombre = request.POST.get('nombre', '').strip()
-        regla.porcentaje = Decimal(request.POST.get('porcentaje', '0'))
+        regla.tipo_regla = request.POST.get('tipo_regla', 'porcentaje')
+        regla.porcentaje = Decimal(request.POST.get('porcentaje', '0')) if regla.tipo_regla == 'porcentaje' else Decimal('0')
+        regla.importe_fijo = Decimal(request.POST.get('importe_fijo', '0')) if regla.tipo_regla == 'fijo' else Decimal('0')
+        fondo_id = request.POST.get('fondo_id')
+        regla.fondo_id = int(fondo_id) if fondo_id else None
         regla.color = request.POST.get('color', '#a259ff')
         regla.save()
         messages.success(request, f"Regla '{regla.nombre}' actualizada.")
