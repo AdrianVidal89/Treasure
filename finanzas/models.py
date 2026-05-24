@@ -503,3 +503,53 @@ class FuenteIngreso(models.Model):
         if self.modo_entrada == 'anual':
             return round(self.importe_declarado / Decimal(str(self.num_pagas)), 2)
         return self.importe_declarado
+        
+        
+        ### Modulo de Gastos ###
+
+TIPO_GASTO_CHOICES = [
+    ('fijo', 'Gasto Fijo Mensual'),
+    ('anual', 'Gasto Anual (provision)'),
+    ('variable', 'Gasto Variable'),
+]
+
+class CategoriaGasto(models.Model):
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='categorias_gasto')
+    nombre = models.CharField(max_length=100)
+    tipo = models.CharField(max_length=20, choices=TIPO_GASTO_CHOICES)
+    es_predefinida = models.BooleanField(default=False)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['tipo', 'nombre']
+        unique_together = ('hogar', 'nombre')
+
+    def __str__(self):
+        return f"{self.nombre} ({self.get_tipo_display()})"
+
+
+class PartidaGasto(models.Model):
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='partidas_gasto')
+    categoria = models.ForeignKey(CategoriaGasto, on_delete=models.CASCADE, related_name='partidas')
+    nombre = models.CharField(max_length=150)
+    importe = models.DecimalField(max_digits=12, decimal_places=2)
+    mes_pago = models.IntegerField(choices=MESES_CHOICES, null=True, blank=True,
+        help_text="Solo para gastos anuales: mes en que se paga.")
+    activo = models.BooleanField(default=True)
+    fecha_creacion = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['categoria', 'nombre']
+
+    def __str__(self):
+        return f"{self.nombre} - {self.importe}"
+
+    @property
+    def provision_mensual(self):
+        if self.categoria.tipo == 'anual':
+            return round(self.importe / Decimal('12'), 2)
+        return self.importe
+
+    @property
+    def importe_mensual(self):
+        return self.provision_mensual
