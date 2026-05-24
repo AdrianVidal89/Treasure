@@ -91,6 +91,9 @@ def listar_gastos(request):
     total_mensual = total_fijos + total_provision + total_variables
     total_anual_todo = (total_fijos + total_variables) * 12 + total_anuales_anual
 
+    # Cual card abrir automaticamente (tras editar/eliminar)
+    open_cat = request.GET.get('open', '')
+
     return render(request, 'finanzas/gastos/listar.html', {
         'hogar': hogar,
         'gastos_fijos': gastos_fijos,
@@ -102,6 +105,7 @@ def listar_gastos(request):
         'total_variables': total_variables,
         'total_mensual': total_mensual,
         'total_anual_todo': total_anual_todo,
+        'open_cat': open_cat,
     })
 
 
@@ -134,7 +138,7 @@ def crear_partida(request):
                 mes_pago=int(mes_pago) if mes_pago else None,
             )
             messages.success(request, f"Gasto '{nombre}' creado.")
-            return redirect('finanzas:listar_gastos')
+            return redirect(f'/finanzas/gastos/?open={categoria.id}')
 
     return render(request, 'finanzas/gastos/crear.html', {
         'categorias': categorias,
@@ -163,7 +167,7 @@ def editar_partida(request, partida_id):
         partida.mes_pago = int(mes_pago) if mes_pago else None
         partida.save()
         messages.success(request, f"Gasto '{partida.nombre}' actualizado.")
-        return redirect('finanzas:listar_gastos')
+        return redirect(f'/finanzas/gastos/?open={partida.categoria_id}')
 
     return render(request, 'finanzas/gastos/editar.html', {
         'partida': partida,
@@ -182,9 +186,10 @@ def eliminar_partida(request, partida_id):
 
     partida = get_object_or_404(PartidaGasto, id=partida_id, hogar=profile.hogar)
     nombre = partida.nombre
+    cat_id = partida.categoria_id
     partida.delete()
     messages.success(request, f"Gasto '{nombre}' eliminado.")
-    return redirect('finanzas:listar_gastos')
+    return redirect(f'/finanzas/gastos/?open={cat_id}')
 
 
 @login_required

@@ -8,12 +8,10 @@
     background: #1a1a1a;
     border: 1px solid #2a2a2a;
     border-radius: 16px;
-    padding: 20px;
     cursor: pointer;
     transition: all 0.3s ease;
     box-shadow: 0 0 12px rgba(0,0,0,0.3);
     position: relative;
-    overflow: hidden;
 }
 .gasto-card:hover {
     border-color: #444;
@@ -28,6 +26,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 18px 20px;
 }
 .gasto-card-nombre {
     font-size: 0.95rem;
@@ -41,84 +40,105 @@
 .gasto-card-sub {
     font-size: 0.7rem;
     color: var(--muted);
-    margin-top: 4px;
+    margin-top: 2px;
+    text-align: right;
 }
 .gasto-card-count {
     font-size: 0.7rem;
     color: var(--muted);
-    margin-top: 6px;
+    margin-top: 4px;
 }
+.chevron {
+    display: inline-block;
+    transition: transform 0.3s;
+    font-size: 0.65rem;
+    color: var(--muted);
+    margin-right: 4px;
+}
+.gasto-card.open .chevron { transform: rotate(90deg); }
+
 .gasto-card-detail {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.4s ease, padding 0.3s ease;
-    padding-top: 0;
-}
-.gasto-card-detail.open {
-    max-height: 2000px;
-    padding-top: 16px;
+    display: none;
+    padding: 0 20px 18px 20px;
     border-top: 1px solid #2a2a2a;
-    margin-top: 12px;
 }
+.gasto-card.open .gasto-card-detail {
+    display: block;
+}
+
 .gasto-partida {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    padding: 10px 14px;
+    align-items: stretch;
     background: #121212;
     border-radius: 10px;
-    margin-bottom: 6px;
-    gap: 8px;
+    margin-top: 8px;
+    overflow: hidden;
+}
+.gasto-partida-left {
+    flex: 1;
+    padding: 12px 14px;
+    min-width: 0;
 }
 .gasto-partida-nombre {
     color: var(--text-color);
     font-size: 0.85rem;
-    flex: 1;
+    font-weight: 500;
 }
-.gasto-partida-info {
+.gasto-partida-meta {
+    font-size: 0.7rem;
+    color: var(--muted);
+    margin-top: 3px;
+}
+.gasto-partida-right {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 0;
+    flex-shrink: 0;
 }
-.gasto-partida-monto {
+.gasto-partida-monto-box {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-end;
+    min-width: 90px;
+}
+.gasto-partida-importe {
     font-weight: 700;
     font-size: 0.9rem;
-    min-width: 80px;
-    text-align: right;
 }
-.gasto-partida-periodo {
-    font-size: 0.65rem;
+.gasto-partida-equiv {
+    font-size: 0.7rem;
     color: var(--muted);
-    min-width: 50px;
-    text-align: right;
+    margin-top: 2px;
 }
-.gasto-partida-mensual {
-    font-size: 0.75rem;
-    color: var(--muted);
-    min-width: 70px;
-    text-align: right;
-}
-.gasto-actions {
+.gasto-action-btn {
     display: flex;
-    gap: 4px;
-}
-.gasto-actions a, .gasto-actions button {
-    font-size: 0.8rem;
-    padding: 4px 8px;
-    border: 1px solid #333;
-    border-radius: 6px;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    border: none;
     background: transparent;
     color: var(--muted);
-    text-decoration: none;
     cursor: pointer;
-    transition: border-color 0.2s;
+    font-size: 1rem;
+    transition: background 0.2s, color 0.2s;
+    text-decoration: none;
+    border-left: 1px solid #2a2a2a;
 }
-.gasto-actions a:hover, .gasto-actions button:hover {
-    border-color: var(--primary-color);
+.gasto-action-btn:hover {
+    background: rgba(162, 89, 255, 0.15);
+    color: var(--primary-color);
 }
+.gasto-action-btn.danger:hover {
+    background: rgba(255, 77, 77, 0.15);
+    color: #ff4d4d;
+}
+
 .grid-gastos {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 16px;
     margin-bottom: 24px;
 }
@@ -130,15 +150,8 @@
     align-items: center;
     gap: 8px;
 }
-.chevron {
-    display: inline-block;
-    transition: transform 0.3s;
-    font-size: 0.7rem;
-    color: var(--muted);
-}
-.chevron.open { transform: rotate(90deg); }
 
-/* Modal mejorado */
+/* Modal */
 .modal-overlay {
     display: none;
     position: fixed;
@@ -155,33 +168,19 @@
     border: 1px solid var(--primary-color);
     border-radius: 20px;
     padding: 36px;
-    box-shadow: 0 0 40px var(--glow), 0 0 80px rgba(162, 89, 255, 0.1);
+    box-shadow: 0 0 40px var(--glow);
     max-width: 440px;
     width: 92%;
 }
-.modal-box h2 {
-    color: var(--primary-color);
-    margin-top: 0;
-    font-size: 1.2rem;
-}
+.modal-box h2 { color: var(--primary-color); margin-top: 0; font-size: 1.2rem; }
 .modal-box .form-group { margin-bottom: 18px; }
-.modal-box label {
-    display: block;
-    font-size: 0.85rem;
-    color: var(--muted);
-    margin-bottom: 6px;
-}
+.modal-box label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
 .modal-box select, .modal-box input[type="text"] {
-    width: 100%;
-    padding: 14px 16px;
-    border: 1px solid #444;
-    border-radius: 10px;
-    background: #0d0d0d;
-    color: var(--text-color);
-    font-size: 1rem;
-    box-sizing: border-box;
-    appearance: none;
-    -webkit-appearance: none;
+    width: 100%; padding: 14px 16px;
+    border: 1px solid #444; border-radius: 10px;
+    background: #0d0d0d; color: var(--text-color);
+    font-size: 1rem; box-sizing: border-box;
+    appearance: none; -webkit-appearance: none;
 }
 .modal-box select {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
@@ -190,23 +189,14 @@
     padding-right: 36px;
 }
 .modal-box select:focus, .modal-box input:focus {
-    outline: none;
-    border-color: var(--primary-color);
+    outline: none; border-color: var(--primary-color);
     box-shadow: 0 0 8px var(--glow);
 }
-.modal-btns {
-    display: flex;
-    gap: 12px;
-    margin-top: 20px;
-}
+.modal-btns { display: flex; gap: 12px; margin-top: 20px; }
 
-/* Messages auto-dismiss */
 .msg-toast {
-    background: #1a1a1a;
-    border-left: 3px solid var(--primary-color);
-    padding: 12px 16px;
-    border-radius: 8px;
-    margin-bottom: 16px;
+    background: #1a1a1a; border-left: 3px solid var(--primary-color);
+    padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
     color: var(--text-color);
     animation: fadeInOut 4s ease forwards;
 }
@@ -229,22 +219,22 @@
         {% endfor %}
     {% endif %}
 
-    <!-- RESUMEN GLOBAL -->
+    <!-- RESUMEN -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 28px;">
         <div style="background: #1a1a1a; border: 1px solid #ff4d4d; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px rgba(255,77,77,0.15);">
             <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #ff4d4d; margin-bottom: 4px;">Total Mensual</div>
             <div style="font-size: 1.4rem; font-weight: 700; color: #ff4d4d;">&euro;{{ total_mensual|floatformat:2 }}</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid #ffaa00; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px rgba(255,170,0,0.1);">
+        <div style="background: #1a1a1a; border: 1px solid #ffaa00; border-radius: 16px; padding: 18px; text-align: center;">
             <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #ffaa00; margin-bottom: 4px;">Fijos</div>
             <div style="font-size: 1.4rem; font-weight: 700; color: #ffaa00;">&euro;{{ total_fijos|floatformat:2 }}</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid #00d1ff; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px rgba(0,209,255,0.1);">
+        <div style="background: #1a1a1a; border: 1px solid #00d1ff; border-radius: 16px; padding: 18px; text-align: center;">
             <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #00d1ff; margin-bottom: 4px;">Provision</div>
             <div style="font-size: 1.4rem; font-weight: 700; color: #00d1ff;">&euro;{{ total_provision|floatformat:2 }}</div>
             <div style="font-size: 0.6rem; color: var(--muted);">anual: &euro;{{ total_anuales_anual|floatformat:0 }}</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px var(--glow);">
+        <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 18px; text-align: center;">
             <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 4px;">Variables</div>
             <div style="font-size: 1.4rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}</div>
         </div>
@@ -261,7 +251,7 @@
     <div class="section-label" style="color: #ffaa00;">&#128204; Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_fijos %}
-        <div class="gasto-card tipo-fijo" onclick="toggleCard(this)">
+        <div class="gasto-card tipo-fijo {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
                     <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
@@ -272,25 +262,26 @@
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
-            <div class="gasto-card-detail">
+            <div class="gasto-card-detail" onclick="event.stopPropagation()">
                 {% for p in grupo.partidas %}
-                <div class="gasto-partida" onclick="event.stopPropagation()">
-                    <span class="gasto-partida-nombre">{{ p.nombre }}</span>
-                    <div class="gasto-partida-info">
-                        {% if p.periodicidad != 'mensual' %}
-                        <span class="gasto-partida-periodo">{{ p.get_periodicidad_display }}</span>
-                        <span class="gasto-partida-monto" style="color: var(--text-color);">&euro;{{ p.importe|floatformat:2 }}</span>
-                        <span class="gasto-partida-mensual">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/m</span>
-                        {% else %}
-                        <span class="gasto-partida-monto" style="color: #ffaa00;">&euro;{{ p.importe|floatformat:2 }}</span>
-                        {% endif %}
-                        <div class="gasto-actions">
-                            <a href="{% url 'finanzas:editar_partida' p.id %}">&#9998;&#65039;</a>
-                            <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0;">
-                                {% csrf_token %}
-                                <button type="submit" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
-                            </form>
+                <div class="gasto-partida">
+                    <div class="gasto-partida-left">
+                        <div class="gasto-partida-nombre">{{ p.nombre }}</div>
+                        <div class="gasto-partida-meta">
+                            {% if p.periodicidad != 'mensual' %}{{ p.get_periodicidad_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
                         </div>
+                    </div>
+                    <div class="gasto-partida-right">
+                        <div class="gasto-partida-monto-box">
+                            <div class="gasto-partida-importe" style="color: #ffaa00;">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
+                        </div>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar">&#9998;&#65039;</a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
+                            {% csrf_token %}
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                        </form>
                     </div>
                 </div>
                 {% endfor %}
@@ -305,7 +296,7 @@
     <div class="section-label" style="color: #00d1ff;">&#128197; Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
     <div class="grid-gastos">
         {% for grupo in gastos_anuales %}
-        <div class="gasto-card tipo-anual" onclick="toggleCard(this)">
+        <div class="gasto-card tipo-anual {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
                     <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
@@ -316,23 +307,26 @@
                     <div class="gasto-card-sub">/mes &middot; &euro;{{ grupo.subtotal_anual|floatformat:0 }}/a</div>
                 </div>
             </div>
-            <div class="gasto-card-detail">
+            <div class="gasto-card-detail" onclick="event.stopPropagation()">
                 {% for p in grupo.partidas %}
-                <div class="gasto-partida" onclick="event.stopPropagation()">
-                    <div style="flex: 1;">
-                        <span class="gasto-partida-nombre">{{ p.nombre }}</span>
-                        {% if p.mes_pago %}<span style="font-size: 0.65rem; color: var(--muted);"> &middot; {{ p.get_mes_pago_display }}</span>{% endif %}
-                    </div>
-                    <div class="gasto-partida-info">
-                        <span class="gasto-partida-monto" style="color: #00d1ff;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></span>
-                        <span class="gasto-partida-mensual">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/m</span>
-                        <div class="gasto-actions">
-                            <a href="{% url 'finanzas:editar_partida' p.id %}">&#9998;&#65039;</a>
-                            <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0;">
-                                {% csrf_token %}
-                                <button type="submit" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
-                            </form>
+                <div class="gasto-partida">
+                    <div class="gasto-partida-left">
+                        <div class="gasto-partida-nombre">{{ p.nombre }}</div>
+                        <div class="gasto-partida-meta">
+                            {{ p.get_periodicidad_display }}
+                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
                         </div>
+                    </div>
+                    <div class="gasto-partida-right">
+                        <div class="gasto-partida-monto-box">
+                            <div class="gasto-partida-importe" style="color: #00d1ff;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></div>
+                            <div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>
+                        </div>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar">&#9998;&#65039;</a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
+                            {% csrf_token %}
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                        </form>
                     </div>
                 </div>
                 {% endfor %}
@@ -347,7 +341,7 @@
     <div class="section-label" style="color: var(--primary-color);">&#128200; Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_variables %}
-        <div class="gasto-card tipo-variable" onclick="toggleCard(this)">
+        <div class="gasto-card tipo-variable {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
                     <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
@@ -358,25 +352,26 @@
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
-            <div class="gasto-card-detail">
+            <div class="gasto-card-detail" onclick="event.stopPropagation()">
                 {% for p in grupo.partidas %}
-                <div class="gasto-partida" onclick="event.stopPropagation()">
-                    <span class="gasto-partida-nombre">{{ p.nombre }}</span>
-                    <div class="gasto-partida-info">
-                        {% if p.periodicidad != 'mensual' %}
-                        <span class="gasto-partida-periodo">{{ p.get_periodicidad_display }}</span>
-                        <span class="gasto-partida-monto" style="color: var(--text-color);">&euro;{{ p.importe|floatformat:2 }}</span>
-                        <span class="gasto-partida-mensual">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/m</span>
-                        {% else %}
-                        <span class="gasto-partida-monto" style="color: var(--primary-color);">&euro;{{ p.importe|floatformat:2 }}</span>
-                        {% endif %}
-                        <div class="gasto-actions">
-                            <a href="{% url 'finanzas:editar_partida' p.id %}">&#9998;&#65039;</a>
-                            <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0;">
-                                {% csrf_token %}
-                                <button type="submit" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
-                            </form>
+                <div class="gasto-partida">
+                    <div class="gasto-partida-left">
+                        <div class="gasto-partida-nombre">{{ p.nombre }}</div>
+                        <div class="gasto-partida-meta">
+                            {% if p.periodicidad != 'mensual' %}{{ p.get_periodicidad_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
                         </div>
+                    </div>
+                    <div class="gasto-partida-right">
+                        <div class="gasto-partida-monto-box">
+                            <div class="gasto-partida-importe" style="color: var(--primary-color);">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
+                        </div>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar">&#9998;&#65039;</a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
+                            {% csrf_token %}
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                        </form>
                     </div>
                 </div>
                 {% endfor %}
@@ -408,7 +403,7 @@
             <div class="form-group">
                 <label>Tipo de gasto</label>
                 <select name="tipo">
-                    <option value="fijo">Fijo Mensual</option>
+                    <option value="fijo">Fijo</option>
                     <option value="anual">Anual (provision)</option>
                     <option value="variable" selected>Variable</option>
                 </select>
@@ -423,10 +418,7 @@
 
 <script>
 function toggleCard(card) {
-    const detail = card.querySelector('.gasto-card-detail');
-    const chevron = card.querySelector('.chevron');
-    detail.classList.toggle('open');
-    chevron.classList.toggle('open');
+    card.classList.toggle('open');
 }
 
 // Auto-dismiss messages
@@ -434,6 +426,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.msg-toast').forEach(function(el) {
         setTimeout(function() { el.remove(); }, 4000);
     });
+
+    // Scroll to open card if any
+    var openCard = document.querySelector('.gasto-card.open');
+    if (openCard) {
+        setTimeout(function() {
+            openCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 200);
+    }
 });
 </script>
 
