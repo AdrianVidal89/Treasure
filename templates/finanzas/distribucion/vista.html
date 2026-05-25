@@ -4,14 +4,12 @@
 
 {% block content %}
 <style>
-/* KPIs */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
 .kpi-card { background: #1a1a1a; border-radius: 14px; padding: 16px; text-align: center; }
 .kpi-card .label { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
 .kpi-card .valor { font-size: 1.3rem; font-weight: 700; }
 .kpi-card .sub { font-size: 0.58rem; color: var(--muted); margin-top: 3px; }
 
-/* Semaforo */
 .semaforo { display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-size: 0.88rem; font-weight: 600; }
 .semaforo.verde { background: rgba(0,255,136,0.08); border: 1px solid #00ff88; color: #00ff88; }
 .semaforo.amarillo { background: rgba(255,215,0,0.08); border: 1px solid #ffd700; color: #ffd700; }
@@ -23,36 +21,32 @@
 .semaforo.naranja .semaforo-dot { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; }
 .semaforo.rojo .semaforo-dot { background: #ff4d4d; box-shadow: 0 0 8px #ff4d4d; }
 
-/* Sankey container */
-#sankey-container {
-    background: #121212; border: 1px solid #2a2a2a; border-radius: 16px;
-    padding: 20px; margin-bottom: 28px; overflow-x: auto;
-}
-#sankey-container svg { min-width: 600px; width: 100%; }
+#sankey-container { background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 16px; padding: 16px; margin-bottom: 28px; overflow-x: auto; }
 
-/* Transferencias */
-.transfer-card {
-    background: #1a1a1a; border-radius: 14px; padding: 18px;
-    border-left: 4px solid; margin-bottom: 10px;
-    display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+.info-hogar {
+    background: #1a1a1a; border: 1px solid #ffaa00; border-radius: 14px;
+    padding: 16px 20px; margin-bottom: 24px;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
 }
+.info-hogar-label { font-size: 0.8rem; color: #ffaa00; font-weight: 600; }
+.info-hogar-sub { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+.info-hogar-valor { font-size: 1.1rem; font-weight: 700; color: #ffaa00; text-align: right; }
+
+.transfer-card { background: #1a1a1a; border-radius: 14px; padding: 16px 18px; border-left: 4px solid; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
 .transfer-left { flex: 1; min-width: 0; }
-.transfer-origen { font-size: 0.75rem; color: var(--muted); margin-bottom: 2px; }
+.transfer-origen { font-size: 0.72rem; color: var(--muted); margin-bottom: 2px; }
 .transfer-concepto { font-size: 0.9rem; font-weight: 600; color: var(--text-color); }
-.transfer-destino { font-size: 0.75rem; color: var(--muted); margin-top: 3px; }
-.transfer-cuenta { font-size: 0.7rem; color: #00d1ff; margin-top: 2px; }
+.transfer-destino { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+.transfer-cuenta { font-size: 0.68rem; color: #00d1ff; margin-top: 2px; }
 .transfer-importe { font-size: 1.1rem; font-weight: 700; text-align: right; white-space: nowrap; }
 
-/* Resumen final por persona */
-.resumen-persona {
-    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 14px; padding: 20px; margin-bottom: 12px;
-}
-.resumen-persona h4 { color: var(--primary-color); margin: 0 0 14px 0; font-size: 0.95rem; }
-.resumen-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #2a2a2a; font-size: 0.85rem; }
-.resumen-row:last-child { border-bottom: none; font-weight: 700; }
-.resumen-row .label { color: var(--muted); }
+.resumen-persona { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 14px; padding: 18px; margin-bottom: 12px; }
+.resumen-persona h4 { color: var(--primary-color); margin: 0 0 12px 0; font-size: 0.95rem; }
+.resumen-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid #222; font-size: 0.85rem; }
+.resumen-row:last-child { border-bottom: none; font-weight: 700; padding-top: 10px; }
+.resumen-row .rl { color: var(--muted); }
+.resumen-info { font-size: 0.75rem; color: #ffaa00; padding: 6px 10px; background: rgba(255,170,0,0.08); border-radius: 8px; margin: 8px 0; border-left: 2px solid #ffaa00; }
 
-/* Modal */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 .modal-box { background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 18px; padding: 28px; box-shadow: 0 0 40px var(--glow); max-width: 460px; width: 92%; max-height: 90vh; overflow-y: auto; }
 .modal-box h2 { color: var(--primary-color); margin-top: 0; font-size: 1.05rem; }
@@ -66,16 +60,17 @@
 .tipo-btn { flex: 1; padding: 10px; text-align: center; font-size: 0.83rem; border: none; cursor: pointer; background: #121212; color: var(--muted); transition: all 0.2s; }
 .tipo-btn.active { background: var(--primary-color); color: #fff; }
 
-.msg-toast { background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 14px; color: var(--text-color); animation: fadeInOut 4s ease forwards; }
-@keyframes fadeInOut { 0%{opacity:0;transform:translateY(-10px)} 10%{opacity:1;transform:translateY(0)} 80%{opacity:1} 100%{opacity:0;transform:translateY(-10px)} }
-
-.section-title { font-size: 0.9rem; font-weight: 700; color: var(--text-color); margin: 24px 0 12px 0; display: flex; justify-content: space-between; align-items: center; }
-.r-btn { font-size: 0.72rem; padding: 4px 8px; border: 1px solid #333; border-radius: 6px; background: transparent; color: var(--muted); text-decoration: none; cursor: pointer; }
-.r-btn:hover { border-color: var(--primary-color); }
-.regla-pill { display: inline-flex; align-items: center; gap: 8px; background: #1a1a1a; border-radius: 10px; padding: 8px 14px; margin-bottom: 8px; border-left: 3px solid; width: 100%; box-sizing: border-box; justify-content: space-between; }
+.regla-pill { display: flex; align-items: center; gap: 8px; background: #1a1a1a; border-radius: 10px; padding: 10px 14px; margin-bottom: 8px; border-left: 3px solid; width: 100%; box-sizing: border-box; }
 .regla-pill-info { flex: 1; }
 .regla-pill-nombre { font-size: 0.85rem; font-weight: 600; color: var(--text-color); }
 .regla-pill-sub { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+.r-btn { font-size: 0.72rem; padding: 4px 8px; border: 1px solid #333; border-radius: 6px; background: transparent; color: var(--muted); text-decoration: none; cursor: pointer; flex-shrink: 0; }
+.r-btn:hover { border-color: var(--primary-color); }
+
+.section-title { font-size: 0.9rem; font-weight: 700; color: var(--text-color); margin: 22px 0 10px 0; display: flex; justify-content: space-between; align-items: center; }
+
+.msg-toast { background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 14px; color: var(--text-color); animation: fadeInOut 4s ease forwards; }
+@keyframes fadeInOut { 0%{opacity:0;transform:translateY(-10px)} 10%{opacity:1;transform:translateY(0)} 80%{opacity:1} 100%{opacity:0;transform:translateY(-10px)} }
 </style>
 
 <div class="dashboard-container">
@@ -85,7 +80,6 @@
 
     {% if messages %}{% for m in messages %}<div class="msg-toast">{{ m }}</div>{% endfor %}{% endif %}
 
-    <!-- SEMAFORO -->
     <div class="semaforo {{ d.semaforo }}">
         <div class="semaforo-dot"></div>
         <span>{{ d.semaforo_texto }} &mdash; Tasa de ahorro: {{ d.tasa_ahorro_base }}%</span>
@@ -99,26 +93,42 @@
             <div class="sub">/mes garantizado</div>
         </div>
         <div class="kpi-card" style="border: 1px solid #ff4d4d;">
-            <div class="label" style="color:#ff4d4d;">Gastos totales</div>
-            <div class="valor" style="color:#ff4d4d;">&euro;{{ d.total_gastos_all|floatformat:2 }}</div>
-            <div class="sub">hogar + individuales</div>
+            <div class="label" style="color:#ff4d4d;">Gastos individuales</div>
+            <div class="valor" style="color:#ff4d4d;">&euro;{{ d.total_gastos_individuales|floatformat:2 }}</div>
+            <div class="sub">compromisos fijos</div>
         </div>
         <div class="kpi-card" style="border: 1px solid {% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">
-            <div class="label" style="color:{% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre base</div>
+            <div class="label" style="color:{% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre total</div>
             <div class="valor" style="color:{% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">&euro;{{ d.libre_base_hogar|floatformat:2 }}</div>
             <div class="sub">{{ d.tasa_ahorro_base }}% del ingreso</div>
         </div>
-        <div class="kpi-card" style="border: 1px solid #00d1ff;">
-            <div class="label" style="color:#00d1ff;">Libre ponderado</div>
-            <div class="valor" style="color:#00d1ff;">&euro;{{ d.libre_pond_hogar|floatformat:2 }}</div>
-            <div class="sub">{{ d.tasa_ahorro_pond }}% del ingreso</div>
+        <div class="kpi-card" style="border: 1px solid #ffaa00;">
+            <div class="label" style="color:#ffaa00;">Gastos del hogar</div>
+            <div class="valor" style="color:#ffaa00;">&euro;{{ d.total_gastos_hogar|floatformat:2 }}</div>
+            <div class="sub">a cubrir entre todos</div>
+        </div>
+    </div>
+
+    <!-- INFO GASTOS DEL HOGAR -->
+    <div class="info-hogar">
+        <div>
+            <div class="info-hogar-label">&#9432; Gastos del hogar — a cubrir entre todos</div>
+            <div class="info-hogar-sub">
+                Fijos: &euro;{{ d.gastos_hogar_fijos|floatformat:0 }} &middot;
+                Provision: &euro;{{ d.gastos_hogar_provision|floatformat:0 }} &middot;
+                Variables: &euro;{{ d.gastos_hogar_variables|floatformat:0 }}
+            </div>
+            <div class="info-hogar-sub" style="margin-top:4px;">Crea reglas de reparto para definir cuanto aporta cada uno a una cuenta conjunta.</div>
+        </div>
+        <div>
+            <div class="info-hogar-valor">&euro;{{ d.total_gastos_hogar|floatformat:2 }}/mes</div>
         </div>
     </div>
 
     <!-- SANKEY -->
     <div class="section-title">&#127890; Flujo del dinero</div>
     <div id="sankey-container">
-        <svg id="sankey-svg"></svg>
+        <svg id="sankey-svg" style="display:block;width:100%;"></svg>
     </div>
 
     <!-- REGLAS DE REPARTO -->
@@ -133,7 +143,7 @@
             <div class="regla-pill-sub">
                 {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre{% else %}&euro;{{ regla.importe_fijo }}/mes fijo{% endif %}
                 {% if regla.usuario %} &middot; &#128100; {{ regla.usuario.first_name|default:regla.usuario.username }}{% else %} &middot; &#127968; Todo el hogar{% endif %}
-                {% if regla.fondo %} &middot; &#128181; {{ regla.fondo.nombre }}{% endif %}
+                {% if regla.fondo %} &middot; &#8594; {{ regla.fondo.nombre }}{% endif %}
             </div>
         </div>
         <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">
@@ -158,6 +168,7 @@
                 {{ fa.fondo.get_modo_aportacion_display }}
                 {% if fa.fondo.cuenta_asociada %} &middot; &#127968; {{ fa.fondo.cuenta_asociada }}{% endif %}
                 &middot; Total: &euro;{{ fa.total_aportacion_base|floatformat:2 }}/mes
+                {% for ap in fa.aportantes %}&middot; {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} &euro;{{ ap.importe_base|floatformat:0 }}{% endfor %}
             </div>
         </div>
         <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">
@@ -185,7 +196,7 @@
     </div>
     {% endfor %}
     {% else %}
-    <p style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Define fondos y reglas para ver las transferencias necesarias.</p>
+    <p style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Define reglas de reparto para ver las transferencias necesarias.</p>
     {% endif %}
 
     <!-- RESUMEN POR PERSONA -->
@@ -193,16 +204,20 @@
     {% for dm in d.datos_miembros %}
     <div class="resumen-persona">
         <h4>{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</h4>
-        <div class="resumen-row"><span class="label">Ingreso neto mensual</span><span style="color:#00ff88;">+&euro;{{ dm.ingreso_base|floatformat:2 }}</span></div>
-        {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="label">Gastos individuales</span><span style="color:#ff4d4d;">-&euro;{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
-        <div class="resumen-row"><span class="label">Aportacion gastos hogar ({{ dm.proporcion }}%)</span><span style="color:#ffaa00;">-&euro;{{ dm.aportacion_hogar_base|floatformat:2 }}</span></div>
+        <div class="resumen-row"><span class="rl">Ingreso neto mensual</span><span style="color:#00ff88;">+&euro;{{ dm.ingreso_base|floatformat:2 }}</span></div>
+        {% if dm.gastos_individuales > 0 %}
+        <div class="resumen-row"><span class="rl">Gastos individuales</span><span style="color:#ff4d4d;">-&euro;{{ dm.gastos_individuales|floatformat:2 }}</span></div>
+        {% endif %}
         {% for ap in dm.aportaciones_fondos %}{% if ap.importe_base > 0 %}
         <div class="resumen-row">
-            <span class="label">{{ ap.regla.nombre }}{% if ap.fondo %} &#8594; {{ ap.fondo.nombre }}{% endif %}</span>
+            <span class="rl">{{ ap.regla.nombre }}{% if ap.fondo %} &#8594; {{ ap.fondo.nombre }}{% endif %}</span>
             <span style="color:{{ ap.regla.color }};">-&euro;{{ ap.importe_base|floatformat:2 }}</span>
         </div>
         {% endif %}{% endfor %}
-        <div class="resumen-row" style="margin-top:4px; padding-top:10px; border-top: 1px solid #444; border-bottom: none;">
+        <div class="resumen-info">
+            &#9432; Parte proporcional de gastos del hogar ({{ dm.proporcion }}%): &euro;{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes &mdash; a cubrir via fondo comun
+        </div>
+        <div class="resumen-row">
             <span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Queda en cuenta personal</span>
             <span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-size:1.05rem;">&euro;{{ dm.libre_base|floatformat:2 }}/mes</span>
         </div>
@@ -218,7 +233,7 @@
         <form method="post" action="{% url 'finanzas:crear_fondo' %}">
             {% csrf_token %}
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Revolut conjunta, Ahorro piso..." required></div>
-            <div class="fg"><label>Cuenta bancaria asociada (opcional)</label><input type="text" name="cuenta_asociada" placeholder="Ej: Revolut conjunta, BBVA ahorro..."></div>
+            <div class="fg"><label>Cuenta bancaria asociada (opcional)</label><input type="text" name="cuenta_asociada" placeholder="Ej: Revolut conjunta, BBVA..."></div>
             <div class="fg">
                 <label>Modo de aportacion</label>
                 <select name="modo_aportacion">
@@ -242,11 +257,11 @@
         <h2>&#10133; Nueva regla de reparto</h2>
         <form method="post" action="{% url 'finanzas:crear_regla' %}">
             {% csrf_token %}
-            <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Ahorro piso, Inversion Irene..." required></div>
+            <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Revolut conjunta, Inversion Irene..." required></div>
             <div class="fg">
                 <label>Quien aporta</label>
                 <select name="usuario_id">
-                    <option value="">&#127968; Todo el hogar (se reparte entre todos)</option>
+                    <option value="">&#127968; Todo el hogar (se reparte proporcional)</option>
                     {% for m in miembros %}<option value="{{ m.user.id }}">&#128100; {{ m.user.first_name|default:m.user.username }}</option>{% endfor %}
                 </select>
             </div>
@@ -259,7 +274,7 @@
                 <input type="hidden" name="tipo_regla" id="tipo_regla" value="porcentaje">
             </div>
             <div class="fg" id="campo-pct"><label>% del dinero libre</label><input type="number" name="porcentaje" step="0.1" min="0" max="100" placeholder="Ej: 50"></div>
-            <div class="fg" id="campo-fijo" style="display:none;"><label>Importe fijo (&euro;/mes)</label><input type="number" name="importe_fijo" step="0.01" min="0" placeholder="Ej: 1000"></div>
+            <div class="fg" id="campo-fijo" style="display:none;"><label>Importe fijo (&euro;/mes)</label><input type="number" name="importe_fijo" step="0.01" min="0" placeholder="Ej: 1713"></div>
             <div class="fg">
                 <label>Fondo destino</label>
                 <select name="fondo_id">
@@ -276,7 +291,6 @@
     </div>
 </div>
 
-<!-- D3 Sankey -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script>
 function setTipo(tipo) {
@@ -290,137 +304,131 @@ function setTipo(tipo) {
 document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.msg-toast').forEach(el => setTimeout(() => el.remove(), 4000));
     drawSankey();
+    window.addEventListener('resize', drawSankey);
 });
 
 function drawSankey() {
-    const nodes = {{ d.sankey_nodes|safe }};
-    const links = {{ d.sankey_links|safe }};
+    const rawNodes = {{ d.sankey_nodes|safe }};
+    const rawLinks = JSON.parse(JSON.stringify({{ d.sankey_links|safe }}));
 
-    if (!nodes.length || !links.length) {
-        document.getElementById('sankey-container').innerHTML =
-            '<p style="color:var(--muted);text-align:center;padding:40px;font-style:italic;">Define ingresos, gastos y reglas para ver el flujo del dinero.</p>';
+    const container = document.getElementById('sankey-container');
+    const svg = d3.select('#sankey-svg');
+    svg.selectAll('*').remove();
+
+    if (!rawNodes.length || !rawLinks.length) {
+        container.innerHTML = '<p style="color:var(--muted);text-align:center;padding:40px;font-style:italic;">Define ingresos, gastos y reglas para ver el flujo.</p>';
         return;
     }
 
-    const container = document.getElementById('sankey-container');
-    const W = Math.max(600, container.clientWidth - 40);
-    const H = Math.max(300, nodes.length * 40 + 100);
-    const margin = { top: 10, right: 120, bottom: 10, left: 120 };
-    const width = W - margin.left - margin.right;
-    const height = H - margin.top - margin.bottom;
+    const containerW = container.clientWidth - 32;
+    const LABEL_W = 140;
+    const NODE_W = 14;
+    const NODE_PAD = 12;
+    const groupOrder = ['ingreso', 'gasto', 'fondo', 'libre'];
 
-    d3.select('#sankey-svg').selectAll('*').remove();
-    d3.select('#sankey-svg').attr('height', H);
-
-    const svg = d3.select('#sankey-svg')
-        .append('g')
-        .attr('transform', `translate(${margin.left},${margin.top})`);
-
-    // Manual Sankey layout
-    // Determine columns by group
-    const groupOrder = ['ingreso', 'gasto', 'hogar', 'fondo', 'libre'];
-    const cols = {};
-    nodes.forEach((n, i) => {
+    // Determine unique columns
+    const groupCols = {};
+    rawNodes.forEach(n => {
         const col = groupOrder.indexOf(n.group);
-        if (!cols[col]) cols[col] = [];
-        cols[col].push(i);
+        if (!groupCols[col]) groupCols[col] = [];
+    });
+    rawNodes.forEach((n, i) => {
+        const col = groupOrder.indexOf(n.group) >= 0 ? groupOrder.indexOf(n.group) : groupOrder.length;
+        if (!groupCols[col]) groupCols[col] = [];
+        groupCols[col].push(i);
     });
 
-    const colKeys = Object.keys(cols).map(Number).sort((a,b) => a - b);
+    const colKeys = Object.keys(groupCols).map(Number).sort((a,b)=>a-b);
+    const innerW = containerW - LABEL_W * 2;
     const colX = {};
-    colKeys.forEach((c, i) => { colX[c] = (i / (colKeys.length - 1 || 1)) * width; });
-
-    // Assign x positions
-    const nodeX = {};
-    nodes.forEach((n, i) => {
-        const col = groupOrder.indexOf(n.group);
-        nodeX[i] = colX[col] !== undefined ? colX[col] : width / 2;
+    colKeys.forEach((c, i) => {
+        colX[c] = LABEL_W + (i / Math.max(colKeys.length - 1, 1)) * innerW;
     });
 
-    // Calculate total value per node
-    const nodeValIn = new Array(nodes.length).fill(0);
-    const nodeValOut = new Array(nodes.length).fill(0);
-    links.forEach(l => {
-        nodeValOut[l.source] += l.value;
-        nodeValIn[l.target] += l.value;
-    });
-    const nodeVal = nodes.map((n, i) => Math.max(nodeValIn[i], nodeValOut[i]));
+    // Node values
+    const valIn = new Array(rawNodes.length).fill(0);
+    const valOut = new Array(rawNodes.length).fill(0);
+    rawLinks.forEach(l => { valOut[l.source] += l.value; valIn[l.target] += l.value; });
+    const nodeVal = rawNodes.map((_, i) => Math.max(valIn[i], valOut[i]));
 
-    // Node heights proportional to value
-    const totalVal = d3.max(Object.values(cols).map(idxs => d3.sum(idxs.map(i => nodeVal[i]))));
-    const nodeH = nodes.map((_,i) => Math.max(20, (nodeVal[i] / (totalVal || 1)) * height * 0.8));
+    // Height
+    const maxColH = Math.max(...colKeys.map(c =>
+        d3.sum(groupCols[c], i => nodeVal[i]) + (groupCols[c].length - 1) * NODE_PAD
+    ));
+    const scale = Math.min(400, Math.max(150, maxColH));
+    const totalVal = d3.max(rawNodes.map((_, i) => nodeVal[i]));
+    const nodeH = rawNodes.map((_, i) => Math.max(4, (nodeVal[i] / totalVal) * scale * 0.85));
 
-    // Y positions within each column
-    const colYOffset = {};
-    colKeys.forEach(c => { colYOffset[c] = 0; });
-
-    const nodeY = new Array(nodes.length).fill(0);
-    nodes.forEach((n, i) => {
-        const col = groupOrder.indexOf(n.group);
-        const gap = 10;
-        const totalH = d3.sum(cols[col] || [], j => nodeH[j]) + (cols[col].length - 1) * gap;
-        const startY = (height - totalH) / 2;
-        if (colYOffset[col] === 0) colYOffset[col] = startY;
-        nodeY[i] = colYOffset[col];
-        colYOffset[col] += nodeH[i] + gap;
+    // Y positions
+    const nodeY = new Array(rawNodes.length).fill(0);
+    colKeys.forEach(c => {
+        const ids = groupCols[c];
+        const total = d3.sum(ids, i => nodeH[i]) + (ids.length - 1) * NODE_PAD;
+        let y = (scale - total) / 2;
+        ids.forEach(i => { nodeY[i] = y; y += nodeH[i] + NODE_PAD; });
     });
 
-    // Link offsets
-    const linkSrcY = new Array(nodes.length).fill(null).map(() => ({}));
-    const linkDstY = new Array(nodes.length).fill(null).map(() => ({}));
-    nodes.forEach((_, i) => { linkSrcY[i] = nodeY[i]; linkDstY[i] = nodeY[i]; });
+    const H = scale + 20;
+    svg.attr('height', H).attr('viewBox', `0 0 ${containerW} ${H}`);
 
-    // Color by group
-    const groupColor = { ingreso: '#00ff88', gasto: '#ff4d4d', hogar: '#ffaa00', fondo: '#a259ff', libre: '#00d1ff' };
-    const nodeWidth = 16;
+    const g = svg.append('g').attr('transform', 'translate(0,10)');
 
     // Draw links
-    links.forEach(l => {
-        const sx = nodeX[l.source] + nodeWidth;
-        const tx = nodeX[l.target];
-        const sy = linkSrcY[l.source];
-        const ty = linkDstY[l.target];
-        const lh = Math.max(2, (l.value / (totalVal || 1)) * height * 0.8);
+    const srcYOffset = rawNodes.map((_, i) => nodeY[i]);
+    const dstYOffset = rawNodes.map((_, i) => nodeY[i]);
 
-        const path = svg.append('path')
-            .attr('d', `M${sx},${sy + lh/2} C${(sx+tx)/2},${sy + lh/2} ${(sx+tx)/2},${ty + lh/2} ${tx},${ty + lh/2}`)
+    rawLinks.forEach(l => {
+        const col = groupOrder.indexOf(rawNodes[l.source].group) >= 0 ? groupOrder.indexOf(rawNodes[l.source].group) : 0;
+        const sx = colX[col] + NODE_W;
+        const tcol = groupOrder.indexOf(rawNodes[l.target].group) >= 0 ? groupOrder.indexOf(rawNodes[l.target].group) : groupOrder.length;
+        const tx = colX[tcol];
+        const lh = Math.max(2, (l.value / totalVal) * scale * 0.85);
+        const sy = srcYOffset[l.source] + lh / 2;
+        const ty = dstYOffset[l.target] + lh / 2;
+
+        g.append('path')
+            .attr('d', `M${sx},${sy} C${sx+60},${sy} ${tx-60},${ty} ${tx},${ty}`)
             .attr('stroke', l.color || '#555')
-            .attr('stroke-width', Math.max(2, lh))
+            .attr('stroke-width', Math.max(1.5, lh))
             .attr('fill', 'none')
-            .attr('opacity', 0.45);
+            .attr('opacity', 0.4);
 
-        path.append('title').text(`${nodes[l.source].name} → ${nodes[l.target].name}: €${l.value.toLocaleString('es-ES', {minimumFractionDigits: 2})}`);
-
-        linkSrcY[l.source] += lh;
-        linkDstY[l.target] += lh;
+        srcYOffset[l.source] += lh;
+        dstYOffset[l.target] += lh;
     });
 
-    // Draw nodes
-    nodes.forEach((n, i) => {
-        const col = groupOrder.indexOf(n.group);
+    // Draw nodes + labels
+    const groupColor = { ingreso: '#00ff88', gasto: '#ff4d4d', fondo: '#a259ff', libre: '#00d1ff' };
+    rawNodes.forEach((n, i) => {
+        const col = groupOrder.indexOf(n.group) >= 0 ? groupOrder.indexOf(n.group) : groupOrder.length;
+        const x = colX[col];
+        const y = nodeY[i];
+        const h = Math.max(4, nodeH[i]);
         const color = groupColor[n.group] || '#888';
+        const isLeft = col === colKeys[0];
+        const isRight = col === colKeys[colKeys.length - 1];
 
-        svg.append('rect')
-            .attr('x', nodeX[i])
-            .attr('y', nodeY[i])
-            .attr('width', nodeWidth)
-            .attr('height', Math.max(4, nodeH[i]))
-            .attr('fill', color)
-            .attr('rx', 4)
-            .attr('opacity', 0.9);
+        g.append('rect').attr('x', x).attr('y', y).attr('width', NODE_W).attr('height', h)
+            .attr('fill', color).attr('rx', 3).attr('opacity', 0.9);
 
-        // Label
-        const isLeft = col === 0;
-        svg.append('text')
-            .attr('x', isLeft ? nodeX[i] - 6 : nodeX[i] + nodeWidth + 6)
-            .attr('y', nodeY[i] + nodeH[i] / 2)
-            .attr('dy', '0.35em')
-            .attr('text-anchor', isLeft ? 'end' : 'start')
-            .attr('fill', '#ccc')
-            .attr('font-size', '11px')
-            .text(`${n.name} €${nodeVal[i].toLocaleString('es-ES', {minimumFractionDigits: 0})}`);
+        const euros = nodeVal[i].toLocaleString('es-ES', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+        const shortName = n.name.length > 18 ? n.name.substring(0, 16) + '…' : n.name;
+
+        if (isLeft) {
+            g.append('text').attr('x', x - 6).attr('y', y + h/2).attr('dy','0.35em')
+                .attr('text-anchor','end').attr('fill','#ccc').attr('font-size','11px')
+                .text(`${shortName} €${euros}`);
+        } else if (isRight) {
+            g.append('text').attr('x', x + NODE_W + 6).attr('y', y + h/2).attr('dy','0.35em')
+                .attr('text-anchor','start').attr('fill','#ccc').attr('font-size','11px')
+                .text(`${shortName} €${euros}`);
+        } else {
+            // Middle nodes: label above
+            g.append('text').attr('x', x + NODE_W/2).attr('y', y - 4)
+                .attr('text-anchor','middle').attr('fill','#aaa').attr('font-size','10px')
+                .text(`${shortName} €${euros}`);
+        }
     });
 }
 </script>
-
 {% endblock %}
