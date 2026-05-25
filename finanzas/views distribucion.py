@@ -397,3 +397,5 @@ def eliminar_regla(request, regla_id):
     regla.delete()
     messages.success(request, f"Regla '{nombre}' eliminada.")
     return redirect('finanzas:vista_distribucion')
+
+
