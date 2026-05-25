@@ -4,125 +4,119 @@
 
 {% block content %}
 <style>
-.dist-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 28px; }
-.dist-card {
+/* Cards KPI */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 28px; }
+.kpi-card {
     background: #1a1a1a; border-radius: 16px; padding: 18px; text-align: center;
-    position: relative; overflow: hidden;
 }
-.dist-card::before {
-    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-}
-.dist-card .label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
-.dist-card .valor { font-size: 1.4rem; font-weight: 700; }
-.dist-card .sub { font-size: 0.6rem; color: var(--muted); margin-top: 4px; }
-
-/* Barra de distribucion */
-.dist-bar-container {
-    background: #121212; border-radius: 12px; overflow: hidden;
-    height: 40px; display: flex; margin-bottom: 8px;
-}
-.dist-bar-segment {
-    height: 100%; display: flex; align-items: center; justify-content: center;
-    font-size: 0.65rem; font-weight: 700; color: #fff;
-    transition: width 0.5s ease; min-width: 0;
-    overflow: hidden; white-space: nowrap;
-}
-.dist-bar-legend {
-    display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px;
-}
-.dist-bar-legend-item {
-    display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-color);
-}
-.dist-bar-legend-dot {
-    width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0;
-}
+.kpi-card .label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; margin-bottom: 4px; }
+.kpi-card .valor { font-size: 1.4rem; font-weight: 700; }
+.kpi-card .sub { font-size: 0.6rem; color: var(--muted); margin-top: 4px; }
 
 /* Semaforo */
 .semaforo {
     display: flex; align-items: center; gap: 12px;
-    padding: 16px 20px; border-radius: 12px; margin-bottom: 28px;
+    padding: 14px 20px; border-radius: 12px; margin-bottom: 24px;
     font-size: 0.9rem; font-weight: 600;
 }
 .semaforo.verde { background: rgba(0,255,136,0.1); border: 1px solid #00ff88; color: #00ff88; }
 .semaforo.amarillo { background: rgba(255,215,0,0.1); border: 1px solid #ffd700; color: #ffd700; }
 .semaforo.naranja { background: rgba(255,170,0,0.1); border: 1px solid #ffaa00; color: #ffaa00; }
 .semaforo.rojo { background: rgba(255,77,77,0.1); border: 1px solid #ff4d4d; color: #ff4d4d; }
-.semaforo-dot {
-    width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
-}
-.semaforo.verde .semaforo-dot { background: #00ff88; box-shadow: 0 0 10px #00ff88; }
-.semaforo.amarillo .semaforo-dot { background: #ffd700; box-shadow: 0 0 10px #ffd700; }
-.semaforo.naranja .semaforo-dot { background: #ffaa00; box-shadow: 0 0 10px #ffaa00; }
-.semaforo.rojo .semaforo-dot { background: #ff4d4d; box-shadow: 0 0 10px #ff4d4d; }
+.semaforo-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.semaforo.verde .semaforo-dot { background: #00ff88; box-shadow: 0 0 8px #00ff88; }
+.semaforo.amarillo .semaforo-dot { background: #ffd700; box-shadow: 0 0 8px #ffd700; }
+.semaforo.naranja .semaforo-dot { background: #ffaa00; box-shadow: 0 0 8px #ffaa00; }
+.semaforo.rojo .semaforo-dot { background: #ff4d4d; box-shadow: 0 0 8px #ff4d4d; }
 
-/* Escenarios */
-.escenario-tabs {
-    display: flex; border-radius: 10px; overflow: hidden;
-    border: 1px solid #333; margin-bottom: 24px;
+/* Barra distribucion */
+.dist-bar { background: #121212; border-radius: 10px; overflow: hidden; height: 36px; display: flex; margin-bottom: 8px; }
+.dist-bar-seg {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; font-weight: 700; color: #fff;
+    transition: width 0.5s ease; overflow: hidden; white-space: nowrap; min-width: 0;
 }
-.escenario-tab {
-    flex: 1; padding: 12px; text-align: center; font-weight: 600;
-    font-size: 0.9rem; border: none; cursor: pointer;
-    background: #121212; color: var(--muted); transition: all 0.2s;
+.legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--text-color); }
+.legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+/* Tabs */
+.tabs { display: flex; border-radius: 10px; overflow: hidden; border: 1px solid #333; margin-bottom: 24px; }
+.tab { flex: 1; padding: 12px; text-align: center; font-weight: 600; font-size: 0.9rem; border: none; cursor: pointer; background: #121212; color: var(--muted); transition: all 0.2s; }
+.tab.active { background: var(--primary-color); color: #fff; }
+
+/* Cards miembro */
+.miembro-card {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px;
+    padding: 22px; box-shadow: 0 0 16px rgba(162,89,255,0.12); margin-bottom: 16px;
 }
-.escenario-tab.active { background: var(--primary-color); color: #fff; }
+.miembro-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.miembro-nombre { font-size: 1rem; font-weight: 700; color: var(--primary-color); }
+.miembro-rol { font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid #00ff88; margin-left: 8px; }
+.miembro-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: #121212; border-radius: 8px; margin-bottom: 6px; }
+.miembro-row-label { font-size: 0.8rem; color: var(--muted); }
+.miembro-row-val { font-size: 0.9rem; font-weight: 700; }
+.miembro-libre {
+    margin-top: 12px; padding: 12px 16px; border-radius: 10px;
+    display: flex; justify-content: space-between; align-items: center;
+    border: 1px solid;
+}
 
 /* Reparto cards */
 .reparto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 24px; }
 .reparto-card {
-    background: #1a1a1a; border-radius: 14px; padding: 18px;
-    border-left: 4px solid; position: relative;
-    display: flex; flex-direction: column; gap: 8px;
+    background: #1a1a1a; border-radius: 14px; padding: 18px; border-left: 4px solid;
 }
-.reparto-card-header {
-    display: flex; justify-content: space-between; align-items: flex-start;
+.reparto-card .r-nombre { font-size: 0.9rem; font-weight: 600; color: var(--text-color); margin-bottom: 4px; }
+.reparto-card .r-sub { font-size: 0.7rem; color: var(--muted); margin-bottom: 8px; }
+.reparto-card .r-pct { font-size: 0.8rem; font-weight: 700; }
+.reparto-card .r-importe { font-size: 1.2rem; font-weight: 700; }
+.reparto-card .r-actions { display: flex; gap: 4px; margin-top: 10px; }
+.r-btn { font-size: 0.75rem; padding: 4px 8px; border: 1px solid #333; border-radius: 6px; background: transparent; color: var(--muted); text-decoration: none; cursor: pointer; }
+.r-btn:hover { border-color: var(--primary-color); }
+
+/* Fondos */
+.fondo-card {
+    background: #1a1a1a; border-radius: 14px; padding: 18px; border-left: 4px solid;
+    display: flex; justify-content: space-between; align-items: center;
 }
-.reparto-card-nombre { font-size: 0.9rem; font-weight: 600; color: var(--text-color); }
-.reparto-card-pct { font-size: 0.8rem; font-weight: 700; }
-.reparto-card-importe { font-size: 1.2rem; font-weight: 700; }
-.reparto-card-actions {
-    display: flex; gap: 4px; position: absolute; top: 12px; right: 12px;
-}
-.reparto-action-btn {
-    font-size: 0.75rem; padding: 4px 8px; border: 1px solid #333;
-    border-radius: 6px; background: transparent; color: var(--muted);
-    text-decoration: none; cursor: pointer; transition: border-color 0.2s;
-}
-.reparto-action-btn:hover { border-color: var(--primary-color); }
+.fondo-nombre { font-size: 0.9rem; font-weight: 600; color: var(--text-color); }
+.fondo-modo { font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
 
 /* Sin asignar */
-.sin-asignar {
-    background: #121212; border: 1px dashed #444; border-radius: 14px;
-    padding: 18px; display: flex; flex-direction: column; gap: 8px;
-}
+.sin-asignar { background: #121212; border: 1px dashed #444; border-radius: 14px; padding: 18px; }
 
 /* Modal */
 .modal-overlay {
-    display: none; position: fixed; top: 0; left: 0;
-    width: 100%; height: 100%; background: rgba(0,0,0,0.75);
-    z-index: 2000; justify-content: center; align-items: center;
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.75); z-index: 2000; justify-content: center; align-items: center;
     backdrop-filter: blur(4px);
 }
 .modal-box {
-    background: #1a1a1a; border: 1px solid var(--primary-color);
-    border-radius: 20px; padding: 36px;
-    box-shadow: 0 0 40px var(--glow); max-width: 440px; width: 92%;
+    background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 20px;
+    padding: 32px; box-shadow: 0 0 40px var(--glow); max-width: 460px; width: 92%;
+    max-height: 90vh; overflow-y: auto;
 }
-.modal-box h2 { color: var(--primary-color); margin-top: 0; font-size: 1.2rem; }
-.modal-box .form-group { margin-bottom: 18px; }
-.modal-box label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+.modal-box h2 { color: var(--primary-color); margin-top: 0; font-size: 1.1rem; }
+.modal-box .fg { margin-bottom: 16px; }
+.modal-box label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 5px; }
 .modal-box select, .modal-box input[type="text"], .modal-box input[type="number"] {
-    width: 100%; padding: 14px 16px; border: 1px solid #444; border-radius: 10px;
-    background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;
+    width: 100%; padding: 13px 15px; border: 1px solid #444; border-radius: 10px;
+    background: #0d0d0d; color: var(--text-color); font-size: 0.95rem; box-sizing: border-box;
+    appearance: none; -webkit-appearance: none;
 }
-.modal-box input[type="color"] {
-    width: 50px; height: 40px; border: 1px solid #444; border-radius: 8px;
-    background: transparent; cursor: pointer; padding: 2px;
+.modal-box select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px;
 }
 .modal-box select:focus, .modal-box input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 8px var(--glow); }
-.modal-btns { display: flex; gap: 12px; margin-top: 20px; }
+.modal-btns { display: flex; gap: 12px; margin-top: 18px; }
 .color-row { display: flex; gap: 12px; align-items: flex-end; }
-.color-row .form-group:first-child { flex: 1; }
+.color-row .fg:first-child { flex: 1; }
+.modal-box input[type="color"] { width: 50px; height: 44px; border: 1px solid #444; border-radius: 8px; background: transparent; cursor: pointer; padding: 2px; }
+.tipo-toggle { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid #333; margin-bottom: 4px; }
+.tipo-toggle-btn { flex: 1; padding: 10px; text-align: center; font-size: 0.85rem; border: none; cursor: pointer; background: #121212; color: var(--muted); transition: all 0.2s; }
+.tipo-toggle-btn.active { background: var(--primary-color); color: #fff; }
 
 .msg-toast {
     background: #1a1a1a; border-left: 3px solid var(--primary-color);
@@ -140,12 +134,10 @@
 <div class="dashboard-container">
 
     <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">&#128176; Distribucion y Ahorro</h1>
-    <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
+    <p style="color: var(--muted); margin-bottom: 20px;">{{ hogar.nombre }}</p>
 
     {% if messages %}
-        {% for message in messages %}
-        <div class="msg-toast">{{ message }}</div>
-        {% endfor %}
+        {% for message in messages %}<div class="msg-toast">{{ message }}</div>{% endfor %}
     {% endif %}
 
     <!-- SEMAFORO -->
@@ -154,154 +146,313 @@
         <span>{{ d.semaforo_texto }} &mdash; Tasa de ahorro base: {{ d.tasa_ahorro_base }}%</span>
     </div>
 
-    <!-- KPIs PRINCIPALES -->
-    <div class="dist-grid">
-        <div class="dist-card" style="border: 1px solid #00ff88;">
+    <!-- KPIs HOGAR -->
+    <div class="kpi-grid">
+        <div class="kpi-card" style="border: 1px solid #00ff88;">
             <div class="label" style="color: #00ff88;">Ingreso base</div>
-            <div class="valor" style="color: #00ff88;">&euro;{{ d.ingreso_mensual_base|floatformat:2 }}</div>
+            <div class="valor" style="color: #00ff88;">&euro;{{ d.ingreso_base_hogar|floatformat:2 }}</div>
             <div class="sub">/mes garantizado</div>
         </div>
-        <div class="dist-card" style="border: 1px solid #ff4d4d;">
+        <div class="kpi-card" style="border: 1px solid #ff4d4d;">
             <div class="label" style="color: #ff4d4d;">Gastos totales</div>
-            <div class="valor" style="color: #ff4d4d;">&euro;{{ d.total_gastos|floatformat:2 }}</div>
-            <div class="sub">/mes</div>
+            <div class="valor" style="color: #ff4d4d;">&euro;{{ d.total_gastos_all|floatformat:2 }}</div>
+            <div class="sub">compartidos + individuales</div>
         </div>
-        <div class="dist-card" style="border: 1px solid {% if d.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; box-shadow: 0 0 20px {% if d.libre_base >= 0 %}rgba(0,255,136,0.2){% else %}rgba(255,77,77,0.2){% endif %};">
-            <div class="label" style="color: {% if d.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre base</div>
-            <div class="valor" style="color: {% if d.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">&euro;{{ d.libre_base|floatformat:2 }}</div>
+        <div class="kpi-card" style="border: 1px solid {% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">
+            <div class="label" style="color: {% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre base</div>
+            <div class="valor" style="color: {% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">&euro;{{ d.libre_base_hogar|floatformat:2 }}</div>
             <div class="sub">{{ d.tasa_ahorro_base }}% del ingreso</div>
         </div>
-        <div class="dist-card" style="border: 1px solid #00d1ff;">
+        <div class="kpi-card" style="border: 1px solid #00d1ff;">
             <div class="label" style="color: #00d1ff;">Libre ponderado</div>
-            <div class="valor" style="color: #00d1ff;">&euro;{{ d.libre_ponderado|floatformat:2 }}</div>
+            <div class="valor" style="color: #00d1ff;">&euro;{{ d.libre_ponderado_hogar|floatformat:2 }}</div>
             <div class="sub">{{ d.tasa_ahorro_ponderado }}% del ingreso</div>
         </div>
     </div>
 
-    <!-- BARRA DE DISTRIBUCION DEL INGRESO -->
-    <h3 style="color: var(--text-color); font-size: 0.95rem; margin-bottom: 12px;">Distribucion del ingreso mensual base</h3>
-    <div class="dist-bar-container">
-        {% if d.pct_fijos > 0 %}<div class="dist-bar-segment" style="width: {{ d.pct_fijos }}%; background: #ffaa00;">{% if d.pct_fijos > 8 %}{{ d.pct_fijos }}%{% endif %}</div>{% endif %}
-        {% if d.pct_provision > 0 %}<div class="dist-bar-segment" style="width: {{ d.pct_provision }}%; background: #00d1ff;">{% if d.pct_provision > 8 %}{{ d.pct_provision }}%{% endif %}</div>{% endif %}
-        {% if d.pct_variables > 0 %}<div class="dist-bar-segment" style="width: {{ d.pct_variables }}%; background: var(--primary-color);">{% if d.pct_variables > 8 %}{{ d.pct_variables }}%{% endif %}</div>{% endif %}
-        {% if d.pct_libre > 0 %}<div class="dist-bar-segment" style="width: {{ d.pct_libre }}%; background: #00ff88;">{% if d.pct_libre > 8 %}{{ d.pct_libre }}%{% endif %}</div>{% endif %}
+    <!-- BARRA DISTRIBUCION -->
+    <h3 style="color: var(--text-color); font-size: 0.9rem; margin-bottom: 10px;">Distribucion del ingreso mensual base</h3>
+    <div class="dist-bar">
+        {% if d.pct_hogar_fijos > 0 %}<div class="dist-bar-seg" style="width:{{ d.pct_hogar_fijos }}%;background:#ffaa00;">{% if d.pct_hogar_fijos > 6 %}{{ d.pct_hogar_fijos }}%{% endif %}</div>{% endif %}
+        {% if d.pct_hogar_provision > 0 %}<div class="dist-bar-seg" style="width:{{ d.pct_hogar_provision }}%;background:#00d1ff;">{% if d.pct_hogar_provision > 6 %}{{ d.pct_hogar_provision }}%{% endif %}</div>{% endif %}
+        {% if d.pct_hogar_variables > 0 %}<div class="dist-bar-seg" style="width:{{ d.pct_hogar_variables }}%;background:var(--primary-color);">{% if d.pct_hogar_variables > 6 %}{{ d.pct_hogar_variables }}%{% endif %}</div>{% endif %}
+        {% if d.pct_ind > 0 %}<div class="dist-bar-seg" style="width:{{ d.pct_ind }}%;background:#ff6b35;">{% if d.pct_ind > 6 %}{{ d.pct_ind }}%{% endif %}</div>{% endif %}
+        {% if d.pct_libre > 0 %}<div class="dist-bar-seg" style="width:{{ d.pct_libre }}%;background:#00ff88;">{% if d.pct_libre > 6 %}{{ d.pct_libre }}%{% endif %}</div>{% endif %}
     </div>
-    <div class="dist-bar-legend">
-        <div class="dist-bar-legend-item"><div class="dist-bar-legend-dot" style="background: #ffaa00;"></div> Fijos &euro;{{ d.gastos_fijos|floatformat:0 }}</div>
-        <div class="dist-bar-legend-item"><div class="dist-bar-legend-dot" style="background: #00d1ff;"></div> Provision &euro;{{ d.gastos_provision|floatformat:0 }}</div>
-        <div class="dist-bar-legend-item"><div class="dist-bar-legend-dot" style="background: var(--primary-color);"></div> Variables &euro;{{ d.gastos_variables|floatformat:0 }}</div>
-        <div class="dist-bar-legend-item"><div class="dist-bar-legend-dot" style="background: #00ff88;"></div> Libre &euro;{{ d.libre_base|floatformat:0 }}</div>
-    </div>
-
-    <!-- ESCENARIOS: Base vs Ponderado -->
-    <h3 style="color: var(--text-color); font-size: 0.95rem; margin-bottom: 12px;">Reparto del dinero libre</h3>
-
-    <div class="escenario-tabs">
-        <button class="escenario-tab active" onclick="switchTab('base', this)">&#128274; Escenario Base</button>
-        <button class="escenario-tab" onclick="switchTab('ponderado', this)">&#128200; Escenario Ponderado</button>
+    <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#ffaa00;"></div> Fijos hogar &euro;{{ d.gastos_hogar_fijos|floatformat:0 }}</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#00d1ff;"></div> Provision &euro;{{ d.gastos_hogar_provision|floatformat:0 }}</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--primary-color);"></div> Variables hogar &euro;{{ d.gastos_hogar_variables|floatformat:0 }}</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ff6b35;"></div> Individuales &euro;{{ d.total_gastos_individuales|floatformat:0 }}</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#00ff88;"></div> Libre &euro;{{ d.libre_base_hogar|floatformat:0 }}</div>
     </div>
 
-    <!-- Boton crear regla -->
-    <div style="margin-bottom: 20px;">
-        <button onclick="document.getElementById('modal-regla').style.display='flex'" class="btn btn-primary">&#10133; Nueva regla de reparto</button>
-        {% if d.total_porcentaje != 100 %}
-        <span style="color: {% if d.total_porcentaje > 100 %}#ff4d4d{% else %}#ffaa00{% endif %}; font-size: 0.8rem; margin-left: 12px;">
-            Total asignado: {{ d.total_porcentaje }}% {% if d.total_porcentaje > 100 %}(sobrepasa 100%){% elif d.total_porcentaje < 100 %}({{ d.porcentaje_sin_asignar }}% sin asignar){% endif %}
-        </span>
-        {% else %}
-        <span style="color: #00ff88; font-size: 0.8rem; margin-left: 12px;">&#9989; 100% asignado</span>
-        {% endif %}
+    <!-- DESGLOSE POR MIEMBRO -->
+    <h3 style="color: var(--text-color); font-size: 0.9rem; margin-bottom: 14px;">&#128100; Desglose individual</h3>
+    <div class="tabs" style="margin-bottom: 20px;">
+        <button class="tab active" onclick="switchMiembro('base', this)">&#128274; Base garantizado</button>
+        <button class="tab" onclick="switchMiembro('pond', this)">&#128200; Ponderado</button>
     </div>
 
-    <!-- REPARTO BASE -->
-    <div id="tab-base" class="reparto-grid">
+    <div id="tab-miembro-base">
+        {% for dm in d.datos_miembros %}
+        <div class="miembro-card">
+            <div class="miembro-header">
+                <div>
+                    <span class="miembro-nombre">&#128100; {{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</span>
+                    <span class="miembro-rol">{{ dm.miembro.get_rol_display }}</span>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 0.7rem; color: var(--muted);">Ingreso base</div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #00ff88;">&euro;{{ dm.ingreso_base|floatformat:2 }}</div>
+                    <div style="font-size: 0.65rem; color: var(--muted);">{{ dm.proporcion }}% del hogar</div>
+                </div>
+            </div>
+
+            {% if dm.gastos_individuales > 0 %}
+            <div class="miembro-row">
+                <span class="miembro-row-label">Gastos individuales</span>
+                <span class="miembro-row-val" style="color: #ff4d4d;">-&euro;{{ dm.gastos_individuales|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div class="miembro-row">
+                <span class="miembro-row-label">Aportacion gastos hogar ({{ dm.proporcion }}%)</span>
+                <span class="miembro-row-val" style="color: #ffaa00;">-&euro;{{ dm.aportacion_hogar|floatformat:2 }}</span>
+            </div>
+
+            <div class="miembro-libre" style="{% if dm.libre_base >= 0 %}border-color: #00ff88; background: rgba(0,255,136,0.05);{% else %}border-color: #ff4d4d; background: rgba(255,77,77,0.05);{% endif %}">
+                <span style="font-size: 0.9rem; font-weight: 600; color: {% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Dinero libre</span>
+                <div style="text-align: right;">
+                    <div style="font-size: 1.2rem; font-weight: 700; color: {% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">&euro;{{ dm.libre_base|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
+                    <div style="font-size: 0.7rem; color: var(--muted);">{{ dm.tasa_base }}% de su ingreso</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div id="tab-miembro-pond" style="display: none;">
+        {% for dm in d.datos_miembros %}
+        <div class="miembro-card">
+            <div class="miembro-header">
+                <div>
+                    <span class="miembro-nombre">&#128100; {{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</span>
+                    <span class="miembro-rol">{{ dm.miembro.get_rol_display }}</span>
+                </div>
+                <div style="text-align: right;">
+                    <div style="font-size: 0.7rem; color: var(--muted);">Ingreso ponderado</div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #00d1ff;">&euro;{{ dm.ingreso_ponderado|floatformat:2 }}</div>
+                </div>
+            </div>
+
+            {% if dm.gastos_individuales > 0 %}
+            <div class="miembro-row">
+                <span class="miembro-row-label">Gastos individuales</span>
+                <span class="miembro-row-val" style="color: #ff4d4d;">-&euro;{{ dm.gastos_individuales|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div class="miembro-row">
+                <span class="miembro-row-label">Aportacion gastos hogar ({{ dm.proporcion }}%)</span>
+                <span class="miembro-row-val" style="color: #ffaa00;">-&euro;{{ dm.aportacion_hogar|floatformat:2 }}</span>
+            </div>
+
+            <div class="miembro-libre" style="{% if dm.libre_ponderado >= 0 %}border-color: #00d1ff; background: rgba(0,209,255,0.05);{% else %}border-color: #ff4d4d; background: rgba(255,77,77,0.05);{% endif %}">
+                <span style="font-size: 0.9rem; font-weight: 600; color: {% if dm.libre_ponderado >= 0 %}#00d1ff{% else %}#ff4d4d{% endif %};">Dinero libre ponderado</span>
+                <div style="text-align: right;">
+                    <div style="font-size: 1.2rem; font-weight: 700; color: {% if dm.libre_ponderado >= 0 %}#00d1ff{% else %}#ff4d4d{% endif %};">&euro;{{ dm.libre_ponderado|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
+                    <div style="font-size: 0.7rem; color: var(--muted);">{{ dm.tasa_ponderado }}% de su ingreso</div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- FONDOS -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 28px; margin-bottom: 14px;">
+        <h3 style="color: var(--text-color); font-size: 0.9rem; margin: 0;">&#128181; Fondos del hogar</h3>
+        <button onclick="document.getElementById('modal-fondo').style.display='flex'" class="btn btn-secondary" style="font-size: 0.8rem; padding: 8px 14px;">&#10133; Nuevo fondo</button>
+    </div>
+    <div class="reparto-grid" style="margin-bottom: 28px;">
+        {% for fondo in fondos %}
+        <div class="fondo-card" style="border-left-color: {{ fondo.color }};">
+            <div>
+                <div class="fondo-nombre">{{ fondo.nombre }}</div>
+                <div class="fondo-modo">{{ fondo.get_modo_aportacion_display }}</div>
+            </div>
+            <form method="post" action="{% url 'finanzas:eliminar_fondo' fondo.id %}" style="margin: 0;">
+                {% csrf_token %}
+                <button type="submit" class="r-btn" onclick="return confirm('Eliminar fondo {{ fondo.nombre }}?')">&#128465;</button>
+            </form>
+        </div>
+        {% empty %}
+        <div style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Sin fondos definidos. Crea uno para organizar a donde va el ahorro.</div>
+        {% endfor %}
+    </div>
+
+    <!-- REPARTO DEL LIBRE -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+        <h3 style="color: var(--text-color); font-size: 0.9rem; margin: 0;">&#127937; Reparto del dinero libre</h3>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            {% if d.total_porcentaje != 100 %}
+            <span style="color: {% if d.total_porcentaje > 100 %}#ff4d4d{% else %}#ffaa00{% endif %}; font-size: 0.8rem;">
+                {{ d.total_porcentaje }}% asignado {% if d.porcentaje_sin_asignar > 0 %}({{ d.porcentaje_sin_asignar }}% libre){% endif %}
+            </span>
+            {% else %}
+            <span style="color: #00ff88; font-size: 0.8rem;">&#9989; 100% asignado</span>
+            {% endif %}
+            <button onclick="document.getElementById('modal-regla').style.display='flex'" class="btn btn-primary" style="font-size: 0.8rem; padding: 8px 14px;">&#10133; Nueva regla</button>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchReparto('base', this)">&#128274; Base</button>
+        <button class="tab" onclick="switchReparto('pond', this)">&#128200; Ponderado</button>
+    </div>
+
+    <div id="tab-reparto-base" class="reparto-grid">
         {% for item in d.reparto_base %}
         <div class="reparto-card" style="border-left-color: {{ item.regla.color }};">
-            <div class="reparto-card-actions">
+            <div class="r-nombre">{{ item.regla.nombre }}</div>
+            <div class="r-sub">
+                {% if item.regla.tipo_regla == 'porcentaje' %}{{ item.regla.porcentaje }}% del libre{% else %}Fijo{% endif %}
+                {% if item.regla.fondo %}&middot; &#128181; {{ item.regla.fondo.nombre }}{% endif %}
+            </div>
+            <div class="r-importe" style="color: {{ item.regla.color }};">&euro;{{ item.importe|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
+            <div class="r-actions">
                 <form method="post" action="{% url 'finanzas:eliminar_regla' item.regla.id %}" style="margin:0;">
                     {% csrf_token %}
-                    <button type="submit" class="reparto-action-btn" onclick="return confirm('Eliminar regla {{ item.regla.nombre }}?')">&#128465;</button>
+                    <button type="submit" class="r-btn" onclick="return confirm('Eliminar {{ item.regla.nombre }}?')">&#128465;</button>
                 </form>
             </div>
-            <div class="reparto-card-nombre">{{ item.regla.nombre }}</div>
-            <div class="reparto-card-pct" style="color: {{ item.regla.color }};">{{ item.regla.porcentaje }}%</div>
-            <div class="reparto-card-importe" style="color: {{ item.regla.color }};">&euro;{{ item.importe|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
         </div>
         {% endfor %}
-
         {% if d.porcentaje_sin_asignar > 0 %}
         <div class="sin-asignar">
-            <div style="font-size: 0.9rem; color: var(--muted);">Sin asignar</div>
+            <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 4px;">Sin asignar</div>
             <div style="font-size: 0.8rem; color: #ffaa00;">{{ d.porcentaje_sin_asignar }}%</div>
-            <div style="font-size: 1.2rem; font-weight: 700; color: #ffaa00;">&euro;{{ d.importe_sin_asignar_base|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: #ffaa00;">&euro;{{ d.sin_asignar_base|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
         </div>
         {% endif %}
-
-        {% if not d.reparto_base and d.porcentaje_sin_asignar == 0 %}
-        <div style="color: var(--muted); font-style: italic; padding: 20px;">No hay reglas de reparto. Crea una para distribuir tu ahorro.</div>
-        {% endif %}
+        {% if not d.reparto_base %}<div style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Crea reglas para distribuir el dinero libre.</div>{% endif %}
     </div>
 
-    <!-- REPARTO PONDERADO -->
-    <div id="tab-ponderado" class="reparto-grid" style="display: none;">
+    <div id="tab-reparto-pond" class="reparto-grid" style="display: none;">
         {% for item in d.reparto_ponderado %}
         <div class="reparto-card" style="border-left-color: {{ item.regla.color }};">
-            <div class="reparto-card-nombre">{{ item.regla.nombre }}</div>
-            <div class="reparto-card-pct" style="color: {{ item.regla.color }};">{{ item.regla.porcentaje }}%</div>
-            <div class="reparto-card-importe" style="color: {{ item.regla.color }};">&euro;{{ item.importe|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
+            <div class="r-nombre">{{ item.regla.nombre }}</div>
+            <div class="r-sub">
+                {% if item.regla.tipo_regla == 'porcentaje' %}{{ item.regla.porcentaje }}% del libre{% else %}Fijo{% endif %}
+                {% if item.regla.fondo %}&middot; &#128181; {{ item.regla.fondo.nombre }}{% endif %}
+            </div>
+            <div class="r-importe" style="color: {{ item.regla.color }};">&euro;{{ item.importe|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
         </div>
         {% endfor %}
-
         {% if d.porcentaje_sin_asignar > 0 %}
         <div class="sin-asignar">
-            <div style="font-size: 0.9rem; color: var(--muted);">Sin asignar</div>
+            <div style="font-size: 0.9rem; color: var(--muted); margin-bottom: 4px;">Sin asignar</div>
             <div style="font-size: 0.8rem; color: #ffaa00;">{{ d.porcentaje_sin_asignar }}%</div>
-            <div style="font-size: 1.2rem; font-weight: 700; color: #ffaa00;">&euro;{{ d.importe_sin_asignar_ponderado|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: #ffaa00;">&euro;{{ d.sin_asignar_ponderado|floatformat:2 }}<span style="font-size: 0.7rem; color: var(--muted);">/mes</span></div>
         </div>
         {% endif %}
     </div>
 
-    <!-- RESUMEN ANUAL -->
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; margin-top: 12px;">
-        <h3 style="color: var(--text-color); margin-top: 0; font-size: 0.95rem;">&#128197; Proyeccion anual</h3>
+    <!-- PROYECCION ANUAL -->
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 22px; margin-top: 24px;">
+        <h3 style="color: var(--text-color); margin-top: 0; font-size: 0.9rem;">&#128197; Proyeccion anual</h3>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px;">
             <div>
                 <div style="font-size: 0.7rem; color: var(--muted);">Ingresos netos</div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: #00ff88;">&euro;{{ d.ingreso_anual_neto|floatformat:0 }}</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: #00ff88;">&euro;{{ d.ingreso_anual_hogar|floatformat:0 }}</div>
             </div>
             <div>
-                <div style="font-size: 0.7rem; color: var(--muted);">Gastos totales</div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: #ff4d4d;">&euro;{{ d.total_gastos|floatformat:0 }} &times; 12 = &euro;{% widthratio d.total_gastos 1 12 %}</div>
+                <div style="font-size: 0.7rem; color: var(--muted);">Gastos anuales</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: #ff4d4d;">&euro;{% widthratio d.total_gastos_all 1 12 %}</div>
             </div>
             <div>
                 <div style="font-size: 0.7rem; color: var(--muted);">Ahorro base anual</div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: {% if d.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">&euro;{% widthratio d.libre_base 1 12 %}</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: {% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">&euro;{% widthratio d.libre_base_hogar 1 12 %}</div>
             </div>
             <div>
                 <div style="font-size: 0.7rem; color: var(--muted);">Ahorro ponderado anual</div>
-                <div style="font-size: 1.1rem; font-weight: 700; color: #00d1ff;">&euro;{% widthratio d.libre_ponderado 1 12 %}</div>
+                <div style="font-size: 1.1rem; font-weight: 700; color: #00d1ff;">&euro;{% widthratio d.libre_ponderado_hogar 1 12 %}</div>
             </div>
         </div>
     </div>
 
 </div>
 
-<!-- MODAL CREAR REGLA -->
+<!-- MODAL NUEVO FONDO -->
+<div id="modal-fondo" class="modal-overlay">
+    <div class="modal-box">
+        <h2>&#128181; Nuevo fondo</h2>
+        <form method="post" action="{% url 'finanzas:crear_fondo' %}">
+            {% csrf_token %}
+            <div class="fg">
+                <label>Nombre del fondo</label>
+                <input type="text" name="nombre" placeholder="Ej: Fondo comun, Ahorro piso, Inversion..." required>
+            </div>
+            <div class="fg">
+                <label>Modo de aportacion</label>
+                <select name="modo_aportacion">
+                    <option value="proporcional">Proporcional al ingreso</option>
+                    <option value="igual">A partes iguales</option>
+                    <option value="fijo">Importe fijo por persona</option>
+                </select>
+            </div>
+            <div class="color-row">
+                <div class="fg">
+                    <label>Color</label>
+                    <input type="color" name="color" value="#a259ff">
+                </div>
+            </div>
+            <div class="modal-btns">
+                <button type="submit" class="btn btn-primary">Crear</button>
+                <button type="button" onclick="document.getElementById('modal-fondo').style.display='none'" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL NUEVA REGLA -->
 <div id="modal-regla" class="modal-overlay">
     <div class="modal-box">
         <h2>&#10133; Nueva regla de reparto</h2>
         <form method="post" action="{% url 'finanzas:crear_regla' %}">
             {% csrf_token %}
-            <div class="form-group">
+            <div class="fg">
                 <label>Nombre</label>
-                <input type="text" name="nombre" placeholder="Ej: Ahorro, Inversion, Fondo emergencia..." required>
+                <input type="text" name="nombre" placeholder="Ej: Ahorro piso, Inversion, Discrecional..." required>
+            </div>
+            <div class="fg">
+                <label>Tipo de regla</label>
+                <div class="tipo-toggle">
+                    <button type="button" class="tipo-toggle-btn active" id="btn-pct" onclick="setTipo('porcentaje')">% Porcentaje</button>
+                    <button type="button" class="tipo-toggle-btn" id="btn-fijo" onclick="setTipo('fijo')">&#128181; Importe fijo</button>
+                </div>
+                <input type="hidden" name="tipo_regla" id="tipo_regla" value="porcentaje">
+            </div>
+            <div class="fg" id="campo-pct">
+                <label>Porcentaje del dinero libre</label>
+                <input type="number" name="porcentaje" step="0.1" min="0" max="100" placeholder="Ej: 40">
+            </div>
+            <div class="fg" id="campo-fijo" style="display: none;">
+                <label>Importe fijo mensual (&euro;)</label>
+                <input type="number" name="importe_fijo" step="0.01" min="0" placeholder="Ej: 500">
+            </div>
+            <div class="fg">
+                <label>Fondo destino (opcional)</label>
+                <select name="fondo_id">
+                    <option value="">-- Sin fondo asignado --</option>
+                    {% for fondo in fondos %}
+                    <option value="{{ fondo.id }}">{{ fondo.nombre }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="color-row">
-                <div class="form-group">
-                    <label>Porcentaje del dinero libre</label>
-                    <input type="number" name="porcentaje" step="0.1" min="0" max="100" placeholder="Ej: 40" required>
+                <div class="fg" style="flex:1;">
+                    <label>&nbsp;</label>
                 </div>
-                <div class="form-group">
+                <div class="fg">
                     <label>Color</label>
                     <input type="color" name="color" value="#a259ff">
                 </div>
@@ -315,11 +466,26 @@
 </div>
 
 <script>
-function switchTab(tab, btn) {
-    document.getElementById('tab-base').style.display = tab === 'base' ? 'grid' : 'none';
-    document.getElementById('tab-ponderado').style.display = tab === 'ponderado' ? 'grid' : 'none';
-    document.querySelectorAll('.escenario-tab').forEach(function(t) { t.classList.remove('active'); });
+function switchMiembro(tab, btn) {
+    document.getElementById('tab-miembro-base').style.display = tab === 'base' ? 'block' : 'none';
+    document.getElementById('tab-miembro-pond').style.display = tab === 'pond' ? 'block' : 'none';
+    btn.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     btn.classList.add('active');
+}
+
+function switchReparto(tab, btn) {
+    document.getElementById('tab-reparto-base').style.display = tab === 'base' ? 'grid' : 'none';
+    document.getElementById('tab-reparto-pond').style.display = tab === 'pond' ? 'grid' : 'none';
+    btn.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+}
+
+function setTipo(tipo) {
+    document.getElementById('tipo_regla').value = tipo;
+    document.getElementById('campo-pct').style.display = tipo === 'porcentaje' ? 'block' : 'none';
+    document.getElementById('campo-fijo').style.display = tipo === 'fijo' ? 'block' : 'none';
+    document.getElementById('btn-pct').classList.toggle('active', tipo === 'porcentaje');
+    document.getElementById('btn-fijo').classList.toggle('active', tipo === 'fijo');
 }
 
 document.addEventListener('DOMContentLoaded', function() {
