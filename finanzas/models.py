@@ -600,6 +600,11 @@ class FondoFamiliar(models.Model):
         help_text="Ej: Fondo comun, Ahorro piso, Inversion, Emergencia...")
     modo_aportacion = models.CharField(max_length=20, choices=MODO_APORTACION_CHOICES, default='proporcional')
     color = models.CharField(max_length=7, default='#a259ff')
+    cuenta_asociada = models.CharField(
+        max_length=150, blank=True, default='',
+        help_text="Nombre o descripcion de la cuenta bancaria asociada a este fondo. "
+                  "Ej: Revolut conjunta, BBVA ahorro..."
+    )
     orden = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)
 
@@ -628,6 +633,13 @@ class ReglaReparto(models.Model):
         help_text="Porcentaje del dinero libre (solo si tipo=porcentaje)")
     importe_fijo = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
         help_text="Importe fijo mensual (solo si tipo=fijo)")
+        
+    usuario = models.ForeignKey(
+        'auth.User', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reglas_reparto',
+        help_text="Si se especifica, esta regla aplica solo a este miembro. "
+                  "Si vacio, aplica al total del hogar."
+    ) 
     color = models.CharField(max_length=7, default='#a259ff')
     orden = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)

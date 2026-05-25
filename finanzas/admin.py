@@ -19,7 +19,6 @@ class InversionAdmin(admin.ModelAdmin):
 class MovimientoAdmin(admin.ModelAdmin):
     list_display = ('inversion', 'fecha', 'tipo', 'cantidad', 'precio_unitario')
     list_filter = ('tipo',)
-    search_fields = ('inversion__nombre',)
 
 @admin.register(ValorActualInversion)
 class ValorActualAdmin(admin.ModelAdmin):
@@ -28,13 +27,10 @@ class ValorActualAdmin(admin.ModelAdmin):
 @admin.register(ResumenInversionesMensual)
 class ResumenAdmin(admin.ModelAdmin):
     list_display = ('usuario', 'registro', 'total_valor', 'total_rentabilidad')
-    list_filter = ('registro',)
 
 @admin.register(HistorialValorInversion)
-class HistorialValorInversionAdmin(admin.ModelAdmin):
+class HistorialAdmin(admin.ModelAdmin):
     list_display = ('inversion', 'fecha', 'valor_unitario', 'fuente')
-    list_filter = ('fecha', 'fuente')
-    search_fields = ('inversion__nombre',)
 
 @admin.register(TablaIRPF)
 class TablaIRPFAdmin(admin.ModelAdmin):
@@ -44,18 +40,15 @@ class TablaIRPFAdmin(admin.ModelAdmin):
 @admin.register(CotizacionSS)
 class CotizacionSSAdmin(admin.ModelAdmin):
     list_display = ('pais', 'concepto', 'porcentaje_trabajador')
-    list_filter = ('pais',)
 
 @admin.register(DestinoIngreso)
 class DestinoIngresoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'hogar', 'es_predefinido', 'activo')
-    list_filter = ('hogar',)
 
 @admin.register(FuenteIngreso)
 class FuenteIngresoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'usuario', 'hogar', 'importe_declarado', 'es_bruto', 'modo_entrada', 'periodicidad', 'activo')
     list_filter = ('hogar', 'periodicidad', 'es_bruto')
-    search_fields = ('nombre', 'usuario__username')
 
 @admin.register(CategoriaGasto)
 class CategoriaGastoAdmin(admin.ModelAdmin):
@@ -69,10 +62,10 @@ class PartidaGastoAdmin(admin.ModelAdmin):
 
 @admin.register(FondoFamiliar)
 class FondoFamiliarAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'hogar', 'modo_aportacion', 'color', 'activo')
+    list_display = ('nombre', 'hogar', 'modo_aportacion', 'cuenta_asociada', 'color', 'activo')
     list_filter = ('hogar', 'modo_aportacion')
 
 @admin.register(ReglaReparto)
 class ReglaRepartoAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'hogar', 'tipo_regla', 'porcentaje', 'importe_fijo', 'fondo', 'activo')
+    list_display = ('nombre', 'hogar', 'usuario', 'tipo_regla', 'porcentaje', 'importe_fijo', 'fondo', 'activo')
     list_filter = ('hogar', 'tipo_regla')

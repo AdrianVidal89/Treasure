@@ -4,7 +4,7 @@ from django.contrib import messages
 from decimal import Decimal
 
 from .models import ReglaReparto, FondoFamiliar
-from .distribucion import calcular_distribucion
+from .distribucion import calcular_flujos
 
 
 @login_required
@@ -15,14 +15,18 @@ def vista_distribucion(request):
         return redirect('dashboard')
 
     hogar = profile.hogar
-    datos = calcular_distribucion(hogar)
+    datos = calcular_flujos(hogar)
     fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
+    reglas = ReglaReparto.objects.filter(hogar=hogar, activo=True).select_related('fondo', 'usuario')
+    miembros = hogar.miembros.select_related('user').all()
 
     return render(request, 'finanzas/distribucion/vista.html', {
         'hogar': hogar,
         'd': datos,
-        'profile': profile,
         'fondos': fondos,
+        'reglas': reglas,
+        'miembros': miembros,
+        'profile': profile,
     })
 
 
@@ -36,6 +40,7 @@ def crear_fondo(request):
         nombre = request.POST.get('nombre', '').strip()
         modo = request.POST.get('modo_aportacion', 'proporcional')
         color = request.POST.get('color', '#a259ff')
+        cuenta = request.POST.get('cuenta_asociada', '').strip()
 
         if not nombre:
             messages.error(request, "El nombre es obligatorio.")
@@ -46,6 +51,7 @@ def crear_fondo(request):
                 defaults={
                     'modo_aportacion': modo,
                     'color': color,
+                    'cuenta_asociada': cuenta,
                     'orden': max_orden,
                 }
             )
@@ -76,9 +82,10 @@ def crear_regla(request):
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
         tipo_regla = request.POST.get('tipo_regla', 'porcentaje')
-        porcentaje = request.POST.get('porcentaje', '0')
-        importe_fijo = request.POST.get('importe_fijo', '0')
+        porcentaje = request.POST.get('porcentaje', '0') or '0'
+        importe_fijo = request.POST.get('importe_fijo', '0') or '0'
         fondo_id = request.POST.get('fondo_id') or None
+        usuario_id = request.POST.get('usuario_id') or None
         color = request.POST.get('color', '#a259ff')
 
         if not nombre:
@@ -92,6 +99,7 @@ def crear_regla(request):
                 porcentaje=Decimal(porcentaje) if tipo_regla == 'porcentaje' else Decimal('0'),
                 importe_fijo=Decimal(importe_fijo) if tipo_regla == 'fijo' else Decimal('0'),
                 fondo_id=int(fondo_id) if fondo_id else None,
+                usuario_id=int(usuario_id) if usuario_id else None,
                 color=color,
                 orden=max_orden,
             )
@@ -111,10 +119,14 @@ def editar_regla(request, regla_id):
     if request.method == 'POST':
         regla.nombre = request.POST.get('nombre', '').strip()
         regla.tipo_regla = request.POST.get('tipo_regla', 'porcentaje')
-        regla.porcentaje = Decimal(request.POST.get('porcentaje', '0')) if regla.tipo_regla == 'porcentaje' else Decimal('0')
-        regla.importe_fijo = Decimal(request.POST.get('importe_fijo', '0')) if regla.tipo_regla == 'fijo' else Decimal('0')
+        porcentaje = request.POST.get('porcentaje', '0') or '0'
+        importe_fijo = request.POST.get('importe_fijo', '0') or '0'
+        regla.porcentaje = Decimal(porcentaje) if regla.tipo_regla == 'porcentaje' else Decimal('0')
+        regla.importe_fijo = Decimal(importe_fijo) if regla.tipo_regla == 'fijo' else Decimal('0')
         fondo_id = request.POST.get('fondo_id')
         regla.fondo_id = int(fondo_id) if fondo_id else None
+        usuario_id = request.POST.get('usuario_id')
+        regla.usuario_id = int(usuario_id) if usuario_id else None
         regla.color = request.POST.get('color', '#a259ff')
         regla.save()
         messages.success(request, f"Regla '{regla.nombre}' actualizada.")
