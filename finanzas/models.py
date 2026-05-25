@@ -651,3 +651,104 @@ class ReglaReparto(models.Model):
         if self.tipo_regla == 'porcentaje':
             return f"{self.nombre} ({self.porcentaje}%)"
         return f"{self.nombre} ({self.importe_fijo} EUR/mes)"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AÑADIR AL FINAL DE finanzas/models.py (dentro del módulo de Distribución)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class AjusteIngresoMensual(models.Model):
+    """
+    Override puntual del importe de una FuenteIngreso para un mes concreto.
+
+    INMUTABILIDAD: nunca modifica FuenteIngreso.importe_declarado.
+    Este registro es el apunte de corrección mensual. Si se borra,
+    el motor de distribución vuelve al valor base de la fuente.
+
+    Uso típico: Irene tiene guardias variables → cada mes se declara
+    el importe real cobrado aquí antes de calcular la distribución.
+    """
+    fuente = models.ForeignKey(
+        'FuenteIngreso',
+        on_delete=models.CASCADE,
+        related_name='ajustes_mensuales',
+    )
+    año = models.IntegerField()
+    mes = models.IntegerField(help_text='Número de mes 1-12')
+    importe_real = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text='Importe neto real cobrado este mes (ya neto, sin recalcular IRPF)',
+    )
+    nota = models.CharField(
+        max_length=255, blank=True, default='',
+        help_text="Ej: 'Solo 3 guardias este mes'",
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-año', '-mes']
+        unique_together = ('fuente', 'año', 'mes')
+
+    def __str__(self):
+        return f"{self.fuente.nombre} {self.mes}/{self.año}: {self.importe_real}€"
+
+
+class SubsobreFondo(models.Model):
+    """
+    Partición interna de un FondoFamiliar en 'sobres' con presupuesto asignado.
+
+    Permite responder: del dinero que entra al Fondo Común,
+    ¿cuánto va a alimentación, cuánto a ocio, cuánto a suscripciones?
+
+    El importe puede calcularse automáticamente desde PartidaGasto vinculadas
+    (ej: todas las partidas tipo 'variable' del hogar) o declararse manualmente
+    (ej: 200€/mes discrecionales).
+    """
+    TIPO_CHOICES = [
+        ('gasto_fijo',     'Cubre gasto fijo del hogar'),
+        ('gasto_variable', 'Cubre gasto variable del hogar'),
+        ('discrecional',   'Gasto discrecional'),
+        ('libre',          'Sin asignación / libre'),
+    ]
+
+    fondo = models.ForeignKey(
+        'FondoFamiliar',
+        on_delete=models.CASCADE,
+        related_name='subsobres',
+    )
+    nombre = models.CharField(
+        max_length=100,
+        help_text='Ej: Ocio, Restaurantes, Alimentación, Ropa, Suscripciones...',
+    )
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='discrecional')
+
+    # Fuente del importe: vinculado a partidas O manual
+    partidas_vinculadas = models.ManyToManyField(
+        'PartidaGasto',
+        blank=True,
+        help_text='Si vinculas partidas, el importe se calcula sumando su importe_mensual.',
+    )
+    importe_manual = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Importe mensual fijo si no hay partidas vinculadas.',
+    )
+
+    orden = models.IntegerField(default=0)
+    activo = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['fondo', 'orden', 'nombre']
+
+    def __str__(self):
+        return f"{self.fondo.nombre} → {self.nombre}"
+
+    @property
+    def importe_calculado(self) -> Decimal:
+        """
+        Suma importe_mensual de todas las partidas vinculadas activas.
+        Si no hay partidas, usa importe_manual. Si tampoco, devuelve 0.
+        """
+        partidas = self.partidas_vinculadas.filter(activo=True)
+        if partidas.exists():
+            return sum(p.importe_mensual for p in partidas)
+        return self.importe_manual or Decimal('0')

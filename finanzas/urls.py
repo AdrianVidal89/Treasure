@@ -8,7 +8,7 @@ from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 app_name = 'finanzas'
 
 urlpatterns = [
-    # Resumen y cuentas
+    # ── Resumen y cuentas ──────────────────────────────────────────────────
     path('resumen/<int:anio>/<int:mes>/', views.resumen_mensual, name='resumen_mensual'),
     path('gestionar/', views.gestionar_cuentas, name='gestionar_cuentas'),
     path('cuenta/nueva/', nueva_cuenta_bancaria, name='nueva_cuenta'),
@@ -17,17 +17,17 @@ urlpatterns = [
     path('cuentas/<int:cuenta_id>/eliminar/', views.eliminar_cuenta, name='eliminar_cuenta'),
     path('ajax/obtener-saldo/', views.obtener_saldo_ajax, name='obtener_saldo_ajax'),
 
-    # Tarjetas
+    # ── Tarjetas ───────────────────────────────────────────────────────────
     path('tarjetas/', views.gestionar_tarjetas, name='gestionar_tarjetas'),
     path('tarjeta/nueva/', views.nueva_tarjeta, name='nueva_tarjeta'),
     path('tarjeta/<int:tarjeta_id>/', views.detalle_tarjeta, name='detalle_tarjeta'),
     path('tarjeta/<int:tarjeta_id>/eliminar/', views.eliminar_tarjeta, name='eliminar_tarjeta'),
     path('ajax/obtener-saldo-tarjeta/', views.obtener_saldo_tarjeta_ajax, name='obtener_saldo_tarjeta_ajax'),
 
-    # API patrimonio
+    # ── API patrimonio ─────────────────────────────────────────────────────
     path('api/patrimonio-total/', patrimonio_total_actual, name='patrimonio_total_actual'),
 
-    # Inversiones
+    # ── Inversiones ────────────────────────────────────────────────────────
     path('inversiones/', views.InversionListView.as_view(), name='listar'),
     path('inversiones/nueva/', views.InversionCreateView.as_view(), name='crear'),
     path('inversiones/<int:pk>/', views.InversionDetailView.as_view(), name='detalle'),
@@ -35,7 +35,7 @@ urlpatterns = [
     path('inversiones/<int:pk>/movimiento/', views.MovimientoCreateView.as_view(), name='nuevo_movimiento'),
     path('inversiones/resumen/<int:pk>/', views.ResumenInversionesMensualView.as_view(), name='resumen'),
 
-    # Ingresos
+    # ── Ingresos ───────────────────────────────────────────────────────────
     path('ingresos/', views_ingresos.listar_ingresos, name='listar_ingresos'),
     path('ingresos/crear/', views_ingresos.crear_ingreso, name='crear_ingreso'),
     path('ingresos/<int:ingreso_id>/editar/', views_ingresos.editar_ingreso, name='editar_ingreso'),
@@ -43,17 +43,28 @@ urlpatterns = [
     path('ingresos/destino/crear/', views_ingresos.crear_destino, name='crear_destino'),
     path('ingresos/ajax/simular-neto/', views_ingresos.simular_neto, name='simular_neto'),
 
-    # Gastos
+    # ── Gastos ─────────────────────────────────────────────────────────────
     path('gastos/', views_gastos.listar_gastos, name='listar_gastos'),
     path('gastos/crear/', views_gastos.crear_partida, name='crear_partida'),
     path('gastos/<int:partida_id>/editar/', views_gastos.editar_partida, name='editar_partida'),
     path('gastos/<int:partida_id>/eliminar/', views_gastos.eliminar_partida, name='eliminar_partida'),
     path('gastos/categoria/crear/', views_gastos.crear_categoria, name='crear_categoria'),
 
-    # Distribucion y Ahorro
+    # ── Distribución y Ahorro ─────────────────────────────────────────────
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
+
+    # Ajuste mensual de ingresos variables (Irene, guardias, etc.)
+    path('distribucion/ajuste-variable/', views_distribucion.ajuste_ingreso_mensual, name='ajuste_ingreso_mensual'),
+
+    # Fondos
     path('distribucion/fondo/crear/', views_distribucion.crear_fondo, name='crear_fondo'),
     path('distribucion/fondo/<int:fondo_id>/eliminar/', views_distribucion.eliminar_fondo, name='eliminar_fondo'),
+
+    # Subsobres (sub-distribución interna de un fondo)
+    path('distribucion/fondo/<int:fondo_id>/subsobre/crear/', views_distribucion.crear_subsobre, name='crear_subsobre'),
+    path('distribucion/subsobre/<int:subsobre_id>/eliminar/', views_distribucion.eliminar_subsobre, name='eliminar_subsobre'),
+
+    # Reglas de reparto
     path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
     path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
