@@ -787,7 +787,12 @@ class SubsobreFondo(models.Model):
         if partidas.exists():
             return sum(p.importe_mensual for p in partidas)
         return self.importe_manual or Decimal('0')
-        
+    
+    @property
+    def es_transferencia(self):
+        """True si este sobre mueve dinero a otro fondo."""
+        return self.fondo_destino_id is not None
+
         
  # ─────────────────────────────────────────────────────────────────────────────
 # AÑADIR AL FINAL DE finanzas/models.py
