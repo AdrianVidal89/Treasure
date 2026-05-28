@@ -449,9 +449,11 @@ def calcular_flujos(hogar, año=None, mes=None):
 
     # Presupuesto anual
     presupuesto_anual = {
-        'ingresos_netos': total_anual_hogar,
+        'ingresos_netos_anual': total_base_hogar * 12,
+        'ingresos_ponderado_anual': total_pond_hogar * 12,
         'gastos_hogar_anuales': total_gastos_hogar * 12,
         'gastos_individuales_anuales': total_gastos_individuales * 12,
+        'total_gastos_anuales': (total_gastos_hogar + total_gastos_individuales) * 12,
         'ahorro_inversion_anual': total_ahorro_inversion * 12,
         'libre_anual': (total_base_hogar - total_gastos_hogar - total_gastos_individuales - total_ahorro_inversion) * 12,
     }
@@ -543,7 +545,7 @@ def calcular_flujos(hogar, año=None, mes=None):
                 })
             else:
                 # Sobre interno normal
-                dst_ss = get_node(ss.nombre, 'subsobre', fondo.color)
+                dst_ss = get_node(ss.nombre, 'fondo', fondo.color)
                 sankey_links.append({'source': fondo_node, 'target': dst_ss, 'value': imp})
 
         # Remanente del fondo
