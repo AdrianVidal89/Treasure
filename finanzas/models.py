@@ -592,12 +592,24 @@ MODO_APORTACION_CHOICES = [
     ('fijo', 'Importe fijo por persona'),
 ]
 
+TIPO_FONDO_CHOICES = [
+    ('comun', 'Fondo común del hogar'),
+    ('ahorro', 'Ahorro'),
+    ('inversion', 'Inversión'),
+    ('emergencia', 'Fondo de emergencia'),
+    ('objetivo', 'Objetivo concreto'),
+    ('otro', 'Otro'),
+]
 
 class FondoFamiliar(models.Model):
     """Fondos o sobres donde se destina el dinero libre."""
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='fondos')
     nombre = models.CharField(max_length=100,
         help_text="Ej: Fondo comun, Ahorro piso, Inversion, Emergencia...")
+    tipo_fondo = models.CharField(
+        max_length=20, choices=TIPO_FONDO_CHOICES, default='comun',
+        help_text="Categoría del fondo para reporting (ahorro, inversión, etc.)",
+    )
     modo_aportacion = models.CharField(max_length=20, choices=MODO_APORTACION_CHOICES, default='proporcional')
     color = models.CharField(max_length=7, default='#a259ff')
     cuenta_asociada = models.CharField(
@@ -613,8 +625,7 @@ class FondoFamiliar(models.Model):
         unique_together = ('hogar', 'nombre')
 
     def __str__(self):
-        return f"{self.nombre} ({self.get_modo_aportacion_display()})"
-
+        return f"{self.nombre} ({self.get_tipo_fondo_display()})"
 
 class ReglaReparto(models.Model):
     """Asignacion de dinero a un fondo: puede ser % o importe fijo."""
