@@ -576,3 +576,74 @@ def calcular_flujos(hogar, año=None, mes=None):
         'transferencias': transferencias,
         'sankey_nodes': sankey_nodes, 'sankey_links': sankey_links,
     }
+
+
+def info_extras_usuario(hogar, user, año):
+    """
+    Devuelve info sobre los ingresos anuales/extras de un usuario para un año.
+    Usado por el modal de regla anual para mostrar cuánto hay disponible.
+
+    Returns dict:
+        detalle: list of {label, importe, meses}
+        total_anual: Decimal total de extras en el año
+        total_asignado: Decimal ya asignado via reglas anuales
+        disponible: Decimal sin asignar
+    """
+    fuentes = FuenteIngreso.objects.filter(
+        usuario=user, hogar=hogar, activo=True
+    )
+    detalle = []
+    total_anual = Decimal('0')
+
+    for f in fuentes:
+        ratio = _ratio_neto(f)
+
+        # Pagas extras
+        if f.modo_entrada == 'anual' and f.num_pagas > 12:
+            num_extras = f.num_pagas - 12
+            bruto_paga = f.importe_declarado / Decimal(str(f.num_pagas))
+            neto_paga = round(bruto_paga * ratio, 2)
+            total_extras = neto_paga * num_extras
+
+            detalle.append({
+                'label': f"Paga extra — {f.nombre}",
+                'importe_unitario': float(neto_paga),
+                'cantidad': num_extras,
+                'total': float(total_extras),
+                'meses': f.pagas_extras_meses,
+            })
+            total_anual += total_extras
+
+        # Ingresos periódicos no mensuales
+        elif f.modo_entrada == 'periodo' and not f.es_mensual_recurrente:
+            neto = round(f.importe_declarado * ratio, 2)
+            num_cobros = len(f.cobro_meses)
+            total_periodo = neto * num_cobros
+
+            detalle.append({
+                'label': f"Periódico — {f.nombre}",
+                'importe_unitario': float(neto),
+                'cantidad': num_cobros,
+                'total': float(total_periodo),
+                'meses': f.cobro_meses,
+            })
+            total_anual += total_periodo
+
+    # Ya asignado via reglas anuales
+    total_asignado = Decimal('0')
+    reglas_anuales = ReglaReparto.objects.filter(
+        hogar=hogar, usuario=user, activo=True
+    )
+    for r in reglas_anuales:
+        if getattr(r, 'periodicidad_regla', 'mensual') == 'anual':
+            if r.tipo_regla == 'porcentaje':
+                total_asignado += round(total_anual * r.porcentaje / 100, 2)
+            else:
+                total_asignado += r.importe_fijo
+
+    return {
+        'detalle': detalle,
+        'total_anual': total_anual,
+        'total_asignado': total_asignado,
+        'disponible': total_anual - total_asignado,
+    }

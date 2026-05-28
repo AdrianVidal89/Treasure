@@ -1,11 +1,5 @@
 """
-finanzas/views_distribucion.py v2
-
-Cambios:
-  - ajuste_ingreso_mensual: muestra neto estimado, no bruto (Bug #4)
-  - crear_ingreso_extraordinario: nuevo ingreso puntual con fondo destino (Bug #5)
-  - crear_fondo: acepta tipo_fondo (Bug #3)
-  - vista_distribucion: pasa contexto año/mes
+finanzas/views_distribucion.py v4
 """
 
 import datetime
@@ -13,10 +7,11 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from .distribucion import calcular_flujos, neto_estimado_de_base
+from .distribucion import calcular_flujos, neto_estimado_de_base, info_extras_usuario
 from .models import (
     AjusteIngresoMensual,
     FondoFamiliar,
@@ -62,7 +57,6 @@ def vista_distribucion(request):
         return redirect('dashboard')
 
     año, mes = _parse_año_mes(request)
-
     datos = calcular_flujos(hogar, año=año, mes=mes)
     fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
     reglas = ReglaReparto.objects.filter(hogar=hogar, activo=True).select_related('fondo', 'usuario')
@@ -94,7 +88,39 @@ def vista_distribucion(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AJUSTE MENSUAL DE INGRESO VARIABLE (Bug #4: mostrar neto, no bruto)
+# AJAX: Info extras disponibles por usuario (para modal regla anual)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def ajax_extras_usuario(request):
+    """
+    GET ?usuario_id=X&año=2026
+    Devuelve JSON con las pagas extras y disponible de ese usuario.
+    """
+    profile, hogar = _get_hogar_or_redirect(request)
+    if not hogar:
+        return JsonResponse({'error': 'Sin hogar'}, status=400)
+
+    usuario_id = request.GET.get('usuario_id')
+    año = int(request.GET.get('año', datetime.date.today().year))
+
+    if not usuario_id:
+        return JsonResponse({'extras': [], 'total': 0})
+
+    from django.contrib.auth.models import User
+    user = get_object_or_404(User, id=usuario_id)
+    data = info_extras_usuario(hogar, user, año)
+
+    return JsonResponse({
+        'extras': data['detalle'],
+        'total_anual': float(data['total_anual']),
+        'total_asignado': float(data['total_asignado']),
+        'disponible': float(data['disponible']),
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AJUSTE MENSUAL DE INGRESO VARIABLE
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -140,16 +166,10 @@ def ajuste_ingreso_mensual(request):
             for e in errores:
                 messages.error(request, e)
         else:
-            messages.success(
-                request,
-                f"Ajustes de {MESES_NOMBRES[mes]} {año} guardados."
-            )
+            messages.success(request, f"Ajustes de {MESES_NOMBRES[mes]} {año} guardados.")
 
-        return redirect(
-            f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
-        )
+        return redirect(f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}")
 
-    # GET
     overrides = {
         aj.fuente_id: aj
         for aj in AjusteIngresoMensual.objects.filter(
@@ -160,7 +180,6 @@ def ajuste_ingreso_mensual(request):
     fuentes_ctx = []
     for f in fuentes_variables:
         override = overrides.get(f.id)
-        # Bug #4: mostrar neto estimado, no bruto
         neto_base = neto_estimado_de_base(f)
         fuentes_ctx.append({
             'fuente': f,
@@ -174,15 +193,14 @@ def ajuste_ingreso_mensual(request):
 
     return render(request, 'finanzas/distribucion/ajuste_variable.html', {
         'fuentes': fuentes_ctx,
-        'año': año,
-        'mes': mes,
+        'año': año, 'mes': mes,
         'mes_nombre': MESES_NOMBRES[mes],
         'hogar': hogar,
     })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# INGRESO EXTRAORDINARIO (Bug #5: ingreso puntual con destino)
+# INGRESO EXTRAORDINARIO
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -204,17 +222,13 @@ def crear_ingreso_extraordinario(request):
 
         if not concepto or not importe_raw:
             messages.error(request, "Concepto e importe son obligatorios.")
-            return redirect(
-                f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
-            )
+            return redirect(f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}")
 
         try:
             importe = Decimal(importe_raw.replace(',', '.'))
         except InvalidOperation:
             messages.error(request, "Importe inválido.")
-            return redirect(
-                f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
-            )
+            return redirect(f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}")
 
         IngresoExtraordinario.objects.create(
             hogar=hogar,
@@ -229,9 +243,7 @@ def crear_ingreso_extraordinario(request):
         )
         messages.success(request, f"Ingreso extraordinario '{concepto}' registrado.")
 
-    return redirect(
-        f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
-    )
+    return redirect(f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}")
 
 
 @login_required
@@ -244,13 +256,11 @@ def eliminar_ingreso_extraordinario(request, extra_id):
     año, mes = extra.año, extra.mes
     extra.delete()
     messages.success(request, "Ingreso extraordinario eliminado.")
-    return redirect(
-        f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
-    )
+    return redirect(f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FONDOS (Bug #3: tipo_fondo para categorizar ahorro/inversión)
+# FONDOS
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -264,7 +274,6 @@ def crear_fondo(request):
         modo = request.POST.get('modo_aportacion', 'proporcional')
         tipo_fondo = request.POST.get('tipo_fondo', 'comun')
         color = request.POST.get('color', '#a259ff')
-        periodicidad_regla = request.POST.get('periodicidad_regla', 'mensual')
         cuenta = request.POST.get('cuenta_asociada', '').strip()
 
         if not nombre:
@@ -341,9 +350,7 @@ def crear_subsobre(request, fondo_id):
         )
 
         if partidas_ids and not fondo_destino_id:
-            partidas = PartidaGasto.objects.filter(
-                id__in=partidas_ids, hogar=hogar
-            )
+            partidas = PartidaGasto.objects.filter(id__in=partidas_ids, hogar=hogar)
             subsobre.partidas_vinculadas.set(partidas)
 
         messages.success(request, f"Sobre '{nombre}' añadido a '{fondo.nombre}'.")
@@ -357,9 +364,7 @@ def eliminar_subsobre(request, subsobre_id):
     if not hogar:
         return redirect('dashboard')
 
-    subsobre = get_object_or_404(
-        SubsobreFondo, id=subsobre_id, fondo__hogar=hogar
-    )
+    subsobre = get_object_or_404(SubsobreFondo, id=subsobre_id, fondo__hogar=hogar)
     nombre = subsobre.nombre
     subsobre.delete()
     messages.success(request, f"Sobre '{nombre}' eliminado.")
@@ -380,6 +385,7 @@ def crear_regla(request):
         nombre = request.POST.get('nombre', '').strip()
         usuario_id = request.POST.get('usuario_id') or None
         tipo_regla = request.POST.get('tipo_regla', 'porcentaje')
+        periodicidad_regla = request.POST.get('periodicidad_regla', 'mensual')
         porcentaje_raw = request.POST.get('porcentaje', '0')
         importe_fijo_raw = request.POST.get('importe_fijo', '0')
         fondo_id = request.POST.get('fondo_id') or None
@@ -421,10 +427,10 @@ def editar_regla(request, regla_id):
         usuario_id = request.POST.get('usuario_id') or None
         regla.usuario_id = int(usuario_id) if usuario_id else None
         regla.tipo_regla = request.POST.get('tipo_regla', regla.tipo_regla)
+        regla.periodicidad_regla = request.POST.get('periodicidad_regla', regla.periodicidad_regla)
         fondo_id = request.POST.get('fondo_id') or None
         regla.fondo_id = int(fondo_id) if fondo_id else None
         regla.color = request.POST.get('color', regla.color)
-        regla.periodicidad_regla = request.POST.get('periodicidad_regla', regla.periodicidad_regla)
 
         try:
             if regla.tipo_regla == 'porcentaje':

@@ -44,7 +44,9 @@
 .r-btn:hover { background: rgba(255,77,77,0.1); }
 
 /* ── Fondo card ───────────────────────────────────────────────────────────── */
-.fondo-card { background: #1a1a1a; border-radius: 16px; padding: 18px 20px; border-left: 4px solid; margin-bottom: 14px; }
+.fondos-grid { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.fondo-card { background: #1a1a1a; border-radius: 16px; padding: 18px 20px; border-top: 4px solid; flex: 1; min-width: 260px; max-width: 400px; position: relative; overflow: hidden; }
+.fondo-fill { position: absolute; bottom: 0; left: 0; width: 100%; opacity: 0.08; transition: height 0.5s ease; border-radius: 0 0 16px 16px; }
 .fondo-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
 .fondo-nombre { font-size: 0.95rem; font-weight: 700; color: var(--text-color); }
 .fondo-meta   { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
@@ -304,9 +306,11 @@
             class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">&#10133; Nuevo fondo</button>
   </div>
 
+  <div class="fondos-grid">
   {% for fa in d.fondos_aportaciones %}
   {% if fa.total_aportacion_base > 0 or fa.fondo %}
-  <div class="fondo-card" style="border-left-color:{{ fa.fondo.color }};">
+  <div class="fondo-card" style="border-top-color:{{ fa.fondo.color }};">
+    <div class="fondo-fill" style="background:{{ fa.fondo.color }};height:{% widthratio fa.total_asignado fa.total_aportacion_base 100 %}%;"></div>
 
     <!-- Cabecera fondo -->
     <div class="fondo-header">
@@ -323,7 +327,9 @@
         </div>
       </div>
       <div class="fondo-acciones">
-        <div class="fondo-total" style="color:{{ fa.fondo.color }};">&euro;{{ fa.total_aportacion_base|floatformat:2 }}/mes</div>
+        <div class="fondo-total" style="color:{{ fa.fondo.color }};">
+          &euro;{% if fa.transferencias_entrantes > 0 %}{{ fa.total_aportacion_base|floatformat:2 }} + {{ fa.transferencias_entrantes|floatformat:2 }}{% else %}{{ fa.total_aportacion_base|floatformat:2 }}{% endif %}/mes
+        </div>
         <button onclick="abrirSubsobre({{ fa.fondo.id }}, '{{ fa.fondo.nombre|escapejs }}')"
                 class="r-btn" style="color:var(--muted);margin-left:8px;" title="Añadir sobre interno">
           &#10133;
@@ -345,6 +351,7 @@
       <div class="subsobre-row">
         <div style="flex:1;min-width:0;">
           <span style="color:var(--text-color);font-weight:500;">{{ ss.subsobre.nombre }}</span>
+          {% if ss.es_transferencia %}<span style="font-size:0.6rem;background:rgba(0,209,255,0.12);color:#00d1ff;padding:2px 6px;border-radius:8px;">&#8618; {{ ss.fondo_destino.nombre }}</span>{% endif %}
           {% if ss.es_transferencia %}<span style="font-size:0.6rem;background:rgba(0,209,255,0.12);color:#00d1ff;padding:2px 6px;border-radius:8px;">&#8618; {{ ss.fondo_destino.nombre }}</span>{% endif %}
           <span class="subsobre-badge
             {% if ss.subsobre.tipo == 'gasto_fijo' %}badge-fijo
@@ -386,6 +393,7 @@
   {% endif %}
   {% endfor %}
 
+  </div>{# /fondos-grid #}
   {% if not d.fondos_aportaciones %}
   <p style="color:var(--muted);font-style:italic;font-size:0.85rem;">Sin fondos definidos.</p>
   {% endif %}
@@ -519,6 +527,18 @@
         </div>
       </div>
       <div class="fg">
+        <label>Periodicidad</label>
+        <div class="tipo-toggle">
+          <button type="button" class="tipo-btn active" id="btn-mens" onclick="setPeriod('mensual')">Mensual</button>
+          <button type="button" class="tipo-btn" id="btn-anual" onclick="setPeriod('anual')">Anual / Extras</button>
+        </div>
+        <input type="hidden" name="periodicidad_regla" id="periodicidad_input" value="mensual">
+        <div id="info-anual" style="display:none;font-size:0.72rem;color:#ffaa00;margin-top:6px;padding:8px 12px;background:rgba(255,170,0,0.08);border-radius:8px;">
+          Las reglas anuales operan sobre pagas extras e ingresos extraordinarios.
+          <div id="extras-info" style="margin-top:8px;"></div>
+        </div>
+      </div>
+      <div class="fg">
         <label>Tipo</label>
         <div class="tipo-toggle">
           <button type="button" class="tipo-btn active" id="btn-pct" onclick="setTipo('porcentaje')">% Porcentaje</button>
@@ -568,6 +588,13 @@
           <button type="button" class="tipo-btn" id="er-btn-fijo" onclick="setTipoEditar('fijo')">€ Fijo</button>
         </div>
         <input type="hidden" name="tipo_regla" id="er-tipo" value="porcentaje">
+      </div>
+      <div class="fg">
+        <label>Periodicidad</label>
+        <select name="periodicidad_regla" id="er-periodicidad">
+          <option value="mensual">Mensual</option>
+          <option value="anual">Anual / Extras</option>
+        </select>
       </div>
       <div class="fg">
         <label>Periodicidad</label>
@@ -692,6 +719,34 @@ function setPeriod(p) {
     document.getElementById('btn-mens').classList.toggle('active', p === 'mensual');
     document.getElementById('btn-anual').classList.toggle('active', p === 'anual');
     document.getElementById('info-anual').style.display = p === 'anual' ? 'block' : 'none';
+}
+
+function setPeriod(p) {
+    document.getElementById('periodicidad_input').value = p;
+    document.getElementById('btn-mens').classList.toggle('active', p === 'mensual');
+    document.getElementById('btn-anual').classList.toggle('active', p === 'anual');
+    document.getElementById('info-anual').style.display = p === 'anual' ? 'block' : 'none';
+    if (p === 'anual') loadExtrasInfo();
+}
+
+function loadExtrasInfo() {
+    var uid = document.querySelector('[name=usuario_id]').value;
+    if (!uid) { document.getElementById('extras-info').innerHTML = '<em>Selecciona quien aporta para ver extras disponibles.</em>'; return; }
+    fetch('/finanzas/distribucion/ajax/extras-usuario/?usuario_id=' + uid + '&a\u00f1o={{ a\u00f1o }}')
+        .then(r => r.json())
+        .then(data => {
+            var html = '';
+            if (data.extras && data.extras.length) {
+                data.extras.forEach(e => {
+                    html += '<div style="padding:4px 0;border-bottom:1px solid #333;">' + e.label + ': <strong>' + e.cantidad + 'x \u20ac' + e.importe_unitario.toFixed(2) + ' = \u20ac' + e.total.toFixed(2) + '</strong></div>';
+                });
+                html += '<div style="margin-top:6px;font-weight:700;">Total anual: \u20ac' + data.total_anual.toFixed(2) + ' | Asignado: \u20ac' + data.total_asignado.toFixed(2) + ' | <span style="color:#00ff88;">Disponible: \u20ac' + data.disponible.toFixed(2) + '</span></div>';
+            } else {
+                html = '<em>Esta persona no tiene pagas extras ni ingresos anuales declarados.</em>';
+            }
+            document.getElementById('extras-info').innerHTML = html;
+        })
+        .catch(() => { document.getElementById('extras-info').innerHTML = '<em>Error cargando datos.</em>'; });
 }
 
 function setTipo(tipo) {

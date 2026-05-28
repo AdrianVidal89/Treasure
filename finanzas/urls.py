@@ -54,7 +54,10 @@ urlpatterns = [
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
     path('distribucion/ajuste-variable/', views_distribucion.ajuste_ingreso_mensual, name='ajuste_ingreso_mensual'),
 
-    # Ingresos extraordinarios (puntuales)
+    # AJAX
+    path('distribucion/ajax/extras-usuario/', views_distribucion.ajax_extras_usuario, name='ajax_extras_usuario'),
+
+    # Ingresos extraordinarios
     path('distribucion/extraordinario/crear/', views_distribucion.crear_ingreso_extraordinario, name='crear_ingreso_extraordinario'),
     path('distribucion/extraordinario/<int:extra_id>/eliminar/', views_distribucion.eliminar_ingreso_extraordinario, name='eliminar_ingreso_extraordinario'),
 
