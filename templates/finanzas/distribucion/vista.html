@@ -124,16 +124,26 @@
       <h1 style="color:var(--primary-color);text-shadow:0 0 12px var(--glow);margin:0;">&#128176; Flujo del Dinero</h1>
       <p style="color:var(--muted);margin:4px 0 0;">{{ hogar.nombre }}</p>
     </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
     {% if hay_variables %}
     <a href="{% url 'finanzas:ajuste_ingreso_mensual' %}?año={{ año }}&mes={{ mes }}"
        class="btn btn-secondary"
        style="display:flex;align-items:center;gap:8px;font-size:0.82rem;padding:10px 16px;text-decoration:none;">
       &#128200;
-      <span>Ajustar ingresos variables<br>
-        <span style="font-size:0.7rem;color:var(--muted);">{{ mes_nombre }} {{ año }}</span>
+      <span>Ajustar variables<br>
+        <span style="font-size:0.7rem;color:var(--muted);">{{ mes_nombre }}</span>
       </span>
     </a>
     {% endif %}
+    <button onclick="document.getElementById('modal-extraordinario').style.display='flex'"
+       class="btn btn-secondary"
+       style="display:flex;align-items:center;gap:8px;font-size:0.82rem;padding:10px 16px;">
+      &#127881;
+      <span>Ingreso puntual<br>
+        <span style="font-size:0.7rem;color:var(--muted);">{{ mes_nombre }}</span>
+      </span>
+    </button>
+    </div>
   </div>
 
   <!-- ── NAVEGACIÓN DE MES ─────────────────────────────────────────────────── -->
@@ -155,7 +165,7 @@
   {% if d.semaforo %}
   <div class="semaforo {{ d.semaforo }}">
     <div class="semaforo-dot"></div>
-    <span>{{ d.semaforo_texto }} &mdash; Tasa de ahorro: {{ d.tasa_ahorro_base }}%</span>
+    <span>{{ d.semaforo_texto }} &mdash; Tasa de ahorro: {{ d.tasa_ahorro }}%</span>
   </div>
   {% endif %}
 
@@ -173,13 +183,18 @@
     </div>
     <div class="kpi-card" style="border:1px solid #ff4d4d;">
       <div class="label" style="color:#ff4d4d;">Gastos individuales</div>
-      <div class="valor" style="color:#ff4d4d;">&euro;{{ d.total_gastos_individuales|default:"0"|floatformat:2 }}</div>
-      <div class="sub">compromisos fijos</div>
+      <div class="valor" style="color:#ff4d4d;">&euro;{{ d.total_gastos_individuales|floatformat:2 }}</div>
+      <div class="sub">compromisos personales</div>
     </div>
     <div class="kpi-card" style="border:1px solid #ffaa00;">
       <div class="label" style="color:#ffaa00;">Gastos del hogar</div>
       <div class="valor" style="color:#ffaa00;">&euro;{{ d.total_gastos_hogar|floatformat:2 }}</div>
       <div class="sub">a cubrir entre todos</div>
+    </div>
+    <div class="kpi-card" style="border:1px solid #a259ff;">
+      <div class="label" style="color:#a259ff;">Ahorro + Inversión</div>
+      <div class="valor" style="color:#a259ff;">&euro;{{ d.total_ahorro_inversion|floatformat:2 }}</div>
+      <div class="sub">{{ d.tasa_ahorro }}% tasa ahorro</div>
     </div>
   </div>
 
@@ -199,6 +214,7 @@
         {% if ext.tipo == 'paga_extra' %}Paga extra{% else %}Ingreso periódico{% endif %}
       </span>
       <span style="font-size:1rem;font-weight:700;color:#00d1ff;">&euro;{{ ext.importe|floatformat:2 }}</span>
+      {% if ext.fondo_destino %}<div style="font-size:0.65rem;color:var(--muted);margin-top:2px;">&#8594; {{ ext.fondo_destino.nombre }}</div>{% endif %}
     </div>
   </div>
   {% endfor %}
@@ -221,6 +237,26 @@
     </div>
     <div>
       <div class="info-hogar-valor">&euro;{{ d.total_gastos_hogar|floatformat:2 }}/mes</div>
+    </div>
+  </div>
+
+  <!-- ── PRESUPUESTO ANUAL ─────────────────────────────────────────────────── -->
+  <div class="section-title">&#128197; Vista anual estimada</div>
+  <div class="kpi-grid" style="margin-bottom:24px;">
+    <div class="kpi-card" style="border:1px solid #00ff88;">
+      <div class="label" style="color:#00ff88;">Ingresos netos</div>
+      <div class="valor" style="color:#00ff88;font-size:1rem;">&euro;{{ d.presupuesto_anual.ingresos_netos|floatformat:0 }}</div>
+      <div class="sub">estimado anual</div>
+    </div>
+    <div class="kpi-card" style="border:1px solid #ff4d4d;">
+      <div class="label" style="color:#ff4d4d;">Gastos totales</div>
+      <div class="valor" style="color:#ff4d4d;font-size:1rem;">&euro;{{ d.presupuesto_anual.gastos_hogar_anuales|floatformat:0 }}</div>
+      <div class="sub">hogar + individuales</div>
+    </div>
+    <div class="kpi-card" style="border:1px solid #a259ff;">
+      <div class="label" style="color:#a259ff;">Ahorro + Inversión</div>
+      <div class="valor" style="color:#a259ff;font-size:1rem;">&euro;{{ d.presupuesto_anual.ahorro_inversion_anual|floatformat:0 }}</div>
+      <div class="sub">anual</div>
     </div>
   </div>
 
@@ -277,7 +313,7 @@
       <div style="flex:1;min-width:0;">
         <div class="fondo-nombre">{{ fa.fondo.nombre }}</div>
         <div class="fondo-meta">
-          {{ fa.fondo.get_modo_aportacion_display }}
+          {% if fa.fondo.tipo_fondo == "ahorro" %}<span style="color:#00ff88;font-weight:600;">&#128179; Ahorro</span> &middot; {% elif fa.fondo.tipo_fondo == "inversion" %}<span style="color:#a259ff;font-weight:600;">&#128200; Inversión</span> &middot; {% elif fa.fondo.tipo_fondo == "emergencia" %}<span style="color:#ffaa00;font-weight:600;">&#9888; Emergencia</span> &middot; {% endif %}{{ fa.fondo.get_modo_aportacion_display }}
           {% if fa.fondo.cuenta_asociada %} &middot; &#127968; {{ fa.fondo.cuenta_asociada }}{% endif %}
           &middot;
           {% for ap in fa.aportantes %}
@@ -426,6 +462,17 @@
       <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Fondo Común, Inversión..." required></div>
       <div class="fg"><label>Cuenta asociada</label><input type="text" name="cuenta_asociada" placeholder="Ej: Revolut conjunta, BBVA ahorro..."></div>
       <div class="fg">
+        <label>Tipo de fondo</label>
+        <select name="tipo_fondo">
+          <option value="comun">Fondo común del hogar</option>
+          <option value="ahorro">Ahorro</option>
+          <option value="inversion">Inversión</option>
+          <option value="emergencia">Fondo de emergencia</option>
+          <option value="objetivo">Objetivo concreto</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+      <div class="fg">
         <label>Modo de aportación</label>
         <select name="modo_aportacion">
           <option value="proporcional">Proporcional al ingreso</option>
@@ -573,6 +620,38 @@
   </div>
 </div>
 
+
+<!-- Modal Ingreso Extraordinario -->
+<div id="modal-extraordinario" class="modal-overlay">
+  <div class="modal-box">
+    <h2>&#127881; Registrar ingreso puntual</h2>
+    <form method="post" action="{% url 'finanzas:crear_ingreso_extraordinario' %}?año={{ año }}&mes={{ mes }}">
+      {% csrf_token %}
+      <input type="hidden" name="año" value="{{ año }}">
+      <input type="hidden" name="mes" value="{{ mes }}">
+      <div class="fg"><label>Concepto</label><input type="text" name="concepto" placeholder="Ej: Bonus, Devolución IRPF, Freelance..." required></div>
+      <div class="fg"><label>Importe neto (€)</label><input type="number" name="importe" step="0.01" min="0" required></div>
+      <div class="fg">
+        <label>Quién lo recibe</label>
+        <select name="usuario_id">
+          {% for m in miembros %}<option value="{{ m.user.id }}">{{ m.user.first_name|default:m.user.username }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="fg">
+        <label>Destino (opcional)</label>
+        <select name="fondo_destino_id">
+          <option value="">Sin asignar — queda como libre</option>
+          {% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}{% if f.tipo_fondo == "ahorro" %} (Ahorro){% elif f.tipo_fondo == "inversion" %} (Inversión){% endif %}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="fg"><label>Nota</label><input type="text" name="nota" placeholder="Opcional..."></div>
+      <div class="modal-btns">
+        <button type="submit" class="btn btn-primary">Registrar</button>
+        <button type="button" onclick="document.getElementById('modal-extraordinario').style.display='none'" class="btn btn-secondary">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <!-- ════════════════════════════════════════════════════════════════════════ -->
 <!-- SCRIPTS                                                                  -->

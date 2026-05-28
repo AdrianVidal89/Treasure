@@ -1,12 +1,11 @@
 """
-finanzas/views_distribucion.py
+finanzas/views_distribucion.py v2
 
-Vistas del módulo de distribución y ahorro.
-
-Nuevas vistas respecto a versión anterior:
-  - ajuste_ingreso_mensual   → formulario de override para ingresos variables
-  - crear_subsobre           → añadir sobre interno a un fondo
-  - eliminar_subsobre        → borrar sobre interno
+Cambios:
+  - ajuste_ingreso_mensual: muestra neto estimado, no bruto (Bug #4)
+  - crear_ingreso_extraordinario: nuevo ingreso puntual con fondo destino (Bug #5)
+  - crear_fondo: acepta tipo_fondo (Bug #3)
+  - vista_distribucion: pasa contexto año/mes
 """
 
 import datetime
@@ -17,12 +16,12 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from .distribucion import calcular_flujos
+from .distribucion import calcular_flujos, neto_estimado_de_base
 from .models import (
     AjusteIngresoMensual,
-    CategoriaGasto,
     FondoFamiliar,
     FuenteIngreso,
+    IngresoExtraordinario,
     PartidaGasto,
     ReglaReparto,
     SubsobreFondo,
@@ -35,12 +34,21 @@ MESES_NOMBRES = [
 
 
 def _get_hogar_or_redirect(request):
-    """Helper: devuelve hogar o None si no está configurado."""
     profile = getattr(request.user, 'userprofile', None)
     if not profile or not profile.hogar:
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return None, None
     return profile, profile.hogar
+
+
+def _parse_año_mes(request):
+    hoy = datetime.date.today()
+    try:
+        año = int(request.GET.get('año', request.POST.get('año', hoy.year)))
+        mes = int(request.GET.get('mes', request.POST.get('mes', hoy.month)))
+    except (ValueError, TypeError):
+        año, mes = hoy.year, hoy.month
+    return año, max(1, min(12, mes))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -53,25 +61,14 @@ def vista_distribucion(request):
     if not hogar:
         return redirect('dashboard')
 
-    hoy = datetime.date.today()
-    try:
-        año = int(request.GET.get('año', hoy.year))
-        mes = int(request.GET.get('mes', hoy.month))
-    except (ValueError, TypeError):
-        año, mes = hoy.year, hoy.month
-
-    # Clamp valores
-    mes = max(1, min(12, mes))
+    año, mes = _parse_año_mes(request)
 
     datos = calcular_flujos(hogar, año=año, mes=mes)
     fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
     reglas = ReglaReparto.objects.filter(hogar=hogar, activo=True).select_related('fondo', 'usuario')
     miembros = hogar.miembros.select_related('user').all()
-
-    # Meses navegables
     meses_nav = [{'num': i, 'nombre': MESES_NOMBRES[i]} for i in range(1, 13)]
 
-    # ¿Hay fuentes variables en el hogar? → mostrar badge de ajuste
     hay_variables = FuenteIngreso.objects.filter(
         hogar=hogar, tipo='variable', activo=True
     ).exists()
@@ -97,30 +94,16 @@ def vista_distribucion(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AJUSTE MENSUAL DE INGRESO VARIABLE
+# AJUSTE MENSUAL DE INGRESO VARIABLE (Bug #4: mostrar neto, no bruto)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
 def ajuste_ingreso_mensual(request):
-    """
-    Permite declarar el ingreso real de este mes para fuentes variables.
-    Solo muestra fuentes con tipo='variable' del hogar.
-
-    GET  → formulario con valores actuales (override o estimado base)
-    POST → guarda/actualiza AjusteIngresoMensual (update_or_create = inmutable)
-    """
     profile, hogar = _get_hogar_or_redirect(request)
     if not hogar:
         return redirect('dashboard')
 
-    hoy = datetime.date.today()
-    try:
-        año = int(request.GET.get('año', hoy.year))
-        mes = int(request.GET.get('mes', hoy.month))
-    except (ValueError, TypeError):
-        año, mes = hoy.year, hoy.month
-
-    mes = max(1, min(12, mes))
+    año, mes = _parse_año_mes(request)
 
     fuentes_variables = FuenteIngreso.objects.filter(
         hogar=hogar, tipo='variable', activo=True
@@ -135,7 +118,6 @@ def ajuste_ingreso_mensual(request):
             nota = request.POST.get(campo_nota, '').strip()
 
             if not valor_raw:
-                # Sin valor → borrar override si existía (vuelve al base)
                 AjusteIngresoMensual.objects.filter(
                     fuente=fuente, año=año, mes=mes
                 ).delete()
@@ -160,15 +142,14 @@ def ajuste_ingreso_mensual(request):
         else:
             messages.success(
                 request,
-                f"Ajustes de {MESES_NOMBRES[mes]} {año} guardados. "
-                f"La distribución ya refleja los importes reales."
+                f"Ajustes de {MESES_NOMBRES[mes]} {año} guardados."
             )
 
         return redirect(
             f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
         )
 
-    # GET — cargar overrides existentes para pre-rellenar
+    # GET
     overrides = {
         aj.fuente_id: aj
         for aj in AjusteIngresoMensual.objects.filter(
@@ -179,12 +160,15 @@ def ajuste_ingreso_mensual(request):
     fuentes_ctx = []
     for f in fuentes_variables:
         override = overrides.get(f.id)
+        # Bug #4: mostrar neto estimado, no bruto
+        neto_base = neto_estimado_de_base(f)
         fuentes_ctx.append({
             'fuente': f,
             'override': override,
             'importe_actual': override.importe_real if override else None,
             'nota_actual': override.nota if override else '',
-            'base_estimada': f.importe_mensual_base,
+            'base_estimada_neto': neto_base,
+            'base_bruta': f.importe_mensual_base,
             'nombre_usuario': f.usuario.first_name or f.usuario.username,
         })
 
@@ -198,7 +182,75 @@ def ajuste_ingreso_mensual(request):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FONDOS
+# INGRESO EXTRAORDINARIO (Bug #5: ingreso puntual con destino)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def crear_ingreso_extraordinario(request):
+    profile, hogar = _get_hogar_or_redirect(request)
+    if not hogar:
+        return redirect('dashboard')
+
+    año, mes = _parse_año_mes(request)
+
+    if request.method == 'POST':
+        concepto = request.POST.get('concepto', '').strip()
+        importe_raw = request.POST.get('importe', '').strip()
+        usuario_id = request.POST.get('usuario_id')
+        fondo_id = request.POST.get('fondo_destino_id')
+        nota = request.POST.get('nota', '').strip()
+        post_año = request.POST.get('año', año)
+        post_mes = request.POST.get('mes', mes)
+
+        if not concepto or not importe_raw:
+            messages.error(request, "Concepto e importe son obligatorios.")
+            return redirect(
+                f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
+            )
+
+        try:
+            importe = Decimal(importe_raw.replace(',', '.'))
+        except InvalidOperation:
+            messages.error(request, "Importe inválido.")
+            return redirect(
+                f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
+            )
+
+        IngresoExtraordinario.objects.create(
+            hogar=hogar,
+            usuario_id=int(usuario_id) if usuario_id else request.user.id,
+            concepto=concepto,
+            importe=importe,
+            es_neto=True,
+            año=int(post_año),
+            mes=int(post_mes),
+            fondo_destino_id=int(fondo_id) if fondo_id else None,
+            nota=nota,
+        )
+        messages.success(request, f"Ingreso extraordinario '{concepto}' registrado.")
+
+    return redirect(
+        f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
+    )
+
+
+@login_required
+def eliminar_ingreso_extraordinario(request, extra_id):
+    profile, hogar = _get_hogar_or_redirect(request)
+    if not hogar:
+        return redirect('dashboard')
+
+    extra = get_object_or_404(IngresoExtraordinario, id=extra_id, hogar=hogar)
+    año, mes = extra.año, extra.mes
+    extra.delete()
+    messages.success(request, "Ingreso extraordinario eliminado.")
+    return redirect(
+        f"{reverse('finanzas:vista_distribucion')}?año={año}&mes={mes}"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FONDOS (Bug #3: tipo_fondo para categorizar ahorro/inversión)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @login_required
@@ -210,6 +262,7 @@ def crear_fondo(request):
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
         modo = request.POST.get('modo_aportacion', 'proporcional')
+        tipo_fondo = request.POST.get('tipo_fondo', 'comun')
         color = request.POST.get('color', '#a259ff')
         cuenta = request.POST.get('cuenta_asociada', '').strip()
 
@@ -221,6 +274,7 @@ def crear_fondo(request):
                 hogar=hogar, nombre=nombre,
                 defaults={
                     'modo_aportacion': modo,
+                    'tipo_fondo': tipo_fondo,
                     'color': color,
                     'cuenta_asociada': cuenta,
                     'orden': max_orden,
@@ -250,10 +304,6 @@ def eliminar_fondo(request, fondo_id):
 
 @login_required
 def crear_subsobre(request, fondo_id):
-    """
-    Añade un sobre interno a un fondo.
-    Puede vincularse a PartidaGasto existentes o llevar importe manual.
-    """
     profile, hogar = _get_hogar_or_redirect(request)
     if not hogar:
         return redirect('dashboard')
@@ -397,5 +447,3 @@ def eliminar_regla(request, regla_id):
     regla.delete()
     messages.success(request, f"Regla '{nombre}' eliminada.")
     return redirect('finanzas:vista_distribucion')
-
-

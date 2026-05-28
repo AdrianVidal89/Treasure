@@ -752,3 +752,57 @@ class SubsobreFondo(models.Model):
         if partidas.exists():
             return sum(p.importe_mensual for p in partidas)
         return self.importe_manual or Decimal('0')
+        
+        
+ # ─────────────────────────────────────────────────────────────────────────────
+# AÑADIR AL FINAL DE finanzas/models.py
+# (Si ya pegaste el addon anterior con AjusteIngresoMensual y SubsobreFondo,
+#  solo añade IngresoExtraordinario -- el campo tipo_fondo se añade via migración)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class IngresoExtraordinario(models.Model):
+    """
+    Ingreso puntual fuera del ciclo normal de FuenteIngreso.
+
+    Cubre: bonus, devolución Hacienda, herencia, venta de algo,
+    ingreso freelance puntual, regalo, etc.
+
+    El usuario declara cuánto recibió, en qué mes, y opcionalmente
+    lo asigna a un fondo (ahorro, inversión, fondo común...).
+    """
+    hogar = models.ForeignKey(
+        'core.Hogar', on_delete=models.CASCADE,
+        related_name='ingresos_extraordinarios',
+    )
+    usuario = models.ForeignKey(
+        User, on_delete=models.CASCADE,
+        related_name='ingresos_extraordinarios',
+    )
+    concepto = models.CharField(
+        max_length=200,
+        help_text="Ej: Bonus anual, Devolución IRPF, Venta coche...",
+    )
+    importe = models.DecimalField(max_digits=12, decimal_places=2)
+    es_neto = models.BooleanField(
+        default=True,
+        help_text="True = ya neto, False = bruto (se aplicarán retenciones)",
+    )
+    año = models.IntegerField()
+    mes = models.IntegerField(help_text='Mes en que se recibe (1-12)')
+
+    # Destino opcional
+    fondo_destino = models.ForeignKey(
+        'FondoFamiliar', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ingresos_extraordinarios',
+        help_text="Si se asigna, este ingreso alimenta directamente el fondo.",
+    )
+
+    nota = models.CharField(max_length=255, blank=True, default='')
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-año', '-mes', '-creado_en']
+
+    def __str__(self):
+        return f"{self.concepto} ({self.mes}/{self.año}) -- €{self.importe}"

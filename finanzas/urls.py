@@ -52,15 +52,17 @@ urlpatterns = [
 
     # ── Distribución y Ahorro ─────────────────────────────────────────────
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
-
-    # Ajuste mensual de ingresos variables (Irene, guardias, etc.)
     path('distribucion/ajuste-variable/', views_distribucion.ajuste_ingreso_mensual, name='ajuste_ingreso_mensual'),
+
+    # Ingresos extraordinarios (puntuales)
+    path('distribucion/extraordinario/crear/', views_distribucion.crear_ingreso_extraordinario, name='crear_ingreso_extraordinario'),
+    path('distribucion/extraordinario/<int:extra_id>/eliminar/', views_distribucion.eliminar_ingreso_extraordinario, name='eliminar_ingreso_extraordinario'),
 
     # Fondos
     path('distribucion/fondo/crear/', views_distribucion.crear_fondo, name='crear_fondo'),
     path('distribucion/fondo/<int:fondo_id>/eliminar/', views_distribucion.eliminar_fondo, name='eliminar_fondo'),
 
-    # Subsobres (sub-distribución interna de un fondo)
+    # Subsobres
     path('distribucion/fondo/<int:fondo_id>/subsobre/crear/', views_distribucion.crear_subsobre, name='crear_subsobre'),
     path('distribucion/subsobre/<int:subsobre_id>/eliminar/', views_distribucion.eliminar_subsobre, name='eliminar_subsobre'),
 

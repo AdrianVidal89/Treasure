@@ -69,3 +69,20 @@ class FondoFamiliarAdmin(admin.ModelAdmin):
 class ReglaRepartoAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'hogar', 'usuario', 'tipo_regla', 'porcentaje', 'importe_fijo', 'fondo', 'activo')
     list_filter = ('hogar', 'tipo_regla')
+
+from .models import AjusteIngresoMensual, SubsobreFondo, IngresoExtraordinario
+
+@admin.register(AjusteIngresoMensual)
+class AjusteIngresoMensualAdmin(admin.ModelAdmin):
+    list_display = ('fuente', 'año', 'mes', 'importe_real', 'nota', 'creado_en')
+    list_filter = ('año', 'mes')
+
+@admin.register(SubsobreFondo)
+class SubsobreFondoAdmin(admin.ModelAdmin):
+    list_display = ('fondo', 'nombre', 'tipo', 'importe_manual', 'orden', 'activo')
+    list_filter = ('fondo', 'tipo')
+
+@admin.register(IngresoExtraordinario)
+class IngresoExtraordinarioAdmin(admin.ModelAdmin):
+    list_display = ('concepto', 'usuario', 'hogar', 'importe', 'año', 'mes', 'fondo_destino')
+    list_filter = ('hogar', 'año', 'mes')
