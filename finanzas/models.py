@@ -640,6 +640,18 @@ class ReglaReparto(models.Model):
         help_text="Fondo al que se destina. Si vacio, es dinero sin asignar a fondo.")
     nombre = models.CharField(max_length=100)
     tipo_regla = models.CharField(max_length=20, choices=TIPO_REGLA_CHOICES, default='porcentaje')
+    PERIODICIDAD_REGLA_CHOICES = [
+        ('mensual', 'Aplica cada mes sobre ingreso mensual'),
+        ('anual', 'Aplica sobre ingresos anuales / pagas extras'),
+    ]
+
+    periodicidad_regla = models.CharField(
+        max_length=10,
+        choices=PERIODICIDAD_REGLA_CHOICES,
+        default='mensual',
+        help_text="Mensual: opera sobre el libre mensual. "
+                  "Anual: opera sobre pagas extras e ingresos extraordinarios del mes.",
+    )
     porcentaje = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0'),
         help_text="Porcentaje del dinero libre (solo si tipo=porcentaje)")
     importe_fijo = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
@@ -743,6 +755,14 @@ class SubsobreFondo(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text='Importe mensual fijo si no hay partidas vinculadas.',
     )
+    fondo_destino = models.ForeignKey(
+        'FondoFamiliar',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='subsobres_entrantes',
+        help_text="Si se indica, el importe de este sobre se transfiere a otro fondo "
+                  "(ej: del Fondo Común → Ahorro Piso). Mutuamente excluyente con partidas.",
+    )
 
     orden = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)
@@ -754,11 +774,15 @@ class SubsobreFondo(models.Model):
         return f"{self.fondo.nombre} → {self.nombre}"
 
     @property
-    def importe_calculado(self) -> Decimal:
+    def importe_calculado(self):
         """
-        Suma importe_mensual de todas las partidas vinculadas activas.
-        Si no hay partidas, usa importe_manual. Si tampoco, devuelve 0.
+        Prioridad:
+          1. Si tiene fondo_destino → usa importe_manual (es una transferencia)
+          2. Si tiene partidas vinculadas → suma sus importe_mensual
+          3. Si no → importe_manual o 0
         """
+        if self.fondo_destino_id:
+            return self.importe_manual or Decimal('0')
         partidas = self.partidas_vinculadas.filter(activo=True)
         if partidas.exists():
             return sum(p.importe_mensual for p in partidas)

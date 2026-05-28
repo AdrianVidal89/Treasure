@@ -277,15 +277,15 @@
     <div class="regla-pill-info">
       <div class="regla-pill-nombre">{{ regla.nombre }}</div>
       <div class="regla-pill-sub">
-        {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre
-        {% else %}&euro;{{ regla.importe_fijo }}/mes fijo{% endif %}
+        {% if regla.periodicidad_regla == 'anual' %}<span style="color:#ffaa00;">&#128197; Anual</span> &middot; {% endif %}{% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% {% if regla.periodicidad_regla == 'anual' %}de extras{% else %}del libre{% endif %}
+        {% else %}&euro;{{ regla.importe_fijo }}{% if regla.periodicidad_regla == 'anual' %} de extras{% else %}/mes fijo{% endif %}{% endif %}
         {% if regla.usuario %} &middot; &#128100; {{ regla.usuario.first_name|default:regla.usuario.username }}
         {% else %} &middot; &#127968; Todo el hogar{% endif %}
         {% if regla.fondo %} &middot; &#8594; {{ regla.fondo.nombre }}{% endif %}
       </div>
     </div>
     <div style="display:flex;gap:6px;align-items:center;">
-      <button onclick="abrirEditarRegla({{ regla.id }}, '{{ regla.nombre|escapejs }}', '{{ regla.tipo_regla }}', {{ regla.porcentaje }}, {{ regla.importe_fijo }}, '{{ regla.color }}', {{ regla.usuario_id|default:'null' }}, {{ regla.fondo_id|default:'null' }})"
+      <button onclick="abrirEditarRegla({{ regla.id }}, '{{ regla.nombre|escapejs }}', '{{ regla.tipo_regla }}', {{ regla.porcentaje }}, {{ regla.importe_fijo }}, '{{ regla.color }}', {{ regla.usuario_id|default:'null' }}, {{ regla.fondo_id|default:'null' }}, '{{ regla.periodicidad_regla|default:'mensual' }}')"
               class="r-btn" style="color:var(--muted);">&#9998;</button>
       <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">
         {% csrf_token %}
@@ -345,6 +345,7 @@
       <div class="subsobre-row">
         <div style="flex:1;min-width:0;">
           <span style="color:var(--text-color);font-weight:500;">{{ ss.subsobre.nombre }}</span>
+          {% if ss.es_transferencia %}<span style="font-size:0.6rem;background:rgba(0,209,255,0.12);color:#00d1ff;padding:2px 6px;border-radius:8px;">&#8618; {{ ss.fondo_destino.nombre }}</span>{% endif %}
           <span class="subsobre-badge
             {% if ss.subsobre.tipo == 'gasto_fijo' %}badge-fijo
             {% elif ss.subsobre.tipo == 'gasto_variable' %}badge-variable
@@ -396,7 +397,7 @@
   <div class="transfer-card" style="border-left-color:{{ t.color }};">
     <div class="transfer-left">
       <div class="transfer-origen">De: {{ t.origen }}</div>
-      <div class="transfer-concepto">{{ t.concepto }}</div>
+      <div class="transfer-concepto">{{ t.concepto }}{% if t.periodicidad == "anual" %} <span style="font-size:0.65rem;background:rgba(255,170,0,0.12);color:#ffaa00;padding:2px 8px;border-radius:10px;">&#128197; Anual</span>{% endif %}</div>
       <div class="transfer-destino">&#8594; {{ t.destino }}</div>
       {% if t.cuenta %}<div class="transfer-cuenta">&#127968; {{ t.cuenta }}</div>{% endif %}
     </div>
@@ -507,6 +508,17 @@
         </select>
       </div>
       <div class="fg">
+        <label>Periodicidad</label>
+        <div class="tipo-toggle">
+          <button type="button" class="tipo-btn active" id="btn-mens" onclick="setPeriod('mensual')">Mensual</button>
+          <button type="button" class="tipo-btn" id="btn-anual" onclick="setPeriod('anual')">Anual / Extras</button>
+        </div>
+        <input type="hidden" name="periodicidad_regla" id="periodicidad_input" value="mensual">
+        <div id="info-anual" style="display:none;font-size:0.72rem;color:#ffaa00;margin-top:6px;padding:6px 10px;background:rgba(255,170,0,0.08);border-radius:6px;">
+          Las reglas anuales operan sobre pagas extras e ingresos extraordinarios del mes, no sobre el libre mensual.
+        </div>
+      </div>
+      <div class="fg">
         <label>Tipo</label>
         <div class="tipo-toggle">
           <button type="button" class="tipo-btn active" id="btn-pct" onclick="setTipo('porcentaje')">% Porcentaje</button>
@@ -557,6 +569,13 @@
         </div>
         <input type="hidden" name="tipo_regla" id="er-tipo" value="porcentaje">
       </div>
+      <div class="fg">
+        <label>Periodicidad</label>
+        <select name="periodicidad_regla" id="er-periodicidad">
+          <option value="mensual">Mensual</option>
+          <option value="anual">Anual / Extras</option>
+        </select>
+      </div>
       <div class="fg" id="er-campo-pct"><label>Porcentaje (%)</label><input type="number" name="porcentaje" id="er-porcentaje" step="0.1" min="0" max="100"></div>
       <div class="fg" id="er-campo-fijo" style="display:none;"><label>Importe fijo (€/mes)</label><input type="number" name="importe_fijo" id="er-importe" step="0.01" min="0"></div>
       <div class="fg">
@@ -593,9 +612,17 @@
         </select>
       </div>
       <div class="fg">
-        <label>Importe manual (€/mes)</label>
+        <label>Importe (€/mes)</label>
         <input type="number" name="importe_manual" step="0.01" min="0"
-               placeholder="Deja vacío si vinculas partidas de gasto">
+               placeholder="Importe a asignar o transferir">
+      </div>
+      <div class="fg">
+        <label>Transferir a otro fondo (opcional)</label>
+        <select name="fondo_destino_id">
+          <option value="">No — es un sobre de gasto interno</option>
+          {% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}{% if f.tipo_fondo == "ahorro" %} (Ahorro){% elif f.tipo_fondo == "inversion" %} (Inversión){% endif %}</option>{% endfor %}
+        </select>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:4px;">Si seleccionas un fondo, el importe se transfiere allí cada mes (cascada).</div>
       </div>
       <div class="fg">
         <label>Vincular partidas de gasto (opcional)</label>
@@ -660,6 +687,13 @@
 <script>
 
 // ── Tipo toggle regla nueva ────────────────────────────────────────────────
+function setPeriod(p) {
+    document.getElementById('periodicidad_input').value = p;
+    document.getElementById('btn-mens').classList.toggle('active', p === 'mensual');
+    document.getElementById('btn-anual').classList.toggle('active', p === 'anual');
+    document.getElementById('info-anual').style.display = p === 'anual' ? 'block' : 'none';
+}
+
 function setTipo(tipo) {
     document.getElementById('tipo_regla_input').value = tipo;
     document.getElementById('campo-pct').style.display  = tipo === 'porcentaje' ? 'block' : 'none';
@@ -677,7 +711,7 @@ function setTipoEditar(tipo) {
     document.getElementById('er-btn-fijo').classList.toggle('active', tipo === 'fijo');
 }
 
-function abrirEditarRegla(id, nombre, tipo, pct, fijo, color, usuarioId, fondoId) {
+function abrirEditarRegla(id, nombre, tipo, pct, fijo, color, usuarioId, fondoId, periodicidad) {
     document.getElementById('form-editar-regla').action = `/finanzas/distribucion/regla/${id}/editar/`;
     document.getElementById('er-nombre').value    = nombre;
     document.getElementById('er-porcentaje').value = pct;
@@ -690,6 +724,8 @@ function abrirEditarRegla(id, nombre, tipo, pct, fijo, color, usuarioId, fondoId
     fondoSel.value = fondoId || '';
 
     setTipoEditar(tipo);
+    var erP = document.getElementById('er-periodicidad');
+    if (erP) erP.value = periodicidad || 'mensual';
     document.getElementById('modal-editar-regla').style.display = 'flex';
 }
 

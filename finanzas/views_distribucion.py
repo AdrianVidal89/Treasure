@@ -264,6 +264,7 @@ def crear_fondo(request):
         modo = request.POST.get('modo_aportacion', 'proporcional')
         tipo_fondo = request.POST.get('tipo_fondo', 'comun')
         color = request.POST.get('color', '#a259ff')
+        periodicidad_regla = request.POST.get('periodicidad_regla', 'mensual')
         cuenta = request.POST.get('cuenta_asociada', '').strip()
 
         if not nombre:
@@ -315,6 +316,7 @@ def crear_subsobre(request, fondo_id):
         tipo = request.POST.get('tipo', 'discrecional')
         importe_raw = request.POST.get('importe_manual', '').strip()
         partidas_ids = request.POST.getlist('partidas_ids')
+        fondo_destino_id = request.POST.get('fondo_destino_id') or None
 
         if not nombre:
             messages.error(request, "El nombre del sobre es obligatorio.")
@@ -334,10 +336,11 @@ def crear_subsobre(request, fondo_id):
             nombre=nombre,
             tipo=tipo,
             importe_manual=importe_manual,
+            fondo_destino_id=int(fondo_destino_id) if fondo_destino_id else None,
             orden=max_orden,
         )
 
-        if partidas_ids:
+        if partidas_ids and not fondo_destino_id:
             partidas = PartidaGasto.objects.filter(
                 id__in=partidas_ids, hogar=hogar
             )
@@ -394,6 +397,7 @@ def crear_regla(request):
             nombre=nombre,
             usuario_id=int(usuario_id) if usuario_id else None,
             tipo_regla=tipo_regla,
+            periodicidad_regla=periodicidad_regla,
             porcentaje=porcentaje,
             importe_fijo=importe_fijo,
             fondo_id=int(fondo_id) if fondo_id else None,
@@ -420,6 +424,7 @@ def editar_regla(request, regla_id):
         fondo_id = request.POST.get('fondo_id') or None
         regla.fondo_id = int(fondo_id) if fondo_id else None
         regla.color = request.POST.get('color', regla.color)
+        regla.periodicidad_regla = request.POST.get('periodicidad_regla', regla.periodicidad_regla)
 
         try:
             if regla.tipo_regla == 'porcentaje':
