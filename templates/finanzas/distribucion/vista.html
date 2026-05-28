@@ -732,7 +732,8 @@ function setPeriod(p) {
 function loadExtrasInfo() {
     var uid = document.querySelector('[name=usuario_id]').value;
     if (!uid) { document.getElementById('extras-info').innerHTML = '<em>Selecciona quien aporta para ver extras disponibles.</em>'; return; }
-    fetch('/finanzas/distribucion/ajax/extras-usuario/?usuario_id=' + uid + '&a\u00f1o={{ a\u00f1o }}')
+    fetch('/finanzas/distribucion/ajax/extras-usuario/?usuario_id=' + 'uid + &año={{ año }'}
+)
         .then(r => r.json())
         .then(data => {
             var html = '';
