@@ -527,13 +527,6 @@ class CategoriaGasto(models.Model):
     tipo = models.CharField(max_length=20, choices=TIPO_GASTO_CHOICES)
     es_predefinida = models.BooleanField(default=False)
     activo = models.BooleanField(default=True)
-    fondo_asignado = models.ForeignKey(
-    'FondoFamiliar',
-    null=True, blank=True,
-    on_delete=models.SET_NULL,
-    related_name='gastos_asignados',
-    help_text='Fondo común que cubre este gasto'
-)
 
     class Meta:
         ordering = ['tipo', 'nombre']
@@ -558,6 +551,13 @@ class PartidaGasto(models.Model):
         help_text="Para gastos no mensuales: mes principal de pago.")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fondo_asignado = models.ForeignKey(
+    'FondoFamiliar',
+    null=True, blank=True,
+    on_delete=models.SET_NULL,
+    related_name='gastos_asignados',
+    help_text='Fondo común que cubre este gasto'
+)
 
     class Meta:
         ordering = ['categoria', 'nombre']
