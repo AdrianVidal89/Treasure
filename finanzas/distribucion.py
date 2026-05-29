@@ -1,16 +1,18 @@
 """
 Motor de distribución de Treasure.
 
-Cambios respecto a la versión anterior:
-- Eliminado Sankey
+- Sin Sankey
 - calcular_flujos(hogar, mes, anio) acepta mes concreto
-- En el mes seleccionado se suman ingresos base + puntuales de ese mes
-- Fix cascada: fondos muestran total_aportacion_neta (entradas - salidas por subsobres)
+- Ingresos base + puntuales del mes + override via AjusteIngresoMensual
+- Fix cascada: fondos muestran total_aportacion_neta
 """
 from decimal import Decimal
 import datetime
 
-from .models import FuenteIngreso, PartidaGasto, ReglaReparto, FondoFamiliar, SubsobreFondo
+from .models import (
+    FuenteIngreso, PartidaGasto, ReglaReparto,
+    FondoFamiliar, SubsobreFondo, AjusteIngresoMensual,
+)
 from .fiscal import calcular_neto_anual
 
 
@@ -18,14 +20,12 @@ from .fiscal import calcular_neto_anual
 # Helpers de ingreso
 # ---------------------------------------------------------------------------
 
-def _neto_fuente_mes(f, mes: int):
+def _neto_fuente_mes(f, mes: int, anio: int):
     """
-    Devuelve (ingreso_base_mes, ingreso_ponderado_mes).
+    Devuelve (ingreso_base_mes, ingreso_ponderado_mes, tiene_ajuste).
 
-    ingreso_base_mes  = lo que realmente cae en la cuenta ese mes
-                        (nómina base + paga extra si corresponde ese mes
-                         + cobros periódicos cuyo mes coincide)
-    ingreso_ponderado = anual_estimado / 12  (para comparativas)
+    Si existe un AjusteIngresoMensual para esta fuente/mes/año,
+    se usa importe_real directamente (ya es neto, el usuario lo pone).
     """
     bruto_anual = f.importe_anual_bruto
     estimado_anual = f.importe_anual_estimado
@@ -38,6 +38,14 @@ def _neto_fuente_mes(f, mes: int):
         ratio = Decimal('1')
 
     pond = round(estimado_anual * ratio / Decimal('12'), 2)
+
+    # --- Comprobar si hay ajuste manual para este mes ---
+    ajuste = AjusteIngresoMensual.objects.filter(
+        fuente=f, mes=mes, **{'año': anio}
+    ).first()
+
+    if ajuste and ajuste.importe_real is not None:
+        return ajuste.importe_real, pond, True
 
     # --- Ingresos mensuales recurrentes ---
     if f.es_mensual_recurrente and f.incluir_en_mensual:
@@ -57,26 +65,11 @@ def _neto_fuente_mes(f, mes: int):
             extra_mes += round(f.importe_declarado * ratio, 2)
 
     base_total = base_mensual + extra_mes
-    return base_total, pond
+    return base_total, pond, False
 
 
 def _neto_fuente_base(f):
-    """Ingreso base mensual 'normal' (sin extras de mes): para comparar."""
-    bruto_anual = f.importe_anual_bruto
-    estimado_anual = f.importe_anual_estimado
-
-    if f.es_bruto and bruto_anual > 0:
-        resultado = calcular_neto_anual(bruto_anual, f.pais_fiscal)
-        ratio = resultado['neto'] / bruto_anual
-        base = round(f.importe_mensual_base * ratio, 2) if f.es_mensual_recurrente and f.incluir_en_mensual else Decimal('0')
-    else:
-        base = f.importe_mensual_base if f.es_mensual_recurrente and f.incluir_en_mensual else Decimal('0')
-
-    return base, pond if 'pond' in dir() else Decimal('0')
-
-
-def _neto_fuente_base(f):
-    """Ingreso base mensual 'normal' (sin extras de mes): para comparar."""
+    """Ingreso base mensual 'normal' (sin extras ni ajustes): para comparar."""
     bruto_anual = f.importe_anual_bruto
     estimado_anual = f.importe_anual_estimado
 
@@ -97,23 +90,6 @@ def _neto_fuente_base(f):
 # ---------------------------------------------------------------------------
 
 def calcular_flujos(hogar, mes: int = None, anio: int = None):
-    """
-    Motor de flujos de Treasure.
-
-    Args:
-        hogar:  instancia de Hogar
-        mes:    1-12. Si None, usa el mes actual.
-        anio:   año. Si None, usa el año actual.
-
-    Flujo de cálculo:
-      1. Ingresos: base mensual + puntuales del mes seleccionado
-      2. Gastos individuales: se restan del libre personal
-         Gastos del hogar: informativos
-      3. Reglas de reparto → aportaciones a fondos
-      4. Subsobres (cascada): redistribución interna entre fondos
-      5. Transferencias: lista de movimientos bancarios necesarios
-      6. KPIs globales
-    """
     hoy = datetime.date.today()
     mes = mes or hoy.month
     anio = anio or hoy.year
@@ -127,8 +103,6 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
     ).select_related('fondo', 'usuario').order_by('orden')
     fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True))
 
-    # Subsobres: redistribución interna entre fondos
-    # Campos reales: fondo (FK origen), nombre, tipo, importe_manual, fondo_destino (FK nullable)
     subsobres = list(
         SubsobreFondo.objects.filter(
             fondo__hogar=hogar, activo=True
@@ -136,7 +110,7 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
     )
 
     # =========================================================
-    # PASO 1: Ingresos por miembro (base mensual + extras del mes)
+    # PASO 1: Ingresos por miembro
     # =========================================================
     datos_miembros = {}
     total_base_hogar = Decimal('0')
@@ -149,14 +123,23 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
         ing_pond = Decimal('0')
         ing_anual = Decimal('0')
         extras_mes = []
+        ajustes_mes = []  # fuentes con ajuste manual este mes
 
         for f in fuentes:
-            b, p = _neto_fuente_mes(f, mes)
+            b, p, tiene_ajuste = _neto_fuente_mes(f, mes, anio)
             b_base, _ = _neto_fuente_base(f)
 
-            extra = b - b_base
-            if extra > 0:
-                extras_mes.append({'fuente': f.nombre, 'importe': extra})
+            if tiene_ajuste:
+                ajustes_mes.append({
+                    'fuente_id': f.id,
+                    'fuente': f.nombre,
+                    'importe_ajustado': b,
+                    'importe_base': b_base,
+                })
+            else:
+                extra = b - b_base
+                if extra > 0:
+                    extras_mes.append({'fuente': f.nombre, 'importe': extra})
 
             ing_base += b
             ing_pond += p
@@ -165,10 +148,13 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
             est_anual = f.importe_anual_estimado
             if f.es_bruto and bruto_anual > 0:
                 res = calcular_neto_anual(bruto_anual, f.pais_fiscal)
-                ratio = res['neto'] / bruto_anual
-                ing_anual += round(est_anual * ratio, 2)
+                r = res['neto'] / bruto_anual
+                ing_anual += round(est_anual * r, 2)
             else:
                 ing_anual += est_anual
+
+        # Recoger todas las fuentes del miembro (para el selector inline)
+        fuentes_lista = [{'id': f.id, 'nombre': f.nombre} for f in fuentes]
 
         datos_miembros[m.user.id] = {
             'miembro': m,
@@ -176,6 +162,8 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
             'ingreso_ponderado': ing_pond,
             'ingreso_anual': ing_anual,
             'extras_mes': extras_mes,
+            'ajustes_mes': ajustes_mes,
+            'fuentes': fuentes_lista,
             'gastos_individuales': Decimal('0'),
             'disponible_base': ing_base,
             'disponible_pond': ing_pond,
@@ -270,7 +258,6 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
                 })
 
         else:
-            # Regla global
             libre_b_total = sum(dm['libre_base'] for dm in datos_miembros.values())
             libre_p_total = sum(dm['libre_ponderado'] for dm in datos_miembros.values())
 
@@ -311,9 +298,6 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
 
     # =========================================================
     # PASO 4: Subsobres / cascada
-    # SubsobreFondo campos reales:
-    #   fondo (FK origen), nombre, tipo (choices), importe_manual,
-    #   fondo_destino (FK nullable), orden, activo
     # =========================================================
     transferencias_cascada = []
 
@@ -322,13 +306,10 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
             continue
 
         fa_origen = fondos_aportaciones[ss.fondo_id]
-
-        # importe_manual es el importe fijo que sale del fondo
         importe = ss.importe_manual or Decimal('0')
         if importe <= 0:
             continue
 
-        # Registrar salida en el fondo origen
         fa_origen['total_cascada_saliente'] += importe
         fa_origen['subsobres'].append({
             'id': ss.id,
@@ -338,7 +319,6 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
             'fondo_destino': ss.fondo_destino,
         })
 
-        # Registrar entrada en el fondo destino (si existe)
         if ss.fondo_destino_id and ss.fondo_destino_id in fondos_aportaciones:
             fa_destino = fondos_aportaciones[ss.fondo_destino_id]
             fa_destino['total_aportacion_base'] += importe
@@ -354,12 +334,11 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
             'color': ss.fondo.color,
         })
 
-    # Calcular neto para cada fondo
     for fid, fa in fondos_aportaciones.items():
         fa['total_aportacion_neta'] = fa['total_aportacion_base'] - fa['total_cascada_saliente']
 
     # =========================================================
-    # PASO 5: Transferencias bancarias necesarias
+    # PASO 5: Transferencias bancarias
     # =========================================================
     transferencias = []
 
@@ -380,7 +359,6 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
                     'color': ap['regla'].color,
                 })
 
-    # Transferencias de cascada
     for tc in transferencias_cascada:
         transferencias.append({
             'origen': f"Fondo: {tc['origen']}",
@@ -394,7 +372,7 @@ def calcular_flujos(hogar, mes: int = None, anio: int = None):
         })
 
     # =========================================================
-    # PASO 6: KPIs globales
+    # PASO 6: KPIs
     # =========================================================
     total_gastos_ind = sum(dm['gastos_individuales'] for dm in datos_miembros.values())
     total_gastos_all = total_gastos_hogar + total_gastos_ind

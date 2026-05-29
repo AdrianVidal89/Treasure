@@ -54,15 +54,25 @@
     {% if d.pct_libre > 0 %}<div class="bp-seg bp-libre" style="width:{{ d.pct_libre }}%;" title="Libre {{ d.pct_libre }}%">{{ d.pct_libre }}%</div>{% endif %}
 </div>
 
-<!-- ===== INGRESOS EXTRA DEL MES ===== -->
-{% for dm in d.datos_miembros %}{% if dm.extras_mes %}
-<div class="aviso-extra" style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:12px; font-size:0.82rem;">
+<!-- ===== AVISOS: EXTRAS Y AJUSTES DEL MES ===== -->
+{% for dm in d.datos_miembros %}
+{% if dm.extras_mes %}
+<div class="aviso-extra" style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
     <span style="color:#00d1ff; font-weight:600;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingresos extra este mes:</span>
     {% for ex in dm.extras_mes %}
     <span style="color:#fff; margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
     {% endfor %}
 </div>
-{% endif %}{% endfor %}
+{% endif %}
+{% if dm.ajustes_mes %}
+<div style="background:rgba(255,170,0,0.07); border:1px solid #ffaa0033; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
+    <span style="color:#ffaa00; font-weight:600;">✏️ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingreso ajustado:</span>
+    {% for aj in dm.ajustes_mes %}
+    <span style="color:#fff; margin-left:10px;">{{ aj.fuente }}: <strong>€{{ aj.importe_ajustado|floatformat:2 }}</strong> <span style="color:var(--muted); font-size:0.72rem;">(base: €{{ aj.importe_base|floatformat:2 }})</span></span>
+    {% endfor %}
+</div>
+{% endif %}
+{% endfor %}
 
 <!-- ===== REGLAS DE REPARTO ===== -->
 <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -168,15 +178,55 @@
 {% endfor %}
 {% endif %}
 
-<!-- ===== RESUMEN POR PERSONA ===== -->
+<!-- ===== RESUMEN POR PERSONA (con ajuste inline) ===== -->
 <div class="section-title" style="margin-top:24px;">👤 Resumen por persona</div>
 {% for dm in d.datos_miembros %}
 <div class="resumen-persona">
-    <h4>{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</h4>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <h4 style="margin:0;">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</h4>
+        {% if dm.fuentes %}
+        <button onclick="toggleAjuste('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.7rem; padding:5px 10px;">✏️ Ajustar ingreso</button>
+        {% endif %}
+    </div>
+
+    <!-- Formulario inline de ajuste (oculto por defecto) -->
+    {% if dm.fuentes %}
+    <div id="ajuste-{{ dm.miembro.user.id }}" class="ajuste-inline" style="display:none;">
+        <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px;">
+            {% csrf_token %}
+            <input type="hidden" name="mes" value="{{ d.mes }}">
+            <input type="hidden" name="anio" value="{{ d.anio }}">
+            <div style="flex:1; min-width:120px;">
+                <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Fuente</label>
+                <select name="fuente_id" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
+                    {% for fu in dm.fuentes %}
+                    <option value="{{ fu.id }}">{{ fu.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="min-width:100px;">
+                <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Neto real (€)</label>
+                <input type="number" name="importe_real" step="0.01" min="0" placeholder="Dejar vacío = reset" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
+            </div>
+            <div style="min-width:80px;">
+                <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Nota</label>
+                <input type="text" name="nota" placeholder="Opcional" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
+            </div>
+            <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:8px 14px; white-space:nowrap;">Guardar</button>
+        </form>
+    </div>
+    {% endif %}
+
     <div class="resumen-row">
         <span class="rl">Ingreso neto {{ d.mes_nombre }}</span>
         <span style="color:#00ff88;">+€{{ dm.ingreso_base|floatformat:2 }}</span>
     </div>
+    {% for aj in dm.ajustes_mes %}
+    <div class="resumen-row" style="font-size:0.78rem;">
+        <span class="rl" style="color:#ffaa00;">✏️ {{ aj.fuente }} (ajustado)</span>
+        <span style="color:#ffaa00;">€{{ aj.importe_ajustado|floatformat:2 }} <span style="color:var(--muted); font-size:0.68rem;">base: €{{ aj.importe_base|floatformat:2 }}</span></span>
+    </div>
+    {% endfor %}
     {% for ex in dm.extras_mes %}
     <div class="resumen-row" style="font-size:0.78rem;">
         <span class="rl" style="color:#00d1ff;">⚡ {{ ex.fuente }}</span>
@@ -275,7 +325,7 @@
 </div>
 
 
-<!-- ===== MODAL SUBSOBRE / DISTRIBUCIÓN INTERNA ===== -->
+<!-- ===== MODAL SUBSOBRE ===== -->
 <div id="modal-subsobre" class="modal-overlay">
     <div class="modal-box">
         <h2>↪️ Distribución interna</h2>
@@ -375,6 +425,11 @@ function abrirModalSubsobre(fondoId, fondoNombre) {
     document.getElementById('subsobre-fondo-nombre').textContent = fondoNombre;
     document.getElementById('form-subsobre').action = '/finanzas/distribucion/fondo/' + fondoId + '/subsobre/crear/';
     document.getElementById('modal-subsobre').style.display = 'flex';
+}
+
+function toggleAjuste(id) {
+    var el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 document.addEventListener('DOMContentLoaded', function() {

@@ -53,6 +53,7 @@ urlpatterns = [
     # ── Distribución y Ahorro ─────────────────────────────────────────────
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
     path('distribucion/resumen-anual/', views_distribucion.vista_resumen_anual, name='resumen_anual'),
+    path('distribucion/ajustar-ingreso/', views_distribucion.ajustar_ingreso_mes, name='ajustar_ingreso_mes'),
 
     # Fondos
     path('distribucion/fondo/crear/', views_distribucion.crear_fondo, name='crear_fondo'),

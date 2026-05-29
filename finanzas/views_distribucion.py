@@ -4,7 +4,10 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from decimal import Decimal
 
-from .models import ReglaReparto, FondoFamiliar, SubsobreFondo
+from .models import (
+    ReglaReparto, FondoFamiliar, SubsobreFondo,
+    FuenteIngreso, AjusteIngresoMensual,
+)
 from .distribucion import calcular_flujos, calcular_resumen_anual
 
 MESES = [
@@ -91,6 +94,61 @@ def vista_resumen_anual(request):
         'anios': anios,
         'profile': profile,
     })
+
+
+# ---------------------------------------------------------------------------
+# Ajuste inline de ingreso variable
+# ---------------------------------------------------------------------------
+
+@login_required
+def ajustar_ingreso_mes(request):
+    """
+    POST inline: crea o actualiza un AjusteIngresoMensual.
+    Params POST: fuente_id, mes, anio, importe_real, nota (opcional)
+    Redirige a la vista de distribución del mismo mes.
+    """
+    profile, hogar = _get_hogar_o_redirect(request)
+    if not hogar:
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        try:
+            fuente_id = int(request.POST.get('fuente_id', 0))
+            mes = int(request.POST.get('mes', 0))
+            anio = int(request.POST.get('anio', 0))
+            importe_raw = request.POST.get('importe_real', '').strip()
+        except (ValueError, TypeError):
+            messages.error(request, "Datos inválidos.")
+            return redirect('finanzas:vista_distribucion')
+
+        fuente = get_object_or_404(FuenteIngreso, id=fuente_id, hogar=hogar)
+
+        # Si el importe viene vacío → eliminar el ajuste (volver al cálculo normal)
+        if not importe_raw:
+            AjusteIngresoMensual.objects.filter(
+                fuente=fuente, mes=mes, **{'año': anio}
+            ).delete()
+            messages.success(request, f"Ajuste de '{fuente.nombre}' eliminado para este mes.")
+        else:
+            try:
+                importe_real = Decimal(importe_raw)
+            except Exception:
+                messages.error(request, "Importe inválido.")
+                return redirect(f"/finanzas/distribucion/?mes={mes}&anio={anio}")
+
+            nota = request.POST.get('nota', '').strip()
+
+            obj, created = AjusteIngresoMensual.objects.update_or_create(
+                fuente=fuente, mes=mes, **{'año': anio},
+                defaults={
+                    'importe_real': importe_real,
+                    'nota': nota,
+                }
+            )
+            accion = 'creado' if created else 'actualizado'
+            messages.success(request, f"Ingreso de '{fuente.nombre}' {accion}: €{importe_real}")
+
+    return redirect(f"/finanzas/distribucion/?mes={mes}&anio={anio}")
 
 
 # ---------------------------------------------------------------------------
@@ -200,12 +258,10 @@ def eliminar_regla(request, regla_id):
 
 # ---------------------------------------------------------------------------
 # CRUD subsobres (cascada)
-# Campos reales: fondo, nombre, tipo, importe_manual, fondo_destino, orden, activo
 # ---------------------------------------------------------------------------
 
 @login_required
 def crear_subsobres(request, fondo_id):
-    """Añade un subsobre (redistribución interna) a un fondo."""
     profile, hogar = _get_hogar_o_redirect(request)
     if not hogar:
         return redirect('dashboard')
