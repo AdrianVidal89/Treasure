@@ -65,5 +65,6 @@ urlpatterns = [
 
     # Reglas de reparto
     path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
+    path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
 ]

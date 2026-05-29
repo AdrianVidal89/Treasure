@@ -27,7 +27,7 @@ def _get_hogar_o_redirect(request):
 
 
 # ---------------------------------------------------------------------------
-# Vista principal de distribución
+# Vista principal
 # ---------------------------------------------------------------------------
 
 @login_required
@@ -102,11 +102,6 @@ def vista_resumen_anual(request):
 
 @login_required
 def ajustar_ingreso_mes(request):
-    """
-    POST inline: crea o actualiza un AjusteIngresoMensual.
-    Params POST: fuente_id, mes, anio, importe_real, nota (opcional)
-    Redirige a la vista de distribución del mismo mes.
-    """
     profile, hogar = _get_hogar_o_redirect(request)
     if not hogar:
         return redirect('dashboard')
@@ -123,7 +118,6 @@ def ajustar_ingreso_mes(request):
 
         fuente = get_object_or_404(FuenteIngreso, id=fuente_id, hogar=hogar)
 
-        # Si el importe viene vacío → eliminar el ajuste (volver al cálculo normal)
         if not importe_raw:
             AjusteIngresoMensual.objects.filter(
                 fuente=fuente, mes=mes, **{'año': anio}
@@ -137,13 +131,9 @@ def ajustar_ingreso_mes(request):
                 return redirect(f"/finanzas/distribucion/?mes={mes}&anio={anio}")
 
             nota = request.POST.get('nota', '').strip()
-
             obj, created = AjusteIngresoMensual.objects.update_or_create(
                 fuente=fuente, mes=mes, **{'año': anio},
-                defaults={
-                    'importe_real': importe_real,
-                    'nota': nota,
-                }
+                defaults={'importe_real': importe_real, 'nota': nota}
             )
             accion = 'creado' if created else 'actualizado'
             messages.success(request, f"Ingreso de '{fuente.nombre}' {accion}: €{importe_real}")
@@ -163,8 +153,8 @@ def crear_fondo(request):
 
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
-        modo = request.POST.get('modo_aportacion', 'proporcional')
-        color = request.POST.get('color', '#a259ff')
+        tipo_fondo = request.POST.get('tipo_fondo', 'comun')
+        color = request.POST.get('color', '#00ff88')
         cuenta = request.POST.get('cuenta_asociada', '').strip()
 
         if not nombre:
@@ -174,7 +164,7 @@ def crear_fondo(request):
             FondoFamiliar.objects.get_or_create(
                 hogar=hogar, nombre=nombre,
                 defaults={
-                    'modo_aportacion': modo,
+                    'tipo_fondo': tipo_fondo,
                     'color': color,
                     'cuenta_asociada': cuenta,
                     'orden': max_orden,
@@ -213,7 +203,7 @@ def crear_regla(request):
         tipo = request.POST.get('tipo_regla', 'porcentaje')
         fondo_id = request.POST.get('fondo_id') or None
         usuario_id = request.POST.get('usuario_id') or None
-        color = request.POST.get('color', '#a259ff')
+        color = request.POST.get('color', '#00ff88')
 
         try:
             porcentaje = Decimal(request.POST.get('porcentaje', '0') or '0')
@@ -244,6 +234,44 @@ def crear_regla(request):
 
 
 @login_required
+def editar_regla(request, regla_id):
+    profile, hogar = _get_hogar_o_redirect(request)
+    if not hogar:
+        return redirect('dashboard')
+
+    regla = get_object_or_404(ReglaReparto, id=regla_id, hogar=hogar)
+
+    if request.method == 'POST':
+        nombre = request.POST.get('nombre', '').strip()
+        tipo = request.POST.get('tipo_regla', 'porcentaje')
+        fondo_id = request.POST.get('fondo_id') or None
+        usuario_id = request.POST.get('usuario_id') or None
+        color = request.POST.get('color', '#00ff88')
+
+        try:
+            porcentaje = Decimal(request.POST.get('porcentaje', '0') or '0')
+            importe_fijo = Decimal(request.POST.get('importe_fijo', '0') or '0')
+        except Exception:
+            messages.error(request, "Importe inválido.")
+            return redirect('finanzas:vista_distribucion')
+
+        if not nombre:
+            messages.error(request, "El nombre es obligatorio.")
+        else:
+            regla.nombre = nombre
+            regla.tipo_regla = tipo
+            regla.fondo = FondoFamiliar.objects.filter(id=fondo_id, hogar=hogar).first() if fondo_id else None
+            regla.usuario_id = usuario_id if usuario_id else None
+            regla.porcentaje = porcentaje
+            regla.importe_fijo = importe_fijo
+            regla.color = color
+            regla.save()
+            messages.success(request, f"Regla '{nombre}' actualizada.")
+
+    return redirect('finanzas:vista_distribucion')
+
+
+@login_required
 def eliminar_regla(request, regla_id):
     profile, hogar = _get_hogar_o_redirect(request)
     if not hogar:
@@ -257,7 +285,7 @@ def eliminar_regla(request, regla_id):
 
 
 # ---------------------------------------------------------------------------
-# CRUD subsobres (cascada)
+# CRUD subsobres
 # ---------------------------------------------------------------------------
 
 @login_required

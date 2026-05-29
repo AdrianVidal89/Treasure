@@ -57,7 +57,7 @@
 <!-- ===== AVISOS: EXTRAS Y AJUSTES DEL MES ===== -->
 {% for dm in d.datos_miembros %}
 {% if dm.extras_mes %}
-<div class="aviso-extra" style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
+<div style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
     <span style="color:#00d1ff; font-weight:600;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingresos extra este mes:</span>
     {% for ex in dm.extras_mes %}
     <span style="color:#fff; margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
@@ -77,7 +77,7 @@
 <!-- ===== REGLAS DE REPARTO ===== -->
 <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
     <span>⚙️ Reglas de reparto</span>
-    <button onclick="document.getElementById('modal-regla').style.display='flex'" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nueva regla</button>
+    <button onclick="abrirModalRegla()" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nueva regla</button>
 </div>
 
 {% for regla in reglas %}
@@ -90,10 +90,13 @@
             {% if regla.usuario %} · 👤 {{ regla.usuario.first_name|default:regla.usuario.username }}{% else %} · 🏠 Hogar{% endif %}
         </div>
     </div>
-    <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">
-        {% csrf_token %}
-        <button type="submit" class="r-btn" onclick="return confirm('¿Eliminar regla?')">🗑</button>
-    </form>
+    <div style="display:flex; gap:6px; align-items:center;">
+        <button onclick="editarRegla({{ regla.id }}, '{{ regla.nombre|escapejs }}', '{{ regla.tipo_regla }}', '{{ regla.porcentaje }}', '{{ regla.importe_fijo }}', '{{ regla.fondo_id|default:"" }}', '{{ regla.usuario_id|default:"" }}', '{{ regla.color }}')" class="r-btn" title="Editar">✏️</button>
+        <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">
+            {% csrf_token %}
+            <button type="submit" class="r-btn" onclick="return confirm('¿Eliminar regla?')">🗑</button>
+        </form>
+    </div>
 </div>
 {% empty %}
 <p style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Sin reglas. Crea una para definir dónde va el dinero libre.</p>
@@ -119,7 +122,7 @@
                 {% endif %}
             </div>
             <div class="regla-pill-sub">
-                {{ fa.fondo.get_modo_aportacion_display }}
+                <span class="tag-tipo tag-{{ fa.fondo.tipo_fondo }}">{{ fa.fondo.get_tipo_fondo_display }}</span>
                 {% if fa.fondo.cuenta_asociada %} · 🏦 {{ fa.fondo.cuenta_asociada }}{% endif %}
                 {% for ap in fa.aportantes %} · {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} €{{ ap.importe_base|floatformat:0 }}{% endfor %}
             </div>
@@ -133,7 +136,6 @@
         </div>
     </div>
 
-    <!-- Subsobres del fondo -->
     {% for ss in fa.subsobres %}
     <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
         <span style="color:var(--muted);">
@@ -162,7 +164,7 @@
 <p style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Sin fondos definidos.</p>
 {% endfor %}
 
-<!-- ===== TRANSFERENCIAS BANCARIAS ===== -->
+<!-- ===== TRANSFERENCIAS ===== -->
 {% if d.transferencias %}
 <div class="section-title" style="margin-top:24px;">🔄 Transferencias del mes</div>
 {% for t in d.transferencias %}
@@ -178,7 +180,7 @@
 {% endfor %}
 {% endif %}
 
-<!-- ===== RESUMEN POR PERSONA (con ajuste inline) ===== -->
+<!-- ===== RESUMEN POR PERSONA ===== -->
 <div class="section-title" style="margin-top:24px;">👤 Resumen por persona</div>
 {% for dm in d.datos_miembros %}
 <div class="resumen-persona">
@@ -189,7 +191,6 @@
         {% endif %}
     </div>
 
-    <!-- Formulario inline de ajuste (oculto por defecto) -->
     {% if dm.fuentes %}
     <div id="ajuste-{{ dm.miembro.user.id }}" class="ajuste-inline" style="display:none;">
         <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px;">
@@ -206,7 +207,7 @@
             </div>
             <div style="min-width:100px;">
                 <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Neto real (€)</label>
-                <input type="number" name="importe_real" step="0.01" min="0" placeholder="Dejar vacío = reset" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
+                <input type="number" name="importe_real" step="0.01" min="0" placeholder="Vacío = reset" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
             </div>
             <div style="min-width:80px;">
                 <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Nota</label>
@@ -267,14 +268,27 @@
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Revolut conjunta, Ahorro piso..." required></div>
             <div class="fg"><label>Cuenta bancaria asociada (opcional)</label><input type="text" name="cuenta_asociada" placeholder="Ej: Revolut conjunta, BBVA..."></div>
             <div class="fg">
-                <label>Modo de aportación</label>
-                <select name="modo_aportacion">
-                    <option value="proporcional">Proporcional al ingreso</option>
-                    <option value="igual">A partes iguales</option>
-                    <option value="fijo">Importe fijo por persona</option>
+                <label>Tipo de fondo</label>
+                <select name="tipo_fondo">
+                    <option value="comun">Fondo común del hogar</option>
+                    <option value="ahorro">Ahorro</option>
+                    <option value="inversion">Inversión</option>
+                    <option value="emergencia">Fondo de emergencia</option>
+                    <option value="objetivo">Objetivo concreto</option>
+                    <option value="otro">Otro</option>
                 </select>
             </div>
-            <div class="fg"><label>Color</label><input type="color" name="color" value="#a259ff"></div>
+            <div class="fg">
+                <label>Color</label>
+                <div class="color-picker-row">
+                    <button type="button" class="color-dot active" style="background:#00ff88;" onclick="selColor(this,'#00ff88','fondo')"></button>
+                    <button type="button" class="color-dot" style="background:#00d1ff;" onclick="selColor(this,'#00d1ff','fondo')"></button>
+                    <button type="button" class="color-dot" style="background:#a259ff;" onclick="selColor(this,'#a259ff','fondo')"></button>
+                    <button type="button" class="color-dot" style="background:#ff2d6b;" onclick="selColor(this,'#ff2d6b','fondo')"></button>
+                    <button type="button" class="color-dot" style="background:#ffaa00;" onclick="selColor(this,'#ffaa00','fondo')"></button>
+                </div>
+                <input type="hidden" name="color" id="color-fondo" value="#00ff88">
+            </div>
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
                 <button type="button" onclick="document.getElementById('modal-fondo').style.display='none'" class="btn btn-secondary">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Crear fondo</button>
@@ -284,13 +298,13 @@
 </div>
 
 
-<!-- ===== MODAL NUEVA REGLA ===== -->
+<!-- ===== MODAL REGLA (crear + editar) ===== -->
 <div id="modal-regla" class="modal-overlay">
     <div class="modal-box">
-        <h2>⚙️ Nueva regla de reparto</h2>
-        <form method="post" action="{% url 'finanzas:crear_regla' %}">
+        <h2 id="modal-regla-titulo">⚙️ Nueva regla de reparto</h2>
+        <form method="post" id="form-regla" action="{% url 'finanzas:crear_regla' %}">
             {% csrf_token %}
-            <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Ahorro personal, Fondo vacaciones..." required></div>
+            <div class="fg"><label>Nombre</label><input type="text" name="nombre" id="regla-nombre" placeholder="Ej: Ahorro personal, Fondo vacaciones..." required></div>
             <div class="fg">
                 <label>Tipo</label>
                 <div style="display:flex; gap:8px; margin-top:4px;">
@@ -299,26 +313,36 @@
                 </div>
                 <input type="hidden" name="tipo_regla" id="tipo_regla_input" value="porcentaje">
             </div>
-            <div id="campo-pct" class="fg"><label>Porcentaje (%)</label><input type="number" name="porcentaje" step="0.01" min="0" max="100" value="0"></div>
-            <div id="campo-fijo" class="fg" style="display:none;"><label>Importe fijo (€/mes)</label><input type="number" name="importe_fijo" step="0.01" min="0" value="0"></div>
+            <div id="campo-pct" class="fg"><label>Porcentaje (%)</label><input type="number" name="porcentaje" id="regla-porcentaje" step="0.01" min="0" max="100" value="0"></div>
+            <div id="campo-fijo" class="fg" style="display:none;"><label>Importe fijo (€/mes)</label><input type="number" name="importe_fijo" id="regla-importe" step="0.01" min="0" value="0"></div>
             <div class="fg">
                 <label>Fondo destino (opcional)</label>
-                <select name="fondo_id">
+                <select name="fondo_id" id="regla-fondo">
                     <option value="">— Sin asignación / libre —</option>
                     {% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}
                 </select>
             </div>
             <div class="fg">
                 <label>Aplicar a</label>
-                <select name="usuario_id">
+                <select name="usuario_id" id="regla-usuario">
                     <option value="">🏠 Todo el hogar</option>
                     {% for m in miembros %}<option value="{{ m.user.id }}">👤 {{ m.user.first_name|default:m.user.username }}</option>{% endfor %}
                 </select>
             </div>
-            <div class="fg"><label>Color</label><input type="color" name="color" value="#a259ff"></div>
+            <div class="fg">
+                <label>Color</label>
+                <div class="color-picker-row" id="regla-color-row">
+                    <button type="button" class="color-dot active" style="background:#00ff88;" onclick="selColor(this,'#00ff88','regla')"></button>
+                    <button type="button" class="color-dot" style="background:#00d1ff;" onclick="selColor(this,'#00d1ff','regla')"></button>
+                    <button type="button" class="color-dot" style="background:#a259ff;" onclick="selColor(this,'#a259ff','regla')"></button>
+                    <button type="button" class="color-dot" style="background:#ff2d6b;" onclick="selColor(this,'#ff2d6b','regla')"></button>
+                    <button type="button" class="color-dot" style="background:#ffaa00;" onclick="selColor(this,'#ffaa00','regla')"></button>
+                </div>
+                <input type="hidden" name="color" id="color-regla" value="#00ff88">
+            </div>
             <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
                 <button type="button" onclick="document.getElementById('modal-regla').style.display='none'" class="btn btn-secondary">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Crear regla</button>
+                <button type="submit" class="btn btn-primary" id="btn-regla-submit">Crear regla</button>
             </div>
         </form>
     </div>
@@ -381,6 +405,14 @@
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
 
+.tag-tipo { font-size:0.65rem; padding:2px 8px; border-radius:6px; font-weight:600; letter-spacing:.03em; }
+.tag-comun { background:rgba(0,255,136,0.12); color:#00ff88; }
+.tag-ahorro { background:rgba(0,209,255,0.12); color:#00d1ff; }
+.tag-inversion { background:rgba(162,89,255,0.12); color:#a259ff; }
+.tag-emergencia { background:rgba(255,45,107,0.12); color:#ff2d6b; }
+.tag-objetivo { background:rgba(255,170,0,0.12); color:#ffaa00; }
+.tag-otro { background:rgba(255,255,255,0.06); color:var(--muted); }
+
 .transfer-card { background:#1a1a1a; border-radius:14px; padding:16px 18px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
 .transfer-left { flex:1; min-width:0; }
 .transfer-origen { font-size:0.72rem; color:var(--muted); margin-bottom:2px; }
@@ -399,6 +431,11 @@
 .r-btn { background:transparent; border:1px solid #333; color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
 .r-btn:hover { border-color:#ff4d4d; color:#ff4d4d; }
 
+.color-picker-row { display:flex; gap:10px; margin-top:6px; }
+.color-dot { width:32px; height:32px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:all .2s; }
+.color-dot:hover { transform:scale(1.15); }
+.color-dot.active { border-color:#fff; box-shadow:0 0 12px currentColor; }
+
 .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); }
 .modal-box { background:#1a1a1a; border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
 .modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.05rem; }
@@ -406,19 +443,71 @@
 .modal-box label { display:block; font-size:0.8rem; color:var(--muted); margin-bottom:5px; }
 .modal-box select,
 .modal-box input[type="text"],
-.modal-box input[type="number"],
-.modal-box input[type="color"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
+.modal-box input[type="number"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
 .msg-toast { background:#1e2a1e; border:1px solid #00ff88; color:#00ff88; border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
 </style>
 
 <script>
+var COLORES = ['#00ff88','#00d1ff','#a259ff','#ff2d6b','#ffaa00'];
+
+function selColor(btn, color, target) {
+    var row = btn.parentElement;
+    row.querySelectorAll('.color-dot').forEach(function(d){ d.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById('color-' + target).value = color;
+}
+
 function setTipoRegla(tipo) {
     document.getElementById('tipo_regla_input').value = tipo;
     document.getElementById('campo-pct').style.display = tipo === 'porcentaje' ? 'block' : 'none';
     document.getElementById('campo-fijo').style.display = tipo === 'fijo' ? 'block' : 'none';
     document.getElementById('btn-pct').classList.toggle('active', tipo === 'porcentaje');
     document.getElementById('btn-fijo').classList.toggle('active', tipo === 'fijo');
+}
+
+function abrirModalRegla() {
+    document.getElementById('modal-regla-titulo').textContent = '⚙️ Nueva regla de reparto';
+    document.getElementById('btn-regla-submit').textContent = 'Crear regla';
+    document.getElementById('form-regla').action = '{% url "finanzas:crear_regla" %}';
+    document.getElementById('regla-nombre').value = '';
+    document.getElementById('regla-porcentaje').value = '0';
+    document.getElementById('regla-importe').value = '0';
+    document.getElementById('regla-fondo').value = '';
+    document.getElementById('regla-usuario').value = '';
+    setTipoRegla('porcentaje');
+    selColorByValue('regla', '#00ff88');
+    document.getElementById('modal-regla').style.display = 'flex';
+}
+
+function editarRegla(id, nombre, tipo, pct, fijo, fondoId, userId, color) {
+    document.getElementById('modal-regla-titulo').textContent = '✏️ Editar regla';
+    document.getElementById('btn-regla-submit').textContent = 'Guardar cambios';
+    document.getElementById('form-regla').action = '/finanzas/distribucion/regla/' + id + '/editar/';
+    document.getElementById('regla-nombre').value = nombre;
+    document.getElementById('regla-porcentaje').value = pct;
+    document.getElementById('regla-importe').value = fijo;
+    document.getElementById('regla-fondo').value = fondoId;
+    document.getElementById('regla-usuario').value = userId;
+    setTipoRegla(tipo);
+    selColorByValue('regla', color);
+    document.getElementById('modal-regla').style.display = 'flex';
+}
+
+function selColorByValue(target, color) {
+    var row = document.getElementById(target + '-color-row') || document.getElementById('regla-color-row');
+    if (!row) return;
+    var dots = row.querySelectorAll('.color-dot');
+    var found = false;
+    dots.forEach(function(d) {
+        d.classList.remove('active');
+        if (d.style.background === color || d.style.backgroundColor === color) {
+            d.classList.add('active');
+            found = true;
+        }
+    });
+    if (!found && dots.length > 0) dots[0].classList.add('active');
+    document.getElementById('color-' + target).value = color;
 }
 
 function abrirModalSubsobre(fondoId, fondoNombre) {
@@ -433,7 +522,7 @@ function toggleAjuste(id) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.msg-toast').forEach(el => setTimeout(() => el.remove(), 4000));
+    document.querySelectorAll('.msg-toast').forEach(function(el){ setTimeout(function(){ el.remove(); }, 4000); });
 });
 </script>
 {% endblock %}
