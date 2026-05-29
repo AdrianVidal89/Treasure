@@ -54,7 +54,7 @@
     {% if d.pct_libre > 0 %}<div class="bp-seg bp-libre" style="width:{{ d.pct_libre }}%;" title="Libre {{ d.pct_libre }}%">{{ d.pct_libre }}%</div>{% endif %}
 </div>
 
-<!-- ===== INGRESOS DEL MES (con extras) ===== -->
+<!-- ===== INGRESOS EXTRA DEL MES ===== -->
 {% for dm in d.datos_miembros %}{% if dm.extras_mes %}
 <div class="aviso-extra" style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:12px; font-size:0.82rem;">
     <span style="color:#00d1ff; font-weight:600;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingresos extra este mes:</span>
@@ -99,7 +99,7 @@
 <div class="regla-pill" style="border-left-color: {{ fa.fondo.color }}; display:block; padding:14px 16px;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
         <div class="regla-pill-info" style="flex:1;">
-            <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px;">
+            <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 {{ fa.fondo.nombre }}
                 <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">
                     €{{ fa.total_aportacion_neta|floatformat:2 }}
@@ -115,7 +115,7 @@
             </div>
         </div>
         <div style="display:flex; gap:8px; align-items:center;">
-            <button onclick="abrirModalSubsobre({{ fa.fondo.id }}, '{{ fa.fondo.nombre|escapejs }}')" class="btn btn-secondary" style="font-size:0.75rem; padding:6px 10px;">＋ Distribución interna</button>
+            <button onclick="abrirModalSubsobre({{ fa.fondo.id }}, '{{ fa.fondo.nombre|escapejs }}')" class="btn btn-secondary" style="font-size:0.75rem; padding:6px 10px;">＋</button>
             <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">
                 {% csrf_token %}
                 <button type="submit" class="r-btn" onclick="return confirm('¿Eliminar fondo?')">🗑</button>
@@ -124,48 +124,51 @@
     </div>
 
     <!-- Subsobres del fondo -->
-    {% for tc in d.transferencias_cascada %}{% if tc.origen == fa.fondo.nombre %}
+    {% for ss in fa.subsobres %}
     <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
         <span style="color:var(--muted);">
-            <span style="color:#fff;">{{ tc.nombre }}</span>
-            {% if tc.destino != tc.origen %} → {{ tc.destino }}{% endif %}
+            <span style="color:#fff;">{{ ss.nombre }}</span>
+            <span style="font-size:0.7rem; color:var(--muted); margin-left:4px;">({{ ss.tipo }})</span>
+            {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
         </span>
-        <span style="color:#ffaa00; font-weight:600;">€{{ tc.importe|floatformat:2 }}</span>
-        <form method="post" action="{% url 'finanzas:eliminar_subsobres' tc.subsobres_id %}" style="margin:0;">
-            {% csrf_token %}
-            <button type="submit" class="r-btn" style="font-size:0.7rem;">✕</button>
-        </form>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span style="color:#ffaa00; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
+            <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')">✕</button>
+            </form>
+        </div>
     </div>
-    {% endif %}{% endfor %}
+    {% endfor %}
 
+    {% if fa.subsobres %}
     <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
         <span>Asignado: €{{ fa.total_cascada_saliente|floatformat:2 }}</span>
         <span style="color:{% if fa.total_aportacion_neta >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre: {% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
     </div>
+    {% endif %}
 </div>
 {% empty %}
 <p style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Sin fondos definidos.</p>
 {% endfor %}
 
 <!-- ===== TRANSFERENCIAS BANCARIAS ===== -->
-{% with transferencias_personales=d.transferencias %}
-{% if transferencias_personales %}
+{% if d.transferencias %}
 <div class="section-title" style="margin-top:24px;">🔄 Transferencias del mes</div>
-{% for t in transferencias_personales %}{% if t.tipo == 'fondo' %}
+{% for t in d.transferencias %}
 <div class="transfer-card" style="border-left-color: {{ t.color }};">
     <div class="transfer-left">
         <div class="transfer-origen">De: {{ t.origen }}</div>
-        <div class="transfer-concepto">{{ t.concepto }}</div>
+        <div class="transfer-concepto">{{ t.concepto }}{% if t.tipo == 'cascada' %} <span style="font-size:0.68rem; color:var(--muted);">(cascada)</span>{% endif %}</div>
         <div class="transfer-destino">→ {{ t.destino }}</div>
         {% if t.cuenta %}<div class="transfer-cuenta">🏦 {{ t.cuenta }}</div>{% endif %}
     </div>
     <div class="transfer-importe" style="color: {{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
 </div>
-{% endif %}{% endfor %}
+{% endfor %}
 {% endif %}
-{% endwith %}
 
-<!-- ===== RESUMEN FINAL POR PERSONA ===== -->
+<!-- ===== RESUMEN POR PERSONA ===== -->
 <div class="section-title" style="margin-top:24px;">👤 Resumen por persona</div>
 {% for dm in d.datos_miembros %}
 <div class="resumen-persona">
@@ -282,18 +285,18 @@
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Ahorro piso, Indexa..." required></div>
             <div class="fg">
                 <label>Tipo</label>
-                <div style="display:flex; gap:8px; margin-top:4px;">
-                    <button type="button" id="ss-btn-pct" class="btn btn-secondary active" onclick="setTipoSS('porcentaje')" style="flex:1;">% del fondo</button>
-                    <button type="button" id="ss-btn-fijo" class="btn btn-secondary" onclick="setTipoSS('fijo')" style="flex:1;">€ fijo</button>
-                </div>
-                <input type="hidden" name="tipo_calculo" id="ss_tipo_input" value="porcentaje">
+                <select name="tipo">
+                    <option value="libre">Sin asignación / libre</option>
+                    <option value="gasto_fijo">Cubre gasto fijo del hogar</option>
+                    <option value="gasto_variable">Cubre gasto variable del hogar</option>
+                    <option value="discrecional">Gasto discrecional</option>
+                </select>
             </div>
-            <div id="ss-campo-pct" class="fg"><label>Porcentaje (%)</label><input type="number" name="porcentaje" step="0.01" min="0" max="100" value="0"></div>
-            <div id="ss-campo-fijo" class="fg" style="display:none;"><label>Importe fijo (€/mes)</label><input type="number" name="importe_fijo" step="0.01" min="0" value="0"></div>
+            <div class="fg"><label>Importe (€/mes)</label><input type="number" name="importe_manual" step="0.01" min="0" value="0"></div>
             <div class="fg">
                 <label>Fondo destino (opcional — si va a otro fondo)</label>
                 <select name="fondo_destino_id">
-                    <option value="">— Sin asignación / libre —</option>
+                    <option value="">— Ninguno —</option>
                     {% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}
                 </select>
             </div>
@@ -366,14 +369,6 @@ function setTipoRegla(tipo) {
     document.getElementById('campo-fijo').style.display = tipo === 'fijo' ? 'block' : 'none';
     document.getElementById('btn-pct').classList.toggle('active', tipo === 'porcentaje');
     document.getElementById('btn-fijo').classList.toggle('active', tipo === 'fijo');
-}
-
-function setTipoSS(tipo) {
-    document.getElementById('ss_tipo_input').value = tipo;
-    document.getElementById('ss-campo-pct').style.display = tipo === 'porcentaje' ? 'block' : 'none';
-    document.getElementById('ss-campo-fijo').style.display = tipo === 'fijo' ? 'block' : 'none';
-    document.getElementById('ss-btn-pct').classList.toggle('active', tipo === 'porcentaje');
-    document.getElementById('ss-btn-fijo').classList.toggle('active', tipo === 'fijo');
 }
 
 function abrirModalSubsobre(fondoId, fondoNombre) {

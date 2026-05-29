@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from decimal import Decimal
 
-from .models import ReglaReparto, FondoFamiliar
+from .models import ReglaReparto, FondoFamiliar, SubsobreFondo
 from .distribucion import calcular_flujos, calcular_resumen_anual
 
 MESES = [
@@ -15,13 +15,17 @@ MESES = [
 
 
 def _get_hogar_o_redirect(request):
-    """Helper: devuelve (profile, hogar) o None si no tiene hogar."""
+    """Helper DRY: devuelve (profile, hogar) o (None, None)."""
     profile = getattr(request.user, 'userprofile', None)
     if not profile or not profile.hogar:
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return None, None
     return profile, profile.hogar
 
+
+# ---------------------------------------------------------------------------
+# Vista principal de distribución
+# ---------------------------------------------------------------------------
 
 @login_required
 def vista_distribucion(request):
@@ -30,7 +34,6 @@ def vista_distribucion(request):
         return redirect('dashboard')
 
     hoy = datetime.date.today()
-    # Selector de mes desde GET o por defecto mes actual
     try:
         mes = int(request.GET.get('mes', hoy.month))
         anio = int(request.GET.get('anio', hoy.year))
@@ -46,7 +49,6 @@ def vista_distribucion(request):
     ).select_related('fondo', 'usuario').order_by('orden')
     miembros = hogar.miembros.select_related('user').all()
 
-    # Años disponibles: año actual ± 1
     anios = [anio - 1, anio, anio + 1]
 
     return render(request, 'finanzas/distribucion/vista.html', {
@@ -62,6 +64,10 @@ def vista_distribucion(request):
         'anios': anios,
     })
 
+
+# ---------------------------------------------------------------------------
+# Resumen anual
+# ---------------------------------------------------------------------------
 
 @login_required
 def vista_resumen_anual(request):
@@ -194,6 +200,7 @@ def eliminar_regla(request, regla_id):
 
 # ---------------------------------------------------------------------------
 # CRUD subsobres (cascada)
+# Campos reales: fondo, nombre, tipo, importe_manual, fondo_destino, orden, activo
 # ---------------------------------------------------------------------------
 
 @login_required
@@ -203,34 +210,36 @@ def crear_subsobres(request, fondo_id):
     if not hogar:
         return redirect('dashboard')
 
-    from .models import SubsobreFondo
-    fondo_origen = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=hogar)
+    fondo = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=hogar)
 
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
-        tipo = request.POST.get('tipo_calculo', 'porcentaje')
+        tipo = request.POST.get('tipo', 'libre')
         fondo_destino_id = request.POST.get('fondo_destino_id') or None
 
         try:
-            porcentaje = Decimal(request.POST.get('porcentaje', '0') or '0')
-            importe_fijo = Decimal(request.POST.get('importe_fijo', '0') or '0')
+            importe_manual = Decimal(request.POST.get('importe_manual', '0') or '0')
         except Exception:
             messages.error(request, "Importe inválido.")
             return redirect('finanzas:vista_distribucion')
 
-        fondo_destino = FondoFamiliar.objects.filter(
-            id=fondo_destino_id, hogar=hogar
-        ).first() if fondo_destino_id else None
+        if not nombre:
+            messages.error(request, "El nombre es obligatorio.")
+        else:
+            fondo_destino = FondoFamiliar.objects.filter(
+                id=fondo_destino_id, hogar=hogar
+            ).first() if fondo_destino_id else None
 
-        SubsobreFondo.objects.create(
-            fondo_origen=fondo_origen,
-            fondo_destino=fondo_destino,
-            nombre=nombre,
-            tipo_calculo=tipo,
-            porcentaje=porcentaje,
-            importe_fijo=importe_fijo,
-        )
-        messages.success(request, f"Distribución interna '{nombre}' añadida.")
+            max_orden = SubsobreFondo.objects.filter(fondo=fondo).count()
+            SubsobreFondo.objects.create(
+                fondo=fondo,
+                nombre=nombre,
+                tipo=tipo,
+                importe_manual=importe_manual if importe_manual > 0 else None,
+                fondo_destino=fondo_destino,
+                orden=max_orden,
+            )
+            messages.success(request, f"Distribución interna '{nombre}' añadida.")
 
     return redirect('finanzas:vista_distribucion')
 
@@ -241,8 +250,7 @@ def eliminar_subsobres(request, subsobres_id):
     if not hogar:
         return redirect('dashboard')
 
-    from .models import SubsobreFondo
-    ss = get_object_or_404(SubsobreFondo, id=subsobres_id, fondo_origen__hogar=hogar)
+    ss = get_object_or_404(SubsobreFondo, id=subsobres_id, fondo__hogar=hogar)
     nombre = ss.nombre
     ss.delete()
     messages.success(request, f"Distribución interna '{nombre}' eliminada.")
