@@ -4,66 +4,66 @@
 {% block content %}
 <div class="panel">
 
-<!-- ===== CABECERA + SELECTOR DE MES ===== -->
+<!-- ===== CABECERA ===== -->
 <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
     <h2 class="titulo-glow" style="margin:0;">💰 Distribución mensual</h2>
     <form method="get" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <select name="mes" onchange="this.form.submit()" style="background:#1a1a1a; color:var(--text-color); border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem;">
+        <select name="mes" onchange="this.form.submit()" class="sel-sm">
             {% for num, nombre in meses %}
             <option value="{{ num }}" {% if num == mes_actual %}selected{% endif %}>{{ nombre }}</option>
             {% endfor %}
         </select>
-        <select name="anio" onchange="this.form.submit()" style="background:#1a1a1a; color:var(--text-color); border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem;">
+        <select name="anio" onchange="this.form.submit()" class="sel-sm">
             {% for a in anios %}
             <option value="{{ a }}" {% if a == anio_actual %}selected{% endif %}>{{ a }}</option>
             {% endfor %}
         </select>
-        <a href="{% url 'finanzas:resumen_anual' %}?anio={{ anio_actual }}" class="btn btn-secondary" style="font-size:0.8rem; padding:8px 14px; white-space:nowrap;">📅 Ver año</a>
+        <a href="{% url 'finanzas:resumen_anual' %}?anio={{ anio_actual }}" class="btn btn-secondary" style="font-size:0.8rem; padding:8px 14px;">📅 Ver año</a>
     </form>
 </div>
 
-<!-- ===== MENSAJES ===== -->
 {% for msg in messages %}
 <div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
 {% endfor %}
 
-<!-- ===== KPI BARRA ===== -->
-<div class="kpi-bar" style="margin-bottom:20px;">
+<!-- ===== KPIs ===== -->
+<div class="kpi-bar">
     <div class="kpi-item">
-        <div class="kpi-label">Ingresos {{ d.mes_nombre }}</div>
+        <div class="kpi-label">Ingresos</div>
         <div class="kpi-valor" style="color:#00ff88;">€{{ d.ingreso_base_hogar|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
-        <div class="kpi-label">Gastos totales</div>
+        <div class="kpi-label">Gastos</div>
         <div class="kpi-valor" style="color:#ff4d4d;">€{{ d.total_gastos_all|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
-        <div class="kpi-label">Libre / Ahorro</div>
-        <div class="kpi-valor" style="color:{% if d.libre_base_hogar >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ d.libre_base_hogar|floatformat:2 }}</div>
+        <div class="kpi-label">Ahorro</div>
+        <div class="kpi-valor" style="color:#00d1ff;">€{{ d.total_ahorro|floatformat:2 }}</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-label">Inversión</div>
+        <div class="kpi-valor" style="color:#a259ff;">€{{ d.total_inversion|floatformat:2 }}</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-label">Libre</div>
+        <div class="kpi-valor" style="color:{% if d.libre_total >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ d.libre_total|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Tasa ahorro</div>
-        <div class="kpi-valor semaforo-{{ d.semaforo }}">{{ d.tasa_ahorro_base }}%</div>
+        <div class="kpi-valor semaforo-{{ d.semaforo }}">{{ d.tasa_ahorro }}%</div>
     </div>
 </div>
 
 <!-- Barra proporcional -->
-<div class="barra-prop" style="margin-bottom:24px;">
-    {% if d.pct_ind > 0 %}<div class="bp-seg bp-ind" style="width:{{ d.pct_ind }}%;" title="Gastos individuales {{ d.pct_ind }}%">{{ d.pct_ind }}%</div>{% endif %}
-    {% if d.pct_hogar > 0 %}<div class="bp-seg bp-hogar" style="width:{{ d.pct_hogar }}%;" title="Gastos hogar {{ d.pct_hogar }}%">{{ d.pct_hogar }}%</div>{% endif %}
-    {% if d.pct_libre > 0 %}<div class="bp-seg bp-libre" style="width:{{ d.pct_libre }}%;" title="Libre {{ d.pct_libre }}%">{{ d.pct_libre }}%</div>{% endif %}
+<div class="barra-prop" style="margin:16px 0 24px;">
+    {% if d.pct_gastos > 0 %}<div class="bp-seg" style="width:{{ d.pct_gastos }}%; background:#ff4d4d;" title="Gastos {{ d.pct_gastos }}%">{{ d.pct_gastos }}%</div>{% endif %}
+    {% if d.pct_ahorro > 0 %}<div class="bp-seg" style="width:{{ d.pct_ahorro }}%; background:#00d1ff;" title="Ahorro {{ d.pct_ahorro }}%">{{ d.pct_ahorro }}%</div>{% endif %}
+    {% if d.pct_inversion > 0 %}<div class="bp-seg" style="width:{{ d.pct_inversion }}%; background:#a259ff;" title="Inversión {{ d.pct_inversion }}%">{{ d.pct_inversion }}%</div>{% endif %}
+    {% if d.pct_libre > 0 %}<div class="bp-seg" style="width:{{ d.pct_libre }}%; background:#ffaa00;" title="Libre {{ d.pct_libre }}%">{{ d.pct_libre }}%</div>{% endif %}
 </div>
 
-<!-- ===== AVISOS: EXTRAS Y AJUSTES DEL MES ===== -->
+<!-- ===== AVISOS ===== -->
 {% for dm in d.datos_miembros %}
-{% if dm.extras_mes %}
-<div style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
-    <span style="color:#00d1ff; font-weight:600;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingresos extra este mes:</span>
-    {% for ex in dm.extras_mes %}
-    <span style="color:#fff; margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
-    {% endfor %}
-</div>
-{% endif %}
 {% if dm.ajustes_mes %}
 <div style="background:rgba(255,170,0,0.07); border:1px solid #ffaa0033; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
     <span style="color:#ffaa00; font-weight:600;">✏️ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingreso ajustado:</span>
@@ -72,14 +72,21 @@
     {% endfor %}
 </div>
 {% endif %}
+{% if dm.extras_mes %}
+<div style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
+    <span style="color:#00d1ff; font-weight:600;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — extras:</span>
+    {% for ex in dm.extras_mes %}
+    <span style="color:#fff; margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
+    {% endfor %}
+</div>
+{% endif %}
 {% endfor %}
 
-<!-- ===== REGLAS DE REPARTO ===== -->
+<!-- ===== REGLAS ===== -->
 <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
     <span>⚙️ Reglas de reparto</span>
     <button onclick="abrirModalRegla()" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nueva regla</button>
 </div>
-
 {% for regla in reglas %}
 <div class="regla-pill" style="border-left-color: {{ regla.color }};">
     <div class="regla-pill-info">
@@ -90,33 +97,27 @@
             {% if regla.usuario %} · 👤 {{ regla.usuario.first_name|default:regla.usuario.username }}{% else %} · 🏠 Hogar{% endif %}
         </div>
     </div>
-    <div style="display:flex; gap:6px; align-items:center;">
-        <button onclick="editarRegla({{ regla.id }}, '{{ regla.nombre|escapejs }}', '{{ regla.tipo_regla }}', '{{ regla.porcentaje }}', '{{ regla.importe_fijo }}', '{{ regla.fondo_id|default:"" }}', '{{ regla.usuario_id|default:"" }}', '{{ regla.color }}')" class="r-btn" title="Editar">✏️</button>
-        <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">
-            {% csrf_token %}
-            <button type="submit" class="r-btn" onclick="return confirm('¿Eliminar regla?')">🗑</button>
-        </form>
+    <div style="display:flex; gap:6px;">
+        <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}')" class="r-btn">✏️</button>
+        <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar?')">🗑</button></form>
     </div>
 </div>
 {% empty %}
-<p style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Sin reglas. Crea una para definir dónde va el dinero libre.</p>
+<p class="empty-msg">Sin reglas definidas.</p>
 {% endfor %}
 
 <!-- ===== FONDOS ===== -->
 <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; margin-top:24px;">
     <span>🗂 Fondos</span>
-    <button onclick="document.getElementById('modal-fondo').style.display='flex'" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nuevo fondo</button>
+    <button onclick="abrirModalFondo()" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nuevo fondo</button>
 </div>
-
 {% for fa in d.fondos_aportaciones %}
 <div class="regla-pill" style="border-left-color: {{ fa.fondo.color }}; display:block; padding:14px 16px;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
-        <div class="regla-pill-info" style="flex:1;">
+        <div style="flex:1;">
             <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 {{ fa.fondo.nombre }}
-                <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">
-                    €{{ fa.total_aportacion_neta|floatformat:2 }}
-                </span>
+                <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
                 {% if fa.total_cascada_saliente > 0 %}
                 <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }})</span>
                 {% endif %}
@@ -127,28 +128,38 @@
                 {% for ap in fa.aportantes %} · {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} €{{ ap.importe_base|floatformat:0 }}{% endfor %}
             </div>
         </div>
-        <div style="display:flex; gap:8px; align-items:center;">
-            <button onclick="abrirModalSubsobre({{ fa.fondo.id }}, '{{ fa.fondo.nombre|escapejs }}')" class="btn btn-secondary" style="font-size:0.75rem; padding:6px 10px;">＋</button>
-            <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">
-                {% csrf_token %}
-                <button type="submit" class="r-btn" onclick="return confirm('¿Eliminar fondo?')">🗑</button>
-            </form>
+        <div style="display:flex; gap:6px; align-items:center;">
+            <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}')" class="r-btn">✏️</button>
+            {% if fa.fondo.tipo_fondo == 'comun' %}
+            <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos">📋</button>
+            {% endif %}
+            <button onclick="abrirModalSubsobre({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn">＋</button>
+            <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar?')">🗑</button></form>
         </div>
     </div>
 
+    <!-- Gastos cubiertos (solo fondo comun) -->
+    {% if fa.fondo.tipo_fondo == 'comun' and fa.gastos_asignados %}
+    <div style="margin-top:10px; padding:8px 12px; background:rgba(255,77,77,0.06); border:1px solid #ff4d4d22; border-radius:8px; font-size:0.78rem;">
+        <div style="color:#ff4d4d; font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
+        {% for g in fa.gastos_asignados %}
+        <div style="color:var(--muted); padding:2px 0;">{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</div>
+        {% endfor %}
+        {% if fa.libre_fondo is not None %}
+        <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %}; font-weight:600;">
+            Remanente: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Subsobres -->
     {% for ss in fa.subsobres %}
     <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
-        <span style="color:var(--muted);">
-            <span style="color:#fff;">{{ ss.nombre }}</span>
-            <span style="font-size:0.7rem; color:var(--muted); margin-left:4px;">({{ ss.tipo }})</span>
-            {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
-        </span>
+        <span><span style="color:#fff;">{{ ss.nombre }}</span> <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>{% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}</span>
         <div style="display:flex; align-items:center; gap:10px;">
             <span style="color:#ffaa00; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
-            <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">
-                {% csrf_token %}
-                <button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')">✕</button>
-            </form>
+            <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')">✕</button></form>
         </div>
     </div>
     {% endfor %}
@@ -161,7 +172,7 @@
     {% endif %}
 </div>
 {% empty %}
-<p style="color: var(--muted); font-style: italic; font-size: 0.85rem;">Sin fondos definidos.</p>
+<p class="empty-msg">Sin fondos definidos.</p>
 {% endfor %}
 
 <!-- ===== TRANSFERENCIAS ===== -->
@@ -170,12 +181,12 @@
 {% for t in d.transferencias %}
 <div class="transfer-card" style="border-left-color: {{ t.color }};">
     <div class="transfer-left">
-        <div class="transfer-origen">De: {{ t.origen }}</div>
-        <div class="transfer-concepto">{{ t.concepto }}{% if t.tipo == 'cascada' %} <span style="font-size:0.68rem; color:var(--muted);">(cascada)</span>{% endif %}</div>
-        <div class="transfer-destino">→ {{ t.destino }}</div>
-        {% if t.cuenta %}<div class="transfer-cuenta">🏦 {{ t.cuenta }}</div>{% endif %}
+        <div class="transfer-sub">De: {{ t.origen }}</div>
+        <div style="font-size:0.9rem; font-weight:600;">{{ t.concepto }}{% if t.tipo == 'cascada' %} <span style="font-size:0.68rem; color:var(--muted);">(cascada)</span>{% endif %}</div>
+        <div class="transfer-sub">→ {{ t.destino }}</div>
+        {% if t.cuenta %}<div style="font-size:0.68rem; color:#00d1ff; margin-top:2px;">🏦 {{ t.cuenta }}</div>{% endif %}
     </div>
-    <div class="transfer-importe" style="color: {{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
+    <div style="font-size:1.1rem; font-weight:700; color:{{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
 </div>
 {% endfor %}
 {% endif %}
@@ -187,196 +198,153 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <h4 style="margin:0;">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</h4>
         {% if dm.fuentes %}
-        <button onclick="toggleAjuste('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.7rem; padding:5px 10px;">✏️ Ajustar ingreso</button>
+        <button onclick="toggleEl('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.7rem; padding:5px 10px;">✏️ Ajustar ingreso</button>
         {% endif %}
     </div>
-
     {% if dm.fuentes %}
-    <div id="ajuste-{{ dm.miembro.user.id }}" class="ajuste-inline" style="display:none;">
+    <div id="ajuste-{{ dm.miembro.user.id }}" style="display:none;">
         <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px;">
             {% csrf_token %}
             <input type="hidden" name="mes" value="{{ d.mes }}">
             <input type="hidden" name="anio" value="{{ d.anio }}">
             <div style="flex:1; min-width:120px;">
-                <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Fuente</label>
-                <select name="fuente_id" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
-                    {% for fu in dm.fuentes %}
-                    <option value="{{ fu.id }}">{{ fu.nombre }}</option>
-                    {% endfor %}
-                </select>
+                <label class="lbl-sm">Fuente</label>
+                <select name="fuente_id" class="inp-sm">{% for fu in dm.fuentes %}<option value="{{ fu.id }}">{{ fu.nombre }}</option>{% endfor %}</select>
             </div>
             <div style="min-width:100px;">
-                <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Neto real (€)</label>
-                <input type="number" name="importe_real" step="0.01" min="0" placeholder="Vacío = reset" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
+                <label class="lbl-sm">Neto real (€)</label>
+                <input type="number" name="importe_real" step="0.01" min="0" placeholder="Vacío=reset" class="inp-sm">
             </div>
             <div style="min-width:80px;">
-                <label style="font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px;">Nota</label>
-                <input type="text" name="nota" placeholder="Opcional" style="width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem;">
+                <label class="lbl-sm">Nota</label>
+                <input type="text" name="nota" placeholder="Opcional" class="inp-sm">
             </div>
-            <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:8px 14px; white-space:nowrap;">Guardar</button>
+            <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:8px 14px;">OK</button>
         </form>
     </div>
     {% endif %}
-
-    <div class="resumen-row">
-        <span class="rl">Ingreso neto {{ d.mes_nombre }}</span>
-        <span style="color:#00ff88;">+€{{ dm.ingreso_base|floatformat:2 }}</span>
-    </div>
-    {% for aj in dm.ajustes_mes %}
-    <div class="resumen-row" style="font-size:0.78rem;">
-        <span class="rl" style="color:#ffaa00;">✏️ {{ aj.fuente }} (ajustado)</span>
-        <span style="color:#ffaa00;">€{{ aj.importe_ajustado|floatformat:2 }} <span style="color:var(--muted); font-size:0.68rem;">base: €{{ aj.importe_base|floatformat:2 }}</span></span>
-    </div>
-    {% endfor %}
-    {% for ex in dm.extras_mes %}
-    <div class="resumen-row" style="font-size:0.78rem;">
-        <span class="rl" style="color:#00d1ff;">⚡ {{ ex.fuente }}</span>
-        <span style="color:#00d1ff;">+€{{ ex.importe|floatformat:2 }}</span>
-    </div>
-    {% endfor %}
-    {% if dm.gastos_individuales > 0 %}
-    <div class="resumen-row">
-        <span class="rl">Gastos individuales</span>
-        <span style="color:#ff4d4d;">−€{{ dm.gastos_individuales|floatformat:2 }}</span>
-    </div>
-    {% endif %}
+    <div class="resumen-row"><span class="rl">Ingreso neto {{ d.mes_nombre }}</span><span style="color:#00ff88;">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
+    {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos individuales</span><span style="color:#ff4d4d;">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
     {% for ap in dm.aportaciones_fondos %}{% if ap.importe_base > 0 %}
-    <div class="resumen-row">
-        <span class="rl">{{ ap.regla.nombre }}{% if ap.fondo %} → {{ ap.fondo.nombre }}{% endif %}</span>
-        <span style="color:{{ ap.regla.color }};">−€{{ ap.importe_base|floatformat:2 }}</span>
-    </div>
+    <div class="resumen-row"><span class="rl">{{ ap.regla.nombre }}{% if ap.fondo %} → {{ ap.fondo.nombre }}{% endif %}</span><span style="color:{{ ap.regla.color }};">−€{{ ap.importe_base|floatformat:2 }}</span></div>
     {% endif %}{% endfor %}
-    <div class="resumen-info">
-        ℹ️ Parte proporcional gastos del hogar ({{ dm.proporcion }}%): €{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes — a cubrir vía fondo común
-    </div>
-    <div class="resumen-row">
-        <span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Queda en cuenta personal</span>
-        <span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-size:1.05rem;">€{{ dm.libre_base|floatformat:2 }}/mes</span>
-    </div>
+    <div class="resumen-info">ℹ️ Parte proporcional gastos hogar ({{ dm.proporcion }}%): €{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes</div>
+    <div class="resumen-row"><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre personal</span><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-size:1.05rem;">€{{ dm.libre_base|floatformat:2 }}</span></div>
 </div>
 {% endfor %}
 
 </div><!-- /panel -->
 
-
-<!-- ===== MODAL NUEVO FONDO ===== -->
+<!-- ===== MODAL FONDO (crear/editar) ===== -->
 <div id="modal-fondo" class="modal-overlay">
     <div class="modal-box">
-        <h2>🗂 Nuevo fondo</h2>
-        <form method="post" action="{% url 'finanzas:crear_fondo' %}">
+        <h2 id="modal-fondo-titulo">🗂 Nuevo fondo</h2>
+        <form method="post" id="form-fondo" action="{% url 'finanzas:crear_fondo' %}">
             {% csrf_token %}
-            <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Revolut conjunta, Ahorro piso..." required></div>
-            <div class="fg"><label>Cuenta bancaria asociada (opcional)</label><input type="text" name="cuenta_asociada" placeholder="Ej: Revolut conjunta, BBVA..."></div>
+            <div class="fg"><label>Nombre</label><input type="text" name="nombre" id="fondo-nombre" required></div>
+            <div class="fg"><label>Cuenta bancaria (opcional)</label><input type="text" name="cuenta_asociada" id="fondo-cuenta"></div>
             <div class="fg">
-                <label>Tipo de fondo</label>
-                <select name="tipo_fondo">
+                <label>Tipo</label>
+                <select name="tipo_fondo" id="fondo-tipo">
                     <option value="comun">Fondo común del hogar</option>
                     <option value="ahorro">Ahorro</option>
                     <option value="inversion">Inversión</option>
-                    <option value="emergencia">Fondo de emergencia</option>
-                    <option value="objetivo">Objetivo concreto</option>
-                    <option value="otro">Otro</option>
                 </select>
             </div>
             <div class="fg">
                 <label>Color</label>
-                <div class="color-picker-row">
-                    <button type="button" class="color-dot active" style="background:#00ff88;" onclick="selColor(this,'#00ff88','fondo')"></button>
-                    <button type="button" class="color-dot" style="background:#00d1ff;" onclick="selColor(this,'#00d1ff','fondo')"></button>
-                    <button type="button" class="color-dot" style="background:#a259ff;" onclick="selColor(this,'#a259ff','fondo')"></button>
-                    <button type="button" class="color-dot" style="background:#ff2d6b;" onclick="selColor(this,'#ff2d6b','fondo')"></button>
-                    <button type="button" class="color-dot" style="background:#ffaa00;" onclick="selColor(this,'#ffaa00','fondo')"></button>
+                <div class="color-row" id="fondo-color-row">
+                    <button type="button" class="cdot active" style="background:#00ff88;" onclick="selC(this,'#00ff88','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#00d1ff;" onclick="selC(this,'#00d1ff','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#a259ff;" onclick="selC(this,'#a259ff','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#ff2d6b;" onclick="selC(this,'#ff2d6b','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#ffaa00;" onclick="selC(this,'#ffaa00','fondo')"></button>
                 </div>
                 <input type="hidden" name="color" id="color-fondo" value="#00ff88">
             </div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
-                <button type="button" onclick="document.getElementById('modal-fondo').style.display='none'" class="btn btn-secondary">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Crear fondo</button>
+            <div class="modal-actions">
+                <button type="button" onclick="cerrar('modal-fondo')" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" class="btn btn-primary" id="btn-fondo-submit">Crear fondo</button>
             </div>
         </form>
     </div>
 </div>
 
-
-<!-- ===== MODAL REGLA (crear + editar) ===== -->
+<!-- ===== MODAL REGLA (crear/editar) ===== -->
 <div id="modal-regla" class="modal-overlay">
     <div class="modal-box">
-        <h2 id="modal-regla-titulo">⚙️ Nueva regla de reparto</h2>
+        <h2 id="modal-regla-titulo">⚙️ Nueva regla</h2>
         <form method="post" id="form-regla" action="{% url 'finanzas:crear_regla' %}">
             {% csrf_token %}
-            <div class="fg"><label>Nombre</label><input type="text" name="nombre" id="regla-nombre" placeholder="Ej: Ahorro personal, Fondo vacaciones..." required></div>
+            <div class="fg"><label>Nombre</label><input type="text" name="nombre" id="regla-nombre" required></div>
             <div class="fg">
                 <label>Tipo</label>
                 <div style="display:flex; gap:8px; margin-top:4px;">
-                    <button type="button" id="btn-pct" class="btn btn-secondary active" onclick="setTipoRegla('porcentaje')" style="flex:1;">% del libre</button>
-                    <button type="button" id="btn-fijo" class="btn btn-secondary" onclick="setTipoRegla('fijo')" style="flex:1;">€ fijo</button>
+                    <button type="button" id="btn-pct" class="btn btn-secondary active" onclick="setTipoR('porcentaje')" style="flex:1;">%</button>
+                    <button type="button" id="btn-fijo" class="btn btn-secondary" onclick="setTipoR('fijo')" style="flex:1;">€ fijo</button>
                 </div>
                 <input type="hidden" name="tipo_regla" id="tipo_regla_input" value="porcentaje">
             </div>
-            <div id="campo-pct" class="fg"><label>Porcentaje (%)</label><input type="number" name="porcentaje" id="regla-porcentaje" step="0.01" min="0" max="100" value="0"></div>
-            <div id="campo-fijo" class="fg" style="display:none;"><label>Importe fijo (€/mes)</label><input type="number" name="importe_fijo" id="regla-importe" step="0.01" min="0" value="0"></div>
-            <div class="fg">
-                <label>Fondo destino (opcional)</label>
-                <select name="fondo_id" id="regla-fondo">
-                    <option value="">— Sin asignación / libre —</option>
-                    {% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}
-                </select>
-            </div>
-            <div class="fg">
-                <label>Aplicar a</label>
-                <select name="usuario_id" id="regla-usuario">
-                    <option value="">🏠 Todo el hogar</option>
-                    {% for m in miembros %}<option value="{{ m.user.id }}">👤 {{ m.user.first_name|default:m.user.username }}</option>{% endfor %}
-                </select>
-            </div>
+            <div id="campo-pct" class="fg"><label>Porcentaje (%)</label><input type="number" name="porcentaje" id="regla-pct" step="0.01" min="0" max="100" value="0"></div>
+            <div id="campo-fijo" class="fg" style="display:none;"><label>Importe (€/mes)</label><input type="number" name="importe_fijo" id="regla-imp" step="0.01" min="0" value="0"></div>
+            <div class="fg"><label>Fondo destino</label><select name="fondo_id" id="regla-fondo"><option value="">— Sin asignación —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
+            <div class="fg"><label>Aplicar a</label><select name="usuario_id" id="regla-usuario"><option value="">🏠 Hogar</option>{% for m in miembros %}<option value="{{ m.user.id }}">👤 {{ m.user.first_name|default:m.user.username }}</option>{% endfor %}</select></div>
             <div class="fg">
                 <label>Color</label>
-                <div class="color-picker-row" id="regla-color-row">
-                    <button type="button" class="color-dot active" style="background:#00ff88;" onclick="selColor(this,'#00ff88','regla')"></button>
-                    <button type="button" class="color-dot" style="background:#00d1ff;" onclick="selColor(this,'#00d1ff','regla')"></button>
-                    <button type="button" class="color-dot" style="background:#a259ff;" onclick="selColor(this,'#a259ff','regla')"></button>
-                    <button type="button" class="color-dot" style="background:#ff2d6b;" onclick="selColor(this,'#ff2d6b','regla')"></button>
-                    <button type="button" class="color-dot" style="background:#ffaa00;" onclick="selColor(this,'#ffaa00','regla')"></button>
+                <div class="color-row" id="regla-color-row">
+                    <button type="button" class="cdot active" style="background:#00ff88;" onclick="selC(this,'#00ff88','regla')"></button>
+                    <button type="button" class="cdot" style="background:#00d1ff;" onclick="selC(this,'#00d1ff','regla')"></button>
+                    <button type="button" class="cdot" style="background:#a259ff;" onclick="selC(this,'#a259ff','regla')"></button>
+                    <button type="button" class="cdot" style="background:#ff2d6b;" onclick="selC(this,'#ff2d6b','regla')"></button>
+                    <button type="button" class="cdot" style="background:#ffaa00;" onclick="selC(this,'#ffaa00','regla')"></button>
                 </div>
                 <input type="hidden" name="color" id="color-regla" value="#00ff88">
             </div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
-                <button type="button" onclick="document.getElementById('modal-regla').style.display='none'" class="btn btn-secondary">Cancelar</button>
+            <div class="modal-actions">
+                <button type="button" onclick="cerrar('modal-regla')" class="btn btn-secondary">Cancelar</button>
                 <button type="submit" class="btn btn-primary" id="btn-regla-submit">Crear regla</button>
             </div>
         </form>
     </div>
 </div>
 
-
 <!-- ===== MODAL SUBSOBRE ===== -->
 <div id="modal-subsobre" class="modal-overlay">
     <div class="modal-box">
         <h2>↪️ Distribución interna</h2>
-        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Desde: <strong id="subsobre-fondo-nombre"></strong></p>
+        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Desde: <strong id="ss-fondo-nombre"></strong></p>
         <form method="post" id="form-subsobre" action="">
             {% csrf_token %}
-            <div class="fg"><label>Nombre</label><input type="text" name="nombre" placeholder="Ej: Ahorro piso, Indexa..." required></div>
-            <div class="fg">
-                <label>Tipo</label>
-                <select name="tipo">
-                    <option value="libre">Sin asignación / libre</option>
-                    <option value="gasto_fijo">Cubre gasto fijo del hogar</option>
-                    <option value="gasto_variable">Cubre gasto variable del hogar</option>
-                    <option value="discrecional">Gasto discrecional</option>
-                </select>
-            </div>
+            <div class="fg"><label>Nombre</label><input type="text" name="nombre" required></div>
+            <div class="fg"><label>Tipo</label><select name="tipo"><option value="libre">Libre</option><option value="gasto_fijo">Gasto fijo</option><option value="gasto_variable">Gasto variable</option><option value="discrecional">Discrecional</option></select></div>
             <div class="fg"><label>Importe (€/mes)</label><input type="number" name="importe_manual" step="0.01" min="0" value="0"></div>
-            <div class="fg">
-                <label>Fondo destino (opcional — si va a otro fondo)</label>
-                <select name="fondo_destino_id">
-                    <option value="">— Ninguno —</option>
-                    {% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}
-                </select>
-            </div>
-            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
-                <button type="button" onclick="document.getElementById('modal-subsobre').style.display='none'" class="btn btn-secondary">Cancelar</button>
+            <div class="fg"><label>Fondo destino (opcional)</label><select name="fondo_destino_id"><option value="">— Ninguno —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
+            <div class="modal-actions">
+                <button type="button" onclick="cerrar('modal-subsobre')" class="btn btn-secondary">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ===== MODAL ASIGNAR GASTOS A FONDO COMUN ===== -->
+<div id="modal-gastos" class="modal-overlay">
+    <div class="modal-box">
+        <h2>📋 Asignar gastos del hogar</h2>
+        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Fondo: <strong id="gastos-fondo-nombre"></strong></p>
+        <form method="post" id="form-gastos" action="">
+            {% csrf_token %}
+            {% for g in gastos_hogar %}
+            <label class="gasto-check" data-fondo="{{ g.fondo_asignado_id|default:'' }}">
+                <input type="checkbox" name="partida_ids" value="{{ g.id }}">
+                <span>{{ g.nombre }} <span style="color:var(--muted); font-size:0.75rem;">· {{ g.categoria.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span></span>
+            </label>
+            {% empty %}
+            <p class="empty-msg">No hay gastos del hogar declarados.</p>
+            {% endfor %}
+            <div class="modal-actions">
+                <button type="button" onclick="cerrar('modal-gastos')" class="btn btn-secondary">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar asignación</button>
             </div>
         </form>
     </div>
@@ -384,20 +352,19 @@
 
 
 <style>
-.kpi-bar { display:flex; gap:12px; flex-wrap:wrap; }
-.kpi-item { background:#1a1a1a; border-radius:12px; padding:14px 18px; flex:1; min-width:120px; }
-.kpi-label { font-size:0.72rem; color:var(--muted); margin-bottom:4px; }
-.kpi-valor { font-size:1.15rem; font-weight:700; }
-.semaforo-verde { color:#00ff88; }
-.semaforo-amarillo { color:#ffee00; }
-.semaforo-naranja { color:#ff8800; }
-.semaforo-rojo { color:#ff4d4d; }
+.sel-sm { background:#1a1a1a; color:var(--text-color); border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem; }
+.lbl-sm { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px; }
+.inp-sm { width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
+.empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; }
+
+.kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
+.kpi-item { background:#1a1a1a; border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
+.kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
+.kpi-valor { font-size:1.05rem; font-weight:700; }
+.semaforo-verde { color:#00ff88; } .semaforo-amarillo { color:#ffee00; } .semaforo-naranja { color:#ff8800; } .semaforo-rojo { color:#ff4d4d; }
 
 .barra-prop { display:flex; height:12px; border-radius:8px; overflow:hidden; background:#111; }
-.bp-seg { display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:#fff; font-weight:700; min-width:20px; }
-.bp-ind { background:#ff4d4d; }
-.bp-hogar { background:#ff8800; }
-.bp-libre { background:#00ff88; }
+.bp-seg { display:flex; align-items:center; justify-content:center; font-size:0.55rem; color:#fff; font-weight:700; min-width:18px; }
 
 .section-title { font-size:0.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px; }
 
@@ -405,124 +372,140 @@
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
 
-.tag-tipo { font-size:0.65rem; padding:2px 8px; border-radius:6px; font-weight:600; letter-spacing:.03em; }
+.tag-tipo { font-size:0.62rem; padding:2px 8px; border-radius:6px; font-weight:600; }
 .tag-comun { background:rgba(0,255,136,0.12); color:#00ff88; }
 .tag-ahorro { background:rgba(0,209,255,0.12); color:#00d1ff; }
 .tag-inversion { background:rgba(162,89,255,0.12); color:#a259ff; }
-.tag-emergencia { background:rgba(255,45,107,0.12); color:#ff2d6b; }
-.tag-objetivo { background:rgba(255,170,0,0.12); color:#ffaa00; }
-.tag-otro { background:rgba(255,255,255,0.06); color:var(--muted); }
 
-.transfer-card { background:#1a1a1a; border-radius:14px; padding:16px 18px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
-.transfer-left { flex:1; min-width:0; }
-.transfer-origen { font-size:0.72rem; color:var(--muted); margin-bottom:2px; }
-.transfer-concepto { font-size:0.9rem; font-weight:600; }
-.transfer-destino { font-size:0.72rem; color:var(--muted); margin-top:3px; }
-.transfer-cuenta { font-size:0.68rem; color:#00d1ff; margin-top:2px; }
-.transfer-importe { font-size:1.1rem; font-weight:700; text-align:right; white-space:nowrap; }
+.transfer-card { background:#1a1a1a; border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.transfer-sub { font-size:0.72rem; color:var(--muted); }
 
 .resumen-persona { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:14px; padding:18px; margin-bottom:12px; }
-.resumen-persona h4 { color:var(--primary-color); margin:0 0 12px 0; font-size:0.95rem; }
+.resumen-persona h4 { color:var(--primary-color); font-size:0.95rem; }
 .resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #222; font-size:0.85rem; }
 .resumen-row:last-child { border-bottom:none; font-weight:700; padding-top:10px; }
 .resumen-row .rl { color:var(--muted); }
 .resumen-info { font-size:0.75rem; color:#ffaa00; padding:6px 10px; background:rgba(255,170,0,0.08); border-radius:8px; margin:8px 0; border-left:2px solid #ffaa00; }
 
 .r-btn { background:transparent; border:1px solid #333; color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
-.r-btn:hover { border-color:#ff4d4d; color:#ff4d4d; }
+.r-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
 
-.color-picker-row { display:flex; gap:10px; margin-top:6px; }
-.color-dot { width:32px; height:32px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:all .2s; }
-.color-dot:hover { transform:scale(1.15); }
-.color-dot.active { border-color:#fff; box-shadow:0 0 12px currentColor; }
+.color-row { display:flex; gap:10px; margin-top:6px; }
+.cdot { width:32px; height:32px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:all .2s; }
+.cdot:hover { transform:scale(1.15); }
+.cdot.active { border-color:#fff; box-shadow:0 0 12px currentColor; }
+
+.gasto-check { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #222; font-size:0.85rem; color:var(--text-color); cursor:pointer; }
+.gasto-check input { width:18px; height:18px; accent-color:#00ff88; }
 
 .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); }
 .modal-box { background:#1a1a1a; border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
 .modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.05rem; }
 .modal-box .fg { margin-bottom:14px; }
 .modal-box label { display:block; font-size:0.8rem; color:var(--muted); margin-bottom:5px; }
-.modal-box select,
-.modal-box input[type="text"],
-.modal-box input[type="number"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
+.modal-box select, .modal-box input[type="text"], .modal-box input[type="number"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
 .msg-toast { background:#1e2a1e; border:1px solid #00ff88; color:#00ff88; border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
 </style>
 
 <script>
-var COLORES = ['#00ff88','#00d1ff','#a259ff','#ff2d6b','#ffaa00'];
+function cerrar(id){ document.getElementById(id).style.display='none'; }
+function toggleEl(id){ var e=document.getElementById(id); e.style.display=e.style.display==='none'?'block':'none'; }
 
-function selColor(btn, color, target) {
-    var row = btn.parentElement;
-    row.querySelectorAll('.color-dot').forEach(function(d){ d.classList.remove('active'); });
+function selC(btn,color,target){
+    btn.parentElement.querySelectorAll('.cdot').forEach(function(d){d.classList.remove('active');});
     btn.classList.add('active');
-    document.getElementById('color-' + target).value = color;
+    document.getElementById('color-'+target).value=color;
+}
+function selCByVal(target,color){
+    var row=document.getElementById(target+'-color-row');
+    if(!row) return;
+    var dots=row.querySelectorAll('.cdot'), found=false;
+    dots.forEach(function(d){ d.classList.remove('active'); if(d.style.backgroundColor===color||d.style.background===color){d.classList.add('active');found=true;} });
+    if(!found&&dots.length) dots[0].classList.add('active');
+    document.getElementById('color-'+target).value=color;
 }
 
-function setTipoRegla(tipo) {
-    document.getElementById('tipo_regla_input').value = tipo;
-    document.getElementById('campo-pct').style.display = tipo === 'porcentaje' ? 'block' : 'none';
-    document.getElementById('campo-fijo').style.display = tipo === 'fijo' ? 'block' : 'none';
-    document.getElementById('btn-pct').classList.toggle('active', tipo === 'porcentaje');
-    document.getElementById('btn-fijo').classList.toggle('active', tipo === 'fijo');
+/* --- Fondo --- */
+function abrirModalFondo(){
+    document.getElementById('modal-fondo-titulo').textContent='🗂 Nuevo fondo';
+    document.getElementById('btn-fondo-submit').textContent='Crear fondo';
+    document.getElementById('form-fondo').action='{% url "finanzas:crear_fondo" %}';
+    document.getElementById('fondo-nombre').value='';
+    document.getElementById('fondo-cuenta').value='';
+    document.getElementById('fondo-tipo').value='comun';
+    selCByVal('fondo','#00ff88');
+    document.getElementById('modal-fondo').style.display='flex';
+}
+function editarFondo(id,nombre,tipo,color,cuenta){
+    document.getElementById('modal-fondo-titulo').textContent='✏️ Editar fondo';
+    document.getElementById('btn-fondo-submit').textContent='Guardar';
+    document.getElementById('form-fondo').action='/finanzas/distribucion/fondo/'+id+'/editar/';
+    document.getElementById('fondo-nombre').value=nombre;
+    document.getElementById('fondo-cuenta').value=cuenta;
+    document.getElementById('fondo-tipo').value=tipo;
+    selCByVal('fondo',color);
+    document.getElementById('modal-fondo').style.display='flex';
 }
 
-function abrirModalRegla() {
-    document.getElementById('modal-regla-titulo').textContent = '⚙️ Nueva regla de reparto';
-    document.getElementById('btn-regla-submit').textContent = 'Crear regla';
-    document.getElementById('form-regla').action = '{% url "finanzas:crear_regla" %}';
-    document.getElementById('regla-nombre').value = '';
-    document.getElementById('regla-porcentaje').value = '0';
-    document.getElementById('regla-importe').value = '0';
-    document.getElementById('regla-fondo').value = '';
-    document.getElementById('regla-usuario').value = '';
-    setTipoRegla('porcentaje');
-    selColorByValue('regla', '#00ff88');
-    document.getElementById('modal-regla').style.display = 'flex';
+/* --- Regla --- */
+function setTipoR(t){
+    document.getElementById('tipo_regla_input').value=t;
+    document.getElementById('campo-pct').style.display=t==='porcentaje'?'block':'none';
+    document.getElementById('campo-fijo').style.display=t==='fijo'?'block':'none';
+    document.getElementById('btn-pct').classList.toggle('active',t==='porcentaje');
+    document.getElementById('btn-fijo').classList.toggle('active',t==='fijo');
+}
+function abrirModalRegla(){
+    document.getElementById('modal-regla-titulo').textContent='⚙️ Nueva regla';
+    document.getElementById('btn-regla-submit').textContent='Crear regla';
+    document.getElementById('form-regla').action='{% url "finanzas:crear_regla" %}';
+    document.getElementById('regla-nombre').value='';
+    document.getElementById('regla-pct').value='0';
+    document.getElementById('regla-imp').value='0';
+    document.getElementById('regla-fondo').value='';
+    document.getElementById('regla-usuario').value='';
+    setTipoR('porcentaje');
+    selCByVal('regla','#00ff88');
+    document.getElementById('modal-regla').style.display='flex';
+}
+function editarRegla(id,nombre,tipo,pct,fijo,fondoId,userId,color){
+    document.getElementById('modal-regla-titulo').textContent='✏️ Editar regla';
+    document.getElementById('btn-regla-submit').textContent='Guardar';
+    document.getElementById('form-regla').action='/finanzas/distribucion/regla/'+id+'/editar/';
+    document.getElementById('regla-nombre').value=nombre;
+    document.getElementById('regla-pct').value=pct;
+    document.getElementById('regla-imp').value=fijo;
+    document.getElementById('regla-fondo').value=fondoId;
+    document.getElementById('regla-usuario').value=userId;
+    setTipoR(tipo);
+    selCByVal('regla',color);
+    document.getElementById('modal-regla').style.display='flex';
 }
 
-function editarRegla(id, nombre, tipo, pct, fijo, fondoId, userId, color) {
-    document.getElementById('modal-regla-titulo').textContent = '✏️ Editar regla';
-    document.getElementById('btn-regla-submit').textContent = 'Guardar cambios';
-    document.getElementById('form-regla').action = '/finanzas/distribucion/regla/' + id + '/editar/';
-    document.getElementById('regla-nombre').value = nombre;
-    document.getElementById('regla-porcentaje').value = pct;
-    document.getElementById('regla-importe').value = fijo;
-    document.getElementById('regla-fondo').value = fondoId;
-    document.getElementById('regla-usuario').value = userId;
-    setTipoRegla(tipo);
-    selColorByValue('regla', color);
-    document.getElementById('modal-regla').style.display = 'flex';
+/* --- Subsobre --- */
+function abrirModalSubsobre(id,nombre){
+    document.getElementById('ss-fondo-nombre').textContent=nombre;
+    document.getElementById('form-subsobre').action='/finanzas/distribucion/fondo/'+id+'/subsobre/crear/';
+    document.getElementById('modal-subsobre').style.display='flex';
 }
 
-function selColorByValue(target, color) {
-    var row = document.getElementById(target + '-color-row') || document.getElementById('regla-color-row');
-    if (!row) return;
-    var dots = row.querySelectorAll('.color-dot');
-    var found = false;
-    dots.forEach(function(d) {
-        d.classList.remove('active');
-        if (d.style.background === color || d.style.backgroundColor === color) {
-            d.classList.add('active');
-            found = true;
-        }
+/* --- Asignar gastos a fondo comun --- */
+function abrirAsignarGastos(fondoId,fondoNombre){
+    document.getElementById('gastos-fondo-nombre').textContent=fondoNombre;
+    document.getElementById('form-gastos').action='/finanzas/distribucion/fondo/'+fondoId+'/gastos/';
+    // Marcar los checkboxes que ya están asignados a este fondo
+    document.querySelectorAll('#modal-gastos .gasto-check').forEach(function(label){
+        var cb=label.querySelector('input');
+        var asignado=label.getAttribute('data-fondo');
+        cb.checked=(asignado===String(fondoId));
     });
-    if (!found && dots.length > 0) dots[0].classList.add('active');
-    document.getElementById('color-' + target).value = color;
+    document.getElementById('modal-gastos').style.display='flex';
 }
 
-function abrirModalSubsobre(fondoId, fondoNombre) {
-    document.getElementById('subsobre-fondo-nombre').textContent = fondoNombre;
-    document.getElementById('form-subsobre').action = '/finanzas/distribucion/fondo/' + fondoId + '/subsobre/crear/';
-    document.getElementById('modal-subsobre').style.display = 'flex';
-}
-
-function toggleAjuste(id) {
-    var el = document.getElementById(id);
-    el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.msg-toast').forEach(function(el){ setTimeout(function(){ el.remove(); }, 4000); });
+document.addEventListener('DOMContentLoaded',function(){
+    document.querySelectorAll('.msg-toast').forEach(function(el){setTimeout(function(){el.remove();},4000);});
 });
 </script>
 {% endblock %}

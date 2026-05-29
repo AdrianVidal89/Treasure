@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from .models import (
     ReglaReparto, FondoFamiliar, SubsobreFondo,
-    FuenteIngreso, AjusteIngresoMensual,
+    FuenteIngreso, AjusteIngresoMensual, PartidaGasto,
 )
 from .distribucion import calcular_flujos, calcular_resumen_anual
 
@@ -18,7 +18,6 @@ MESES = [
 
 
 def _get_hogar_o_redirect(request):
-    """Helper DRY: devuelve (profile, hogar) o (None, None)."""
     profile = getattr(request.user, 'userprofile', None)
     if not profile or not profile.hogar:
         messages.error(request, "Necesitas pertenecer a un hogar.")
@@ -52,6 +51,11 @@ def vista_distribucion(request):
     ).select_related('fondo', 'usuario').order_by('orden')
     miembros = hogar.miembros.select_related('user').all()
 
+    # Gastos del hogar (sin responsable) para el modal de asignación
+    gastos_hogar = PartidaGasto.objects.filter(
+        hogar=hogar, activo=True, responsable__isnull=True
+    ).select_related('categoria', 'fondo_asignado')
+
     anios = [anio - 1, anio, anio + 1]
 
     return render(request, 'finanzas/distribucion/vista.html', {
@@ -60,6 +64,7 @@ def vista_distribucion(request):
         'fondos': fondos,
         'reglas': reglas,
         'miembros': miembros,
+        'gastos_hogar': gastos_hogar,
         'profile': profile,
         'meses': MESES,
         'mes_actual': mes,
@@ -106,6 +111,7 @@ def ajustar_ingreso_mes(request):
     if not hogar:
         return redirect('dashboard')
 
+    mes = anio = 0
     if request.method == 'POST':
         try:
             fuente_id = int(request.POST.get('fuente_id', 0))
@@ -122,7 +128,7 @@ def ajustar_ingreso_mes(request):
             AjusteIngresoMensual.objects.filter(
                 fuente=fuente, mes=mes, **{'año': anio}
             ).delete()
-            messages.success(request, f"Ajuste de '{fuente.nombre}' eliminado para este mes.")
+            messages.success(request, f"Ajuste de '{fuente.nombre}' eliminado.")
         else:
             try:
                 importe_real = Decimal(importe_raw)
@@ -131,7 +137,7 @@ def ajustar_ingreso_mes(request):
                 return redirect(f"/finanzas/distribucion/?mes={mes}&anio={anio}")
 
             nota = request.POST.get('nota', '').strip()
-            obj, created = AjusteIngresoMensual.objects.update_or_create(
+            _, created = AjusteIngresoMensual.objects.update_or_create(
                 fuente=fuente, mes=mes, **{'año': anio},
                 defaults={'importe_real': importe_real, 'nota': nota}
             )
@@ -176,6 +182,33 @@ def crear_fondo(request):
 
 
 @login_required
+def editar_fondo(request, fondo_id):
+    profile, hogar = _get_hogar_o_redirect(request)
+    if not hogar:
+        return redirect('dashboard')
+
+    fondo = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=hogar)
+
+    if request.method == 'POST':
+        nombre = request.POST.get('nombre', '').strip()
+        tipo_fondo = request.POST.get('tipo_fondo', 'comun')
+        color = request.POST.get('color', '#00ff88')
+        cuenta = request.POST.get('cuenta_asociada', '').strip()
+
+        if not nombre:
+            messages.error(request, "El nombre es obligatorio.")
+        else:
+            fondo.nombre = nombre
+            fondo.tipo_fondo = tipo_fondo
+            fondo.color = color
+            fondo.cuenta_asociada = cuenta
+            fondo.save()
+            messages.success(request, f"Fondo '{nombre}' actualizado.")
+
+    return redirect('finanzas:vista_distribucion')
+
+
+@login_required
 def eliminar_fondo(request, fondo_id):
     profile, hogar = _get_hogar_o_redirect(request)
     if not hogar:
@@ -185,6 +218,42 @@ def eliminar_fondo(request, fondo_id):
     nombre = fondo.nombre
     fondo.delete()
     messages.success(request, f"Fondo '{nombre}' eliminado.")
+    return redirect('finanzas:vista_distribucion')
+
+
+# ---------------------------------------------------------------------------
+# Asignar gastos del hogar a un fondo común
+# ---------------------------------------------------------------------------
+
+@login_required
+def asignar_gastos_fondo(request, fondo_id):
+    """
+    POST con lista de partida_ids → se asignan a este fondo.
+    Las partidas no incluidas se desasignan de este fondo.
+    """
+    profile, hogar = _get_hogar_o_redirect(request)
+    if not hogar:
+        return redirect('dashboard')
+
+    fondo = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=hogar)
+
+    if request.method == 'POST':
+        ids_seleccionados = request.POST.getlist('partida_ids')
+        ids_seleccionados = [int(x) for x in ids_seleccionados if x.isdigit()]
+
+        # Desasignar las que ya no están seleccionadas
+        PartidaGasto.objects.filter(
+            hogar=hogar, fondo_asignado=fondo, activo=True, responsable__isnull=True
+        ).exclude(id__in=ids_seleccionados).update(fondo_asignado=None)
+
+        # Asignar las seleccionadas
+        if ids_seleccionados:
+            PartidaGasto.objects.filter(
+                id__in=ids_seleccionados, hogar=hogar, activo=True, responsable__isnull=True
+            ).update(fondo_asignado=fondo)
+
+        messages.success(request, f"Gastos asignados a '{fondo.nombre}' actualizados.")
+
     return redirect('finanzas:vista_distribucion')
 
 
@@ -218,15 +287,10 @@ def crear_regla(request):
             fondo = FondoFamiliar.objects.filter(id=fondo_id, hogar=hogar).first() if fondo_id else None
             max_orden = ReglaReparto.objects.filter(hogar=hogar).count()
             ReglaReparto.objects.create(
-                hogar=hogar,
-                nombre=nombre,
-                tipo_regla=tipo,
-                fondo=fondo,
-                usuario_id=usuario_id,
-                porcentaje=porcentaje,
-                importe_fijo=importe_fijo,
-                color=color,
-                orden=max_orden,
+                hogar=hogar, nombre=nombre, tipo_regla=tipo,
+                fondo=fondo, usuario_id=usuario_id,
+                porcentaje=porcentaje, importe_fijo=importe_fijo,
+                color=color, orden=max_orden,
             )
             messages.success(request, f"Regla '{nombre}' creada.")
 
@@ -316,12 +380,9 @@ def crear_subsobres(request, fondo_id):
 
             max_orden = SubsobreFondo.objects.filter(fondo=fondo).count()
             SubsobreFondo.objects.create(
-                fondo=fondo,
-                nombre=nombre,
-                tipo=tipo,
+                fondo=fondo, nombre=nombre, tipo=tipo,
                 importe_manual=importe_manual if importe_manual > 0 else None,
-                fondo_destino=fondo_destino,
-                orden=max_orden,
+                fondo_destino=fondo_destino, orden=max_orden,
             )
             messages.success(request, f"Distribución interna '{nombre}' añadida.")
 

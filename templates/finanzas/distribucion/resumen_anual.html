@@ -14,27 +14,31 @@
     </div>
 </div>
 
-<!-- KPI anuales -->
+<!-- KPIs anuales -->
 <div class="kpi-bar" style="margin-bottom:24px;">
     <div class="kpi-item">
-        <div class="kpi-label">Ingresos anuales</div>
+        <div class="kpi-label">Ingresos</div>
         <div class="kpi-valor" style="color:#00ff88;">€{{ resumen.total_ingresos|floatformat:0 }}</div>
     </div>
     <div class="kpi-item">
-        <div class="kpi-label">Gastos anuales</div>
+        <div class="kpi-label">Gastos</div>
         <div class="kpi-valor" style="color:#ff4d4d;">€{{ resumen.total_gastos|floatformat:0 }}</div>
     </div>
     <div class="kpi-item">
-        <div class="kpi-label">Libre / Ahorro</div>
-        <div class="kpi-valor" style="color:{% if resumen.total_libre >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ resumen.total_libre|floatformat:0 }}</div>
+        <div class="kpi-label">Ahorro</div>
+        <div class="kpi-valor" style="color:#00d1ff;">€{{ resumen.total_ahorro|floatformat:0 }}</div>
     </div>
     <div class="kpi-item">
-        <div class="kpi-label">A fondos</div>
-        <div class="kpi-valor" style="color:#a259ff;">€{{ resumen.total_fondos|floatformat:0 }}</div>
+        <div class="kpi-label">Inversión</div>
+        <div class="kpi-valor" style="color:#a259ff;">€{{ resumen.total_inversion|floatformat:0 }}</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-label">Libre</div>
+        <div class="kpi-valor" style="color:{% if resumen.total_libre >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ resumen.total_libre|floatformat:0 }}</div>
     </div>
 </div>
 
-<!-- Tabla mes a mes -->
+<!-- Tabla -->
 <div style="overflow-x:auto;">
 <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
     <thead>
@@ -42,26 +46,24 @@
             <th style="text-align:left; padding:10px 8px;">Mes</th>
             <th style="text-align:right; padding:10px 8px;">Ingresos</th>
             <th style="text-align:right; padding:10px 8px;">Gastos</th>
+            <th style="text-align:right; padding:10px 8px;">Ahorro</th>
+            <th style="text-align:right; padding:10px 8px;">Inversión</th>
             <th style="text-align:right; padding:10px 8px;">Libre</th>
-            <th style="text-align:right; padding:10px 8px;">A fondos</th>
-            <th style="text-align:center; padding:10px 8px;">Estado</th>
+            <th style="text-align:center; padding:10px 8px;"></th>
             <th style="padding:10px 8px;"></th>
         </tr>
     </thead>
     <tbody>
         {% for m in resumen.meses %}
         <tr style="border-bottom:1px solid #1a1a1a;">
-            <td style="padding:10px 8px; font-weight:600; color:var(--text-color);">{{ m.nombre }}</td>
+            <td style="padding:10px 8px; font-weight:600;">{{ m.nombre }}</td>
             <td style="padding:10px 8px; text-align:right; color:#00ff88;">€{{ m.ingresos|floatformat:2 }}</td>
             <td style="padding:10px 8px; text-align:right; color:#ff4d4d;">€{{ m.gastos|floatformat:2 }}</td>
-            <td style="padding:10px 8px; text-align:right; color:{% if m.libre >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-weight:700;">€{{ m.libre|floatformat:2 }}</td>
-            <td style="padding:10px 8px; text-align:right; color:#a259ff;">€{{ m.fondos|floatformat:2 }}</td>
-            <td style="padding:10px 8px; text-align:center;">
-                <span class="semaforo-dot semaforo-{{ m.semaforo }}"></span>
-            </td>
-            <td style="padding:10px 8px;">
-                <a href="{% url 'finanzas:vista_distribucion' %}?mes={{ m.mes }}&anio={{ resumen.anio }}" style="font-size:0.72rem; color:var(--muted); text-decoration:none;">Ver →</a>
-            </td>
+            <td style="padding:10px 8px; text-align:right; color:#00d1ff;">€{{ m.ahorro|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:#a259ff;">€{{ m.inversion|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:{% if m.libre >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %}; font-weight:700;">€{{ m.libre|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:center;"><span class="semaforo-dot semaforo-{{ m.semaforo }}"></span></td>
+            <td style="padding:10px 8px;"><a href="{% url 'finanzas:vista_distribucion' %}?mes={{ m.mes }}&anio={{ resumen.anio }}" style="font-size:0.72rem; color:var(--muted); text-decoration:none;">Ver →</a></td>
         </tr>
         {% endfor %}
     </tbody>
@@ -70,8 +72,9 @@
             <td style="padding:12px 8px; color:var(--primary-color);">TOTAL</td>
             <td style="padding:12px 8px; text-align:right; color:#00ff88;">€{{ resumen.total_ingresos|floatformat:2 }}</td>
             <td style="padding:12px 8px; text-align:right; color:#ff4d4d;">€{{ resumen.total_gastos|floatformat:2 }}</td>
-            <td style="padding:12px 8px; text-align:right; color:{% if resumen.total_libre >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ resumen.total_libre|floatformat:2 }}</td>
-            <td style="padding:12px 8px; text-align:right; color:#a259ff;">€{{ resumen.total_fondos|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:#00d1ff;">€{{ resumen.total_ahorro|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:#a259ff;">€{{ resumen.total_inversion|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:{% if resumen.total_libre >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ resumen.total_libre|floatformat:2 }}</td>
             <td></td><td></td>
         </tr>
     </tfoot>
@@ -81,10 +84,10 @@
 </div>
 
 <style>
-.kpi-bar { display:flex; gap:12px; flex-wrap:wrap; }
-.kpi-item { background:#1a1a1a; border-radius:12px; padding:14px 18px; flex:1; min-width:120px; }
-.kpi-label { font-size:0.72rem; color:var(--muted); margin-bottom:4px; }
-.kpi-valor { font-size:1.15rem; font-weight:700; }
+.kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
+.kpi-item { background:#1a1a1a; border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
+.kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
+.kpi-valor { font-size:1.05rem; font-weight:700; }
 .semaforo-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
 .semaforo-verde { background:#00ff88; }
 .semaforo-amarillo { background:#ffee00; }

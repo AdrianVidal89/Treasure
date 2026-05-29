@@ -50,20 +50,22 @@ urlpatterns = [
     path('gastos/<int:partida_id>/eliminar/', views_gastos.eliminar_partida, name='eliminar_partida'),
     path('gastos/categoria/crear/', views_gastos.crear_categoria, name='crear_categoria'),
 
-    # ── Distribución y Ahorro ─────────────────────────────────────────────
+    # ── Distribución ──────────────────────────────────────────────────────
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
     path('distribucion/resumen-anual/', views_distribucion.vista_resumen_anual, name='resumen_anual'),
     path('distribucion/ajustar-ingreso/', views_distribucion.ajustar_ingreso_mes, name='ajustar_ingreso_mes'),
 
     # Fondos
     path('distribucion/fondo/crear/', views_distribucion.crear_fondo, name='crear_fondo'),
+    path('distribucion/fondo/<int:fondo_id>/editar/', views_distribucion.editar_fondo, name='editar_fondo'),
     path('distribucion/fondo/<int:fondo_id>/eliminar/', views_distribucion.eliminar_fondo, name='eliminar_fondo'),
+    path('distribucion/fondo/<int:fondo_id>/gastos/', views_distribucion.asignar_gastos_fondo, name='asignar_gastos_fondo'),
 
     # Subsobres
     path('distribucion/fondo/<int:fondo_id>/subsobre/crear/', views_distribucion.crear_subsobres, name='crear_subsobres'),
     path('distribucion/subsobre/<int:subsobres_id>/eliminar/', views_distribucion.eliminar_subsobres, name='eliminar_subsobres'),
 
-    # Reglas de reparto
+    # Reglas
     path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
     path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
