@@ -1,129 +1,114 @@
 """
-finanzas/distribucion.py — Motor de flujos financieros v3.
+Motor de distribución de Treasure.
 
-Cambios vs v2:
-  - Paso 4b: SubsobreFondo con fondo_destino → cascada entre fondos
-  - Paso 3: Reglas con periodicidad_regla='anual' operan sobre extraordinarios
-  - _ratio_neto reutilizado en todos los cálculos
+Cambios respecto a la versión anterior:
+- Eliminado Sankey (ruido visual, cero valor añadido)
+- Eliminado AjusteIngresoMensual (complejidad innecesaria)
+- calcular_flujos(hogar, mes, anio) acepta mes concreto
+- En el mes seleccionado se suman ingresos base + puntuales de ese mes
+  (pagas extras, cobros periódicos que caen en ese mes)
+- Fix cascada: fondos_aportaciones muestra total_aportacion_neta
+  (lo que entra menos lo que sale por subsobres hacia otro fondo)
 """
-
-import datetime
 from decimal import Decimal
+import datetime
 
-from .models import (
-    AjusteIngresoMensual,
-    FondoFamiliar,
-    FuenteIngreso,
-    IngresoExtraordinario,
-    PartidaGasto,
-    ReglaReparto,
-    SubsobreFondo,
-)
+from .models import FuenteIngreso, PartidaGasto, ReglaReparto, FondoFamiliar, SubsobreFondo
 from .fiscal import calcular_neto_anual
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Helpers de ingreso
+# ---------------------------------------------------------------------------
 
-def _ratio_neto(fuente):
-    if fuente.es_bruto and fuente.importe_anual_bruto > 0:
-        res = calcular_neto_anual(fuente.importe_anual_bruto, fuente.pais_fiscal)
-        return res['neto'] / fuente.importe_anual_bruto
-    return Decimal('1')
+def _neto_fuente_mes(f, mes: int):
+    """
+    Devuelve (ingreso_base_mes, ingreso_ponderado_mes).
 
+    ingreso_base_mes  = lo que realmente cae en la cuenta ese mes
+                        (nómina base + paga extra si corresponde ese mes
+                         + cobros periódicos cuyo mes coincide)
+    ingreso_ponderado = anual_estimado / 12  (para comparativas)
+    """
+    bruto_anual = f.importe_anual_bruto
+    estimado_anual = f.importe_anual_estimado
 
-def _calcular_neto_fuente(fuente, año, mes):
-    ratio = _ratio_neto(fuente)
-    override = AjusteIngresoMensual.objects.filter(
-        fuente=fuente, año=año, mes=mes
-    ).first()
-
-    if override:
-        neto_base = override.importe_real
+    # Ratio neto/bruto fiscal
+    if f.es_bruto and bruto_anual > 0:
+        resultado = calcular_neto_anual(bruto_anual, f.pais_fiscal)
+        ratio = resultado['neto'] / bruto_anual
     else:
-        if fuente.es_mensual_recurrente and fuente.incluir_en_mensual:
-            neto_base = round(fuente.importe_mensual_base * ratio, 2)
-        else:
-            neto_base = Decimal('0')
+        ratio = Decimal('1')
 
-    neto_pond = round(fuente.importe_anual_estimado * ratio / Decimal('12'), 2)
-    neto_anual = round(fuente.importe_anual_estimado * ratio, 2)
-    return neto_base, neto_pond, neto_anual
+    pond = round(estimado_anual * ratio / Decimal('12'), 2)
 
+    # --- Ingresos mensuales recurrentes ---
+    if f.es_mensual_recurrente and f.incluir_en_mensual:
+        base_mensual = round(f.importe_mensual_base * ratio, 2)
+    else:
+        base_mensual = Decimal('0')
 
-def neto_estimado_de_base(fuente):
-    ratio = _ratio_neto(fuente)
-    return round(fuente.importe_mensual_base * ratio, 2)
+    # --- Extras que caen este mes ---
+    extra_mes = Decimal('0')
 
+    if f.modo_entrada == 'anual' and f.num_pagas > 12:
+        # Pagas extras configuradas en meses específicos
+        if mes in f.pagas_extras_meses:
+            extra_mes += round(f.importe_paga_extra * ratio, 2)
 
-def _ingresos_del_mes(hogar, miembros, año, mes):
-    """Pagas extras + periódicos no mensuales + IngresoExtraordinario."""
-    resultado = []
+    elif f.modo_entrada == 'periodo' and f.periodicidad != 'mensual':
+        # Cobros periódicos (trimestral, semestral, puntual, etc.)
+        # que tienen meses de cobro definidos
+        if mes in f.cobro_meses:
+            extra_mes += round(f.importe_declarado * ratio, 2)
 
-    for m in miembros:
-        fuentes = FuenteIngreso.objects.filter(
-            usuario=m.user, hogar=hogar, activo=True
-        )
-        for f in fuentes:
-            ratio = _ratio_neto(f)
-
-            if f.modo_entrada == 'anual' and f.num_pagas > 12:
-                if mes in f.pagas_extras_meses:
-                    bruto_paga = f.importe_declarado / Decimal(str(f.num_pagas))
-                    resultado.append({
-                        'tipo': 'paga_extra',
-                        'label': f"Paga extra — {f.nombre}",
-                        'miembro': m,
-                        'fuente': f,
-                        'importe': round(bruto_paga * ratio, 2),
-                        'fondo_destino': None,
-                        'usuario_id': m.user.id,
-                    })
-
-            elif f.modo_entrada == 'periodo' and not f.es_mensual_recurrente:
-                if mes in f.cobro_meses:
-                    resultado.append({
-                        'tipo': 'ingreso_periodico',
-                        'label': f"Ingreso periódico — {f.nombre}",
-                        'miembro': m,
-                        'fuente': f,
-                        'importe': round(f.importe_declarado * ratio, 2),
-                        'fondo_destino': None,
-                        'usuario_id': m.user.id,
-                    })
-
-    extras = IngresoExtraordinario.objects.filter(
-        hogar=hogar, año=año, mes=mes
-    ).select_related('usuario', 'fondo_destino')
-
-    for e in extras:
-        miembro = next((m for m in miembros if m.user_id == e.usuario_id), None)
-        resultado.append({
-            'tipo': 'extraordinario',
-            'label': e.concepto,
-            'miembro': miembro,
-            'fuente': None,
-            'importe': e.importe,
-            'fondo_destino': e.fondo_destino,
-            'nota': e.nota,
-            'usuario_id': e.usuario_id,
-            'extra_id': e.id,
-        })
-
-    return resultado
+    base_total = base_mensual + extra_mes
+    return base_total, pond
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MOTOR PRINCIPAL
-# ─────────────────────────────────────────────────────────────────────────────
+def _neto_fuente_base(f):
+    """Ingreso base mensual 'normal' (sin extras de mes): para vista sin mes."""
+    bruto_anual = f.importe_anual_bruto
+    estimado_anual = f.importe_anual_estimado
 
-def calcular_flujos(hogar, año=None, mes=None):
+    if f.es_bruto and bruto_anual > 0:
+        resultado = calcular_neto_anual(bruto_anual, f.pais_fiscal)
+        ratio = resultado['neto'] / bruto_anual
+        base = round(f.importe_mensual_base * ratio, 2) if f.es_mensual_recurrente and f.incluir_en_mensual else Decimal('0')
+        pond = round(estimado_anual * ratio / Decimal('12'), 2)
+    else:
+        base = f.importe_mensual_base if f.es_mensual_recurrente and f.incluir_en_mensual else Decimal('0')
+        pond = f.importe_mensual_ponderado
+
+    return base, pond
+
+
+# ---------------------------------------------------------------------------
+# Motor principal
+# ---------------------------------------------------------------------------
+
+def calcular_flujos(hogar, mes: int = None, anio: int = None):
+    """
+    Motor de flujos de Treasure.
+
+    Args:
+        hogar:  instancia de Hogar
+        mes:    1-12. Si None, usa el mes actual.
+        anio:   año. Si None, usa el año actual.
+
+    Flujo de cálculo:
+      1. Ingresos: base mensual + puntuales del mes seleccionado
+      2. Gastos individuales: se restan del libre personal
+         Gastos del hogar: informativos (cada miembro decide cómo cubrirlos via reglas)
+      3. Reglas de reparto → aportaciones a fondos
+      4. Subsobres (cascada): redistribución interna entre fondos
+         El fondo origen muestra total_aportacion_neta = entradas - salidas cascada
+      5. Transferencias: lista de movimientos bancarios necesarios
+      6. KPIs globales
+    """
     hoy = datetime.date.today()
-    if not año:
-        año = hoy.year
-    if not mes:
-        mes = hoy.month
+    mes = mes or hoy.month
+    anio = anio or hoy.year
 
     miembros = hogar.miembros.select_related('user').all()
     partidas = PartidaGasto.objects.filter(
@@ -131,52 +116,68 @@ def calcular_flujos(hogar, año=None, mes=None):
     ).select_related('categoria', 'responsable')
     reglas = ReglaReparto.objects.filter(
         hogar=hogar, activo=True
-    ).select_related('fondo', 'usuario')
-    fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
+    ).select_related('fondo', 'usuario').order_by('orden')
+    fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True))
 
-    # Separar reglas mensuales y anuales
-    reglas_mensuales = [r for r in reglas if getattr(r, 'periodicidad_regla', 'mensual') == 'mensual']
-    reglas_anuales = [r for r in reglas if getattr(r, 'periodicidad_regla', 'mensual') == 'anual']
+    # Subsobres: redistribución interna entre fondos
+    try:
+        subsobres = list(
+            SubsobreFondo.objects.filter(
+                fondo_origen__hogar=hogar, activo=True
+            ).select_related('fondo_origen', 'fondo_destino')
+        )
+    except Exception:
+        # Si el modelo no existe o hay error de importación, ignorar
+        subsobres = []
 
-    # ── PASO 1: Ingresos por miembro ─────────────────────────────────────────
+    # =========================================================
+    # PASO 1: Ingresos por miembro (base mensual + extras del mes)
+    # =========================================================
     datos_miembros = {}
     total_base_hogar = Decimal('0')
     total_pond_hogar = Decimal('0')
     total_anual_hogar = Decimal('0')
 
     for m in miembros:
-        fuentes = FuenteIngreso.objects.filter(
-            usuario=m.user, hogar=hogar, activo=True
-        )
+        fuentes = FuenteIngreso.objects.filter(usuario=m.user, hogar=hogar, activo=True)
         ing_base = Decimal('0')
         ing_pond = Decimal('0')
         ing_anual = Decimal('0')
-
-        override_ids = set(
-            AjusteIngresoMensual.objects.filter(
-                fuente__in=fuentes, año=año, mes=mes
-            ).values_list('fuente_id', flat=True)
-        )
+        extras_mes = []  # lista de {nombre, importe} para mostrar en UI
 
         for f in fuentes:
-            b, p, a = _calcular_neto_fuente(f, año, mes)
+            b, p = _neto_fuente_mes(f, mes)
+            b_base, _ = _neto_fuente_base(f)
+
+            # Separar la parte "extra" para mostrarla en UI
+            extra = b - b_base
+            if extra > 0:
+                extras_mes.append({'fuente': f.nombre, 'importe': extra})
+
             ing_base += b
             ing_pond += p
-            ing_anual += a
+
+            bruto_anual = f.importe_anual_bruto
+            est_anual = f.importe_anual_estimado
+            if f.es_bruto and bruto_anual > 0:
+                res = calcular_neto_anual(bruto_anual, f.pais_fiscal)
+                ratio = res['neto'] / bruto_anual
+                ing_anual += round(est_anual * ratio, 2)
+            else:
+                ing_anual += est_anual
 
         datos_miembros[m.user.id] = {
             'miembro': m,
             'ingreso_base': ing_base,
             'ingreso_ponderado': ing_pond,
             'ingreso_anual': ing_anual,
-            'tiene_override': bool(override_ids),
+            'extras_mes': extras_mes,
             'gastos_individuales': Decimal('0'),
             'disponible_base': ing_base,
             'disponible_pond': ing_pond,
             'aportacion_hogar_informativa': Decimal('0'),
             'proporcion': Decimal('0'),
             'aportaciones_fondos': [],
-            'aportaciones_anuales': [],
             'libre_base': ing_base,
             'libre_ponderado': ing_pond,
         }
@@ -184,17 +185,14 @@ def calcular_flujos(hogar, año=None, mes=None):
         total_pond_hogar += ing_pond
         total_anual_hogar += ing_anual
 
-    # ── PASO 2: Gastos ───────────────────────────────────────────────────────
+    # =========================================================
+    # PASO 2: Gastos
+    # Individuales → restan del libre personal
+    # Del hogar    → solo informativos
+    # =========================================================
     gastos_hogar_fijos = Decimal('0')
     gastos_hogar_provision = Decimal('0')
     gastos_hogar_variables = Decimal('0')
-    total_gastos_individuales = Decimal('0')
-
-    gastos_por_tipo = {
-        'fijo': {'items': [], 'total': Decimal('0')},
-        'anual': {'items': [], 'total': Decimal('0')},
-        'variable': {'items': [], 'total': Decimal('0')},
-    }
 
     for p in partidas:
         mensual = p.importe_mensual
@@ -207,13 +205,7 @@ def calcular_flujos(hogar, año=None, mes=None):
             dm['disponible_pond'] -= mensual
             dm['libre_base'] -= mensual
             dm['libre_ponderado'] -= mensual
-            total_gastos_individuales += mensual
         else:
-            gastos_por_tipo.setdefault(tipo, {'items': [], 'total': Decimal('0')})
-            gastos_por_tipo[tipo]['items'].append({
-                'partida': p, 'mensual': mensual, 'anual': p.importe_anual,
-            })
-            gastos_por_tipo[tipo]['total'] += mensual
             if tipo == 'fijo':
                 gastos_hogar_fijos += mensual
             elif tipo == 'anual':
@@ -231,25 +223,21 @@ def calcular_flujos(hogar, año=None, mes=None):
         dm['proporcion'] = round(prop * 100, 1)
         dm['aportacion_hogar_informativa'] = round(total_gastos_hogar * prop, 2)
 
-    # ── PASO 3: Reglas MENSUALES de reparto ──────────────────────────────────
-    fondos_aportaciones = {
-        f.id: {
-            'fondo': f,
-            'total_aportacion_base': Decimal('0'),
-            'total_aportacion_pond': Decimal('0'),
-            'aportantes': [],
-            'subsobres': [],
-            'total_asignado': Decimal('0'),
-            'remanente': Decimal('0'),
-            'ingresos_extra_asignados': [],
-            'total_extra': Decimal('0'),
-            'transferencias_entrantes': Decimal('0'),
-        }
-        for f in fondos
-    }
+    # =========================================================
+    # PASO 3: Reglas de reparto → aportaciones a fondos
+    # =========================================================
+    fondos_aportaciones = {f.id: {
+        'fondo': f,
+        'total_aportacion_base': Decimal('0'),
+        'total_aportacion_pond': Decimal('0'),
+        'aportantes': [],
+        # cascada: importe que sale de este fondo hacia subsobres
+        'total_cascada_saliente': Decimal('0'),
+    } for f in fondos}
 
-    for regla in reglas_mensuales:
+    for regla in reglas:
         if regla.usuario_id and regla.usuario_id in datos_miembros:
+            # Regla individual
             dm = datos_miembros[regla.usuario_id]
             libre_b = dm['libre_base']
             libre_p = dm['libre_ponderado']
@@ -264,8 +252,10 @@ def calcular_flujos(hogar, año=None, mes=None):
             dm['libre_base'] -= importe_b
             dm['libre_ponderado'] -= importe_p
             dm['aportaciones_fondos'].append({
-                'regla': regla, 'fondo': regla.fondo,
-                'importe_base': importe_b, 'importe_pond': importe_p,
+                'regla': regla,
+                'fondo': regla.fondo,
+                'importe_base': importe_b,
+                'importe_pond': importe_p,
             })
 
             if regla.fondo_id and regla.fondo_id in fondos_aportaciones:
@@ -274,9 +264,12 @@ def calcular_flujos(hogar, año=None, mes=None):
                 fa['total_aportacion_pond'] += importe_p
                 fa['aportantes'].append({
                     'miembro': dm['miembro'],
-                    'importe_base': importe_b, 'importe_pond': importe_p,
+                    'importe_base': importe_b,
+                    'importe_pond': importe_p,
                 })
+
         else:
+            # Regla global — proporcional a ingreso
             libre_b_total = sum(dm['libre_base'] for dm in datos_miembros.values())
             libre_p_total = sum(dm['libre_ponderado'] for dm in datos_miembros.values())
 
@@ -288,15 +281,21 @@ def calcular_flujos(hogar, año=None, mes=None):
                 total_p = regla.importe_fijo
 
             for uid, dm in datos_miembros.items():
-                prop = dm['ingreso_base'] / total_base_hogar if total_base_hogar > 0 else Decimal('1') / Decimal(str(len(datos_miembros)))
+                if total_base_hogar > 0:
+                    prop = dm['ingreso_base'] / total_base_hogar
+                else:
+                    prop = Decimal('1') / Decimal(str(len(datos_miembros)))
+
                 importe_b = round(total_b * prop, 2)
                 importe_p = round(total_p * prop, 2)
 
                 dm['libre_base'] -= importe_b
                 dm['libre_ponderado'] -= importe_p
                 dm['aportaciones_fondos'].append({
-                    'regla': regla, 'fondo': regla.fondo,
-                    'importe_base': importe_b, 'importe_pond': importe_p,
+                    'regla': regla,
+                    'fondo': regla.fondo,
+                    'importe_base': importe_b,
+                    'importe_pond': importe_p,
                 })
 
                 if regla.fondo_id and regla.fondo_id in fondos_aportaciones:
@@ -305,347 +304,207 @@ def calcular_flujos(hogar, año=None, mes=None):
                     fa['total_aportacion_pond'] += importe_p
                     fa['aportantes'].append({
                         'miembro': dm['miembro'],
-                        'importe_base': importe_b, 'importe_pond': importe_p,
+                        'importe_base': importe_b,
+                        'importe_pond': importe_p,
                     })
 
-    # ── PASO 4: Ingresos extraordinarios del mes ─────────────────────────────
-    ingresos_extraordinarios = _ingresos_del_mes(hogar, miembros, año, mes)
-    total_extraordinario = sum(i['importe'] for i in ingresos_extraordinarios)
+    # =========================================================
+    # PASO 4: Subsobres / cascada
+    # Cada SubsobreFondo redistribuye parte de fondo_origen → fondo_destino.
+    # FIX: registramos cuánto sale del fondo origen para calcular el neto.
+    # =========================================================
+    transferencias_cascada = []
 
-    # Asignar extraordinarios con fondo_destino directo
-    for ext in ingresos_extraordinarios:
-        fd = ext.get('fondo_destino')
-        if fd and fd.id in fondos_aportaciones:
-            fa = fondos_aportaciones[fd.id]
-            fa['ingresos_extra_asignados'].append(ext)
-            fa['total_extra'] += ext['importe']
+    for ss in subsobres:
+        if ss.fondo_origen_id not in fondos_aportaciones:
+            continue
+        if ss.fondo_destino_id and ss.fondo_destino_id not in fondos_aportaciones:
+            continue
 
-    # ── PASO 4b: Reglas ANUALES — operan sobre extraordinarios del mes ───────
-    # Agrupa extraordinarios sin fondo_destino por usuario
-    extras_sin_asignar = {}
-    for ext in ingresos_extraordinarios:
-        if not ext.get('fondo_destino'):
-            uid = ext.get('usuario_id')
-            if uid:
-                extras_sin_asignar.setdefault(uid, Decimal('0'))
-                extras_sin_asignar[uid] += ext['importe']
+        fa_origen = fondos_aportaciones[ss.fondo_origen_id]
+        total_origen = fa_origen['total_aportacion_base']
 
-    for regla in reglas_anuales:
-        if regla.usuario_id and regla.usuario_id in extras_sin_asignar:
-            disponible = extras_sin_asignar[regla.usuario_id]
-            if disponible <= 0:
-                continue
+        if ss.tipo_calculo == 'porcentaje':
+            importe = round(total_origen * ss.porcentaje / 100, 2) if total_origen > 0 else Decimal('0')
+        else:
+            importe = ss.importe_fijo
 
-            if regla.tipo_regla == 'porcentaje':
-                importe = round(disponible * regla.porcentaje / 100, 2)
-            else:
-                importe = min(regla.importe_fijo, disponible)
+        if importe <= 0:
+            continue
 
-            extras_sin_asignar[regla.usuario_id] -= importe
+        # Acumular salida en el fondo origen (FIX del bug de la imagen)
+        fa_origen['total_cascada_saliente'] += importe
 
-            dm = datos_miembros.get(regla.usuario_id)
-            if dm:
-                dm['aportaciones_anuales'].append({
-                    'regla': regla,
-                    'fondo': regla.fondo,
-                    'importe': importe,
-                })
+        # Acumular entrada en el fondo destino (si existe)
+        if ss.fondo_destino_id and ss.fondo_destino_id in fondos_aportaciones:
+            fa_destino = fondos_aportaciones[ss.fondo_destino_id]
+            fa_destino['total_aportacion_base'] += importe
+            fa_destino['total_aportacion_pond'] += importe
 
-            if regla.fondo_id and regla.fondo_id in fondos_aportaciones:
-                fa = fondos_aportaciones[regla.fondo_id]
-                fa['total_extra'] += importe
-                fa['ingresos_extra_asignados'].append({
-                    'tipo': 'regla_anual',
-                    'label': f"Regla anual: {regla.nombre}",
-                    'miembro': dm['miembro'] if dm else None,
-                    'importe': importe,
-                    'fondo_destino': regla.fondo,
-                })
+        transferencias_cascada.append({
+            'origen': ss.fondo_origen.nombre,
+            'destino': ss.fondo_destino.nombre if ss.fondo_destino else ss.nombre,
+            'importe': importe,
+            'nombre': ss.nombre,
+            'color': ss.fondo_origen.color,
+        })
 
-        elif not regla.usuario_id:
-            # Regla anual global — reparte entre todos los que tienen extras
-            total_extras_global = sum(extras_sin_asignar.values())
-            if total_extras_global <= 0:
-                continue
-
-            if regla.tipo_regla == 'porcentaje':
-                total_asignar = round(total_extras_global * regla.porcentaje / 100, 2)
-            else:
-                total_asignar = min(regla.importe_fijo, total_extras_global)
-
-            for uid in list(extras_sin_asignar.keys()):
-                if extras_sin_asignar[uid] <= 0:
-                    continue
-                prop = extras_sin_asignar[uid] / total_extras_global
-                importe = round(total_asignar * prop, 2)
-                extras_sin_asignar[uid] -= importe
-
-                dm = datos_miembros.get(uid)
-                if dm:
-                    dm['aportaciones_anuales'].append({
-                        'regla': regla, 'fondo': regla.fondo, 'importe': importe,
-                    })
-
-                if regla.fondo_id and regla.fondo_id in fondos_aportaciones:
-                    fa = fondos_aportaciones[regla.fondo_id]
-                    fa['total_extra'] += importe
-
-    # ── PASO 5: Sub-distribución interna de fondos + cascada ─────────────────
+    # Calcular neto para cada fondo (lo que queda disponible en el fondo)
     for fid, fa in fondos_aportaciones.items():
-        fondo_obj = fa['fondo']
-        subsobres_qs = SubsobreFondo.objects.filter(
-            fondo=fondo_obj, activo=True
-        ).prefetch_related('partidas_vinculadas').select_related('fondo_destino')
+        fa['total_aportacion_neta'] = fa['total_aportacion_base'] - fa['total_cascada_saliente']
 
-        total_fondo = fa['total_aportacion_base'] + fa['total_extra'] + fa['transferencias_entrantes']
-        total_asignado = Decimal('0')
-        subsobres_detalle = []
-
-        for s in subsobres_qs:
-            imp = s.importe_calculado
-            total_asignado += imp
-            pct = round(imp / total_fondo * 100, 1) if total_fondo > 0 else Decimal('0')
-
-            ss_data = {
-                'subsobre': s,
-                'importe': imp,
-                'porcentaje_del_fondo': pct,
-                'es_transferencia': s.es_transferencia,
-                'fondo_destino': s.fondo_destino,
-            }
-            subsobres_detalle.append(ss_data)
-
-            # Cascada: si tiene fondo_destino, sumar al fondo receptor
-            if s.fondo_destino_id and s.fondo_destino_id in fondos_aportaciones:
-                fondos_aportaciones[s.fondo_destino_id]['transferencias_entrantes'] += imp
-
-        fa['subsobres'] = subsobres_detalle
-        fa['total_asignado'] = total_asignado
-        fa['remanente'] = total_fondo - total_asignado
-
-    # ── PASO 6: Resumen ahorro / inversión ───────────────────────────────────
-    resumen_destinos = {
-        'ahorro': Decimal('0'),
-        'inversion': Decimal('0'),
-        'emergencia': Decimal('0'),
-    }
-    for fid, fa in fondos_aportaciones.items():
-        tipo = getattr(fa['fondo'], 'tipo_fondo', 'comun')
-        total_fondo_mes = fa['total_aportacion_base'] + fa['total_extra'] + fa['transferencias_entrantes']
-        if tipo in resumen_destinos:
-            resumen_destinos[tipo] += total_fondo_mes
-
-    total_ahorro_inversion = resumen_destinos['ahorro'] + resumen_destinos['inversion'] + resumen_destinos['emergencia']
-    tasa_ahorro = round(total_ahorro_inversion / total_base_hogar * 100, 1) if total_base_hogar > 0 else Decimal('0')
-
-    if tasa_ahorro >= 20:
-        semaforo, semaforo_texto = 'verde', 'Excelente capacidad de ahorro'
-    elif tasa_ahorro >= 10:
-        semaforo, semaforo_texto = 'amarillo', 'Ahorro moderado — margen de mejora'
-    elif tasa_ahorro > 0:
-        semaforo, semaforo_texto = 'naranja', 'Ahorro bajo — revisar gastos'
-    else:
-        semaforo, semaforo_texto = 'rojo', 'Sin ahorro — atención'
-
-    # Presupuesto anual
-    presupuesto_anual = {
-        'ingresos_netos_anual': total_base_hogar * 12,
-        'ingresos_ponderado_anual': total_pond_hogar * 12,
-        'gastos_hogar_anuales': total_gastos_hogar * 12,
-        'gastos_individuales_anuales': total_gastos_individuales * 12,
-        'total_gastos_anuales': (total_gastos_hogar + total_gastos_individuales) * 12,
-        'ahorro_inversion_anual': total_ahorro_inversion * 12,
-        'libre_anual': (total_base_hogar - total_gastos_hogar - total_gastos_individuales - total_ahorro_inversion) * 12,
-    }
-
-    # ── PASO 7: Sankey ───────────────────────────────────────────────────────
+    # =========================================================
+    # PASO 5: Transferencias bancarias necesarias
+    # =========================================================
     transferencias = []
-    sankey_nodes = []
-    sankey_links = []
-    node_index = {}
-
-    def get_node(name, group, color='#a259ff'):
-        if name not in node_index:
-            node_index[name] = len(sankey_nodes)
-            sankey_nodes.append({'name': name, 'group': group, 'color': color})
-        return node_index[name]
 
     for uid, dm in datos_miembros.items():
         nombre = dm['miembro'].user.first_name or dm['miembro'].user.username
-        src = get_node(nombre, 'ingreso', '#00ff88')
-
-        # Gastos individuales
-        if dm['gastos_individuales'] > 0:
-            dst_gi = get_node(f"Gastos {nombre}", 'gasto', '#ff4d4d')
-            sankey_links.append({'source': src, 'target': dst_gi, 'value': float(dm['gastos_individuales'])})
-
-        # Aportaciones mensuales a fondos
         for ap in dm['aportaciones_fondos']:
-            fondo = ap['fondo']
-            if fondo and ap['importe_base'] > 0:
-                dst = get_node(fondo.nombre, 'fondo', fondo.color)
-                sankey_links.append({'source': src, 'target': dst, 'value': float(ap['importe_base'])})
+            if ap['importe_base'] > 0:
+                destino = ap['fondo'].nombre if ap['fondo'] else ap['regla'].nombre
+                cuenta = ap['fondo'].cuenta_asociada if ap['fondo'] and ap['fondo'].cuenta_asociada else ''
                 transferencias.append({
-                    'origen': nombre, 'concepto': ap['regla'].nombre,
-                    'destino': fondo.nombre, 'cuenta': fondo.cuenta_asociada,
-                    'color': fondo.color, 'tipo_fondo': getattr(fondo, 'tipo_fondo', 'comun'),
-                    'importe_base': ap['importe_base'], 'importe_pond': ap['importe_pond'],
-                    'periodicidad': 'mensual',
+                    'origen': nombre,
+                    'destino': destino,
+                    'cuenta': cuenta,
+                    'importe_base': ap['importe_base'],
+                    'importe_pond': ap['importe_pond'],
+                    'concepto': ap['regla'].nombre,
+                    'tipo': 'fondo',
+                    'color': ap['regla'].color,
                 })
 
-        # Aportaciones anuales a fondos
-        for ap in dm.get('aportaciones_anuales', []):
-            fondo = ap['fondo']
-            if fondo and ap['importe'] > 0:
-                dst = get_node(fondo.nombre, 'fondo', fondo.color)
-                # No duplicar link si ya existe — los anuales son eventuales
-                sankey_links.append({'source': src, 'target': dst, 'value': float(ap['importe'])})
-                transferencias.append({
-                    'origen': nombre, 'concepto': f"📅 {ap['regla'].nombre}",
-                    'destino': fondo.nombre, 'cuenta': fondo.cuenta_asociada,
-                    'color': fondo.color, 'tipo_fondo': getattr(fondo, 'tipo_fondo', 'comun'),
-                    'importe_base': ap['importe'], 'importe_pond': ap['importe'],
-                    'periodicidad': 'anual',
-                })
+    # Añadir transferencias de cascada a la lista general (tipo distinto para UI)
+    for tc in transferencias_cascada:
+        transferencias.append({
+            'origen': f"Fondo: {tc['origen']}",
+            'destino': tc['destino'],
+            'cuenta': '',
+            'importe_base': tc['importe'],
+            'importe_pond': tc['importe'],
+            'concepto': tc['nombre'],
+            'tipo': 'cascada',
+            'color': tc['color'],
+        })
 
-        # Libre personal
-        if dm['libre_base'] > 0:
-            dst_libre = get_node(f"Libre {nombre}", 'libre', '#00d1ff')
-            sankey_links.append({'source': src, 'target': dst_libre, 'value': float(dm['libre_base'])})
+    # =========================================================
+    # PASO 6: KPIs globales
+    # =========================================================
+    total_gastos_ind = sum(dm['gastos_individuales'] for dm in datos_miembros.values())
+    total_gastos_all = total_gastos_hogar + total_gastos_ind
+    total_libre_base = sum(dm['libre_base'] for dm in datos_miembros.values())
+    total_libre_pond = sum(dm['libre_ponderado'] for dm in datos_miembros.values())
 
-    # Subsobres en Sankey: fondo → subsobre (o fondo → fondo si es transferencia)
-    for fid, fa in fondos_aportaciones.items():
-        fondo = fa['fondo']
-        total_fondo = fa['total_aportacion_base'] + fa['total_extra'] + fa['transferencias_entrantes']
-        if total_fondo <= 0:
-            continue
+    tasa_base = round(total_libre_base / total_base_hogar * 100, 1) if total_base_hogar > 0 else Decimal('0')
+    tasa_pond = round(total_libre_pond / total_pond_hogar * 100, 1) if total_pond_hogar > 0 else Decimal('0')
 
-        fondo_node = node_index.get(fondo.nombre)
-        if fondo_node is None:
-            continue
+    if tasa_base >= 20:
+        semaforo, semaforo_texto = 'verde', 'Excelente salud financiera'
+    elif tasa_base >= 10:
+        semaforo, semaforo_texto = 'amarillo', 'Salud financiera aceptable'
+    elif tasa_base >= 0:
+        semaforo, semaforo_texto = 'naranja', 'Margen ajustado'
+    else:
+        semaforo, semaforo_texto = 'rojo', 'Gastas más de lo que ingresas'
 
-        for ss_data in fa['subsobres']:
-            ss = ss_data['subsobre']
-            imp = float(ss_data['importe'])
-            if imp <= 0:
-                continue
+    def pct(val):
+        return round(float(val / total_base_hogar * 100), 1) if total_base_hogar > 0 else 0
 
-            if ss_data['es_transferencia'] and ss_data['fondo_destino']:
-                # Cascada: fondo → otro fondo
-                dst_fondo = get_node(ss_data['fondo_destino'].nombre, 'fondo', ss_data['fondo_destino'].color)
-                sankey_links.append({'source': fondo_node, 'target': dst_fondo, 'value': imp})
-                transferencias.append({
-                    'origen': fondo.nombre, 'concepto': f"↪ {ss.nombre}",
-                    'destino': ss_data['fondo_destino'].nombre,
-                    'cuenta': ss_data['fondo_destino'].cuenta_asociada,
-                    'color': ss_data['fondo_destino'].color,
-                    'tipo_fondo': getattr(ss_data['fondo_destino'], 'tipo_fondo', 'comun'),
-                    'importe_base': ss_data['importe'], 'importe_pond': ss_data['importe'],
-                    'periodicidad': 'mensual',
-                })
-            else:
-                # Sobre interno normal
-                dst_ss = get_node(ss.nombre, 'fondo', fondo.color)
-                sankey_links.append({'source': fondo_node, 'target': dst_ss, 'value': imp})
-
-        # Remanente del fondo
-        rem = float(fa['remanente'])
-        if rem > 0 and fa['subsobres']:
-            dst_rem = get_node(f"Libre {fondo.nombre}", 'libre', '#555')
-            sankey_links.append({'source': fondo_node, 'target': dst_rem, 'value': rem})
-
-    # ── RESULTADO ─────────────────────────────────────────────────────────────
     return {
-        'año': año, 'mes': mes,
+        # Contexto de mes
+        'mes': mes,
+        'anio': anio,
+        'mes_nombre': _nombre_mes(mes),
+
+        # Miembros
         'datos_miembros': list(datos_miembros.values()),
-        'total_base_hogar': total_base_hogar,
-        'total_pond_hogar': total_pond_hogar,
-        'total_anual_hogar': total_anual_hogar,
+
+        # Fondos (con neto corregido por cascada)
+        'fondos_aportaciones': list(fondos_aportaciones.values()),
+
+        # Transferencias (personales + cascada)
+        'transferencias': transferencias,
+        'transferencias_cascada': transferencias_cascada,
+
+        # Ingresos
+        'ingreso_base_hogar': total_base_hogar,
+        'ingreso_pond_hogar': total_pond_hogar,
+        'ingreso_anual_hogar': total_anual_hogar,
+
+        # Gastos
         'gastos_hogar_fijos': gastos_hogar_fijos,
         'gastos_hogar_provision': gastos_hogar_provision,
         'gastos_hogar_variables': gastos_hogar_variables,
         'total_gastos_hogar': total_gastos_hogar,
-        'total_gastos_individuales': total_gastos_individuales,
-        'gastos_por_tipo': gastos_por_tipo,
-        'fondos_aportaciones': list(fondos_aportaciones.values()),
-        'ingresos_extraordinarios': ingresos_extraordinarios,
-        'total_extraordinario': total_extraordinario,
-        'resumen_destinos': resumen_destinos,
-        'total_ahorro_inversion': total_ahorro_inversion,
-        'tasa_ahorro': tasa_ahorro,
-        'semaforo': semaforo, 'semaforo_texto': semaforo_texto,
-        'presupuesto_anual': presupuesto_anual,
-        'transferencias': transferencias,
-        'sankey_nodes': sankey_nodes, 'sankey_links': sankey_links,
+        'total_gastos_individuales': total_gastos_ind,
+        'total_gastos_all': total_gastos_all,
+
+        # Libre
+        'libre_base_hogar': total_libre_base,
+        'libre_pond_hogar': total_libre_pond,
+
+        # KPIs
+        'tasa_ahorro_base': tasa_base,
+        'tasa_ahorro_pond': tasa_pond,
+        'semaforo': semaforo,
+        'semaforo_texto': semaforo_texto,
+
+        # Porcentajes barra
+        'pct_ind': pct(total_gastos_ind),
+        'pct_hogar': pct(total_gastos_hogar),
+        'pct_libre': pct(total_libre_base),
     }
 
 
-def info_extras_usuario(hogar, user, año):
+# ---------------------------------------------------------------------------
+# Resumen anual: itera los 12 meses y consolida
+# ---------------------------------------------------------------------------
+
+def calcular_resumen_anual(hogar, anio: int = None):
     """
-    Devuelve info sobre los ingresos anuales/extras de un usuario para un año.
-    Usado por el modal de regla anual para mostrar cuánto hay disponible.
-
-    Returns dict:
-        detalle: list of {label, importe, meses}
-        total_anual: Decimal total de extras en el año
-        total_asignado: Decimal ya asignado via reglas anuales
-        disponible: Decimal sin asignar
+    Suma calcular_flujos para cada uno de los 12 meses del año.
+    Devuelve totales anuales de: ingresos, gastos, ahorro (libre), fondos.
     """
-    fuentes = FuenteIngreso.objects.filter(
-        usuario=user, hogar=hogar, activo=True
-    )
-    detalle = []
-    total_anual = Decimal('0')
+    import datetime
+    anio = anio or datetime.date.today().year
 
-    for f in fuentes:
-        ratio = _ratio_neto(f)
-
-        # Pagas extras
-        if f.modo_entrada == 'anual' and f.num_pagas > 12:
-            num_extras = f.num_pagas - 12
-            bruto_paga = f.importe_declarado / Decimal(str(f.num_pagas))
-            neto_paga = round(bruto_paga * ratio, 2)
-            total_extras = neto_paga * num_extras
-
-            detalle.append({
-                'label': f"Paga extra — {f.nombre}",
-                'importe_unitario': float(neto_paga),
-                'cantidad': num_extras,
-                'total': float(total_extras),
-                'meses': f.pagas_extras_meses,
-            })
-            total_anual += total_extras
-
-        # Ingresos periódicos no mensuales
-        elif f.modo_entrada == 'periodo' and not f.es_mensual_recurrente:
-            neto = round(f.importe_declarado * ratio, 2)
-            num_cobros = len(f.cobro_meses)
-            total_periodo = neto * num_cobros
-
-            detalle.append({
-                'label': f"Periódico — {f.nombre}",
-                'importe_unitario': float(neto),
-                'cantidad': num_cobros,
-                'total': float(total_periodo),
-                'meses': f.cobro_meses,
-            })
-            total_anual += total_periodo
-
-    # Ya asignado via reglas anuales
-    total_asignado = Decimal('0')
-    reglas_anuales = ReglaReparto.objects.filter(
-        hogar=hogar, usuario=user, activo=True
-    )
-    for r in reglas_anuales:
-        if getattr(r, 'periodicidad_regla', 'mensual') == 'anual':
-            if r.tipo_regla == 'porcentaje':
-                total_asignado += round(total_anual * r.porcentaje / 100, 2)
-            else:
-                total_asignado += r.importe_fijo
-
-    return {
-        'detalle': detalle,
-        'total_anual': total_anual,
-        'total_asignado': total_asignado,
-        'disponible': total_anual - total_asignado,
+    resumen = {
+        'anio': anio,
+        'meses': [],
+        'total_ingresos': Decimal('0'),
+        'total_gastos': Decimal('0'),
+        'total_libre': Decimal('0'),
+        'total_fondos': Decimal('0'),
     }
+
+    for mes in range(1, 13):
+        d = calcular_flujos(hogar, mes=mes, anio=anio)
+        total_fondos_mes = sum(
+            fa['total_aportacion_neta']
+            for fa in d['fondos_aportaciones']
+            if fa['total_aportacion_neta'] > 0
+        )
+        resumen['meses'].append({
+            'mes': mes,
+            'nombre': _nombre_mes(mes),
+            'ingresos': d['ingreso_base_hogar'],
+            'gastos': d['total_gastos_all'],
+            'libre': d['libre_base_hogar'],
+            'fondos': total_fondos_mes,
+            'semaforo': d['semaforo'],
+        })
+        resumen['total_ingresos'] += d['ingreso_base_hogar']
+        resumen['total_gastos'] += d['total_gastos_all']
+        resumen['total_libre'] += d['libre_base_hogar']
+        resumen['total_fondos'] += total_fondos_mes
+
+    return resumen
+
+
+def _nombre_mes(mes: int) -> str:
+    nombres = [
+        '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ]
+    return nombres[mes] if 1 <= mes <= 12 else ''

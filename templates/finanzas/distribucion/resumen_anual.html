@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Resumen anual {{ resumen.anio }}{% endblock %}
+
+{% block content %}
+<div class="panel">
+
+<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+    <h2 class="titulo-glow" style="margin:0;">📅 Resumen anual {{ resumen.anio }}</h2>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        {% for a in anios %}
+        <a href="?anio={{ a }}" class="btn {% if a == anio_actual %}btn-primary{% else %}btn-secondary{% endif %}" style="font-size:0.8rem; padding:8px 14px;">{{ a }}</a>
+        {% endfor %}
+        <a href="{% url 'finanzas:vista_distribucion' %}" class="btn btn-secondary" style="font-size:0.8rem; padding:8px 14px;">← Mes actual</a>
+    </div>
+</div>
+
+<!-- KPI anuales -->
+<div class="kpi-bar" style="margin-bottom:24px;">
+    <div class="kpi-item">
+        <div class="kpi-label">Ingresos anuales</div>
+        <div class="kpi-valor" style="color:#00ff88;">€{{ resumen.total_ingresos|floatformat:0 }}</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-label">Gastos anuales</div>
+        <div class="kpi-valor" style="color:#ff4d4d;">€{{ resumen.total_gastos|floatformat:0 }}</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-label">Libre / Ahorro</div>
+        <div class="kpi-valor" style="color:{% if resumen.total_libre >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ resumen.total_libre|floatformat:0 }}</div>
+    </div>
+    <div class="kpi-item">
+        <div class="kpi-label">A fondos</div>
+        <div class="kpi-valor" style="color:#a259ff;">€{{ resumen.total_fondos|floatformat:0 }}</div>
+    </div>
+</div>
+
+<!-- Tabla mes a mes -->
+<div style="overflow-x:auto;">
+<table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
+    <thead>
+        <tr style="color:var(--muted); border-bottom:1px solid #333;">
+            <th style="text-align:left; padding:10px 8px;">Mes</th>
+            <th style="text-align:right; padding:10px 8px;">Ingresos</th>
+            <th style="text-align:right; padding:10px 8px;">Gastos</th>
+            <th style="text-align:right; padding:10px 8px;">Libre</th>
+            <th style="text-align:right; padding:10px 8px;">A fondos</th>
+            <th style="text-align:center; padding:10px 8px;">Estado</th>
+            <th style="padding:10px 8px;"></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for m in resumen.meses %}
+        <tr style="border-bottom:1px solid #1a1a1a;">
+            <td style="padding:10px 8px; font-weight:600; color:var(--text-color);">{{ m.nombre }}</td>
+            <td style="padding:10px 8px; text-align:right; color:#00ff88;">€{{ m.ingresos|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:#ff4d4d;">€{{ m.gastos|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:{% if m.libre >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-weight:700;">€{{ m.libre|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:#a259ff;">€{{ m.fondos|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:center;">
+                <span class="semaforo-dot semaforo-{{ m.semaforo }}"></span>
+            </td>
+            <td style="padding:10px 8px;">
+                <a href="{% url 'finanzas:vista_distribucion' %}?mes={{ m.mes }}&anio={{ resumen.anio }}" style="font-size:0.72rem; color:var(--muted); text-decoration:none;">Ver →</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+    <tfoot>
+        <tr style="border-top:2px solid #333; font-weight:700;">
+            <td style="padding:12px 8px; color:var(--primary-color);">TOTAL</td>
+            <td style="padding:12px 8px; text-align:right; color:#00ff88;">€{{ resumen.total_ingresos|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:#ff4d4d;">€{{ resumen.total_gastos|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:{% if resumen.total_libre >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ resumen.total_libre|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:#a259ff;">€{{ resumen.total_fondos|floatformat:2 }}</td>
+            <td></td><td></td>
+        </tr>
+    </tfoot>
+</table>
+</div>
+
+</div>
+
+<style>
+.kpi-bar { display:flex; gap:12px; flex-wrap:wrap; }
+.kpi-item { background:#1a1a1a; border-radius:12px; padding:14px 18px; flex:1; min-width:120px; }
+.kpi-label { font-size:0.72rem; color:var(--muted); margin-bottom:4px; }
+.kpi-valor { font-size:1.15rem; font-weight:700; }
+.semaforo-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
+.semaforo-verde { background:#00ff88; }
+.semaforo-amarillo { background:#ffee00; }
+.semaforo-naranja { background:#ff8800; }
+.semaforo-rojo { background:#ff4d4d; }
+tbody tr:hover { background:rgba(255,255,255,0.02); }
+</style>
+{% endblock %}

@@ -52,25 +52,17 @@ urlpatterns = [
 
     # ── Distribución y Ahorro ─────────────────────────────────────────────
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
-    path('distribucion/ajuste-variable/', views_distribucion.ajuste_ingreso_mensual, name='ajuste_ingreso_mensual'),
-
-    # AJAX
-    path('distribucion/ajax/extras-usuario/', views_distribucion.ajax_extras_usuario, name='ajax_extras_usuario'),
-
-    # Ingresos extraordinarios
-    path('distribucion/extraordinario/crear/', views_distribucion.crear_ingreso_extraordinario, name='crear_ingreso_extraordinario'),
-    path('distribucion/extraordinario/<int:extra_id>/eliminar/', views_distribucion.eliminar_ingreso_extraordinario, name='eliminar_ingreso_extraordinario'),
+    path('distribucion/resumen-anual/', views_distribucion.vista_resumen_anual, name='resumen_anual'),
 
     # Fondos
     path('distribucion/fondo/crear/', views_distribucion.crear_fondo, name='crear_fondo'),
     path('distribucion/fondo/<int:fondo_id>/eliminar/', views_distribucion.eliminar_fondo, name='eliminar_fondo'),
 
     # Subsobres
-    path('distribucion/fondo/<int:fondo_id>/subsobre/crear/', views_distribucion.crear_subsobre, name='crear_subsobre'),
-    path('distribucion/subsobre/<int:subsobre_id>/eliminar/', views_distribucion.eliminar_subsobre, name='eliminar_subsobre'),
+    path('distribucion/fondo/<int:fondo_id>/subsobre/crear/', views_distribucion.crear_subsobres, name='crear_subsobres'),
+    path('distribucion/subsobre/<int:subsobres_id>/eliminar/', views_distribucion.eliminar_subsobres, name='eliminar_subsobres'),
 
     # Reglas de reparto
     path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
-    path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
 ]
