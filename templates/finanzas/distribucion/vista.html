@@ -98,7 +98,7 @@
         </div>
     </div>
     <div style="display:flex; gap:6px;">
-        <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}')" class="r-btn">✏️</button>
+        <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn">✏️</button>
         <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar?')">🗑</button></form>
     </div>
 </div>
@@ -117,9 +117,14 @@
         <div style="flex:1;">
             <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 {{ fa.fondo.nombre }}
+                {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
+                <span style="font-size:1rem; font-weight:700; color:{% if fa.libre_fondo >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ fa.libre_fondo|floatformat:2 }}</span>
+                <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }}{% if fa.gastos_cubiertos > 0 %} − gastos €{{ fa.gastos_cubiertos|floatformat:2 }}{% endif %}{% if fa.total_cascada_saliente > 0 %} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }}{% endif %})</span>
+                {% else %}
                 <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
                 {% if fa.total_cascada_saliente > 0 %}
                 <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }})</span>
+                {% endif %}
                 {% endif %}
             </div>
             <div class="regla-pill-sub">
@@ -167,7 +172,11 @@
     {% if fa.subsobres %}
     <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
         <span>Asignado: €{{ fa.total_cascada_saliente|floatformat:2 }}</span>
+        {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
+        <span style="color:{% if fa.libre_fondo >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span>
+        {% else %}
         <span style="color:{% if fa.total_aportacion_neta >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre: {% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
+        {% endif %}
     </div>
     {% endif %}
 </div>
@@ -289,6 +298,24 @@
             <div id="campo-fijo" class="fg" style="display:none;"><label>Importe (€/mes)</label><input type="number" name="importe_fijo" id="regla-imp" step="0.01" min="0" value="0"></div>
             <div class="fg"><label>Fondo destino</label><select name="fondo_id" id="regla-fondo"><option value="">— Sin asignación —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
             <div class="fg"><label>Aplicar a</label><select name="usuario_id" id="regla-usuario"><option value="">🏠 Hogar</option>{% for m in miembros %}<option value="{{ m.user.id }}">👤 {{ m.user.first_name|default:m.user.username }}</option>{% endfor %}</select></div>
+            <div class="fg">
+                <label>¿Cuándo aplica?</label>
+                <select name="solo_mes" id="regla-solo-mes">
+                    <option value="">Todos los meses</option>
+                    <option value="1">Solo Enero</option>
+                    <option value="2">Solo Febrero</option>
+                    <option value="3">Solo Marzo</option>
+                    <option value="4">Solo Abril</option>
+                    <option value="5">Solo Mayo</option>
+                    <option value="6">Solo Junio</option>
+                    <option value="7">Solo Julio</option>
+                    <option value="8">Solo Agosto</option>
+                    <option value="9">Solo Septiembre</option>
+                    <option value="10">Solo Octubre</option>
+                    <option value="11">Solo Noviembre</option>
+                    <option value="12">Solo Diciembre</option>
+                </select>
+            </div>
             <div class="fg">
                 <label>Color</label>
                 <div class="color-row" id="regla-color-row">
@@ -470,7 +497,7 @@ function abrirModalRegla(){
     selCByVal('regla','#00ff88');
     document.getElementById('modal-regla').style.display='flex';
 }
-function editarRegla(id,nombre,tipo,pct,fijo,fondoId,userId,color){
+function editarRegla(id,nombre,tipo,pct,fijo,fondoId,userId,color,soloMes){
     document.getElementById('modal-regla-titulo').textContent='✏️ Editar regla';
     document.getElementById('btn-regla-submit').textContent='Guardar';
     document.getElementById('form-regla').action='/finanzas/distribucion/regla/'+id+'/editar/';
@@ -479,6 +506,7 @@ function editarRegla(id,nombre,tipo,pct,fijo,fondoId,userId,color){
     document.getElementById('regla-imp').value=fijo;
     document.getElementById('regla-fondo').value=fondoId;
     document.getElementById('regla-usuario').value=userId;
+    document.getElementById('regla-solo-mes').value=soloMes||'';
     setTipoR(tipo);
     selCByVal('regla',color);
     document.getElementById('modal-regla').style.display='flex';

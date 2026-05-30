@@ -667,6 +667,10 @@ class ReglaReparto(models.Model):
         help_text="Si se especifica, esta regla aplica solo a este miembro. "
                   "Si vacio, aplica al total del hogar."
     ) 
+    solo_mes = models.IntegerField(
+        null=True, blank=True, choices=MESES_CHOICES,
+        help_text='Si se especifica, esta regla SOLO se aplica en ese mes. Vacio = todos los meses.',
+    )
     color = models.CharField(max_length=7, default='#a259ff')
     orden = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)

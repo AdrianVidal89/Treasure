@@ -92,9 +92,10 @@ def calcular_flujos(hogar, mes=None, anio=None):
     partidas = PartidaGasto.objects.filter(
         hogar=hogar, activo=True
     ).select_related('categoria', 'responsable', 'fondo_asignado')
-    reglas = ReglaReparto.objects.filter(
+    reglas_qs = ReglaReparto.objects.filter(
         hogar=hogar, activo=True
     ).select_related('fondo', 'usuario').order_by('orden')
+    reglas = [r for r in reglas_qs if r.solo_mes is None or r.solo_mes == mes]
     fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True))
     subsobres = list(
         SubsobreFondo.objects.filter(

@@ -273,6 +273,8 @@ def crear_regla(request):
         fondo_id = request.POST.get('fondo_id') or None
         usuario_id = request.POST.get('usuario_id') or None
         color = request.POST.get('color', '#00ff88')
+        solo_mes_raw = request.POST.get('solo_mes', '')
+        solo_mes = int(solo_mes_raw) if solo_mes_raw.isdigit() else None
 
         try:
             porcentaje = Decimal(request.POST.get('porcentaje', '0') or '0')
@@ -290,7 +292,7 @@ def crear_regla(request):
                 hogar=hogar, nombre=nombre, tipo_regla=tipo,
                 fondo=fondo, usuario_id=usuario_id,
                 porcentaje=porcentaje, importe_fijo=importe_fijo,
-                color=color, orden=max_orden,
+                color=color, orden=max_orden, solo_mes=solo_mes,
             )
             messages.success(request, f"Regla '{nombre}' creada.")
 
@@ -329,6 +331,8 @@ def editar_regla(request, regla_id):
             regla.porcentaje = porcentaje
             regla.importe_fijo = importe_fijo
             regla.color = color
+            solo_mes_raw = request.POST.get('solo_mes', '')
+            regla.solo_mes = int(solo_mes_raw) if solo_mes_raw.isdigit() else None
             regla.save()
             messages.success(request, f"Regla '{nombre}' actualizada.")
 
