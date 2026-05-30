@@ -1,0 +1,13 @@
+[
+  {"model": "finanzas.tablairpf", "fields": {"pais": "ES", "año": 2026, "tramo_desde": "0.00",      "tramo_hasta": "12450.00",  "porcentaje": "19.00"}},
+  {"model": "finanzas.tablairpf", "fields": {"pais": "ES", "año": 2026, "tramo_desde": "12450.00",  "tramo_hasta": "20200.00",  "porcentaje": "24.00"}},
+  {"model": "finanzas.tablairpf", "fields": {"pais": "ES", "año": 2026, "tramo_desde": "20200.00",  "tramo_hasta": "35200.00",  "porcentaje": "30.00"}},
+  {"model": "finanzas.tablairpf", "fields": {"pais": "ES", "año": 2026, "tramo_desde": "35200.00",  "tramo_hasta": "60000.00",  "porcentaje": "37.00"}},
+  {"model": "finanzas.tablairpf", "fields": {"pais": "ES", "año": 2026, "tramo_desde": "60000.00",  "tramo_hasta": "300000.00", "porcentaje": "45.00"}},
+  {"model": "finanzas.tablairpf", "fields": {"pais": "ES", "año": 2026, "tramo_desde": "300000.00", "tramo_hasta": null,         "porcentaje": "47.00"}},
+
+  {"model": "finanzas.cotizacionss", "fields": {"pais": "ES", "año": 2026, "concepto": "Contingencias comunes",          "porcentaje_trabajador": "4.70"}},
+  {"model": "finanzas.cotizacionss", "fields": {"pais": "ES", "año": 2026, "concepto": "Desempleo",                      "porcentaje_trabajador": "1.55"}},
+  {"model": "finanzas.cotizacionss", "fields": {"pais": "ES", "año": 2026, "concepto": "Formación profesional",          "porcentaje_trabajador": "0.10"}},
+  {"model": "finanzas.cotizacionss", "fields": {"pais": "ES", "año": 2026, "concepto": "MEI (Mecanismo Eq. Intergener.)", "porcentaje_trabajador": "0.13"}}
+]
