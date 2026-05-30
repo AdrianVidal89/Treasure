@@ -46,19 +46,13 @@
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Gastos</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:listar_gastos' %}">📋 Ver gastos</a>
+                    <a href="{% url 'finanzas:listar_gastos' %}" >📋 Ver gastos</a>
                     <a href="{% url 'finanzas:crear_partida' %}">➕ Gasto</a>
                 </div>
             </div>
-
-            <a href="{% url 'finanzas:vista_distribucion' %}" style="color: var(--text-color); text-decoration: none; font-size: 0.9rem; padding: 6px 10px;">
-                Distribución
-            </a>
-
-            <a href="{% url 'finanzas:vista_evolucion' %}" style="color: var(--text-color); text-decoration: none; font-size: 0.9rem; padding: 6px 10px;">
-                Evolución
-            </a>
-        </div>
+            
+            <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle">Distribución</a>
+            <a href="{% url 'finanzas:vista_evolucion' %}" class="nav-user-toggle">Evolución</a>        </div>
 
         <div class="navbar-right">
             <div class="nav-user-dropdown">
