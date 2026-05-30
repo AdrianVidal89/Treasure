@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}Evolución Patrimonial - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<style>
+:root { --cell-w: 110px; }
+.evo-wrap { padding: 24px; max-width: 100%; overflow-x: auto; }
+.evo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.evo-header h1 { color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0; font-size: 1.6rem; }
+
+/* Selector año */
+.año-selector { display: flex; gap: 8px; align-items: center; }
+.año-selector select { background: #1a1a1a; border: 1px solid #333; color: var(--text-color); border-radius: 8px; padding: 8px 12px; font-size: 0.9rem; }
+
+/* Tarjetas resumen */
+.resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+.resumen-card { background: #1a1a1a; border-radius: 14px; padding: 20px; border: 1px solid #2a2a2a; }
+.resumen-card .label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.resumen-card .valor { font-size: 1.5rem; font-weight: 700; }
+.resumen-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
+.resumen-card .crecimiento { font-size: 0.85rem; margin-top: 4px; }
+.pos { color: #00ff88; } .neg { color: #ff4d4d; } .neu { color: var(--muted); }
+
+/* Tabla */
+.evo-table-wrap { overflow-x: auto; border-radius: 14px; background: #111; border: 1px solid #2a2a2a; }
+.evo-table { border-collapse: collapse; width: 100%; min-width: max-content; font-size: 0.82rem; }
+.evo-table th { background: #1a1a1a; color: var(--muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; padding: 10px 14px; text-align: right; white-space: nowrap; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #2a2a2a; }
+.evo-table th:first-child { text-align: left; position: sticky; left: 0; z-index: 20; background: #1a1a1a; }
+.evo-table td { padding: 10px 14px; border-bottom: 1px solid #1a1a1a; text-align: right; white-space: nowrap; vertical-align: middle; }
+.evo-table td:first-child { text-align: left; position: sticky; left: 0; background: #111; z-index: 5; font-weight: 600; color: var(--text-color); }
+.evo-table tr:hover td { background: #161616; }
+.evo-table tr:hover td:first-child { background: #161616; }
+
+.cell-valor { color: var(--text-color); cursor: pointer; }
+.cell-vacio { color: #333; cursor: pointer; font-style: italic; font-size: 0.75rem; }
+.cell-total { color: #00d1ff; font-weight: 700; }
+.cell-ahorro.pos { color: #00ff88; }
+.cell-ahorro.neg { color: #ff4d4d; }
+.cell-ingresos { color: #ffaa00; }
+.fondo-label { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; padding: 2px 0; }
+.fondo-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Modal */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+.modal-overlay.active { display: flex; }
+.modal-box { background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 18px; padding: 28px; box-shadow: 0 0 40px var(--glow); max-width: 400px; width: 92%; }
+.modal-box h3 { color: var(--primary-color); margin-top: 0; font-size: 1rem; }
+.fg { margin-bottom: 14px; }
+.fg label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; }
+.fg input, .fg select { width: 100%; padding: 10px 12px; background: #111; border: 1px solid #333; color: var(--text-color); border-radius: 8px; font-size: 0.9rem; box-sizing: border-box; }
+.fg input:focus, .fg select:focus { outline: none; border-color: var(--primary-color); }
+.btn-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.btn { padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
+.btn-primary { background: var(--primary-color); color: #000; }
+.btn-secondary { background: transparent; border: 1px solid #444; color: var(--text-color); }
+</style>
+
+<div class="evo-wrap">
+
+    <!-- HEADER -->
+    <div class="evo-header">
+        <h1>📈 Evolución Patrimonial</h1>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <form method="get" class="año-selector">
+                <label style="color: var(--muted); font-size: 0.8rem;">Año</label>
+                <select name="año" onchange="this.form.submit()">
+                    {% for a in años %}
+                    <option value="{{ a }}" {% if a == año_actual %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            <button onclick="document.getElementById('modal-nuevo-fondo').classList.add('active')"
+                    class="btn btn-secondary" style="font-size: 0.8rem; padding: 8px 14px;">
+                + Nuevo fondo
+            </button>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.85rem; color: var(--text-color);">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- RESUMEN SUPERIOR -->
+    <div class="resumen-grid">
+        <div class="resumen-card" style="border-color: #00d1ff33;">
+            <div class="label">Liquidez actual</div>
+            <div class="valor" style="color: #00d1ff;">€{{ resumen.liquidez_actual|floatformat:0 }}</div>
+            <div class="sub">Cuentas corrientes + ahorro</div>
+            <div class="crecimiento {% if resumen.crecimiento_liquidez_interanual >= 0 %}pos{% else %}neg{% endif %}">
+                {% if resumen.crecimiento_liquidez_interanual >= 0 %}▲{% else %}▼{% endif %}
+                €{{ resumen.crecimiento_liquidez_interanual|floatformat:0 }} inter-anual
+            </div>
+            <div class="crecimiento neu">↗ €{{ resumen.ahorro_esperado_acum|floatformat:0 }} esperado (presupuesto)</div>
+        </div>
+        <div class="resumen-card" style="border-color: #a259ff33;">
+            <div class="label">Patrimonio Financiero</div>
+            <div class="valor" style="color: #a259ff;">€{{ resumen.patrimonio_financiero_actual|floatformat:0 }}</div>
+            <div class="sub">Liquidez + fondos de inversión</div>
+            <div class="crecimiento {% if resumen.crecimiento_patrimonio_interanual >= 0 %}pos{% else %}neg{% endif %}">
+                {% if resumen.crecimiento_patrimonio_interanual >= 0 %}▲{% else %}▼{% endif %}
+                €{{ resumen.crecimiento_patrimonio_interanual|floatformat:0 }} inter-anual
+            </div>
+            <div class="crecimiento neu">↗ €{{ resumen.patrimonio_esperado_acum|floatformat:0 }} esperado (presupuesto)</div>
+        </div>
+    </div>
+
+    <!-- TABLA MENSUAL -->
+    <div class="evo-table-wrap">
+        <table class="evo-table">
+            <thead>
+                <tr>
+                    <th>Mes</th>
+                    <th style="color: #ffaa00;">Ingresos</th>
+                    <th style="color: #00ff88;">Ahorro neto</th>
+                    {% for f in fondos %}
+                    <th>
+                        <div class="fondo-label" style="justify-content: flex-end;">
+                            <span style="color: {{ f.color }};">{{ f.nombre }}</span>
+                            <span class="fondo-dot" style="background: {{ f.color }};"></span>
+                        </div>
+                        {% if f.cuenta_asociada %}<div style="font-size: 0.65rem; color: #444;">{{ f.cuenta_asociada }}</div>{% endif %}
+                    </th>
+                    {% endfor %}
+                    <th style="color: #00d1ff;">Liquidez</th>
+                    <th style="color: #a259ff;">Patrimonio</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fila in filas %}
+                <tr>
+                    <td>{{ fila.mes_nombre }} {{ año_actual }}</td>
+
+                    <!-- Ingresos reales -->
+                    <td class="cell-ingresos"
+                        onclick="abrirModalIngreso({{ fila.mes }}, {{ año_actual }}, '{% if fila.ingreso_real %}{{ fila.ingreso_real.importe }}{% endif %}')"
+                        title="Click para editar">
+                        {% if fila.ingreso_real %}
+                            €{{ fila.ingreso_real.importe|floatformat:0 }}
+                        {% else %}
+                            <span class="cell-vacio">—</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Ahorro neto -->
+                    <td>
+                        {% if fila.ahorro_neto is not None %}
+                            <span class="cell-ahorro {% if fila.ahorro_neto >= 0 %}pos{% else %}neg{% endif %}">
+                                {% if fila.ahorro_neto >= 0 %}+{% endif %}€{{ fila.ahorro_neto|floatformat:0 }}
+                            </span>
+                        {% else %}
+                            <span class="cell-vacio">—</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Saldo por fondo -->
+                    {% for celda in fila.celdas %}
+                    <td onclick="abrirModalSaldo({{ celda.fondo.id }}, '{{ celda.fondo.nombre|escapejs }}', {{ fila.mes }}, {{ año_actual }}, '{% if celda.saldo_valor %}{{ celda.saldo_valor }}{% endif %}')"
+                        title="Click para editar">
+                        {% if celda.saldo_valor is not None %}
+                            <span class="cell-valor" style="color: {{ celda.fondo.color }};">
+                                €{{ celda.saldo_valor|floatformat:0 }}
+                            </span>
+                        {% else %}
+                            <span class="cell-vacio">—</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+
+                    <!-- Totales -->
+                    <td class="cell-total">
+                        {% if fila.liquidez %}€{{ fila.liquidez|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                    </td>
+                    <td style="color: #a259ff; font-weight: 700;">
+                        {% if fila.patrimonio %}€{{ fila.patrimonio|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="100" style="text-align: center; color: var(--muted); padding: 40px;">Sin datos para {{ año_actual }}. Haz click en cualquier celda para introducir saldos.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- MODAL: Editar saldo de fondo -->
+<div id="modal-saldo" class="modal-overlay">
+    <div class="modal-box">
+        <h3 id="modal-saldo-titulo">Registrar saldo</h3>
+        <form method="post" action="{% url 'finanzas:registrar_saldo_fondo' %}">
+            {% csrf_token %}
+            <input type="hidden" name="fondo_id" id="modal-fondo-id">
+            <input type="hidden" name="mes" id="modal-saldo-mes">
+            <input type="hidden" name="año" id="modal-saldo-año">
+            <div class="fg">
+                <label>Saldo real (€) — deja vacío para borrar</label>
+                <input type="number" name="saldo" id="modal-saldo-valor" step="0.01" placeholder="Ej: 12500.00" autofocus>
+            </div>
+            <div class="fg">
+                <label>Nota (opcional)</label>
+                <input type="text" name="nota" placeholder="Ej: Incluye depósito pendiente">
+            </div>
+            <div class="btn-row">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: Editar ingresos del mes -->
+<div id="modal-ingreso" class="modal-overlay">
+    <div class="modal-box">
+        <h3 id="modal-ingreso-titulo">Registrar ingresos del mes</h3>
+        <form method="post" action="{% url 'finanzas:registrar_ingreso_mes' %}">
+            {% csrf_token %}
+            <input type="hidden" name="mes" id="modal-ingreso-mes">
+            <input type="hidden" name="año" id="modal-ingreso-año">
+            <div class="fg">
+                <label>Ingresos netos reales (€) — deja vacío para borrar</label>
+                <input type="number" name="importe" id="modal-ingreso-valor" step="0.01" placeholder="Ej: 6634.00" autofocus>
+            </div>
+            <div class="fg">
+                <label>Nota (opcional)</label>
+                <input type="text" name="nota" placeholder="Ej: Incluye guardia extra Irene">
+            </div>
+            <div class="btn-row">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL: Nuevo fondo -->
+<div id="modal-nuevo-fondo" class="modal-overlay">
+    <div class="modal-box">
+        <h3>Nuevo fondo / cuenta</h3>
+        <form method="post" action="{% url 'finanzas:crear_fondo_evolucion' %}">
+            {% csrf_token %}
+            <input type="hidden" name="año" value="{{ año_actual }}">
+            <div class="fg">
+                <label>Nombre</label>
+                <input type="text" name="nombre" placeholder="Ej: CaixaBank, Depósito Revolut..." required>
+            </div>
+            <div class="fg">
+                <label>Tipo</label>
+                <select name="tipo_fondo">
+                    <option value="comun">Cuenta corriente (liquidez)</option>
+                    <option value="ahorro">Ahorro / depósito</option>
+                    <option value="inversion">Inversión</option>
+                </select>
+            </div>
+            <div class="fg">
+                <label>Cuenta bancaria asociada (opcional)</label>
+                <input type="text" name="cuenta_asociada" placeholder="Ej: BBVA ES12...">
+            </div>
+            <div class="fg">
+                <label>Color</label>
+                <input type="color" name="color" value="#00d1ff" style="height: 40px; padding: 4px;">
+            </div>
+            <div class="btn-row">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Crear</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function abrirModalSaldo(fondoId, fondoNombre, mes, año, valorActual) {
+    document.getElementById('modal-saldo-titulo').textContent = `${fondoNombre} — ${mes}/${año}`;
+    document.getElementById('modal-fondo-id').value = fondoId;
+    document.getElementById('modal-saldo-mes').value = mes;
+    document.getElementById('modal-saldo-año').value = año;
+    document.getElementById('modal-saldo-valor').value = valorActual || '';
+    document.getElementById('modal-saldo').classList.add('active');
+    setTimeout(() => document.getElementById('modal-saldo-valor').focus(), 50);
+}
+
+function abrirModalIngreso(mes, año, valorActual) {
+    const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    document.getElementById('modal-ingreso-titulo').textContent = `Ingresos reales — ${meses[mes]} ${año}`;
+    document.getElementById('modal-ingreso-mes').value = mes;
+    document.getElementById('modal-ingreso-año').value = año;
+    document.getElementById('modal-ingreso-valor').value = valorActual || '';
+    document.getElementById('modal-ingreso').classList.add('active');
+    setTimeout(() => document.getElementById('modal-ingreso-valor').focus(), 50);
+}
+
+function cerrarModales() {
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) cerrarModales();
+    });
+});
+</script>
+{% endblock %}

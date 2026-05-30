@@ -854,3 +854,54 @@ class IngresoExtraordinario(models.Model):
 
     def __str__(self):
         return f"{self.concepto} ({self.mes}/{self.año}) -- €{self.importe}"
+
+# ─── Módulo Evolución ─────────────────────────────────────────────────────────
+
+class SaldoRealFondo(models.Model):
+    """
+    Saldo real observado en un FondoFamiliar para un mes concreto.
+
+    INMUTABILIDAD: nunca modifica FondoFamiliar ni la vista de distribución.
+    Solo es un snapshot mensual de lo que hay realmente en esa cuenta/fondo.
+    """
+    fondo = models.ForeignKey(
+        'FondoFamiliar',
+        on_delete=models.CASCADE,
+        related_name='saldos_reales',
+    )
+    año = models.IntegerField()
+    mes = models.IntegerField(help_text='1-12')
+    saldo = models.DecimalField(max_digits=14, decimal_places=2)
+    nota = models.CharField(max_length=255, blank=True, default='')
+    registrado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-año', '-mes', 'fondo']
+        unique_together = ('fondo', 'año', 'mes')
+
+    def __str__(self):
+        return f"{self.fondo.nombre} {self.mes}/{self.año}: €{self.saldo}"
+
+
+class IngresoRealMes(models.Model):
+    """
+    Ingreso neto real registrado manualmente para el hogar en un mes.
+    Columna 'Ingresos' del Excel de seguimiento.
+    """
+    hogar = models.ForeignKey(
+        'core.Hogar',
+        on_delete=models.CASCADE,
+        related_name='ingresos_reales',
+    )
+    año = models.IntegerField()
+    mes = models.IntegerField()
+    importe = models.DecimalField(max_digits=12, decimal_places=2)
+    nota = models.CharField(max_length=255, blank=True, default='')
+    registrado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-año', '-mes']
+        unique_together = ('hogar', 'año', 'mes')
+
+    def __str__(self):
+        return f"Ingresos {self.mes}/{self.año} - {self.hogar.nombre}: €{self.importe}"

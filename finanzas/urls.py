@@ -4,6 +4,7 @@ from . import views_ingresos
 from . import views_gastos
 from . import views_distribucion
 from .views import nueva_cuenta_bancaria, patrimonio_total_actual
+from . import views_evolucion
 
 app_name = 'finanzas'
 
@@ -69,4 +70,12 @@ urlpatterns = [
     path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
     path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
+
+    # Añadir en urlpatterns:
+    path('evolucion/', views_evolucion.vista_evolucion, name='vista_evolucion'),
+    path('evolucion/saldo/', views_evolucion.registrar_saldo_fondo, name='registrar_saldo_fondo'),
+    path('evolucion/ingreso/', views_evolucion.registrar_ingreso_mes, name='registrar_ingreso_mes'),
+    path('evolucion/fondo/crear/', views_evolucion.crear_fondo_evolucion, name='crear_fondo_evolucion'),
 ]
+
+
