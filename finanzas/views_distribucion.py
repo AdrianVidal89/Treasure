@@ -404,3 +404,18 @@ def eliminar_subsobres(request, subsobres_id):
     ss.delete()
     messages.success(request, f"Distribución interna '{nombre}' eliminada.")
     return redirect('finanzas:vista_distribucion')
+
+@login_required
+def desasignar_gasto_fondo(request, partida_id):
+    profile = getattr(request.user, 'userprofile', None)
+    if not profile or not profile.hogar:
+        return redirect('dashboard')
+
+    partida = get_object_or_404(PartidaGasto, id=partida_id, hogar=profile.hogar)
+    if request.method == 'POST':
+        nombre = partida.nombre
+        partida.fondo_asignado = None
+        partida.save(update_fields=['fondo_asignado'])
+        messages.success(request, f"'{nombre}' desasignado del fondo.")
+
+    return redirect('finanzas:vista_distribucion')

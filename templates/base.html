@@ -13,6 +13,7 @@
     
         toggles.forEach(function(toggle) {
             const menu = toggle.nextElementSibling;
+            if (!menu || !menu.classList.contains('nav-user-menu')) return;
     
             toggle.addEventListener("click", function (e) {
                 e.stopPropagation();
@@ -32,8 +33,10 @@
     {% if request.user.is_authenticated and not hide_navbar %}
     <nav class="navbar">
         <div class="navbar-left">
-            <img src="{% static 'img/logo_treasure_3.png' %}" class="nav-logo" alt="Treasure Logo">
-            <span class="nav-title">Treasure</span>
+            <a href="{% url 'dashboard' %}" style="display: flex; align-items: center; gap: 8px; text-decoration: none;">
+                <img src="{% static 'img/logo_treasure_3.png' %}" class="nav-logo" alt="Treasure Logo">
+                <span class="nav-title">Treasure</span>
+            </a>
 
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Ingresos</span>
@@ -46,13 +49,14 @@
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Gastos</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:listar_gastos' %}" >📋 Ver gastos</a>
+                    <a href="{% url 'finanzas:listar_gastos' %}">📋 Ver gastos</a>
                     <a href="{% url 'finanzas:crear_partida' %}">➕ Gasto</a>
                 </div>
             </div>
             
             <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle">Distribución</a>
-            <a href="{% url 'finanzas:vista_evolucion' %}" class="nav-user-toggle">Evolución</a>        </div>
+            <a href="{% url 'finanzas:vista_evolucion' %}" class="nav-user-toggle">Evolución</a>
+        </div>
 
         <div class="navbar-right">
             <div class="nav-user-dropdown">
@@ -60,7 +64,8 @@
                     Hola, <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
                 </span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'mi_hogar' %}">🏠 Mi hogar</a>
+                    <a href="{% url 'dashboard' %}">🏠 Dashboard</a>
+                    <a href="{% url 'mi_hogar' %}">👥 Mi hogar</a>
                     <a href="{% url 'editar_perfil' %}">Editar perfil</a>
                     {% if request.user.is_superuser or request.user.userprofile.es_admin %}
                     <a href="{% url 'panel_admin' %}">⚙️ Panel Admin</a>

@@ -61,6 +61,7 @@ urlpatterns = [
     path('distribucion/fondo/<int:fondo_id>/editar/', views_distribucion.editar_fondo, name='editar_fondo'),
     path('distribucion/fondo/<int:fondo_id>/eliminar/', views_distribucion.eliminar_fondo, name='eliminar_fondo'),
     path('distribucion/fondo/<int:fondo_id>/gastos/', views_distribucion.asignar_gastos_fondo, name='asignar_gastos_fondo'),
+    path('distribucion/gasto/<int:partida_id>/desasignar/', views_distribucion.desasignar_gasto_fondo, name='desasignar_gasto_fondo'),
 
     # Subsobres
     path('distribucion/fondo/<int:fondo_id>/subsobre/crear/', views_distribucion.crear_subsobres, name='crear_subsobres'),

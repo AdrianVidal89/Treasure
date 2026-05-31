@@ -4,338 +4,273 @@
 {% block title %}Dashboard - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
-
 {% block content %}
+<style>
+/* ─── Dashboard Layout ─────────────────────────────────────────────────── */
+.cc-wrap { padding: 24px; max-width: 960px; margin: 0 auto; }
 
-<div class="total-patrimonio-widget">
-    <div class="total-patrimonio-titulo">🧮 Patrimonio Total</div>
-    <div class="total-patrimonio-valor" id="valor-patrimonio-total">€0.00</div>
-  </div>
-  
-<div class="dashboard-container">  
+/* ─── Header ───────────────────────────────────────────────────────────── */
+.cc-header { margin-bottom: 24px; }
+.cc-saludo {
+    font-size: 1.5rem; font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 4px;
+}
+.cc-saludo span { color: var(--primary-color); text-shadow: 0 0 10px var(--glow); }
+.cc-sub { color: var(--muted); font-size: 0.85rem; }
 
-    <!-- Título fila de activos -->
-    <h3 class="section-title">💚 Activos</h3>
-    <div class="mini-dashboard-row">
-      <div class="mini-dashboard">
-        <div class="mini-title">💰 Líquido</div>
-        <div class="mini-valor-real" id="valor-liquido">€0.00</div>
-        <div class="mini-variacion" id="label-liquido">+0%</div>
-        <canvas id="bar-liquido" height="60"></canvas>
-      </div>
-      <div class="mini-dashboard">
-        <div class="mini-title">🏡 Propiedades</div>
-        <div class="mini-valor-real" id="valor-activos">€0.00</div>
-        <div class="mini-variacion" id="label-activos">+0%</div>
-        <canvas id="bar-activos" height="60"></canvas>
-      </div>
-      <div class="mini-dashboard">
-        <div class="mini-title">📈 Inversiones</div>
-        <div class="mini-valor-real" id="valor-inversiones">€0.00</div>
-        <div class="mini-variacion" id="label-inversiones">+0%</div>
-        <canvas id="bar-inversiones" height="60"></canvas>
-      </div>
-    </div>
-  
-    <!-- Título fila de pasivos -->
-    <h3 class="section-title">🔻 Pasivos</h3>
-    <div class="mini-dashboard-row">
-      <div class="mini-dashboard">
-        <div class="mini-title">💳 Créditos</div>
-        <div class="mini-valor-real" id="valor-creditos">€0.00</div>
-        <div class="mini-variacion" id="label-creditos">+0%</div>
-        <canvas id="bar-creditos" height="60"></canvas>
-      </div>
-      <div class="mini-dashboard">
-        <div class="mini-title">🏦 Préstamos</div>
-        <div class="mini-valor-real" id="valor-prestamos">€0.00</div>
-        <div class="mini-variacion" id="label-prestamos">+0%</div>
-        <canvas id="bar-prestamos" height="60"></canvas>
-      </div>
-      <div class="mini-dashboard">
-        <div class="mini-title">💷 Hipotecas</div>
-        <div class="mini-valor-real" id="valor-hipotecas">€0.00</div>
-        <div class="mini-variacion" id="label-hipotecas">+0%</div>
-        <canvas id="bar-hipotecas" height="60"></canvas>
-      </div>
-    </div>
-  
-    <!-- Sección del gráfico -->
-    <div class="chart-section">
-      <h2>📊 Gráfico de Evolución</h2>
-      <div class="chart-controls">
-        <fieldset class="filtro-checkboxes">
-          <legend>Categorías:</legend>
-          <label class="checkbox-label">
-            <input type="checkbox" name="categoria" value="total">
-            Patrimonio Total
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" name="categoria" value="liquido">
-            Capital Líquido
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" name="categoria" value="inversiones" checked>
-            Inversiones
-          </label>
-        </fieldset>
-  
-        <label for="filtro-periodo">Periodo:</label>
-        <select id="filtro-periodo" class="cyber-select">
-          <option value="6">Últimos 6 meses</option>
-          <option value="12" selected>Últimos 12 meses</option>
-          <option value="24">Últimos 24 meses</option>
-          <option value="todos">Todo el historial</option>
-        </select>
-      </div>
-      <canvas id="grafico-evolucion" height="120"></canvas>
-    </div>
-  </div>
+/* ─── Semáforo ─────────────────────────────────────────────────────────── */
+.cc-semaforo {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 0.78rem; font-weight: 600;
+    margin-top: 10px;
+}
+.cc-semaforo .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    display: inline-block;
+}
+.cc-semaforo.verde  { background: rgba(0,255,136,0.08); color: #00ff88; border: 1px solid rgba(0,255,136,0.25); }
+.cc-semaforo.verde .dot  { background: #00ff88; box-shadow: 0 0 6px #00ff88; }
+.cc-semaforo.amarillo { background: rgba(255,238,0,0.08); color: #ffee00; border: 1px solid rgba(255,238,0,0.25); }
+.cc-semaforo.amarillo .dot { background: #ffee00; box-shadow: 0 0 6px #ffee00; }
+.cc-semaforo.naranja { background: rgba(255,136,0,0.08); color: #ff8800; border: 1px solid rgba(255,136,0,0.25); }
+.cc-semaforo.naranja .dot { background: #ff8800; box-shadow: 0 0 6px #ff8800; }
+.cc-semaforo.rojo { background: rgba(255,77,77,0.08); color: #ff4d4d; border: 1px solid rgba(255,77,77,0.25); }
+.cc-semaforo.rojo .dot { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
 
-  <script>
-    async function actualizarPatrimonioTotal() {
-      try {
-        const res = await fetch("{% url 'finanzas:patrimonio_total_actual' %}");
-        const data = await res.json();
-        const valor = data.valor.toLocaleString("es-ES", {
-          style: "currency",
-          currency: "EUR",
-          minimumFractionDigits: 2,
-        });
-  
-        document.getElementById("valor-patrimonio-total").textContent = valor;
-      } catch (err) {
-        console.error("Error al cargar el patrimonio total:", err);
-      }
-    }
-  
-    window.addEventListener("DOMContentLoaded", actualizarPatrimonioTotal);
-  </script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
+/* ─── KPI Strip ────────────────────────────────────────────────────────── */
+.cc-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+}
+.cc-kpi {
+    background: #1a1a1a; border-radius: 14px;
+    padding: 16px; text-align: center;
+    border: 1px solid #2a2a2a;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.cc-kpi:hover { border-color: #444; box-shadow: 0 0 12px rgba(162,89,255,0.15); }
+.cc-kpi-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+.cc-kpi-value { font-size: 1.3rem; font-weight: 700; }
+.cc-kpi-sub { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
 
-  datos.forEach(({ id, actual, anterior, moneda }) => {
-    const delta = actual - anterior;
-    const porcentaje = anterior !== 0 ? (delta / Math.abs(anterior)) * 100 : 0;
-    const color = porcentaje > 0 ? '#00ff99' : porcentaje < 0 ? '#ff4d4d' : '#888';
-    const ctx = document.getElementById(`bar-${id}`).getContext('2d');
-    const etiqueta = document.getElementById(`label-${id}`);
-    const valorReal = document.getElementById(`valor-${id}`);
+/* ─── Distribution bar ─────────────────────────────────────────────────── */
+.cc-dist {
+    background: #1a1a1a; border-radius: 14px;
+    padding: 18px 20px; border: 1px solid #2a2a2a;
+    margin-bottom: 24px;
+}
+.cc-dist-title {
+    font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.cc-dist-title span { color: var(--text-color); font-size: 0.78rem; }
+.cc-bar {
+    display: flex; height: 22px; border-radius: 8px;
+    overflow: hidden; background: #111; margin-bottom: 14px;
+}
+.cc-bar-seg {
+    min-width: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 0.58rem; font-weight: 700; color: #000;
+    transition: width 0.4s ease;
+}
+.cc-legend {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 8px;
+}
+.cc-legend-item {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 0.8rem; color: var(--text-color);
+    padding: 6px 10px; border-radius: 8px;
+    background: rgba(255,255,255,0.02);
+}
+.cc-legend-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.cc-legend-label { flex: 1; }
+.cc-legend-val { color: var(--muted); font-size: 0.75rem; }
+.cc-legend-pct { font-weight: 700; min-width: 40px; text-align: right; }
 
-    etiqueta.textContent = `${porcentaje > 0 ? '+' : ''}${porcentaje.toFixed(1)}%`;
-    etiqueta.style.color = color;
-    valorReal.textContent = `${moneda}${actual.toLocaleString()}`;
+/* ─── Module Cards ─────────────────────────────────────────────────────── */
+.cc-modules {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px; margin-bottom: 24px;
+}
+.cc-mod {
+    background: #1a1a1a; border: 1px solid #2a2a2a;
+    border-radius: 14px; padding: 20px;
+    cursor: pointer; text-decoration: none;
+    transition: all 0.25s ease;
+    display: block;
+    border-left: 3px solid var(--mod-color, #a259ff);
+}
+.cc-mod:hover {
+    border-color: var(--mod-color, #a259ff);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--mod-color) 25%, transparent);
+    transform: translateY(-2px);
+}
+.cc-mod-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.cc-mod-icon { font-size: 1.4rem; }
+.cc-mod-title { font-size: 0.9rem; font-weight: 700; color: var(--text-color); }
+.cc-mod-metric { font-size: 1.15rem; font-weight: 700; margin-bottom: 3px; }
+.cc-mod-sub { font-size: 0.72rem; color: var(--muted); }
 
-    new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: [''],
-        datasets: [{
-          data: [Math.abs(porcentaje)],
-          backgroundColor: color,
-          borderRadius: 6,
-          barPercentage: 0.7
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: false }
-        },
-        scales: {
-          x: {
-            min: 0,
-            max: 100,
-            ticks: { display: false },
-            grid: { display: false }
-          },
-          y: {
-            ticks: { display: false },
-            grid: { display: false }
-          }
-        }
-      }
-    });
-  });
-});
-</script>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const ctx = document.getElementById('grafico-evolucion').getContext('2d');
-    const periodoSelect = document.getElementById('filtro-periodo');
-    const categoriaCheckboxes = document.querySelectorAll('input[name="categoria"]');
-    let chart;
+/* ─── Alertas ──────────────────────────────────────────────────────────── */
+.cc-alertas { margin-bottom: 24px; }
+.cc-alerta {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px;
+    margin-bottom: 8px; font-size: 0.82rem;
+}
+.cc-alerta.warning {
+    background: rgba(255,170,0,0.07); border: 1px solid rgba(255,170,0,0.2);
+    color: #ffaa00;
+}
+.cc-alerta.info {
+    background: rgba(0,209,255,0.06); border: 1px solid rgba(0,209,255,0.15);
+    color: #00d1ff;
+}
+.cc-alerta-icon { font-size: 1rem; flex-shrink: 0; }
+.cc-alerta-text { flex: 1; }
+.cc-alerta-link {
+    font-size: 0.75rem; font-weight: 600;
+    padding: 4px 10px; border-radius: 6px;
+    text-decoration: none; flex-shrink: 0;
+    border: 1px solid currentColor;
+    transition: background 0.2s;
+}
+.cc-alerta.warning .cc-alerta-link { color: #ffaa00; }
+.cc-alerta.warning .cc-alerta-link:hover { background: rgba(255,170,0,0.12); }
+.cc-alerta.info .cc-alerta-link { color: #00d1ff; }
+.cc-alerta.info .cc-alerta-link:hover { background: rgba(0,209,255,0.1); }
 
-    // 🔁 Restaurar selección desde localStorage
-    if (localStorage.getItem("periodo")) {
-        periodoSelect.value = localStorage.getItem("periodo");
-    }
-
-    categoriaCheckboxes.forEach(cb => {
-        const key = `categoria_${cb.value}`;
-        if (localStorage.getItem(key) === "true") {
-            cb.checked = true;
-        }
-    });
-
-    // 🧠 Guardar selección al cambiar
-    periodoSelect.addEventListener("change", function () {
-        localStorage.setItem("periodo", this.value);
-    });
-
-    categoriaCheckboxes.forEach(cb => {
-        cb.addEventListener("change", function () {
-            localStorage.setItem(`categoria_${this.value}`, this.checked);
-        });
-    });
-
-    function obtenerCategoriasSeleccionadas() {
-        return Array.from(document.querySelectorAll('input[name="categoria"]:checked')).map(c => c.value);
-    }
-
-    function cargarDatos() {
-    const categorias = obtenerCategoriasSeleccionadas();
-    const periodo = periodoSelect.value;
-
-    const params = new URLSearchParams();
-    categorias.forEach(cat => params.append('categorias[]', cat));
-    params.append('periodo', periodo);
-
-    fetch(`/ui/dashboard/datos-evolucion/?${params.toString()}`)
-        .then(res => res.json())
-        .then(data => {
-            const colores = {
-                total: '#00ffcc',
-                liquido: '#00bfff',
-                inversiones: '#ff00cc'
-            };
-
-            // 1. Gráfico de evolución
-            const datasets = Object.entries(data.series).map(([key, valores]) => ({
-                label: key === 'total' ? 'Patrimonio Total'
-                      : key === 'liquido' ? 'Capital Líquido'
-                      : 'Inversiones',
-                data: valores,
-                borderColor: colores[key],
-                backgroundColor: 'rgba(0, 0, 0, 0.05)',
-                tension: 0.3,
-                fill: false,
-                pointRadius: 3,
-                pointBackgroundColor: colores[key]
-            }));
-
-            if (chart) {
-                chart.data.labels = data.labels;
-                chart.data.datasets = datasets;
-                chart.update();
-            } else {
-                chart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: data.labels,
-                        datasets: datasets
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: {
-                                labels: { color: '#eaeaea' }
-                            },
-                            tooltip: {
-                                mode: 'index',
-                                intersect: false
-                            }
-                        },
-                        scales: {
-                            x: {
-                                ticks: { color: '#aaa' },
-                                grid: { color: '#333' }
-                            },
-                            y: {
-                                ticks: { color: '#aaa' },
-                                grid: { color: '#333' }
-                            }
-                        }
-                    }
-                });
-            }
-
-            // 2. Actualizar mini-dashboard con resumen_actual
-            const resumen = data.resumen_actual;
-            const widgets = [
-                { id: 'liquido', data: resumen.liquido, color: '#00ff99' },
-                { id: 'creditos', data: resumen.creditos, color: '#ff4d4d' },
-                { id: 'activos', data: resumen.activos, color: '#ffaa00' },
-                { id: 'inversiones', data: resumen.inversiones, color: '#b266ff' }
-            ];
-
-            widgets.forEach(({ id, data, color }) => {
-                const delta = data.actual - data.anterior;
-                const pct = data.anterior !== 0 ? (delta / Math.abs(data.anterior)) * 100 : 0;
-
-                let colorFinal;
-                if (id === 'creditos') {
-                    colorFinal = pct > 0 ? '#ff4d4d' : pct < 0 ? '#00ff99' : '#888';  // lógica invertida
-                } else {
-                    colorFinal = pct > 0 ? '#00ff99' : pct < 0 ? '#ff4d4d' : '#888';
-                }
-
-                // texto real + variación %
-                document.getElementById(`valor-${id}`).textContent = `€${data.actual.toLocaleString()}`;
-                const label = document.getElementById(`label-${id}`);
-                label.textContent = `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
-                label.style.color = colorFinal;
-
-                // redibujar el canvas
-                const ctxWidget = document.getElementById(`bar-${id}`).getContext('2d');
-                new Chart(ctxWidget, {
-                    type: 'bar',
-                    data: {
-                        labels: [''],
-                        datasets: [{
-                            data: [Math.abs(pct)],
-                            backgroundColor: colorFinal,
-                            borderRadius: 6,
-                            barPercentage: 0.7
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: { enabled: false }
-                        },
-                        scales: {
-                            x: {
-                                min: 0,
-                                max: 100,
-                                ticks: { display: false },
-                                grid: { display: false }
-                            },
-                            y: {
-                                ticks: { display: false },
-                                grid: { display: false }
-                            }
-                        }
-                    }
-                });
-            });
-        });
+/* ─── Quick actions ────────────────────────────────────────────────────── */
+.cc-quick {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    padding: 16px 0; border-top: 1px solid #2a2a2a;
+}
+.cc-quick a {
+    font-size: 0.78rem; padding: 8px 14px;
+    border-radius: 8px; text-decoration: none;
+    background: #1a1a1a; border: 1px solid #333;
+    color: var(--text-color); transition: all 0.2s;
+}
+.cc-quick a:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    box-shadow: 0 0 8px var(--glow);
 }
 
-    // 🔁 Inicializar gráfico después de restaurar filtros
-    cargarDatos();
+/* ─── Responsive ───────────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+    .cc-dist-row { grid-template-columns: 1fr; }
+    .cc-kpis { grid-template-columns: repeat(2, 1fr); }
+    .cc-modules { grid-template-columns: 1fr; }
+}
+</style>
 
-    // Escuchar cambios en filtros
-    periodoSelect.addEventListener('change', cargarDatos);
-    categoriaCheckboxes.forEach(cb => {
-        cb.addEventListener('change', cargarDatos);
-    });
-});
-</script>
+<div class="cc-wrap">
+
+    <!-- ═══ HEADER ═══ -->
+    <div class="cc-header">
+        <h1 class="cc-saludo">{{ saludo }}, <span>{{ request.user.first_name|default:request.user.username }}</span></h1>
+        <div class="cc-sub">{{ hogar.nombre }} · {{ mes_nombre }} {{ anio }}</div>
+        <div class="cc-semaforo {{ flujo.semaforo }}">
+            <span class="dot"></span>
+            {{ flujo.semaforo_texto }} — Tasa de ahorro: {{ flujo.tasa_ahorro }}%
+        </div>
+    </div>
+
+    <!-- ═══ KPI STRIP ═══ -->
+    <div class="cc-kpis">
+        <div class="cc-kpi">
+            <div class="cc-kpi-label">Ingreso neto</div>
+            <div class="cc-kpi-value" style="color: #00ff88;">€{{ flujo.ingreso_base_hogar|floatformat:0 }}</div>
+            <div class="cc-kpi-sub">/mes base</div>
+        </div>
+        <div class="cc-kpi">
+            <div class="cc-kpi-label">Gastos</div>
+            <div class="cc-kpi-value" style="color: #ff4d4d;">€{{ flujo.total_gastos_all|floatformat:0 }}</div>
+            <div class="cc-kpi-sub">{{ flujo.pct_gastos }}% del ingreso</div>
+        </div>
+        <div class="cc-kpi">
+            <div class="cc-kpi-label">Ahorro + Inversión</div>
+            <div class="cc-kpi-value" style="color: #00d1ff;">€{{ flujo.total_ahorro|floatformat:0 }}</div>
+            <div class="cc-kpi-sub">+ €{{ flujo.total_inversion|floatformat:0 }} inversión</div>
+        </div>
+        <div class="cc-kpi">
+            <div class="cc-kpi-label">Libre</div>
+            <div class="cc-kpi-value" style="color: {% if flujo.libre_total >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ flujo.libre_total|floatformat:0 }}</div>
+            <div class="cc-kpi-sub">{{ flujo.pct_libre }}% disponible</div>
+        </div>
+    </div>
+
+    <!-- ═══ DISTRIBUTION BAR ═══ -->
+    {% if donut_data %}
+    <div class="cc-dist">
+        <div class="cc-dist-title">
+            Distribución del ingreso
+            <span>€{{ flujo.ingreso_base_hogar|floatformat:0 }}/mes</span>
+        </div>
+        <div class="cc-bar">
+            {% for seg in donut_data %}
+            <div class="cc-bar-seg" style="width: {{ seg.pct }}%; background: {{ seg.color }};">{% if seg.pct > 8 %}{{ seg.pct }}%{% endif %}</div>
+            {% endfor %}
+        </div>
+        <div class="cc-legend">
+            {% for seg in donut_data %}
+            <div class="cc-legend-item">
+                <span class="cc-legend-dot" style="background: {{ seg.color }};"></span>
+                <span class="cc-legend-label">{{ seg.label }}</span>
+                <span class="cc-legend-val">€{{ seg.value|floatformat:0 }}</span>
+                <span class="cc-legend-pct" style="color: {{ seg.color }};">{{ seg.pct }}%</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ═══ ALERTAS ═══ -->
+    {% if alertas %}
+    <div class="cc-alertas">
+        {% for a in alertas %}
+        <div class="cc-alerta {{ a.tipo }}">
+            <span class="cc-alerta-icon">{{ a.icono }}</span>
+            <span class="cc-alerta-text">{{ a.texto }}</span>
+            <a href="{{ a.link }}" class="cc-alerta-link">{{ a.link_text }} →</a>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- ═══ MODULE CARDS ═══ -->
+    <div class="cc-modules">
+        {% for mod in modulos %}
+        <a href="{{ mod.link }}" class="cc-mod" style="--mod-color: {{ mod.color }};">
+            <div class="cc-mod-head">
+                <span class="cc-mod-icon">{{ mod.icono }}</span>
+                <span class="cc-mod-title">{{ mod.titulo }}</span>
+            </div>
+            <div class="cc-mod-metric" style="color: {{ mod.color }};">{{ mod.metrica }}</div>
+            <div class="cc-mod-sub">{{ mod.sub }}</div>
+        </a>
+        {% endfor %}
+    </div>
+
+    <!-- ═══ QUICK ACTIONS ═══ -->
+    <div class="cc-quick">
+        <a href="{% url 'finanzas:crear_ingreso' %}">➕ Nuevo ingreso</a>
+        <a href="{% url 'finanzas:crear_partida' %}">➕ Nuevo gasto</a>
+        <a href="/finanzas/distribucion/?mes={{ mes }}&anio={{ anio }}">🔀 Distribución {{ mes_nombre }}</a>
+        <a href="/finanzas/evolucion/?año={{ anio }}">📈 Evolución {{ anio }}</a>
+        {% if request.user.is_superuser or profile.es_admin %}
+        <a href="{% url 'panel_admin' %}">⚙️ Admin</a>
+        {% endif %}
+    </div>
+
+</div>
+
 {% endblock %}
-

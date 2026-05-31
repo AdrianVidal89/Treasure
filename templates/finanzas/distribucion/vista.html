@@ -147,9 +147,17 @@
     {% if fa.fondo.tipo_fondo == 'comun' and fa.gastos_asignados %}
     <div style="margin-top:10px; padding:8px 12px; background:rgba(255,77,77,0.06); border:1px solid #ff4d4d22; border-radius:8px; font-size:0.78rem;">
         <div style="color:#ff4d4d; font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
+        
         {% for g in fa.gastos_asignados %}
-        <div style="color:var(--muted); padding:2px 0;">{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</div>
+        <div style="color:var(--muted); padding:2px 0; display:flex; justify-content:space-between; align-items:center;">
+            <span>{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
+            <form method="post" action="{% url 'finanzas:desasignar_gasto_fondo' g.id %}" style="margin:0;">
+                {% csrf_token %}
+                <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" onclick="return confirm('¿Desasignar {{ g.nombre }} de este fondo?')">✕</button>
+            </form>
+        </div>
         {% endfor %}
+
         {% if fa.libre_fondo is not None %}
         <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %}; font-weight:600;">
             Remanente: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}

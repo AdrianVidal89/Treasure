@@ -1,60 +1,268 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
-from django.contrib.auth import authenticate, login
+from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import logout
 from datetime import datetime, date
-from finanzas.models import RegistroMensual, Inversion
-from django.http import JsonResponse
-from django.db.models.functions import TruncMonth
-from django.db.models import Sum, F
-from finanzas.models import HistorialValorInversion
-from collections import defaultdict
+from decimal import Decimal
+
+from finanzas.models import (
+    RegistroMensual, Inversion, HistorialValorInversion,
+    FuenteIngreso, PartidaGasto, FondoFamiliar, CuentaBancaria,
+    TarjetaCredito, AjusteIngresoMensual, SaldoRealFondo,
+    IngresoRealMes, ReglaReparto,
+)
+from finanzas.distribucion import calcular_flujos
+
 from django.db.models import Sum, F, FloatField, ExpressionWrapper
+from django.db.models.functions import TruncMonth
+from collections import defaultdict
 
 
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 
+def _get_hogar(request):
+    profile = getattr(request.user, 'userprofile', None)
+    if not profile or not profile.hogar:
+        return None, None
+    return profile, profile.hogar
+
+
+def _saludo():
+    h = datetime.now().hour
+    if h < 6:
+        return 'Buenas noches'
+    elif h < 13:
+        return 'Buenos días'
+    elif h < 20:
+        return 'Buenas tardes'
+    return 'Buenas noches'
+
+
+NOMBRE_MES = [
+    '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+]
+
+
+# ─── Auth views ───────────────────────────────────────────────────────────────
 
 def index(request):
-    return HttpResponse("<h1>Bienvenido a la interfaz UI</h1>")
+    return redirect('dashboard')
+
 
 def login_view(request):
     if request.method == 'POST':
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
             login(request, form.get_user())
-            return redirect('dashboard')  # 👈 Redirige aquí
+            return redirect('dashboard')
     else:
         form = AuthenticationForm()
     return render(request, 'ui/login.html', {'form': form, 'hide_navbar': True})
+
 
 def logout_view(request):
     logout(request)
     return redirect('login')
 
+
+# ─── Dashboard Command Center ────────────────────────────────────────────────
+
 @login_required
 def dashboard_view(request):
-    registros = RegistroMensual.objects.filter(usuario=request.user).order_by('anio', 'mes')
+    profile, hogar = _get_hogar(request)
 
-    labels = []
-    patrimonio = []
-    liquido = []
-    inversiones = []
+    # Sin hogar → pantalla de espera
+    if not hogar:
+        return render(request, 'core/sin_hogar.html')
 
-    for r in registros:
-        fecha = datetime(r.anio, r.mes, 1).strftime('%b %Y')  # Ej. "Ene 2024"
-        labels.append(fecha)
-        patrimonio.append(float(r.patrimonio_total))
-        liquido.append(float(r.total_liquido))
-        inversiones.append(float(r.total_inversiones))
-    
-    return render(request, 'ui/dashboard.html', {
-        'labels': labels,
-        'patrimonio': patrimonio,
-        'liquido': liquido,
-        'inversiones': inversiones
-    })
+    hoy = date.today()
+    mes = hoy.month
+    anio = hoy.year
+
+    # ── 1. Motor de distribución (reutilizado, no duplicado) ──
+    flujo = calcular_flujos(hogar, mes=mes, anio=anio)
+
+    # ── 2. Contadores por módulo ──
+    num_fuentes = FuenteIngreso.objects.filter(hogar=hogar, activo=True).count()
+    num_partidas = PartidaGasto.objects.filter(hogar=hogar, activo=True).count()
+    num_fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True).count()
+    num_reglas = ReglaReparto.objects.filter(hogar=hogar, activo=True).count()
+    num_cuentas = CuentaBancaria.objects.filter(
+        usuario__userprofile__hogar=hogar, activa=True
+    ).count()
+    num_tarjetas = TarjetaCredito.objects.filter(
+        usuario__userprofile__hogar=hogar, activa=True
+    ).count()
+
+    # ── 3. Inversiones (portfolio del hogar) ──
+    miembros_ids = list(
+        hogar.miembros.values_list('user_id', flat=True)
+    )
+    inversiones = Inversion.objects.filter(usuario_id__in=miembros_ids)
+    total_inversiones = sum(inv.valor_total_actual for inv in inversiones)
+    num_inversiones = inversiones.count()
+
+    # ── 4. Evolución: liquidez actual ──
+    ultimo_mes_con_saldo = None
+    for m in range(mes, 0, -1):
+        if SaldoRealFondo.objects.filter(fondo__hogar=hogar, año=anio, mes=m).exists():
+            ultimo_mes_con_saldo = m
+            break
+
+    liquidez_real = Decimal('0')
+    patrimonio_real = Decimal('0')
+    if ultimo_mes_con_saldo:
+        saldos = SaldoRealFondo.objects.filter(
+            fondo__hogar=hogar, año=anio, mes=ultimo_mes_con_saldo
+        ).select_related('fondo')
+        for s in saldos:
+            if s.fondo.tipo_fondo in ('comun', 'ahorro'):
+                liquidez_real += s.saldo
+            patrimonio_real += s.saldo
+
+    # ── 5. Alertas contextuales ──
+    alertas = []
+
+    # 5a. Fuentes variables sin ajuste este mes
+    fuentes_variable = FuenteIngreso.objects.filter(
+        hogar=hogar, activo=True, tipo='variable'
+    )
+    for fv in fuentes_variable:
+        tiene_ajuste = AjusteIngresoMensual.objects.filter(
+            fuente=fv, mes=mes, **{'año': anio}
+        ).exists()
+        if not tiene_ajuste:
+            nombre_user = fv.usuario.first_name or fv.usuario.username
+            alertas.append({
+                'tipo': 'warning',
+                'icono': '✏️',
+                'texto': f'{nombre_user}: "{fv.nombre}" sin ajuste en {NOMBRE_MES[mes]}',
+                'link': f'/finanzas/distribucion/?mes={mes}&anio={anio}',
+                'link_text': 'Ajustar',
+            })
+
+    # 5b. Fondos sin saldo real este mes
+    fondos_sin_saldo = []
+    for fondo in FondoFamiliar.objects.filter(hogar=hogar, activo=True):
+        tiene_saldo = SaldoRealFondo.objects.filter(
+            fondo=fondo, año=anio, mes=mes
+        ).exists()
+        if not tiene_saldo:
+            fondos_sin_saldo.append(fondo.nombre)
+
+    if fondos_sin_saldo:
+        n = len(fondos_sin_saldo)
+        if n <= 3:
+            nombres = ', '.join(fondos_sin_saldo)
+        else:
+            nombres = f'{fondos_sin_saldo[0]}, {fondos_sin_saldo[1]} y {n - 2} más'
+        alertas.append({
+            'tipo': 'info',
+            'icono': '📊',
+            'texto': f'{n} fondo{"s" if n > 1 else ""} sin saldo registrado en {NOMBRE_MES[mes]}: {nombres}',
+            'link': f'/finanzas/evolucion/?año={anio}',
+            'link_text': 'Registrar',
+        })
+
+    # 5c. Sin ingreso real registrado este mes en evolución
+    tiene_ingreso_real = IngresoRealMes.objects.filter(
+        hogar=hogar, año=anio, mes=mes
+    ).exists()
+    if not tiene_ingreso_real:
+        alertas.append({
+            'tipo': 'info',
+            'icono': '💰',
+            'texto': f'Ingresos reales de {NOMBRE_MES[mes]} no registrados en Evolución',
+            'link': f'/finanzas/evolucion/?año={anio}',
+            'link_text': 'Registrar',
+        })
+
+    # ── 6. Datos para el donut chart (JS) ──
+    donut_data = []
+    if flujo['ingreso_base_hogar'] > 0:
+        base = float(flujo['ingreso_base_hogar'])
+        segments = [
+            ('Gastos', float(flujo['total_gastos_all']), '#ff4d4d'),
+            ('Ahorro', float(flujo['total_ahorro']), '#00d1ff'),
+            ('Inversión', float(flujo['total_inversion']), '#a259ff'),
+            ('Libre', float(flujo['libre_total']), '#ffaa00'),
+        ]
+        for label, val, color in segments:
+            if val > 0:
+                donut_data.append({
+                    'label': label,
+                    'value': round(val, 2),
+                    'pct': round(val / base * 100, 1),
+                    'color': color,
+                })
+
+    # ── 7. Module cards data ──
+    modulos = [
+        {
+            'icono': '💰', 'titulo': 'Ingresos',
+            'metrica': f'€{flujo["ingreso_base_hogar"]:,.2f}/mes',
+            'sub': f'{num_fuentes} fuente{"s" if num_fuentes != 1 else ""} activa{"s" if num_fuentes != 1 else ""}',
+            'color': '#00ff88',
+            'link': '/finanzas/ingresos/',
+        },
+        {
+            'icono': '📋', 'titulo': 'Presupuesto',
+            'metrica': f'€{flujo["total_gastos_all"]:,.2f}/mes',
+            'sub': f'{num_partidas} partida{"s" if num_partidas != 1 else ""}',
+            'color': '#ff4d4d',
+            'link': '/finanzas/gastos/',
+        },
+        {
+            'icono': '🔀', 'titulo': 'Distribución',
+            'metrica': f'{flujo["tasa_ahorro"]}% ahorro',
+            'sub': f'{num_fondos} fondo{"s" if num_fondos != 1 else ""} · {num_reglas} regla{"s" if num_reglas != 1 else ""}',
+            'color': '#a259ff',
+            'link': '/finanzas/distribucion/',
+        },
+        {
+            'icono': '📈', 'titulo': 'Evolución',
+            'metrica': f'€{liquidez_real:,.0f}' if liquidez_real > 0 else '—',
+            'sub': 'Liquidez actual' if liquidez_real > 0 else 'Sin datos aún',
+            'color': '#00d1ff',
+            'link': '/finanzas/evolucion/',
+        },
+        {
+            'icono': '📊', 'titulo': 'Inversiones',
+            'metrica': f'€{total_inversiones:,.2f}' if total_inversiones > 0 else '—',
+            'sub': f'{num_inversiones} activo{"s" if num_inversiones != 1 else ""}',
+            'color': '#b266ff',
+            'link': '/finanzas/inversiones/',
+        },
+        {
+            'icono': '🏦', 'titulo': 'Cuentas',
+            'metrica': f'{num_cuentas} cuenta{"s" if num_cuentas != 1 else ""}',
+            'sub': f'{num_tarjetas} tarjeta{"s" if num_tarjetas != 1 else ""}',
+            'color': '#ffaa00',
+            'link': '/finanzas/gestionar/',
+        },
+    ]
+
+    context = {
+        'hogar': hogar,
+        'profile': profile,
+        'saludo': _saludo(),
+        'mes': mes,
+        'anio': anio,
+        'mes_nombre': NOMBRE_MES[mes],
+        'flujo': flujo,
+        'modulos': modulos,
+        'alertas': alertas,
+        'donut_data': donut_data,
+        'liquidez_real': liquidez_real,
+        'patrimonio_real': patrimonio_real,
+        'total_inversiones': total_inversiones,
+    }
+    return render(request, 'ui/dashboard.html', context)
+
+
+# ─── Legacy API (mantener por si acaso) ───────────────────────────────────────
 
 @login_required
 def datos_evolucion_financiera(request):
@@ -66,112 +274,33 @@ def datos_evolucion_financiera(request):
     if periodo != 'todos':
         try:
             periodo_int = int(periodo)
-            registros = registros[::-1][:periodo_int][::-1]
+            registros = list(registros)[-periodo_int:]
         except ValueError:
             pass
 
-    # 📅 Construir labels: primero desde RegistroMensual, si no hay, desde HistorialValorInversion
-    if registros:
-        labels = [f"{r.mes:02d}/{r.anio}" for r in registros]
-    else:
-        fechas = (
-            HistorialValorInversion.objects
-            .filter(inversion__usuario=request.user)
-            .annotate(mes=TruncMonth('fecha'))
-            .values_list('mes', flat=True)
-            .distinct()
-            .order_by('mes')
-        )
-        if periodo != 'todos':
-            fechas = list(fechas)[-int(periodo):]
-        labels = [f"{f.month:02d}/{f.year}" for f in fechas]
-
+    labels = [f"{r.mes:02d}/{r.anio}" for r in registros] if registros else []
     data = {}
 
-    # 📊 Series desde RegistroMensual (si existe)
     if registros:
         if 'total' in categorias:
             data['total'] = [float(r.patrimonio_total) for r in registros]
         if 'liquido' in categorias:
             data['liquido'] = [float(r.total_liquido) for r in registros]
 
-    # 📈 Serie de inversiones basada en HistorialValorInversion
     if 'inversiones' in categorias:
         historial_dict = {}
         for label in labels:
-            mes, anio = map(int, label.split('/'))
-            valores_mes = HistorialValorInversion.objects.filter(
+            mes_l, anio_l = map(int, label.split('/'))
+            valor_mes = HistorialValorInversion.objects.filter(
                 inversion__usuario=request.user,
-                fecha__month=mes,
-                fecha__year=anio
+                fecha__month=mes_l, fecha__year=anio_l
             ).annotate(
                 valor_total=ExpressionWrapper(
                     F('valor_unitario') * F('cantidad_activos'),
                     output_field=FloatField()
                 )
             ).aggregate(total_mes=Sum('valor_total'))['total_mes'] or 0.0
-            historial_dict[label] = float(valores_mes)
+            historial_dict[label] = float(valor_mes)
+        data['inversiones'] = [historial_dict.get(l, 0.0) for l in labels]
 
-        data['inversiones'] = [historial_dict.get(label, 0.0) for label in labels]
-
-    # 🔁 Obtener mes actual y anterior para resumen mini-dashboard
-    hoy = date.today()
-    mes_actual = hoy.month
-    anio_actual = hoy.year
-    mes_anterior = mes_actual - 1 if mes_actual > 1 else 12
-    anio_anterior = anio_actual if mes_actual > 1 else anio_actual - 1
-
-    inversiones_mes_actual = HistorialValorInversion.objects.filter(
-        inversion__usuario=request.user,
-        fecha__month=mes_actual,
-        fecha__year=anio_actual
-    ).annotate(
-        valor_total=ExpressionWrapper(
-            F('valor_unitario') * F('cantidad_activos'),
-            output_field=FloatField()
-        )
-    ).aggregate(total=Sum('valor_total'))['total'] or 0.0
-
-    inversiones_mes_anterior = HistorialValorInversion.objects.filter(
-        inversion__usuario=request.user,
-        fecha__month=mes_anterior,
-        fecha__year=anio_anterior
-    ).annotate(
-        valor_total=ExpressionWrapper(
-            F('valor_unitario') * F('cantidad_activos'),
-            output_field=FloatField()
-        )
-    ).aggregate(total=Sum('valor_total'))['total'] or 0.0
-
-    # 🧾 Datos para resumen widgets (si hay RegistroMensual)
-    actual = registros[-1] if registros else None
-    anterior = registros[-2] if len(registros) >= 2 else None
-
-    def valor(obj, attr):
-        return float(getattr(obj, attr, 0)) if obj else 0
-
-    resumen_actual = {
-        'liquido': {
-            'actual': float(actual.total_liquido) if actual else 0,
-            'anterior': float(anterior.total_liquido) if anterior else 0,
-        },
-        'creditos': {
-            'actual': valor(actual, 'total_creditos'),
-            'anterior': valor(anterior, 'total_creditos'),
-        },
-        'activos': {
-            'actual': valor(actual, 'total_vehiculos'),
-            'anterior': valor(anterior, 'total_vehiculos'),
-        },
-        'inversiones': {
-            'actual': float(inversiones_mes_actual),
-            'anterior': float(inversiones_mes_anterior)
-        }
-    }
-
-    return JsonResponse({
-        'labels': labels,
-        'series': data,
-        'resumen_actual': resumen_actual
-    })
-
+    return JsonResponse({'labels': labels, 'series': data, 'resumen_actual': {}})
