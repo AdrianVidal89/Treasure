@@ -33,20 +33,15 @@ def _saldos_liquidez_patrimonio(saldos_qs):
 
 
 def _calcular_resumen(hogar, año):
-    """
-    Resumen superior de la vista evolución:
-      - liquidez_actual / patrimonio_actual: del último mes con datos del año
-      - crecimiento_*_ytd: actual − Enero (mismo año). None si no hay datos de Enero.
-      - ahorro_esperado_acum: suma de total_ahorro del motor de distribución (Ene..mes_actual)
-      - patrimonio_esperado_acum: ahorro + inversion esperados acumulados
-    """
     hoy = datetime.date.today()
-    meses_pasados = list(range(1, min(hoy.month + 1, 13))) if año == hoy.year else list(range(1, 13))
+    
+    # Iteramos siempre los 12 meses para el esperado anual
+    meses_totales = range(1, 13)
 
     # --- Esperado según presupuesto (motor de distribución) ---
     ahorro_esperado_acum = Decimal('0')
     inversion_esperada_acum = Decimal('0')
-    for mes in meses_pasados:
+    for mes in meses_totales:
         d = calcular_flujos(hogar, mes=mes, anio=año)
         ahorro_esperado_acum += d['total_ahorro']
         inversion_esperada_acum += d['total_inversion']
