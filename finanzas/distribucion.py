@@ -5,7 +5,7 @@ Flujo:
   1. Ingresos: base mensual + puntuales del mes + override AjusteIngresoMensual
   2. Gastos individuales: restan del libre personal
   3. Reglas de reparto → aportaciones a fondos
-  4. Subsobres / cascada entre fondos
+  4. Subsobres / cascada entre fondos (filtrados por solo_mes)
   5. Categorización por tipo_fondo:
      - comun: cubre gastos asignados, resto → libre
      - ahorro: suma a ahorro total
@@ -38,20 +38,17 @@ def _neto_fuente_mes(f, mes, anio):
 
     pond = round(estimado_anual * ratio / Decimal('12'), 2)
 
-    # Override manual
     ajuste = AjusteIngresoMensual.objects.filter(
         fuente=f, mes=mes, **{'año': anio}
     ).first()
     if ajuste and ajuste.importe_real is not None:
         return ajuste.importe_real, pond, True
 
-    # Base mensual recurrente
     if f.es_mensual_recurrente and f.incluir_en_mensual:
         base_mensual = round(f.importe_mensual_base * ratio, 2)
     else:
         base_mensual = Decimal('0')
 
-    # Extras del mes
     extra_mes = Decimal('0')
     if f.modo_entrada == 'anual' and f.num_pagas > 12:
         if mes in f.pagas_extras_meses:
@@ -97,11 +94,12 @@ def calcular_flujos(hogar, mes=None, anio=None):
     ).select_related('fondo', 'usuario').order_by('orden')
     reglas = [r for r in reglas_qs if r.solo_mes is None or r.solo_mes == mes]
     fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True))
-    subsobres = list(
-        SubsobreFondo.objects.filter(
-            fondo__hogar=hogar, activo=True
-        ).select_related('fondo', 'fondo_destino')
-    )
+
+    # Subsobres: filtrar por solo_mes igual que las reglas
+    subsobres_qs = SubsobreFondo.objects.filter(
+        fondo__hogar=hogar, activo=True
+    ).select_related('fondo', 'fondo_destino')
+    subsobres = [s for s in subsobres_qs if s.solo_mes is None or s.solo_mes == mes]
 
     # =========================================================
     # PASO 1: Ingresos
@@ -158,22 +156,18 @@ def calcular_flujos(hogar, mes=None, anio=None):
     # =========================================================
     gastos_hogar_total = Decimal('0')
     total_gastos_ind = Decimal('0')
-
-    # Gastos asignados a fondos comunes (por fondo_id)
     gastos_por_fondo = {}
 
     for p in partidas:
         mensual = p.importe_mensual
 
         if p.responsable_id and p.responsable_id in datos_miembros:
-            # Gasto individual → resta del libre personal
             dm = datos_miembros[p.responsable_id]
             dm['gastos_individuales'] += mensual
             dm['libre_base'] -= mensual
             dm['libre_ponderado'] -= mensual
             total_gastos_ind += mensual
         else:
-            # Gasto del hogar
             gastos_hogar_total += mensual
             if p.fondo_asignado_id:
                 gastos_por_fondo.setdefault(p.fondo_asignado_id, []).append({
@@ -185,7 +179,6 @@ def calcular_flujos(hogar, mes=None, anio=None):
 
     total_gastos_all = total_gastos_ind + gastos_hogar_total
 
-    # Proporciones
     for uid, dm in datos_miembros.items():
         if total_base_hogar > 0:
             prop = dm['ingreso_base'] / total_base_hogar
@@ -237,7 +230,6 @@ def calcular_flujos(hogar, mes=None, anio=None):
                     'importe_base': importe_b, 'importe_pond': importe_p,
                 })
         else:
-            # Regla global
             libre_b_total = sum(dm['libre_base'] for dm in datos_miembros.values())
             libre_p_total = sum(dm['libre_ponderado'] for dm in datos_miembros.values())
 
@@ -274,7 +266,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
                     })
 
     # =========================================================
-    # PASO 4: Subsobres / cascada
+    # PASO 4: Subsobres / cascada (ya filtrados por solo_mes)
     # =========================================================
     transferencias_cascada = []
 
@@ -288,8 +280,13 @@ def calcular_flujos(hogar, mes=None, anio=None):
 
         fa_origen['total_cascada_saliente'] += importe
         fa_origen['subsobres'].append({
-            'id': ss.id, 'nombre': ss.nombre, 'tipo': ss.tipo,
-            'importe': importe, 'fondo_destino': ss.fondo_destino,
+            'id': ss.id,
+            'nombre': ss.nombre,
+            'tipo': ss.tipo,
+            'importe': importe,
+            'fondo_destino': ss.fondo_destino,
+            'solo_mes': ss.solo_mes,
+            'solo_mes_display': ss.get_solo_mes_display() if ss.solo_mes else '',
         })
 
         if ss.fondo_destino_id and ss.fondo_destino_id in fondos_aportaciones:
@@ -305,7 +302,6 @@ def calcular_flujos(hogar, mes=None, anio=None):
             'tipo': ss.tipo, 'color': ss.fondo.color,
         })
 
-    # Neto por fondo (aportación - cascada saliente)
     for fid, fa in fondos_aportaciones.items():
         fa['total_aportacion_neta'] = fa['total_aportacion_base'] - fa['total_cascada_saliente']
 
@@ -335,7 +331,6 @@ def calcular_flujos(hogar, mes=None, anio=None):
             fa['libre_fondo'] = resto
             fa['destino_tipo'] = 'gastos'
         else:
-            # Fallback: tratar como ahorro
             total_ahorro += neta
             fa['destino_tipo'] = 'ahorro'
 

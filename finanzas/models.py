@@ -772,9 +772,14 @@ class SubsobreFondo(models.Model):
                   "(ej: del Fondo Común → Ahorro Piso). Mutuamente excluyente con partidas.",
     )
 
+    solo_mes = models.IntegerField(
+        null=True, blank=True, choices=MESES_CHOICES,
+        help_text='Si se especifica, este sobre SOLO aplica en ese mes. Vacio = todos los meses.',
+    )
+
     orden = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)
-
+    
     class Meta:
         ordering = ['fondo', 'orden', 'nombre']
 

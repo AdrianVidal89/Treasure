@@ -51,7 +51,6 @@ def vista_distribucion(request):
     ).select_related('fondo', 'usuario').order_by('orden')
     miembros = hogar.miembros.select_related('user').all()
 
-    # Gastos del hogar (sin responsable) para el modal de asignación
     gastos_hogar = PartidaGasto.objects.filter(
         hogar=hogar, activo=True, responsable__isnull=True
     ).select_related('categoria', 'fondo_asignado')
@@ -227,10 +226,6 @@ def eliminar_fondo(request, fondo_id):
 
 @login_required
 def asignar_gastos_fondo(request, fondo_id):
-    """
-    POST con lista de partida_ids → se asignan a este fondo.
-    Las partidas no incluidas se desasignan de este fondo.
-    """
     profile, hogar = _get_hogar_o_redirect(request)
     if not hogar:
         return redirect('dashboard')
@@ -241,12 +236,10 @@ def asignar_gastos_fondo(request, fondo_id):
         ids_seleccionados = request.POST.getlist('partida_ids')
         ids_seleccionados = [int(x) for x in ids_seleccionados if x.isdigit()]
 
-        # Desasignar las que ya no están seleccionadas
         PartidaGasto.objects.filter(
             hogar=hogar, fondo_asignado=fondo, activo=True, responsable__isnull=True
         ).exclude(id__in=ids_seleccionados).update(fondo_asignado=None)
 
-        # Asignar las seleccionadas
         if ids_seleccionados:
             PartidaGasto.objects.filter(
                 id__in=ids_seleccionados, hogar=hogar, activo=True, responsable__isnull=True
@@ -368,6 +361,8 @@ def crear_subsobres(request, fondo_id):
         nombre = request.POST.get('nombre', '').strip()
         tipo = request.POST.get('tipo', 'libre')
         fondo_destino_id = request.POST.get('fondo_destino_id') or None
+        solo_mes_raw = request.POST.get('solo_mes', '')
+        solo_mes = int(solo_mes_raw) if solo_mes_raw.isdigit() else None
 
         try:
             importe_manual = Decimal(request.POST.get('importe_manual', '0') or '0')
@@ -387,6 +382,7 @@ def crear_subsobres(request, fondo_id):
                 fondo=fondo, nombre=nombre, tipo=tipo,
                 importe_manual=importe_manual if importe_manual > 0 else None,
                 fondo_destino=fondo_destino, orden=max_orden,
+                solo_mes=solo_mes,
             )
             messages.success(request, f"Distribución interna '{nombre}' añadida.")
 
@@ -404,6 +400,7 @@ def eliminar_subsobres(request, subsobres_id):
     ss.delete()
     messages.success(request, f"Distribución interna '{nombre}' eliminada.")
     return redirect('finanzas:vista_distribucion')
+
 
 @login_required
 def desasignar_gasto_fondo(request, partida_id):

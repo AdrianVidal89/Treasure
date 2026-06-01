@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Distribución — {{ d.mes_nombre }} {{ d.anio }}{% endblock %}
+{% load l10n %}
 
 {% block content %}
 <div class="panel">
@@ -56,12 +57,14 @@
 
 <!-- ===== BARRA DISTRIBUCIÓN ===== -->
 <div class="dist-bar-wrap">
+
     <div class="dist-bar">
-        {% if d.pct_gastos > 0 %}<div class="dist-seg seg-gastos" style="width:{{ d.pct_gastos }}%;"></div>{% endif %}
-        {% if d.pct_ahorro > 0 %}<div class="dist-seg seg-ahorro" style="width:{{ d.pct_ahorro }}%;"></div>{% endif %}
-        {% if d.pct_inversion > 0 %}<div class="dist-seg seg-inversion" style="width:{{ d.pct_inversion }}%;"></div>{% endif %}
-        {% if d.pct_libre > 0 %}<div class="dist-seg seg-libre" style="width:{{ d.pct_libre }}%;"></div>{% endif %}
+        {% if d.pct_gastos > 0 %}<div class="dist-seg seg-gastos" style="width:{{ d.pct_gastos|unlocalize }}%;">{% if d.pct_gastos > 8 %}{{ d.pct_gastos }}%{% endif %}</div>{% endif %}
+        {% if d.pct_ahorro > 0 %}<div class="dist-seg seg-ahorro" style="width:{{ d.pct_ahorro|unlocalize }}%;">{% if d.pct_ahorro > 8 %}{{ d.pct_ahorro }}%{% endif %}</div>{% endif %}
+        {% if d.pct_inversion > 0 %}<div class="dist-seg seg-inversion" style="width:{{ d.pct_inversion|unlocalize }}%;">{% if d.pct_inversion > 8 %}{{ d.pct_inversion }}%{% endif %}</div>{% endif %}
+        {% if d.pct_libre > 0 %}<div class="dist-seg seg-libre" style="width:{{ d.pct_libre|unlocalize }}%;">{% if d.pct_libre > 8 %}{{ d.pct_libre }}%{% endif %}</div>{% endif %}
     </div>
+
     <div class="dist-legend">
         {% if d.pct_gastos > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ff4d4d;"></span>Gastos {{ d.pct_gastos }}%</span>{% endif %}
         {% if d.pct_ahorro > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#00d1ff;"></span>Ahorro {{ d.pct_ahorro }}%</span>{% endif %}
@@ -176,13 +179,20 @@
     <!-- Subsobres -->
     {% for ss in fa.subsobres %}
     <div class="subsobre-row">
-        <span><span style="color:#fff;">{{ ss.nombre }}</span> <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>{% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}</span>
+        <span>
+            <span style="color:#fff;">{{ ss.nombre }}</span>
+            <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>
+            {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
+            {% if ss.solo_mes %}<span style="font-size:0.7rem; color:#ffaa00; margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
+        </span>
         <div style="display:flex; align-items:center; gap:10px;">
             <span style="color:#ffaa00; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
             <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')">✕</button></form>
         </div>
     </div>
     {% endfor %}
+
+
 
     {% if fa.subsobres %}
     <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
@@ -344,17 +354,30 @@
     <div class="modal-box">
         <h2>↪️ Distribución interna</h2>
         <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Desde: <strong id="ss-fondo-nombre"></strong></p>
+    
         <form method="post" id="form-subsobre" action="">
             {% csrf_token %}
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" required></div>
             <div class="fg"><label>Tipo</label><select name="tipo"><option value="libre">Libre</option><option value="gasto_fijo">Gasto fijo</option><option value="gasto_variable">Gasto variable</option><option value="discrecional">Discrecional</option></select></div>
             <div class="fg"><label>Importe (€/mes)</label><input type="number" name="importe_manual" step="0.01" min="0" value="0"></div>
             <div class="fg"><label>Fondo destino (opcional)</label><select name="fondo_destino_id"><option value="">— Ninguno —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
+            <div class="fg">
+                <label>¿Cuándo aplica?</label>
+                <select name="solo_mes">
+                    <option value="">Todos los meses</option>
+                    {% for num, nombre in meses %}<option value="{{ num }}">Solo {{ nombre }}</option>{% endfor %}
+                </select>
+            </div>
             <div class="modal-actions">
                 <button type="button" onclick="cerrar('modal-subsobre')" class="btn btn-secondary">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar</button>
             </div>
         </form>
+    
+    
+    
+    
+    
     </div>
 </div>
 
@@ -406,7 +429,21 @@
     display:flex; height:20px; border-radius:10px; overflow:hidden;
     background:#111; border:1px solid #222;
 }
-.dist-seg { transition:width 0.4s ease; position:relative; }
+
+.dist-seg { 
+    transition: width 0.4s ease; 
+    position: relative; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    font-size: 0.62rem; 
+    font-weight: 700; 
+    color: #fff; 
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+
 .seg-gastos   { background:linear-gradient(135deg, #ff4d4d, #cc3333); }
 .seg-ahorro   { background:linear-gradient(135deg, #00d1ff, #0099bb); }
 .seg-inversion{ background:linear-gradient(135deg, #a259ff, #7733cc); }
