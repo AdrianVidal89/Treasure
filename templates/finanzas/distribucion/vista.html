@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Distribución — {{ d.mes_nombre }} {{ d.anio }}{% endblock %}
+{% load l10n %}
 
 {% block content %}
 <div class="panel">
@@ -54,27 +55,37 @@
     </div>
 </div>
 
-<!-- Barra proporcional -->
-<div class="barra-prop" style="margin:16px 0 24px;">
-    {% if d.pct_gastos > 0 %}<div class="bp-seg" style="width:{{ d.pct_gastos }}%; background:#ff4d4d;" title="Gastos {{ d.pct_gastos }}%">{{ d.pct_gastos }}%</div>{% endif %}
-    {% if d.pct_ahorro > 0 %}<div class="bp-seg" style="width:{{ d.pct_ahorro }}%; background:#00d1ff;" title="Ahorro {{ d.pct_ahorro }}%">{{ d.pct_ahorro }}%</div>{% endif %}
-    {% if d.pct_inversion > 0 %}<div class="bp-seg" style="width:{{ d.pct_inversion }}%; background:#a259ff;" title="Inversión {{ d.pct_inversion }}%">{{ d.pct_inversion }}%</div>{% endif %}
-    {% if d.pct_libre > 0 %}<div class="bp-seg" style="width:{{ d.pct_libre }}%; background:#ffaa00;" title="Libre {{ d.pct_libre }}%">{{ d.pct_libre }}%</div>{% endif %}
+<!-- ===== BARRA DISTRIBUCIÓN ===== -->
+<div class="dist-bar-wrap">
+
+    <div class="dist-bar">
+        {% if d.pct_gastos > 0 %}<div class="dist-seg seg-gastos" style="width:{{ d.pct_gastos|unlocalize }}%;">{% if d.pct_gastos > 8 %}{{ d.pct_gastos }}%{% endif %}</div>{% endif %}
+        {% if d.pct_ahorro > 0 %}<div class="dist-seg seg-ahorro" style="width:{{ d.pct_ahorro|unlocalize }}%;">{% if d.pct_ahorro > 8 %}{{ d.pct_ahorro }}%{% endif %}</div>{% endif %}
+        {% if d.pct_inversion > 0 %}<div class="dist-seg seg-inversion" style="width:{{ d.pct_inversion|unlocalize }}%;">{% if d.pct_inversion > 8 %}{{ d.pct_inversion }}%{% endif %}</div>{% endif %}
+        {% if d.pct_libre > 0 %}<div class="dist-seg seg-libre" style="width:{{ d.pct_libre|unlocalize }}%;">{% if d.pct_libre > 8 %}{{ d.pct_libre }}%{% endif %}</div>{% endif %}
+    </div>
+
+    <div class="dist-legend">
+        {% if d.pct_gastos > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ff4d4d;"></span>Gastos {{ d.pct_gastos }}%</span>{% endif %}
+        {% if d.pct_ahorro > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#00d1ff;"></span>Ahorro {{ d.pct_ahorro }}%</span>{% endif %}
+        {% if d.pct_inversion > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#a259ff;"></span>Inversión {{ d.pct_inversion }}%</span>{% endif %}
+        {% if d.pct_libre > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ffaa00;"></span>Libre {{ d.pct_libre }}%</span>{% endif %}
+    </div>
 </div>
 
 <!-- ===== AVISOS ===== -->
 {% for dm in d.datos_miembros %}
 {% if dm.ajustes_mes %}
-<div style="background:rgba(255,170,0,0.07); border:1px solid #ffaa0033; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
-    <span style="color:#ffaa00; font-weight:600;">✏️ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingreso ajustado:</span>
+<div class="aviso-box aviso-ajuste">
+    <span class="aviso-titulo">✏️ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingreso ajustado:</span>
     {% for aj in dm.ajustes_mes %}
     <span style="color:#fff; margin-left:10px;">{{ aj.fuente }}: <strong>€{{ aj.importe_ajustado|floatformat:2 }}</strong> <span style="color:var(--muted); font-size:0.72rem;">(base: €{{ aj.importe_base|floatformat:2 }})</span></span>
     {% endfor %}
 </div>
 {% endif %}
 {% if dm.extras_mes %}
-<div style="background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem;">
-    <span style="color:#00d1ff; font-weight:600;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — extras:</span>
+<div class="aviso-box aviso-extra">
+    <span class="aviso-titulo" style="color:#00d1ff;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — extras:</span>
     {% for ex in dm.extras_mes %}
     <span style="color:#fff; margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
     {% endfor %}
@@ -95,6 +106,7 @@
             {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}%{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
             {% if regla.fondo %} → {{ regla.fondo.nombre }}{% endif %}
             {% if regla.usuario %} · 👤 {{ regla.usuario.first_name|default:regla.usuario.username }}{% else %} · 🏠 Hogar{% endif %}
+            {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
         </div>
     </div>
     <div style="display:flex; gap:6px;">
@@ -112,9 +124,9 @@
     <button onclick="abrirModalFondo()" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nuevo fondo</button>
 </div>
 {% for fa in d.fondos_aportaciones %}
-<div class="regla-pill" style="border-left-color: {{ fa.fondo.color }}; display:block; padding:14px 16px;">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
-        <div style="flex:1;">
+<div class="regla-pill fondo-pill" style="border-left-color: {{ fa.fondo.color }};">
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; width:100%;">
+        <div style="flex:1; min-width:0;">
             <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 {{ fa.fondo.nombre }}
                 {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
@@ -133,31 +145,29 @@
                 {% for ap in fa.aportantes %} · {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} €{{ ap.importe_base|floatformat:0 }}{% endfor %}
             </div>
         </div>
-        <div style="display:flex; gap:6px; align-items:center;">
+        <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
             <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}')" class="r-btn">✏️</button>
             {% if fa.fondo.tipo_fondo == 'comun' %}
             <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos">📋</button>
             {% endif %}
             <button onclick="abrirModalSubsobre({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn">＋</button>
-            <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar?')">🗑</button></form>
+            <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar fondo?')">🗑</button></form>
         </div>
     </div>
 
-    <!-- Gastos cubiertos (solo fondo comun) -->
+    <!-- Gastos cubiertos -->
     {% if fa.fondo.tipo_fondo == 'comun' and fa.gastos_asignados %}
-    <div style="margin-top:10px; padding:8px 12px; background:rgba(255,77,77,0.06); border:1px solid #ff4d4d22; border-radius:8px; font-size:0.78rem;">
+    <div class="fondo-gastos-box">
         <div style="color:#ff4d4d; font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
-        
         {% for g in fa.gastos_asignados %}
         <div style="color:var(--muted); padding:2px 0; display:flex; justify-content:space-between; align-items:center;">
             <span>{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
             <form method="post" action="{% url 'finanzas:desasignar_gasto_fondo' g.id %}" style="margin:0;">
                 {% csrf_token %}
-                <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" onclick="return confirm('¿Desasignar {{ g.nombre }} de este fondo?')">✕</button>
+                <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" onclick="return confirm('¿Desasignar {{ g.nombre }}?')">✕</button>
             </form>
         </div>
         {% endfor %}
-
         {% if fa.libre_fondo is not None %}
         <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %}; font-weight:600;">
             Remanente: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}
@@ -168,14 +178,21 @@
 
     <!-- Subsobres -->
     {% for ss in fa.subsobres %}
-    <div style="margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem;">
-        <span><span style="color:#fff;">{{ ss.nombre }}</span> <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>{% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}</span>
+    <div class="subsobre-row">
+        <span>
+            <span style="color:#fff;">{{ ss.nombre }}</span>
+            <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>
+            {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
+            {% if ss.solo_mes %}<span style="font-size:0.7rem; color:#ffaa00; margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
+        </span>
         <div style="display:flex; align-items:center; gap:10px;">
             <span style="color:#ffaa00; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
             <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')">✕</button></form>
         </div>
     </div>
     {% endfor %}
+
+
 
     {% if fa.subsobres %}
     <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
@@ -215,12 +232,12 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <h4 style="margin:0;">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</h4>
         {% if dm.fuentes %}
-        <button onclick="toggleEl('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.7rem; padding:5px 10px;">✏️ Ajustar ingreso</button>
+        <button onclick="toggleEl('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.7rem; padding:5px 10px;">🔧 Ajustar ingreso</button>
         {% endif %}
     </div>
     {% if dm.fuentes %}
     <div id="ajuste-{{ dm.miembro.user.id }}" style="display:none;">
-        <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px;">
+        <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" class="ajuste-form">
             {% csrf_token %}
             <input type="hidden" name="mes" value="{{ d.mes }}">
             <input type="hidden" name="anio" value="{{ d.anio }}">
@@ -228,15 +245,15 @@
                 <label class="lbl-sm">Fuente</label>
                 <select name="fuente_id" class="inp-sm">{% for fu in dm.fuentes %}<option value="{{ fu.id }}">{{ fu.nombre }}</option>{% endfor %}</select>
             </div>
-            <div style="min-width:100px;">
+            <div style="min-width:110px;">
                 <label class="lbl-sm">Neto real (€)</label>
-                <input type="number" name="importe_real" step="0.01" min="0" placeholder="Vacío=reset" class="inp-sm">
+                <input type="number" name="importe_real" step="0.01" placeholder="Vacío = reset" class="inp-sm">
             </div>
             <div style="min-width:80px;">
                 <label class="lbl-sm">Nota</label>
                 <input type="text" name="nota" placeholder="Opcional" class="inp-sm">
             </div>
-            <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:8px 14px;">OK</button>
+            <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:8px 14px; align-self:flex-end;">OK</button>
         </form>
     </div>
     {% endif %}
@@ -246,13 +263,13 @@
     <div class="resumen-row"><span class="rl">{{ ap.regla.nombre }}{% if ap.fondo %} → {{ ap.fondo.nombre }}{% endif %}</span><span style="color:{{ ap.regla.color }};">−€{{ ap.importe_base|floatformat:2 }}</span></div>
     {% endif %}{% endfor %}
     <div class="resumen-info">ℹ️ Parte proporcional gastos hogar ({{ dm.proporcion }}%): €{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes</div>
-    <div class="resumen-row"><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre personal</span><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-size:1.05rem;">€{{ dm.libre_base|floatformat:2 }}</span></div>
+    <div class="resumen-row resumen-total"><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre personal</span><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-size:1.05rem;">€{{ dm.libre_base|floatformat:2 }}</span></div>
 </div>
 {% endfor %}
 
 </div><!-- /panel -->
 
-<!-- ===== MODAL FONDO (crear/editar) ===== -->
+<!-- ===== MODAL FONDO ===== -->
 <div id="modal-fondo" class="modal-overlay">
     <div class="modal-box">
         <h2 id="modal-fondo-titulo">🗂 Nuevo fondo</h2>
@@ -287,7 +304,7 @@
     </div>
 </div>
 
-<!-- ===== MODAL REGLA (crear/editar) ===== -->
+<!-- ===== MODAL REGLA ===== -->
 <div id="modal-regla" class="modal-overlay">
     <div class="modal-box">
         <h2 id="modal-regla-titulo">⚙️ Nueva regla</h2>
@@ -310,18 +327,7 @@
                 <label>¿Cuándo aplica?</label>
                 <select name="solo_mes" id="regla-solo-mes">
                     <option value="">Todos los meses</option>
-                    <option value="1">Solo Enero</option>
-                    <option value="2">Solo Febrero</option>
-                    <option value="3">Solo Marzo</option>
-                    <option value="4">Solo Abril</option>
-                    <option value="5">Solo Mayo</option>
-                    <option value="6">Solo Junio</option>
-                    <option value="7">Solo Julio</option>
-                    <option value="8">Solo Agosto</option>
-                    <option value="9">Solo Septiembre</option>
-                    <option value="10">Solo Octubre</option>
-                    <option value="11">Solo Noviembre</option>
-                    <option value="12">Solo Diciembre</option>
+                    {% for num, nombre in meses %}<option value="{{ num }}">Solo {{ nombre }}</option>{% endfor %}
                 </select>
             </div>
             <div class="fg">
@@ -348,21 +354,34 @@
     <div class="modal-box">
         <h2>↪️ Distribución interna</h2>
         <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Desde: <strong id="ss-fondo-nombre"></strong></p>
+    
         <form method="post" id="form-subsobre" action="">
             {% csrf_token %}
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" required></div>
             <div class="fg"><label>Tipo</label><select name="tipo"><option value="libre">Libre</option><option value="gasto_fijo">Gasto fijo</option><option value="gasto_variable">Gasto variable</option><option value="discrecional">Discrecional</option></select></div>
             <div class="fg"><label>Importe (€/mes)</label><input type="number" name="importe_manual" step="0.01" min="0" value="0"></div>
             <div class="fg"><label>Fondo destino (opcional)</label><select name="fondo_destino_id"><option value="">— Ninguno —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
+            <div class="fg">
+                <label>¿Cuándo aplica?</label>
+                <select name="solo_mes">
+                    <option value="">Todos los meses</option>
+                    {% for num, nombre in meses %}<option value="{{ num }}">Solo {{ nombre }}</option>{% endfor %}
+                </select>
+            </div>
             <div class="modal-actions">
                 <button type="button" onclick="cerrar('modal-subsobre')" class="btn btn-secondary">Cancelar</button>
                 <button type="submit" class="btn btn-primary">Guardar</button>
             </div>
         </form>
+    
+    
+    
+    
+    
     </div>
 </div>
 
-<!-- ===== MODAL ASIGNAR GASTOS A FONDO COMUN ===== -->
+<!-- ===== MODAL ASIGNAR GASTOS ===== -->
 <div id="modal-gastos" class="modal-overlay">
     <div class="modal-box">
         <h2>📋 Asignar gastos del hogar</h2>
@@ -386,53 +405,108 @@
 </div>
 
 
+<!-- ===== ESTILOS ===== -->
 <style>
+/* --- Controles --- */
 .sel-sm { background:#1a1a1a; color:var(--text-color); border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem; }
 .lbl-sm { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px; }
 .inp-sm { width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
 .empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; }
 
+/* --- KPIs --- */
 .kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
 .kpi-item { background:#1a1a1a; border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
 .kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
 .kpi-valor { font-size:1.05rem; font-weight:700; }
-.semaforo-verde { color:#00ff88; } .semaforo-amarillo { color:#ffee00; } .semaforo-naranja { color:#ff8800; } .semaforo-rojo { color:#ff4d4d; }
+.semaforo-verde { color:#00ff88; }
+.semaforo-amarillo { color:#ffee00; }
+.semaforo-naranja { color:#ff8800; }
+.semaforo-rojo { color:#ff4d4d; }
 
-.barra-prop { display:flex; height:12px; border-radius:8px; overflow:hidden; background:#111; }
-.bp-seg { display:flex; align-items:center; justify-content:center; font-size:0.55rem; color:#fff; font-weight:700; min-width:18px; }
+/* --- Barra distribución --- */
+.dist-bar-wrap { margin:18px 0 24px; }
+.dist-bar {
+    display:flex; height:20px; border-radius:10px; overflow:hidden;
+    background:#111; border:1px solid #222;
+}
 
+.dist-seg { 
+    transition: width 0.4s ease; 
+    position: relative; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    font-size: 0.62rem; 
+    font-weight: 700; 
+    color: #fff; 
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+
+.seg-gastos   { background:linear-gradient(135deg, #ff4d4d, #cc3333); }
+.seg-ahorro   { background:linear-gradient(135deg, #00d1ff, #0099bb); }
+.seg-inversion{ background:linear-gradient(135deg, #a259ff, #7733cc); }
+.seg-libre    { background:linear-gradient(135deg, #ffaa00, #cc8800); }
+.dist-legend {
+    display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;
+    font-size:0.75rem; color:var(--muted);
+}
+.dist-legend-item { display:flex; align-items:center; gap:5px; }
+.dist-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+/* --- Avisos --- */
+.aviso-box { border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem; }
+.aviso-ajuste { background:rgba(255,170,0,0.07); border:1px solid #ffaa0033; }
+.aviso-extra  { background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; }
+.aviso-titulo { font-weight:600; color:#ffaa00; }
+
+/* --- Secciones --- */
 .section-title { font-size:0.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px; }
 
+/* --- Regla/Fondo pills --- */
 .regla-pill { background:#1a1a1a; border-left:3px solid; border-radius:12px; padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.fondo-pill { display:block; padding:14px 16px; }
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
 
-.tag-tipo { font-size:0.62rem; padding:2px 8px; border-radius:6px; font-weight:600; }
-.tag-comun { background:rgba(0,255,136,0.12); color:#00ff88; }
-.tag-ahorro { background:rgba(0,209,255,0.12); color:#00d1ff; }
+.tag-tipo { font-size:0.62rem; padding:2px 8px; border-radius:6px; font-weight:600; display:inline-block; }
+.tag-comun     { background:rgba(0,255,136,0.12); color:#00ff88; }
+.tag-ahorro    { background:rgba(0,209,255,0.12); color:#00d1ff; }
 .tag-inversion { background:rgba(162,89,255,0.12); color:#a259ff; }
 
+/* --- Fondo detalles --- */
+.fondo-gastos-box { margin-top:10px; padding:8px 12px; background:rgba(255,77,77,0.06); border:1px solid #ff4d4d22; border-radius:8px; font-size:0.78rem; }
+.subsobre-row { margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; }
+
+/* --- Transferencias --- */
 .transfer-card { background:#1a1a1a; border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
 .transfer-sub { font-size:0.72rem; color:var(--muted); }
 
+/* --- Resumen persona --- */
 .resumen-persona { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:14px; padding:18px; margin-bottom:12px; }
 .resumen-persona h4 { color:var(--primary-color); font-size:0.95rem; }
 .resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #222; font-size:0.85rem; }
-.resumen-row:last-child { border-bottom:none; font-weight:700; padding-top:10px; }
+.resumen-total { border-bottom:none; font-weight:700; padding-top:10px; }
 .resumen-row .rl { color:var(--muted); }
 .resumen-info { font-size:0.75rem; color:#ffaa00; padding:6px 10px; background:rgba(255,170,0,0.08); border-radius:8px; margin:8px 0; border-left:2px solid #ffaa00; }
+.ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px; }
 
+/* --- Botones inline --- */
 .r-btn { background:transparent; border:1px solid #333; color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
 .r-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
 
+/* --- Color dots --- */
 .color-row { display:flex; gap:10px; margin-top:6px; }
 .cdot { width:32px; height:32px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:all .2s; }
 .cdot:hover { transform:scale(1.15); }
 .cdot.active { border-color:#fff; box-shadow:0 0 12px currentColor; }
 
+/* --- Gastos checkbox --- */
 .gasto-check { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #222; font-size:0.85rem; color:var(--text-color); cursor:pointer; }
 .gasto-check input { width:18px; height:18px; accent-color:#00ff88; }
 
+/* --- Modales --- */
 .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); }
 .modal-box { background:#1a1a1a; border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
 .modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.05rem; }
@@ -441,13 +515,17 @@
 .modal-box select, .modal-box input[type="text"], .modal-box input[type="number"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
+
+/* --- Toasts --- */
 .msg-toast { background:#1e2a1e; border:1px solid #00ff88; color:#00ff88; border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
 </style>
 
+<!-- ===== JAVASCRIPT ===== -->
 <script>
 function cerrar(id){ document.getElementById(id).style.display='none'; }
 function toggleEl(id){ var e=document.getElementById(id); e.style.display=e.style.display==='none'?'block':'none'; }
 
+/* --- Color selector --- */
 function selC(btn,color,target){
     btn.parentElement.querySelectorAll('.cdot').forEach(function(d){d.classList.remove('active');});
     btn.classList.add('active');
@@ -457,8 +535,18 @@ function selCByVal(target,color){
     var row=document.getElementById(target+'-color-row');
     if(!row) return;
     var dots=row.querySelectorAll('.cdot'), found=false;
-    dots.forEach(function(d){ d.classList.remove('active'); if(d.style.backgroundColor===color||d.style.background===color){d.classList.add('active');found=true;} });
-    if(!found&&dots.length) dots[0].classList.add('active');
+    dots.forEach(function(d){
+        d.classList.remove('active');
+        if(d.style.backgroundColor===color || d.style.background===color){ d.classList.add('active'); found=true; }
+    });
+    /* Si el color no coincide con ningun dot, intenta por hex */
+    if(!found){
+        dots.forEach(function(d){
+            var s=d.getAttribute('style')||'';
+            if(s.indexOf(color)!==-1){ d.classList.add('active'); found=true; }
+        });
+    }
+    if(!found && dots.length) dots[0].classList.add('active');
     document.getElementById('color-'+target).value=color;
 }
 
@@ -466,7 +554,7 @@ function selCByVal(target,color){
 function abrirModalFondo(){
     document.getElementById('modal-fondo-titulo').textContent='🗂 Nuevo fondo';
     document.getElementById('btn-fondo-submit').textContent='Crear fondo';
-    document.getElementById('form-fondo').action='{% url "finanzas:crear_fondo" %}';
+    document.getElementById('form-fondo').action="{% url 'finanzas:crear_fondo' %}";
     document.getElementById('fondo-nombre').value='';
     document.getElementById('fondo-cuenta').value='';
     document.getElementById('fondo-tipo').value='comun';
@@ -495,12 +583,13 @@ function setTipoR(t){
 function abrirModalRegla(){
     document.getElementById('modal-regla-titulo').textContent='⚙️ Nueva regla';
     document.getElementById('btn-regla-submit').textContent='Crear regla';
-    document.getElementById('form-regla').action='{% url "finanzas:crear_regla" %}';
+    document.getElementById('form-regla').action="{% url 'finanzas:crear_regla' %}";
     document.getElementById('regla-nombre').value='';
     document.getElementById('regla-pct').value='0';
     document.getElementById('regla-imp').value='0';
     document.getElementById('regla-fondo').value='';
     document.getElementById('regla-usuario').value='';
+    document.getElementById('regla-solo-mes').value='';
     setTipoR('porcentaje');
     selCByVal('regla','#00ff88');
     document.getElementById('modal-regla').style.display='flex';
@@ -527,11 +616,10 @@ function abrirModalSubsobre(id,nombre){
     document.getElementById('modal-subsobre').style.display='flex';
 }
 
-/* --- Asignar gastos a fondo comun --- */
+/* --- Asignar gastos --- */
 function abrirAsignarGastos(fondoId,fondoNombre){
     document.getElementById('gastos-fondo-nombre').textContent=fondoNombre;
     document.getElementById('form-gastos').action='/finanzas/distribucion/fondo/'+fondoId+'/gastos/';
-    // Marcar los checkboxes que ya están asignados a este fondo
     document.querySelectorAll('#modal-gastos .gasto-check').forEach(function(label){
         var cb=label.querySelector('input');
         var asignado=label.getAttribute('data-fondo');
@@ -540,8 +628,9 @@ function abrirAsignarGastos(fondoId,fondoNombre){
     document.getElementById('modal-gastos').style.display='flex';
 }
 
+/* --- Auto-dismiss toasts --- */
 document.addEventListener('DOMContentLoaded',function(){
-    document.querySelectorAll('.msg-toast').forEach(function(el){setTimeout(function(){el.remove();},4000);});
+    document.querySelectorAll('.msg-toast').forEach(function(el){ setTimeout(function(){el.remove();},4000); });
 });
 </script>
 {% endblock %}

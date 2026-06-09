@@ -89,20 +89,25 @@
             <div class="label">Liquidez actual</div>
             <div class="valor" style="color: #00d1ff;">€{{ resumen.liquidez_actual|floatformat:0 }}</div>
             <div class="sub">Cuentas corrientes + ahorro</div>
-            <div class="crecimiento {% if resumen.crecimiento_liquidez_interanual >= 0 %}pos{% else %}neg{% endif %}">
-                {% if resumen.crecimiento_liquidez_interanual >= 0 %}▲{% else %}▼{% endif %}
-                €{{ resumen.crecimiento_liquidez_interanual|floatformat:0 }} inter-anual
+
+
+            <div class="crecimiento {% if resumen.crecimiento_liquidez_ytd >= 0 %}pos{% else %}neg{% endif %}">
+                {% if resumen.crecimiento_liquidez_ytd >= 0 %}▲{% else %}▼{% endif %}
+                €{{ resumen.crecimiento_liquidez_ytd|floatformat:0 }} YTD
             </div>
+
             <div class="crecimiento neu">↗ €{{ resumen.ahorro_esperado_acum|floatformat:0 }} esperado (presupuesto)</div>
         </div>
         <div class="resumen-card" style="border-color: #a259ff33;">
             <div class="label">Patrimonio Financiero</div>
             <div class="valor" style="color: #a259ff;">€{{ resumen.patrimonio_financiero_actual|floatformat:0 }}</div>
             <div class="sub">Liquidez + fondos de inversión</div>
-            <div class="crecimiento {% if resumen.crecimiento_patrimonio_interanual >= 0 %}pos{% else %}neg{% endif %}">
-                {% if resumen.crecimiento_patrimonio_interanual >= 0 %}▲{% else %}▼{% endif %}
-                €{{ resumen.crecimiento_patrimonio_interanual|floatformat:0 }} inter-anual
+
+            <div class="crecimiento {% if resumen.crecimiento_patrimonio_ytd >= 0 %}pos{% else %}neg{% endif %}">
+                {% if resumen.crecimiento_patrimonio_ytd >= 0 %}▲{% else %}▼{% endif %}
+                €{{ resumen.crecimiento_patrimonio_ytd|floatformat:0 }} YTD
             </div>
+
             <div class="crecimiento neu">↗ €{{ resumen.patrimonio_esperado_acum|floatformat:0 }} esperado (presupuesto)</div>
         </div>
     </div>

@@ -21,25 +21,32 @@ def _get_hogar(request):
     return profile, profile.hogar
 
 
+def _saldos_liquidez_patrimonio(saldos_qs):
+    """Dado un queryset de SaldoRealFondo, devuelve (liquidez, patrimonio)."""
+    liquidez = Decimal('0')
+    patrimonio = Decimal('0')
+    for s in saldos_qs:
+        if s.fondo.tipo_fondo in ('comun', 'ahorro'):
+            liquidez += s.saldo
+        patrimonio += s.saldo
+    return liquidez, patrimonio
+
+
 def _calcular_resumen(hogar, año):
-    """
-    Construye el resumen superior para un año dado.
-    Retorna dict con liquidez, patrimonio financiero y crecimientos.
-    """
     hoy = datetime.date.today()
-    fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True))
+    
+    # Iteramos siempre los 12 meses para el esperado anual
+    meses_totales = range(1, 13)
 
-    # Acumular crecimiento esperado (proyección distribución) hasta mes actual
-    meses_pasados = list(range(1, min(hoy.month + 1, 13))) if año == hoy.year else list(range(1, 13))
-
+    # --- Esperado según presupuesto (motor de distribución) ---
     ahorro_esperado_acum = Decimal('0')
     inversion_esperada_acum = Decimal('0')
-    for mes in meses_pasados:
+    for mes in meses_totales:
         d = calcular_flujos(hogar, mes=mes, anio=año)
         ahorro_esperado_acum += d['total_ahorro']
         inversion_esperada_acum += d['total_inversion']
 
-    # Saldo real último mes con datos
+    # --- Saldo real último mes con datos ---
     ultimo_mes_con_datos = None
     for mes in range(hoy.month if año == hoy.year else 12, 0, -1):
         if SaldoRealFondo.objects.filter(fondo__hogar=hogar, año=año, mes=mes).exists():
@@ -47,53 +54,47 @@ def _calcular_resumen(hogar, año):
             break
 
     liquidez_actual = Decimal('0')
-    patrimonio_financiero_actual = Decimal('0')
+    patrimonio_actual = Decimal('0')
     if ultimo_mes_con_datos:
-        saldos = SaldoRealFondo.objects.filter(
+        saldos_actual = SaldoRealFondo.objects.filter(
             fondo__hogar=hogar, año=año, mes=ultimo_mes_con_datos
         ).select_related('fondo')
-        for s in saldos:
-            if s.fondo.tipo_fondo in ('comun', 'ahorro'):
-                liquidez_actual += s.saldo
-            patrimonio_financiero_actual += s.saldo
+        liquidez_actual, patrimonio_actual = _saldos_liquidez_patrimonio(saldos_actual)
 
-    # Crecimiento inter-anual: mismo mes año anterior
-    liquidez_año_anterior = Decimal('0')
-    patrimonio_año_anterior = Decimal('0')
-    if ultimo_mes_con_datos:
-        saldos_prev = SaldoRealFondo.objects.filter(
-            fondo__hogar=hogar, año=año - 1, mes=ultimo_mes_con_datos
-        ).select_related('fondo')
-        for s in saldos_prev:
-            if s.fondo.tipo_fondo in ('comun', 'ahorro'):
-                liquidez_año_anterior += s.saldo
-            patrimonio_año_anterior += s.saldo
+    # --- Crecimiento YTD: actual − Enero del MISMO año ---
+    saldos_enero = SaldoRealFondo.objects.filter(
+        fondo__hogar=hogar, año=año, mes=1
+    ).select_related('fondo')
+    tiene_enero = saldos_enero.exists()
+    liquidez_enero, patrimonio_enero = _saldos_liquidez_patrimonio(saldos_enero) if tiene_enero else (Decimal('0'), Decimal('0'))
+
+    crecimiento_liquidez_ytd = (liquidez_actual - liquidez_enero) if tiene_enero else None
+    crecimiento_patrimonio_ytd = (patrimonio_actual - patrimonio_enero) if tiene_enero else None
 
     return {
         'liquidez_actual': liquidez_actual,
-        'patrimonio_financiero_actual': patrimonio_financiero_actual,
-        'crecimiento_liquidez_interanual': liquidez_actual - liquidez_año_anterior,
-        'crecimiento_patrimonio_interanual': patrimonio_financiero_actual - patrimonio_año_anterior,
+        'patrimonio_financiero_actual': patrimonio_actual,
+        'liquidez_enero': liquidez_enero,
+        'patrimonio_enero': patrimonio_enero,
+        'tiene_enero': tiene_enero,
+        'crecimiento_liquidez_ytd': crecimiento_liquidez_ytd,
+        'crecimiento_patrimonio_ytd': crecimiento_patrimonio_ytd,
         'ahorro_esperado_acum': ahorro_esperado_acum,
         'patrimonio_esperado_acum': ahorro_esperado_acum + inversion_esperada_acum,
+        'ultimo_mes_con_datos': ultimo_mes_con_datos,
+        'ultimo_mes_nombre': MESES_NOMBRES[ultimo_mes_con_datos] if ultimo_mes_con_datos else '',
     }
 
 
 def _construir_tabla(hogar, año):
-    """
-    Construye la tabla mensual: filas por mes, columnas por fondo + ingresos + ahorro_neto.
-    """
     fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True).order_by('orden', 'nombre'))
     hoy = datetime.date.today()
     meses_mostrados = list(range(1, min(hoy.month + 1, 13))) if año == hoy.year else list(range(1, 13))
 
-    # Precarga todos los saldos del año de una vez (evita N+1)
     saldos_qs = SaldoRealFondo.objects.filter(
         fondo__hogar=hogar, año=año
     ).select_related('fondo')
-    saldos_map = {}  # (fondo_id, mes) → SaldoRealFondo
-    for s in saldos_qs:
-        saldos_map[(s.fondo_id, s.mes)] = s
+    saldos_map = {(s.fondo_id, s.mes): s for s in saldos_qs}
 
     ingresos_map = {
         ir.mes: ir
@@ -120,7 +121,6 @@ def _construir_tabla(hogar, año):
 
         ingreso_real = ingresos_map.get(mes)
 
-        # Ahorro neto = liquidez este mes - liquidez mes anterior
         if prev_liquidez is not None and liquidez_mes > 0:
             ahorro_neto = liquidez_mes - prev_liquidez
         else:
@@ -139,7 +139,7 @@ def _construir_tabla(hogar, año):
             'ahorro_neto': ahorro_neto,
         })
 
-    filas.reverse()  # más reciente primero
+    filas.reverse()
     return fondos, filas
 
 
@@ -173,7 +173,6 @@ def vista_evolucion(request):
 
 @login_required
 def registrar_saldo_fondo(request):
-    """POST: registra o actualiza el saldo real de un fondo en un mes."""
     profile, hogar = _get_hogar(request)
     if not hogar:
         return redirect('dashboard')
@@ -215,7 +214,6 @@ def registrar_saldo_fondo(request):
 
 @login_required
 def registrar_ingreso_mes(request):
-    """POST: registra o actualiza el ingreso real del hogar en un mes."""
     profile, hogar = _get_hogar(request)
     if not hogar:
         return redirect('dashboard')
@@ -251,7 +249,6 @@ def registrar_ingreso_mes(request):
 
 @login_required
 def crear_fondo_evolucion(request):
-    """Crear un fondo nuevo desde la vista evolución (redirige a distribución o vuelve aquí)."""
     profile, hogar = _get_hogar(request)
     if not hogar:
         return redirect('dashboard')
