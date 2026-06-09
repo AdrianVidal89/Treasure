@@ -417,7 +417,6 @@ class InversionUpdateView(LoginRequiredMixin, UpdateView):
         kwargs['hogar'] = profile.hogar if profile else None
         return kwargs
 
-    
     def form_valid(self, form):
         form.instance.usuario = self.request.user
         response = super().form_valid(form)

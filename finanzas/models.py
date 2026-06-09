@@ -148,11 +148,26 @@ class Inversion(models.Model):
         default=True,
         help_text="Si está marcado, se actualizará el valor automáticamente vía API"
     )
+    fondo = models.ForeignKey(
+        'FondoFamiliar', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='inversiones',
+        help_text="Fondo de inversión al que pertenece este activo.",
+    )
     fecha_creacion = models.DateField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.nombre} ({self.ticker})"
-    
+
+    def clean(self):
+        super().clean()
+        if self.fondo_id and self.usuario_id:
+            from core.models import UserProfile
+            perfil = UserProfile.objects.filter(user=self.usuario).first()
+            if perfil and self.fondo.hogar_id != getattr(perfil, 'hogar_id', None):
+                raise ValidationError(
+                    "La inversión debe pertenecer a un fondo del mismo hogar que el usuario."
+                )
+
     @property
     def valor_total_actual(self):
         try:
@@ -628,43 +643,39 @@ class FondoFamiliar(models.Model):
         ordering = ['orden', 'nombre']
         unique_together = ('hogar', 'nombre')
 
-        def __str__(self):
-            return f"{self.nombre} ({self.get_tipo_fondo_display()})"
+    def __str__(self):
+        return f"{self.nombre} ({self.get_tipo_fondo_display()})"
 
-        # --- Integración con módulo de inversiones ---
+    # --- Integración con módulo de inversiones ---
 
-        @property
-        def valor_cartera(self):
-            """Valor de mercado actual: suma de valor_total_actual de las inversiones vinculadas."""
-            if self.tipo_fondo != 'inversion':
-                return None
-            from decimal import Decimal
-            return sum(
-                (inv.valor_total_actual or Decimal('0'))
-                for inv in self.inversiones.select_related('valor_actual').all()
-            )
+    @property
+    def valor_cartera(self):
+        """Valor de mercado actual: suma de valor_total_actual de las inversiones vinculadas."""
+        if self.tipo_fondo != 'inversion':
+            return None
+        return sum(
+            (inv.valor_total_actual or Decimal('0'))
+            for inv in self.inversiones.select_related('valor_actual').all()
+        )
 
-        @property
-        def total_aportado_cartera(self):
-            """Capital invertido (coste de compras) de las inversiones vinculadas."""
-            if self.tipo_fondo != 'inversion':
-                return None
-            from decimal import Decimal
-            return sum(
-                (inv.valor_aportado or Decimal('0'))
-                for inv in self.inversiones.all()
-            )
+    @property
+    def total_aportado_cartera(self):
+        """Capital invertido (coste de compras) de las inversiones vinculadas."""
+        if self.tipo_fondo != 'inversion':
+            return None
+        return sum(
+            (inv.valor_aportado or Decimal('0'))
+            for inv in self.inversiones.all()
+        )
 
-        @property
-        def rentabilidad_cartera(self):
-            """Rentabilidad % de la cartera vinculada."""
-            aportado = self.total_aportado_cartera
-            if aportado is None or aportado <= 0:
-                return None
-            valor = self.valor_cartera or 0
-            return round(float((valor - aportado) / aportado * 100), 2)
-
-
+    @property
+    def rentabilidad_cartera(self):
+        """Rentabilidad % de la cartera vinculada."""
+        aportado = self.total_aportado_cartera
+        if aportado is None or aportado <= 0:
+            return None
+        valor = self.valor_cartera or 0
+        return round(float((valor - aportado) / aportado * 100), 2)
 
 class ReglaReparto(models.Model):
     """Asignacion de dinero a un fondo: puede ser % o importe fijo."""
@@ -718,21 +729,10 @@ class ReglaReparto(models.Model):
             return f"{self.nombre} ({self.porcentaje}%)"
         return f"{self.nombre} ({self.importe_fijo} EUR/mes)"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# AÑADIR AL FINAL DE finanzas/models.py (dentro del módulo de Distribución)
-# ─────────────────────────────────────────────────────────────────────────────
-
 
 class AjusteIngresoMensual(models.Model):
     """
     Override puntual del importe de una FuenteIngreso para un mes concreto.
-
-    INMUTABILIDAD: nunca modifica FuenteIngreso.importe_declarado.
-    Este registro es el apunte de corrección mensual. Si se borra,
-    el motor de distribución vuelve al valor base de la fuente.
-
-    Uso típico: Irene tiene guardias variables → cada mes se declara
-    el importe real cobrado aquí antes de calcular la distribución.
     """
     fuente = models.ForeignKey(
         'FuenteIngreso',
@@ -762,13 +762,6 @@ class AjusteIngresoMensual(models.Model):
 class SubsobreFondo(models.Model):
     """
     Partición interna de un FondoFamiliar en 'sobres' con presupuesto asignado.
-
-    Permite responder: del dinero que entra al Fondo Común,
-    ¿cuánto va a alimentación, cuánto a ocio, cuánto a suscripciones?
-
-    El importe puede calcularse automáticamente desde PartidaGasto vinculadas
-    (ej: todas las partidas tipo 'variable' del hogar) o declararse manualmente
-    (ej: 200€/mes discrecionales).
     """
     TIPO_CHOICES = [
         ('gasto_fijo',     'Cubre gasto fijo del hogar'),
@@ -841,23 +834,10 @@ class SubsobreFondo(models.Model):
         """True si este sobre mueve dinero a otro fondo."""
         return self.fondo_destino_id is not None
 
-        
- # ─────────────────────────────────────────────────────────────────────────────
-# AÑADIR AL FINAL DE finanzas/models.py
-# (Si ya pegaste el addon anterior con AjusteIngresoMensual y SubsobreFondo,
-#  solo añade IngresoExtraordinario -- el campo tipo_fondo se añade via migración)
-# ─────────────────────────────────────────────────────────────────────────────
-
 
 class IngresoExtraordinario(models.Model):
     """
     Ingreso puntual fuera del ciclo normal de FuenteIngreso.
-
-    Cubre: bonus, devolución Hacienda, herencia, venta de algo,
-    ingreso freelance puntual, regalo, etc.
-
-    El usuario declara cuánto recibió, en qué mes, y opcionalmente
-    lo asigna a un fondo (ahorro, inversión, fondo común...).
     """
     hogar = models.ForeignKey(
         'core.Hogar', on_delete=models.CASCADE,
@@ -900,9 +880,6 @@ class IngresoExtraordinario(models.Model):
 class SaldoRealFondo(models.Model):
     """
     Saldo real observado en un FondoFamiliar para un mes concreto.
-
-    INMUTABILIDAD: nunca modifica FondoFamiliar ni la vista de distribución.
-    Solo es un snapshot mensual de lo que hay realmente en esa cuenta/fondo.
     """
     fondo = models.ForeignKey(
         'FondoFamiliar',
@@ -926,7 +903,6 @@ class SaldoRealFondo(models.Model):
 class IngresoRealMes(models.Model):
     """
     Ingreso neto real registrado manualmente para el hogar en un mes.
-    Columna 'Ingresos' del Excel de seguimiento.
     """
     hogar = models.ForeignKey(
         'core.Hogar',

@@ -6,7 +6,6 @@ from django import forms
 from .models import Inversion, MovimientoInversion, FondoFamiliar
 
 
-
 ### Modulo principal ###
 
 class CuentaBancariaForm(forms.ModelForm):
@@ -80,6 +79,7 @@ class InversionForm(forms.ModelForm):
 
     def __init__(self, *args, hogar=None, **kwargs):
         super().__init__(*args, **kwargs)
+
         if hogar:
             self.fields['fondo'].queryset = FondoFamiliar.objects.filter(
                 hogar=hogar, tipo_fondo='inversion', activo=True
@@ -87,7 +87,15 @@ class InversionForm(forms.ModelForm):
         else:
             self.fields['fondo'].queryset = FondoFamiliar.objects.none()
         self.fields['fondo'].required = False
-        self.fields['fondo'].empty_label = '-- Sin fondo asignado --'
+        self.fields['fondo'].empty_label = '— Sin fondo asignado —'
+
+        # Si estamos editando una inversión existente con valor manual
+        instance = kwargs.get('instance')
+        if instance and not instance.actualizable:
+            try:
+                self.fields['valor_unitario_manual'].initial = instance.valor_actual.valor_unitario
+            except AttributeError:
+                pass
 
 class MovimientoInversionForm(forms.ModelForm):
     class Meta:
