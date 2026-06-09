@@ -11,10 +11,25 @@ class Hogar(models.Model):
     creado_por = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name='hogares_creados'
     )
-    fecha_creacion = models.DateTimeField(auto_now_add=True)
+    fondo = models.ForeignKey(
+        'FondoFamiliar', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='inversiones',
+        help_text="Fondo de inversión al que pertenece este activo.",
+    )
+        fecha_creacion = models.DateField(auto_now_add=True)
 
-    def __str__(self):
-        return self.nombre
+        def __str__(self):
+            return f"{self.nombre} ({self.ticker})"
+
+        def clean(self):
+            super().clean()
+            if self.fondo_id and self.usuario_id:
+                from core.models import UserProfile
+                perfil = UserProfile.objects.filter(user=self.usuario).first()
+                if perfil and self.fondo.hogar_id != getattr(perfil, 'hogar_id', None):
+                    raise ValidationError(
+                        "La inversión debe pertenecer a un fondo del mismo hogar que el usuario."
+                    )
 
 
 class UserProfile(models.Model):

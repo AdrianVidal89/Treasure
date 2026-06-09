@@ -628,8 +628,43 @@ class FondoFamiliar(models.Model):
         ordering = ['orden', 'nombre']
         unique_together = ('hogar', 'nombre')
 
-    def __str__(self):
-        return f"{self.nombre} ({self.get_tipo_fondo_display()})"
+        def __str__(self):
+            return f"{self.nombre} ({self.get_tipo_fondo_display()})"
+
+        # --- Integración con módulo de inversiones ---
+
+        @property
+        def valor_cartera(self):
+            """Valor de mercado actual: suma de valor_total_actual de las inversiones vinculadas."""
+            if self.tipo_fondo != 'inversion':
+                return None
+            from decimal import Decimal
+            return sum(
+                (inv.valor_total_actual or Decimal('0'))
+                for inv in self.inversiones.select_related('valor_actual').all()
+            )
+
+        @property
+        def total_aportado_cartera(self):
+            """Capital invertido (coste de compras) de las inversiones vinculadas."""
+            if self.tipo_fondo != 'inversion':
+                return None
+            from decimal import Decimal
+            return sum(
+                (inv.valor_aportado or Decimal('0'))
+                for inv in self.inversiones.all()
+            )
+
+        @property
+        def rentabilidad_cartera(self):
+            """Rentabilidad % de la cartera vinculada."""
+            aportado = self.total_aportado_cartera
+            if aportado is None or aportado <= 0:
+                return None
+            valor = self.valor_cartera or 0
+            return round(float((valor - aportado) / aportado * 100), 2)
+
+
 
 class ReglaReparto(models.Model):
     """Asignacion de dinero a un fondo: puede ser % o importe fijo."""

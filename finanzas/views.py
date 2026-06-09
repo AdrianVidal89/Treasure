@@ -375,6 +375,12 @@ class InversionCreateView(LoginRequiredMixin, CreateView):
     template_name = 'inversiones/inversion_form.html'
     success_url = reverse_lazy('finanzas:listar')
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        profile = getattr(self.request.user, 'userprofile', None)
+        kwargs['hogar'] = profile.hogar if profile else None
+        return kwargs
+
     def form_valid(self, form):
         form.instance.usuario = self.request.user
         response = super().form_valid(form)
@@ -404,6 +410,13 @@ class InversionUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_queryset(self):
         return Inversion.objects.filter(usuario=self.request.user)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        profile = getattr(self.request.user, 'userprofile', None)
+        kwargs['hogar'] = profile.hogar if profile else None
+        return kwargs
+
     
     def form_valid(self, form):
         form.instance.usuario = self.request.user
