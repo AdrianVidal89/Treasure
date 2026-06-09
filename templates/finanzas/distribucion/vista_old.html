@@ -57,12 +57,14 @@
 
 <!-- ===== BARRA DISTRIBUCIÓN ===== -->
 <div class="dist-bar-wrap">
+
     <div class="dist-bar">
         {% if d.pct_gastos > 0 %}<div class="dist-seg seg-gastos" style="width:{{ d.pct_gastos|unlocalize }}%;">{% if d.pct_gastos > 8 %}{{ d.pct_gastos }}%{% endif %}</div>{% endif %}
         {% if d.pct_ahorro > 0 %}<div class="dist-seg seg-ahorro" style="width:{{ d.pct_ahorro|unlocalize }}%;">{% if d.pct_ahorro > 8 %}{{ d.pct_ahorro }}%{% endif %}</div>{% endif %}
         {% if d.pct_inversion > 0 %}<div class="dist-seg seg-inversion" style="width:{{ d.pct_inversion|unlocalize }}%;">{% if d.pct_inversion > 8 %}{{ d.pct_inversion }}%{% endif %}</div>{% endif %}
         {% if d.pct_libre > 0 %}<div class="dist-seg seg-libre" style="width:{{ d.pct_libre|unlocalize }}%;">{% if d.pct_libre > 8 %}{{ d.pct_libre }}%{% endif %}</div>{% endif %}
     </div>
+
     <div class="dist-legend">
         {% if d.pct_gastos > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ff4d4d;"></span>Gastos {{ d.pct_gastos }}%</span>{% endif %}
         {% if d.pct_ahorro > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#00d1ff;"></span>Ahorro {{ d.pct_ahorro }}%</span>{% endif %}
@@ -190,6 +192,8 @@
     </div>
     {% endfor %}
 
+
+
     {% if fa.subsobres %}
     <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
         <span>Asignado: €{{ fa.total_cascada_saliente|floatformat:2 }}</span>
@@ -200,38 +204,6 @@
         {% endif %}
     </div>
     {% endif %}
-
-    <!-- ===== NUEVO: Cartera real para fondos de inversión ===== -->
-    {% if fa.fondo.tipo_fondo == 'inversion' and fa.fondo.num_activos_vinculados > 0 %}
-    <div style="margin-top:12px; padding:12px 14px; background:rgba(162,89,255,0.08); border:1px solid rgba(162,89,255,0.2); border-radius:10px;">
-        <div style="font-size:0.72rem; font-weight:600; color:#a259ff; text-transform:uppercase; margin-bottom:8px;">
-            📊 Cartera real · {{ fa.fondo.num_activos_vinculados }} activo{{ fa.fondo.num_activos_vinculados|pluralize:"s" }}
-        </div>
-        <div style="display:flex; gap:20px; flex-wrap:wrap;">
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Valor mercado</div>
-                <div style="font-size:1.05rem; font-weight:700; color:#a259ff;">€{{ fa.fondo.valor_cartera|floatformat:2 }}</div>
-            </div>
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Aportado</div>
-                <div style="font-size:1.05rem; font-weight:700; color:var(--text-color);">€{{ fa.fondo.total_aportado_cartera|floatformat:2 }}</div>
-            </div>
-            {% if fa.fondo.rentabilidad_cartera is not None %}
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Rentabilidad</div>
-                <div style="font-size:1.05rem; font-weight:700; color:{% if fa.fondo.rentabilidad_cartera >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">
-                    {% if fa.fondo.rentabilidad_cartera >= 0 %}+{% endif %}{{ fa.fondo.rentabilidad_cartera }}%
-                </div>
-            </div>
-            {% endif %}
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Flujo presupuestado</div>
-                <div style="font-size:1.05rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}/mes</div>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
 </div>
 {% empty %}
 <p class="empty-msg">Sin fondos definidos.</p>
@@ -382,6 +354,7 @@
     <div class="modal-box">
         <h2>↪️ Distribución interna</h2>
         <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Desde: <strong id="ss-fondo-nombre"></strong></p>
+    
         <form method="post" id="form-subsobre" action="">
             {% csrf_token %}
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" required></div>
@@ -400,6 +373,11 @@
                 <button type="submit" class="btn btn-primary">Guardar</button>
             </div>
         </form>
+    
+    
+    
+    
+    
     </div>
 </div>
 
@@ -429,10 +407,13 @@
 
 <!-- ===== ESTILOS ===== -->
 <style>
+/* --- Controles --- */
 .sel-sm { background:#1a1a1a; color:var(--text-color); border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem; }
 .lbl-sm { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px; }
 .inp-sm { width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
 .empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; }
+
+/* --- KPIs --- */
 .kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
 .kpi-item { background:#1a1a1a; border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
 .kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
@@ -441,33 +422,68 @@
 .semaforo-amarillo { color:#ffee00; }
 .semaforo-naranja { color:#ff8800; }
 .semaforo-rojo { color:#ff4d4d; }
+
+/* --- Barra distribución --- */
 .dist-bar-wrap { margin:18px 0 24px; }
-.dist-bar { display:flex; height:20px; border-radius:10px; overflow:hidden; background:#111; border:1px solid #222; }
-.dist-seg { transition: width 0.4s ease; position: relative; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; font-weight: 700; color: #fff; overflow: hidden; flex-shrink: 0; }
+.dist-bar {
+    display:flex; height:20px; border-radius:10px; overflow:hidden;
+    background:#111; border:1px solid #222;
+}
+
+.dist-seg { 
+    transition: width 0.4s ease; 
+    position: relative; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    font-size: 0.62rem; 
+    font-weight: 700; 
+    color: #fff; 
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+
 .seg-gastos   { background:linear-gradient(135deg, #ff4d4d, #cc3333); }
 .seg-ahorro   { background:linear-gradient(135deg, #00d1ff, #0099bb); }
 .seg-inversion{ background:linear-gradient(135deg, #a259ff, #7733cc); }
 .seg-libre    { background:linear-gradient(135deg, #ffaa00, #cc8800); }
-.dist-legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; font-size:0.75rem; color:var(--muted); }
+.dist-legend {
+    display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;
+    font-size:0.75rem; color:var(--muted);
+}
 .dist-legend-item { display:flex; align-items:center; gap:5px; }
 .dist-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+/* --- Avisos --- */
 .aviso-box { border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem; }
 .aviso-ajuste { background:rgba(255,170,0,0.07); border:1px solid #ffaa0033; }
 .aviso-extra  { background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; }
 .aviso-titulo { font-weight:600; color:#ffaa00; }
+
+/* --- Secciones --- */
 .section-title { font-size:0.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px; }
+
+/* --- Regla/Fondo pills --- */
 .regla-pill { background:#1a1a1a; border-left:3px solid; border-radius:12px; padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .fondo-pill { display:block; padding:14px 16px; }
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
+
 .tag-tipo { font-size:0.62rem; padding:2px 8px; border-radius:6px; font-weight:600; display:inline-block; }
 .tag-comun     { background:rgba(0,255,136,0.12); color:#00ff88; }
 .tag-ahorro    { background:rgba(0,209,255,0.12); color:#00d1ff; }
 .tag-inversion { background:rgba(162,89,255,0.12); color:#a259ff; }
+
+/* --- Fondo detalles --- */
 .fondo-gastos-box { margin-top:10px; padding:8px 12px; background:rgba(255,77,77,0.06); border:1px solid #ff4d4d22; border-radius:8px; font-size:0.78rem; }
 .subsobre-row { margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; }
+
+/* --- Transferencias --- */
 .transfer-card { background:#1a1a1a; border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
 .transfer-sub { font-size:0.72rem; color:var(--muted); }
+
+/* --- Resumen persona --- */
 .resumen-persona { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:14px; padding:18px; margin-bottom:12px; }
 .resumen-persona h4 { color:var(--primary-color); font-size:0.95rem; }
 .resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #222; font-size:0.85rem; }
@@ -475,14 +491,22 @@
 .resumen-row .rl { color:var(--muted); }
 .resumen-info { font-size:0.75rem; color:#ffaa00; padding:6px 10px; background:rgba(255,170,0,0.08); border-radius:8px; margin:8px 0; border-left:2px solid #ffaa00; }
 .ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px; }
+
+/* --- Botones inline --- */
 .r-btn { background:transparent; border:1px solid #333; color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
 .r-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
+
+/* --- Color dots --- */
 .color-row { display:flex; gap:10px; margin-top:6px; }
 .cdot { width:32px; height:32px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:all .2s; }
 .cdot:hover { transform:scale(1.15); }
 .cdot.active { border-color:#fff; box-shadow:0 0 12px currentColor; }
+
+/* --- Gastos checkbox --- */
 .gasto-check { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #222; font-size:0.85rem; color:var(--text-color); cursor:pointer; }
 .gasto-check input { width:18px; height:18px; accent-color:#00ff88; }
+
+/* --- Modales --- */
 .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); }
 .modal-box { background:#1a1a1a; border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
 .modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.05rem; }
@@ -491,6 +515,8 @@
 .modal-box select, .modal-box input[type="text"], .modal-box input[type="number"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
+
+/* --- Toasts --- */
 .msg-toast { background:#1e2a1e; border:1px solid #00ff88; color:#00ff88; border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
 </style>
 
@@ -499,6 +525,7 @@
 function cerrar(id){ document.getElementById(id).style.display='none'; }
 function toggleEl(id){ var e=document.getElementById(id); e.style.display=e.style.display==='none'?'block':'none'; }
 
+/* --- Color selector --- */
 function selC(btn,color,target){
     btn.parentElement.querySelectorAll('.cdot').forEach(function(d){d.classList.remove('active');});
     btn.classList.add('active');
@@ -512,6 +539,7 @@ function selCByVal(target,color){
         d.classList.remove('active');
         if(d.style.backgroundColor===color || d.style.background===color){ d.classList.add('active'); found=true; }
     });
+    /* Si el color no coincide con ningun dot, intenta por hex */
     if(!found){
         dots.forEach(function(d){
             var s=d.getAttribute('style')||'';
@@ -522,6 +550,7 @@ function selCByVal(target,color){
     document.getElementById('color-'+target).value=color;
 }
 
+/* --- Fondo --- */
 function abrirModalFondo(){
     document.getElementById('modal-fondo-titulo').textContent='🗂 Nuevo fondo';
     document.getElementById('btn-fondo-submit').textContent='Crear fondo';
@@ -543,6 +572,7 @@ function editarFondo(id,nombre,tipo,color,cuenta){
     document.getElementById('modal-fondo').style.display='flex';
 }
 
+/* --- Regla --- */
 function setTipoR(t){
     document.getElementById('tipo_regla_input').value=t;
     document.getElementById('campo-pct').style.display=t==='porcentaje'?'block':'none';
@@ -579,12 +609,14 @@ function editarRegla(id,nombre,tipo,pct,fijo,fondoId,userId,color,soloMes){
     document.getElementById('modal-regla').style.display='flex';
 }
 
+/* --- Subsobre --- */
 function abrirModalSubsobre(id,nombre){
     document.getElementById('ss-fondo-nombre').textContent=nombre;
     document.getElementById('form-subsobre').action='/finanzas/distribucion/fondo/'+id+'/subsobre/crear/';
     document.getElementById('modal-subsobre').style.display='flex';
 }
 
+/* --- Asignar gastos --- */
 function abrirAsignarGastos(fondoId,fondoNombre){
     document.getElementById('gastos-fondo-nombre').textContent=fondoNombre;
     document.getElementById('form-gastos').action='/finanzas/distribucion/fondo/'+fondoId+'/gastos/';
@@ -596,6 +628,7 @@ function abrirAsignarGastos(fondoId,fondoNombre){
     document.getElementById('modal-gastos').style.display='flex';
 }
 
+/* --- Auto-dismiss toasts --- */
 document.addEventListener('DOMContentLoaded',function(){
     document.querySelectorAll('.msg-toast').forEach(function(el){ setTimeout(function(){el.remove();},4000); });
 });

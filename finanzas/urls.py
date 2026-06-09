@@ -35,6 +35,7 @@ urlpatterns = [
     path('inversiones/<int:pk>/editar/', views.InversionUpdateView.as_view(), name='editar'),
     path('inversiones/<int:pk>/movimiento/', views.MovimientoCreateView.as_view(), name='nuevo_movimiento'),
     path('inversiones/resumen/<int:pk>/', views.ResumenInversionesMensualView.as_view(), name='resumen'),
+    path('inversiones/ajax/buscar-ticker/', views.buscar_ticker, name='buscar_ticker'),
 
     # ── Ingresos ───────────────────────────────────────────────────────────
     path('ingresos/', views_ingresos.listar_ingresos, name='listar_ingresos'),
@@ -72,11 +73,9 @@ urlpatterns = [
     path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
 
-    # Añadir en urlpatterns:
+    # ── Evolución ──────────────────────────────────────────────────────────
     path('evolucion/', views_evolucion.vista_evolucion, name='vista_evolucion'),
     path('evolucion/saldo/', views_evolucion.registrar_saldo_fondo, name='registrar_saldo_fondo'),
     path('evolucion/ingreso/', views_evolucion.registrar_ingreso_mes, name='registrar_ingreso_mes'),
     path('evolucion/fondo/crear/', views_evolucion.crear_fondo_evolucion, name='crear_fondo_evolucion'),
 ]
-
-

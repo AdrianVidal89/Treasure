@@ -1,44 +1,297 @@
 {% extends "base.html" %}
+{% block title %}{% if form.instance.pk %}Editar inversión{% else %}Nueva inversión{% endif %} - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
 {% block content %}
-<div class="panel">
-  <h2 class="titulo">{% if form.instance.pk %}Editar inversión{% else %}Nueva inversión{% endif %}</h2>
+<style>
+.inv-form {
+    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px;
+    padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);
+}
+.inv-form .fg { margin-bottom: 20px; }
+.inv-form label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+.inv-form select, .inv-form input[type="text"], .inv-form input[type="number"] {
+    width: 100%; padding: 14px 16px; border: 1px solid #444; border-radius: 10px;
+    background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;
+}
+.inv-form select:focus, .inv-form input:focus {
+    outline: none; border-color: var(--primary-color); box-shadow: 0 0 8px var(--glow);
+}
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 
-  <form method="post">
-    {% csrf_token %}
-    <div class="formulario">
+/* Ticker search */
+.ticker-search-wrap { position: relative; }
+.ticker-results {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+    background: #111; border: 1px solid var(--primary-color); border-top: none;
+    border-radius: 0 0 10px 10px; max-height: 280px; overflow-y: auto;
+    display: none;
+}
+.ticker-results.active { display: block; }
+.ticker-item {
+    padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #1a1a1a;
+    transition: background 0.15s;
+}
+.ticker-item:hover { background: rgba(162, 89, 255, 0.15); }
+.ticker-item-symbol { font-weight: 700; color: var(--primary-color); font-size: 0.95rem; }
+.ticker-item-name { color: var(--text-color); font-size: 0.85rem; margin-top: 2px; }
+.ticker-item-meta { color: var(--muted); font-size: 0.72rem; margin-top: 2px; }
+.ticker-selected {
+    display: none; align-items: center; gap: 10px; padding: 10px 14px;
+    background: rgba(0, 255, 136, 0.08); border: 1px solid #00ff8844;
+    border-radius: 10px; margin-top: 8px;
+}
+.ticker-selected.active { display: flex; }
+.ticker-selected-info { flex: 1; }
+.ticker-selected-symbol { font-weight: 700; color: #00ff88; }
+.ticker-selected-name { font-size: 0.8rem; color: var(--muted); }
+.ticker-clear {
+    background: transparent; border: 1px solid #444; color: var(--muted);
+    border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem;
+}
+.ticker-clear:hover { border-color: #ff4d4d; color: #ff4d4d; }
+.ticker-loading { color: var(--muted); font-size: 0.8rem; padding: 12px 16px; }
+</style>
 
-      {{ form.nombre.label_tag }} {{ form.nombre }}
-      {{ form.ticker.label_tag }} {{ form.ticker }}
-      {{ form.tipo.label_tag }} {{ form.tipo }}
-      {{ form.moneda.label_tag }} {{ form.moneda }}
-      {{ form.plataforma.label_tag }} {{ form.plataforma }}
-      {{ form.cantidad_actual.label_tag }} {{ form.cantidad_actual }}
-      {{ form.actualizable.label_tag }} {{ form.actualizable }}
+<div class="dashboard-container" style="max-width: 600px;">
 
-      <div id="valor-manual-wrapper">
-        {{ form.valor_unitario_manual.label_tag }}
-        {{ form.valor_unitario_manual }}
-        <small>{{ form.valor_unitario_manual.help_text }}</small>
-      </div>
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">
+        {% if form.instance.pk %}✏️ Editar inversión{% else %}➕ Nueva inversión{% endif %}
+    </h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">Registra un activo de tu cartera.</p>
 
+    {% if form.errors %}
+    <div style="background: rgba(255,77,77,0.1); border: 1px solid #ff4d4d; border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #ff4d4d;">
+        {{ form.non_field_errors }}
+        {% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}
     </div>
+    {% endif %}
 
-    <button type="submit" class="btn-glow-primary">Guardar</button>
-    <a href="{% url 'finanzas:listar' %}" class="btn-glow-secundario">Cancelar</a>
-  </form>
+    <div class="inv-form">
+        <form method="post" id="inv-form">
+            {% csrf_token %}
+
+            <!-- Nombre -->
+            <div class="fg">
+                <label>Nombre del activo</label>
+                <input type="text" name="nombre" value="{{ form.instance.nombre|default:'' }}"
+                       placeholder="Ej: Schneider Electric, Bitcoin, MSCI World..."
+                       required>
+            </div>
+
+            <!-- Ticker search -->
+            <div class="fg">
+                <label>Ticker / Símbolo</label>
+                <div class="ticker-search-wrap">
+                    <input type="text" id="ticker-search" autocomplete="off"
+                           placeholder="Busca: AAPL, SU.PA, BTC-USD..."
+                           value="{{ form.instance.ticker|default:'' }}">
+                    <input type="hidden" name="ticker" id="ticker-value"
+                           value="{{ form.instance.ticker|default:'' }}">
+                    <div class="ticker-results" id="ticker-results"></div>
+                </div>
+                <div class="ticker-selected" id="ticker-selected">
+                    <div class="ticker-selected-info">
+                        <span class="ticker-selected-symbol" id="sel-symbol"></span>
+                        <div class="ticker-selected-name" id="sel-name"></div>
+                    </div>
+                    <button type="button" class="ticker-clear" onclick="clearTicker()">✕ Cambiar</button>
+                </div>
+            </div>
+
+            <!-- Tipo + Moneda -->
+            <div class="form-row">
+                <div class="fg">
+                    <label>Tipo de activo</label>
+                    <select name="tipo" id="tipo-activo">
+                        <option value="ACCION" {% if form.instance.tipo == 'ACCION' %}selected{% endif %}>Acción</option>
+                        <option value="ETF" {% if form.instance.tipo == 'ETF' %}selected{% endif %}>ETF</option>
+                        <option value="FONDO" {% if form.instance.tipo == 'FONDO' %}selected{% endif %}>Fondo</option>
+                        <option value="CRIPTO" {% if form.instance.tipo == 'CRIPTO' %}selected{% endif %}>Criptomoneda</option>
+                        <option value="OTRO" {% if form.instance.tipo == 'OTRO' %}selected{% endif %}>Otro</option>
+                    </select>
+                </div>
+                <div class="fg">
+                    <label>Moneda</label>
+                    <input type="text" name="moneda" value="{{ form.instance.moneda|default:'EUR' }}"
+                           placeholder="EUR, USD...">
+                </div>
+            </div>
+
+            <!-- Plataforma + Cantidad -->
+            <div class="form-row">
+                <div class="fg">
+                    <label>Plataforma</label>
+                    <input type="text" name="plataforma" value="{{ form.instance.plataforma|default:'' }}"
+                           placeholder="Ej: Trade Republic, Revolut...">
+                </div>
+                <div class="fg">
+                    <label>Cantidad actual</label>
+                    <input type="number" name="cantidad_actual" step="0.00000001" min="0"
+                           value="{{ form.instance.cantidad_actual|default:'0' }}">
+                </div>
+            </div>
+
+            <!-- Fondo de inversión -->
+            <div class="fg">
+                <label>Fondo de inversión asociado</label>
+                <select name="fondo">
+                    <option value="">— Sin fondo asignado —</option>
+                    {% for f in form.fondo.field.queryset %}
+                    <option value="{{ f.id }}" {% if form.instance.fondo_id == f.id %}selected{% endif %}>
+                        {{ f.nombre }}{% if f.cuenta_asociada %} · {{ f.cuenta_asociada }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Actualización automática -->
+            <div class="fg" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
+                <input type="checkbox" name="actualizable" id="id_actualizable"
+                       {% if form.instance.actualizable or not form.instance.pk %}checked{% endif %}
+                       style="width: 18px; height: 18px; accent-color: var(--primary-color);">
+                <label for="id_actualizable" style="margin: 0; cursor: pointer;">
+                    Actualizar valor automáticamente vía API
+                </label>
+            </div>
+
+            <!-- Valor manual (solo si no es automático) -->
+            <div id="valor-manual-wrap" class="fg" style="display: none;">
+                <label>Valor unitario manual (€)</label>
+                <input type="number" name="valor_unitario_manual" step="0.00000001"
+                       value="{% if form.valor_unitario_manual.value %}{{ form.valor_unitario_manual.value }}{% endif %}"
+                       placeholder="Precio actual por unidad">
+                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                    Solo si no marcas la actualización automática.
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 28px;">
+                <button type="submit" class="btn btn-primary">
+                    💾 {% if form.instance.pk %}Guardar cambios{% else %}Crear inversión{% endif %}
+                </button>
+                <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
+    </div>
 </div>
 
 <script>
-  document.addEventListener('DOMContentLoaded', function () {
-    const checkbox = document.getElementById('id_actualizable');
-    const valorManual = document.getElementById('valor-manual-wrapper');
+// === Ticker search ===
+const searchInput = document.getElementById('ticker-search');
+const tickerValue = document.getElementById('ticker-value');
+const resultsDiv = document.getElementById('ticker-results');
+const selectedDiv = document.getElementById('ticker-selected');
+const selSymbol = document.getElementById('sel-symbol');
+const selName = document.getElementById('sel-name');
+const tipoActivo = document.getElementById('tipo-activo');
+let searchTimeout;
 
-    function toggleValorManual() {
-      valorManual.style.display = checkbox.checked ? 'none' : 'block';
+// Mapping Yahoo quoteType → nuestros tipos
+const TIPO_MAP = {
+    'EQUITY': 'ACCION',
+    'ETF': 'ETF',
+    'MUTUALFUND': 'FONDO',
+    'CRYPTOCURRENCY': 'CRIPTO',
+};
+
+searchInput.addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    const q = this.value.trim();
+    if (q.length < 2) {
+        resultsDiv.classList.remove('active');
+        return;
+    }
+    resultsDiv.innerHTML = '<div class="ticker-loading">Buscando...</div>';
+    resultsDiv.classList.add('active');
+
+    searchTimeout = setTimeout(() => {
+        fetch(`{% url 'finanzas:buscar_ticker' %}?q=${encodeURIComponent(q)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.results || data.results.length === 0) {
+                    resultsDiv.innerHTML = '<div class="ticker-loading">Sin resultados. Puedes escribir el ticker manualmente.</div>';
+                    return;
+                }
+                resultsDiv.innerHTML = data.results.map(r => `
+                    <div class="ticker-item" onclick="selectTicker('${r.symbol}', '${(r.nombre || '').replace(/'/g, "\\'")}', '${r.exchange}', '${r.tipo}')">
+                        <div class="ticker-item-symbol">${r.symbol}</div>
+                        <div class="ticker-item-name">${r.nombre}</div>
+                        <div class="ticker-item-meta">${r.exchange}${r.tipo ? ' · ' + r.tipo : ''}</div>
+                    </div>
+                `).join('');
+            })
+            .catch(() => {
+                resultsDiv.innerHTML = '<div class="ticker-loading">Error de conexión. Escribe el ticker manualmente.</div>';
+            });
+    }, 350);
+});
+
+searchInput.addEventListener('focus', function() {
+    if (resultsDiv.children.length > 0 && this.value.length >= 2) {
+        resultsDiv.classList.add('active');
+    }
+});
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.ticker-search-wrap')) {
+        resultsDiv.classList.remove('active');
+    }
+});
+
+function selectTicker(symbol, nombre, exchange, tipo) {
+    tickerValue.value = symbol;
+    searchInput.value = symbol;
+    searchInput.style.display = 'none';
+    resultsDiv.classList.remove('active');
+
+    selSymbol.textContent = symbol;
+    selName.textContent = `${nombre} · ${exchange}`;
+    selectedDiv.classList.add('active');
+
+    // Auto-seleccionar tipo si viene de Yahoo
+    const mapped = TIPO_MAP[tipo];
+    if (mapped) {
+        tipoActivo.value = mapped;
+    }
+}
+
+function clearTicker() {
+    tickerValue.value = '';
+    searchInput.value = '';
+    searchInput.style.display = 'block';
+    selectedDiv.classList.remove('active');
+    searchInput.focus();
+}
+
+// Si ya hay ticker al cargar (edición), mostrar como seleccionado
+document.addEventListener('DOMContentLoaded', function() {
+    const existing = tickerValue.value;
+    if (existing) {
+        selSymbol.textContent = existing;
+        selName.textContent = '{{ form.instance.nombre|default:""|escapejs }}';
+        selectedDiv.classList.add('active');
+        searchInput.style.display = 'none';
     }
 
-    checkbox.addEventListener('change', toggleValorManual);
-    toggleValorManual(); // inicial
-  });
+    // Toggle valor manual
+    const chk = document.getElementById('id_actualizable');
+    const wrap = document.getElementById('valor-manual-wrap');
+    function toggleManual() {
+        wrap.style.display = chk.checked ? 'none' : 'block';
+    }
+    chk.addEventListener('change', toggleManual);
+    toggleManual();
+});
+
+// Permitir escribir ticker manualmente (sin seleccionar del dropdown)
+searchInput.addEventListener('blur', function() {
+    setTimeout(() => {
+        if (!tickerValue.value && searchInput.value.trim()) {
+            tickerValue.value = searchInput.value.trim().toUpperCase();
+        }
+    }, 300);
+});
 </script>
 {% endblock %}
