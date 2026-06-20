@@ -1,102 +1,238 @@
 {% extends "base.html" %}
-{% block title %}Resumen de Inversiones{% endblock %}
+{% block title %}Cartera de Inversiones - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
 {% block content %}
-<div style="text-align: center; margin-top: 40px;">
-  <button type="button" class="btn btn-primary" onclick="window.location.href='{% url 'dashboard' %}'">Volver al Dashboard Principal</button>
-</div>        
+<style>
+.inv-wrap { padding: 24px; max-width: 1100px; margin: 0 auto; }
+.inv-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+.inv-header h1 { color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0; font-size: 1.6rem; }
 
-<div class="panel">
-  <h2 class="titulo-glow">📊 Resumen de Activos Invertidos</h2>
+/* Tarjetas resumen */
+.inv-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+.inv-kpi { background: #1a1a1a; border-radius: 14px; padding: 20px; border: 1px solid #2a2a2a; }
+.inv-kpi .label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.inv-kpi .valor { font-size: 1.5rem; font-weight: 700; }
+.inv-kpi .sub { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
 
-    <div class="resumen-grid">
-      <div class="card-glow">
-        <h3>💼 Valor total actual</h3>
-        <p class="dato-grande">{{ total_valor_actual|floatformat:2 }} €</p>
-      </div>
-      <div class="card-glow">
-        <h3>📈 Rentabilidad total</h3>
-        <p class="dato-grande">
-          {% if total_aportado > 0 %}
-            {{ rentabilidad_total|floatformat:2 }} %
-          {% else %}
-            -
-          {% endif %}
-        </p>
-      </div>
-      <div class="card-glow">
-        <h3>📥 Aportación neta</h3>
-        <p class="dato-grande">{{ total_aportado|floatformat:2 }} €</p>
-      </div>
-      <div class="card-glow">
-        <h3>📊 Número de activos</h3>
-        <p class="dato-grande">{{ total_activos|floatformat:2 }}</p>
-      </div>
+/* Tabla activos */
+.inv-table-wrap { background: #111; border: 1px solid #2a2a2a; border-radius: 14px; overflow: hidden; }
+.inv-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.inv-table thead tr { background: #1a1a1a; }
+.inv-table th { padding: 14px 18px; text-align: left; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.inv-table th.right { text-align: right; }
+.inv-table td { padding: 14px 18px; border-top: 1px solid #1a1a1a; vertical-align: middle; }
+.inv-table td.right { text-align: right; }
+.inv-table tbody tr.activo-row { cursor: pointer; transition: background 0.15s; }
+.inv-table tbody tr.activo-row:hover { background: rgba(162, 89, 255, 0.07); }
+.inv-table tbody tr.activo-row.open { background: rgba(162, 89, 255, 0.1); }
+
+/* Badge tipo */
+.badge-tipo { font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-block; }
+.badge-ACCION  { background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid #00ff8844; }
+.badge-ETF     { background: rgba(0,209,255,0.12); color: #00d1ff; border: 1px solid #00d1ff44; }
+.badge-FONDO   { background: rgba(255,170,0,0.12); color: #ffaa00; border: 1px solid #ffaa0044; }
+.badge-CRIPTO  { background: rgba(162,89,255,0.12); color: #a259ff; border: 1px solid #a259ff44; }
+.badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid #333; }
+
+/* Fila expandible -- histórico de compras */
+.historico-row { display: none; }
+.historico-row.open { display: table-row; }
+.historico-cell { padding: 0 !important; border-top: none !important; }
+.historico-inner { background: #0d0d0d; padding: 16px 24px 20px 24px; border-top: 1px solid #2a2a2a; }
+.historico-inner h4 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+.hist-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.hist-table th { text-align: left; color: var(--muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; padding: 6px 12px; border-bottom: 1px solid #222; }
+.hist-table th.right { text-align: right; }
+.hist-table td { padding: 8px 12px; border-bottom: 1px solid #161616; }
+.hist-table td.right { text-align: right; }
+.hist-table tr:last-child td { border-bottom: none; }
+.hist-empty { color: var(--muted); font-style: italic; font-size: 0.82rem; padding: 8px 0; }
+
+/* Chevron */
+.chevron-ico { font-size: 0.7rem; color: var(--muted); transition: transform 0.2s; display: inline-block; margin-right: 6px; }
+.activo-row.open .chevron-ico { transform: rotate(90deg); }
+
+/* Sin datos */
+.inv-empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+.inv-empty p { font-size: 1rem; margin-bottom: 20px; }
+
+.pos { color: #00ff88; }
+.neg { color: #ff4d4d; }
+</style>
+
+<div class="inv-wrap">
+
+    <!-- HEADER -->
+    <div class="inv-header">
+        <h1>📊 Cartera de Inversiones</h1>
+        <a href="{% url 'finanzas:crear' %}" class="btn btn-primary" style="font-size: 0.85rem; padding: 10px 18px;">➕ Nueva inversión</a>
     </div>
-  
-  <!-- 🥧 Distribución por tipo (pendiente de JS) -->
-  <div class="card-glow mt-4">
-    <h3 class="subtitulo">📂 Distribución por tipo de inversión</h3>
-    <canvas id="grafico-distribucion" height="200"></canvas>
-  </div>
 
-  <!-- 📄 Lista de inversiones -->
-  <div class="card-glow mt-4">
-    <h3 class="subtitulo">📋 Mis Inversiones</h3>
-    {% if inversiones %}
-      <table class="tabla-oscura">
-        <thead>
-          <tr><th>Nombre</th><th>Ticker</th><th>Tipo</th><th>Valor actual</th><th></th></tr>
-        </thead>
-        <tbody>
-          {% for inv in inversiones %}
-            <tr>
-              <td>{{ inv.nombre }}</td>
-              <td>{{ inv.ticker }}</td>
-              <td>{{ inv.tipo }}</td>
-              <td>
-                {% if inv.valor_actual %}
-                  {{ inv.valor_actual.valor_unitario }} {{ inv.moneda }}
-                {% else %}
-                  -
-                {% endif %}
-              </td>
-              <td>
-                <a href="{% url 'finanzas:detalle' inv.id %}" class="btn-glow-secundario">Detalle</a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="texto-difuso">Aún no tienes inversiones registradas.</p>
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; color: var(--text-color);">{{ message }}</div>
+        {% endfor %}
     {% endif %}
-  </div>
 
-  <!-- ➕ Acciones -->
-  <div class="acciones mt-4">
-    <a href="{% url 'finanzas:crear' %}" class="btn-glow-primary">➕ Añadir inversión</a>
-  </div>
+    <!-- KPIs -->
+    <div class="inv-kpi-grid">
+        <div class="inv-kpi" style="border-color: #a259ff44;">
+            <div class="label">Valor de mercado</div>
+            <div class="valor" style="color: #a259ff;">€{{ total_valor_actual|floatformat:2 }}</div>
+            <div class="sub">Valoración actual</div>
+        </div>
+        <div class="inv-kpi" style="border-color: #2a2a2a;">
+            <div class="label">Capital invertido</div>
+            <div class="valor" style="color: var(--text-color);">€{{ total_aportado|floatformat:2 }}</div>
+            <div class="sub">Total compras</div>
+        </div>
+        <div class="inv-kpi" style="border-color: {% if rentabilidad_total >= 0 %}#00ff8844{% else %}#ff4d4d44{% endif %};">
+            <div class="label">Rentabilidad total</div>
+            <div class="valor {% if rentabilidad_total >= 0 %}pos{% else %}neg{% endif %}">
+                {% if total_aportado > 0 %}
+                    {% if rentabilidad_total >= 0 %}+{% endif %}{{ rentabilidad_total|floatformat:2 }}%
+                {% else %}
+                    --
+                {% endif %}
+            </div>
+            <div class="sub">
+                {% if total_aportado > 0 %}
+                    {% with plusval=total_valor_actual|add:"-"|add:total_aportado %}
+                    {% if rentabilidad_total >= 0 %}+{% endif %}€{{ total_valor_actual|floatformat:2|add:"-" }}
+                    {% endwith %}
+                {% endif %}
+            </div>
+        </div>
+        <div class="inv-kpi" style="border-color: #2a2a2a;">
+            <div class="label">Activos en cartera</div>
+            <div class="valor" style="color: var(--text-color);">{{ inv_data|length }}</div>
+            <div class="sub">Posiciones abiertas</div>
+        </div>
+    </div>
+
+    <!-- TABLA -->
+    {% if inv_data %}
+    <div class="inv-table-wrap">
+        <table class="inv-table">
+            <thead>
+                <tr>
+                    <th>Activo</th>
+                    <th>Ticker</th>
+                    <th>Tipo</th>
+                    <th class="right">Nº unidades</th>
+                    <th class="right">Precio actual</th>
+                    <th class="right">Valor total</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in inv_data %}
+                <!-- Fila principal -->
+                <tr class="activo-row" onclick="toggleHistorico({{ forloop.counter }})" id="fila-{{ forloop.counter }}">
+                    <td>
+                        <span class="chevron-ico">▶</span>
+                        <strong style="color: var(--text-color);">{{ item.inv.nombre }}</strong>
+                        {% if item.inv.plataforma %}
+                        <div style="font-size: 0.7rem; color: var(--muted); margin-top: 2px; padding-left: 18px;">{{ item.inv.plataforma }}</div>
+                        {% endif %}
+                    </td>
+                    <td style="color: var(--muted); font-family: monospace;">{{ item.inv.ticker|default:"--" }}</td>
+                    <td><span class="badge-tipo badge-{{ item.inv.tipo }}">{{ item.inv.get_tipo_display }}</span></td>
+                    <td class="right" style="color: var(--text-color);">
+                        {{ item.cantidad|floatformat:4 }}
+                    </td>
+                    <td class="right">
+                        {% if item.valor_unitario %}
+                            <span style="color: #a259ff;">{{ item.valor_unitario|floatformat:4 }} {{ item.inv.moneda }}</span>
+                            {% if not item.inv.actualizable %}
+                            <div style="font-size: 0.65rem; color: var(--muted);">manual</div>
+                            {% endif %}
+                        {% else %}
+                            <span style="color: #333;">--</span>
+                        {% endif %}
+                    </td>
+                    <td class="right">
+                        {% if item.valor_total %}
+                            <strong style="color: #a259ff; font-size: 0.95rem;">€{{ item.valor_total|floatformat:2 }}</strong>
+                        {% else %}
+                            <span style="color: #333;">--</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{% url 'finanzas:editar' item.inv.id %}" onclick="event.stopPropagation()"
+                           style="font-size: 0.75rem; color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">✏️</a>
+                    </td>
+                </tr>
+                <!-- Fila histórico expandible -->
+                <tr class="historico-row" id="historico-{{ forloop.counter }}">
+                    <td colspan="7" class="historico-cell">
+                        <div class="historico-inner">
+                            <h4>📋 Historial de compras -- {{ item.inv.nombre }}</h4>
+                            {% if item.compras %}
+                            <table class="hist-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th class="right">Nº unidades</th>
+                                        <th class="right">Precio/ud.</th>
+                                        <th class="right">Coste total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for c in item.compras %}
+                                    <tr>
+                                        <td style="color: var(--muted);">{{ c.fecha }}</td>
+                                        <td class="right" style="color: var(--text-color);">{{ c.cantidad|floatformat:4 }}</td>
+                                        <td class="right" style="color: var(--text-color);">{{ c.precio_unitario|floatformat:4 }} {{ item.inv.moneda }}</td>
+                                        <td class="right" style="color: #ffaa00; font-weight: 600;">€{{ c.coste_total|floatformat:2 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <div style="display: flex; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid #222; font-size: 0.82rem;">
+                                <a href="{% url 'finanzas:nuevo_movimiento' item.inv.id %}"
+                                   style="color: #00ff88; text-decoration: none; font-weight: 600;">
+                                    ➕ Añadir movimiento
+                                </a>
+                                <span style="color: var(--muted);">
+                                    Capital total: <strong style="color: #ffaa00;">€{{ item.inv.valor_aportado|floatformat:2 }}</strong>
+                                </span>
+                            </div>
+                            {% else %}
+                            <p class="hist-empty">Sin compras registradas. <a href="{% url 'finanzas:nuevo_movimiento' item.inv.id %}" style="color: var(--primary-color);">Añadir primera compra</a></p>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="inv-empty">
+        <p>No tienes inversiones registradas todavía.</p>
+        <a href="{% url 'finanzas:crear' %}" class="btn btn-primary">➕ Añadir primera inversión</a>
+    </div>
+    {% endif %}
+
 </div>
 
-<!-- 📊 Placeholder gráfico JS -->
 <script>
-  const dataDistribucion = {
-    labels: ['Acciones', 'Cripto', 'Fondos'], // Placeholder
-    datasets: [{
-      label: 'Distribución',
-      data: [50, 30, 20],
-      backgroundColor: ['#00ff88', '#00d1ff', '#ff00aa'],
-    }]
-  };
+function toggleHistorico(n) {
+    const fila = document.getElementById('fila-' + n);
+    const hist = document.getElementById('historico-' + n);
+    const isOpen = fila.classList.contains('open');
 
-  new Chart(document.getElementById('grafico-distribucion'), {
-    type: 'pie',
-    data: dataDistribucion,
-    options: {
-      plugins: {
-        legend: { position: 'bottom', labels: { color: 'white' } }
-      }
+    // Cerrar todos
+    document.querySelectorAll('.activo-row.open').forEach(function(r) { r.classList.remove('open'); });
+    document.querySelectorAll('.historico-row.open').forEach(function(r) { r.classList.remove('open'); });
+
+    // Abrir el clickado (si no estaba abierto)
+    if (!isOpen) {
+        fila.classList.add('open');
+        hist.classList.add('open');
     }
-  });
+}
 </script>
 {% endblock %}

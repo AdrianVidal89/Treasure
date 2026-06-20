@@ -55,6 +55,16 @@
             </div>
             
             <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle">Distribución</a>
+
+             <div class="nav-user-dropdown">
+                <span class="nav-user-toggle">Inversiones</span>
+                <div class="nav-user-menu">
+                    <a href="{% url 'finanzas:listar' %}">📊 Ver cartera</a>
+                    <a href="{% url 'finanzas:crear' %}">➕ Nueva inversión</a>
+                </div>
+            </div>
+            <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle">Distribución</a>
+
             <a href="{% url 'finanzas:vista_evolucion' %}" class="nav-user-toggle">Evolución</a>
         </div>
 

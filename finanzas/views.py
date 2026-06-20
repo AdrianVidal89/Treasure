@@ -361,23 +361,50 @@ class InversionListView(LoginRequiredMixin, ListView):
     def get_queryset(self):
         return Inversion.objects.filter(usuario=self.request.user)
 
+    
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         inversiones = context['inversiones']
-        total_actual = sum(inv.valor_total_actual for inv in inversiones)
+
+        # Enriquecer cada inversión con sus compras para el histórico inline
+        inv_data = []
+        for inv in inversiones:
+            compras = inv.movimientos.filter(tipo='COMPRA').order_by('-fecha')
+            try:
+                valor_unitario = inv.valor_actual.valor_unitario
+            except AttributeError:
+                valor_unitario = None
+
+            inv_data.append({
+                'inv': inv,
+                'valor_unitario': valor_unitario,
+                'valor_total': inv.valor_total_actual,
+                'cantidad': inv.total_activos,
+                'compras': [
+                    {
+                        'fecha': m.fecha,
+                        'cantidad': m.cantidad,
+                        'precio_unitario': m.precio_unitario,
+                        'coste_total': (m.cantidad * m.precio_unitario) + m.comision,
+                        'comision': m.comision,
+                    }
+                    for m in compras
+                ],
+            })
+
+        total_actual = sum(d['valor_total'] for d in inv_data)
         total_aportado = sum(inv.valor_aportado for inv in inversiones)
-        total_activos = sum(inv.total_activos for inv in inversiones)
         rentabilidad = 0
         if total_aportado > 0:
             rentabilidad = ((total_actual - total_aportado) / total_aportado) * 100
+
         context.update({
+            'inv_data': inv_data,
             'total_valor_actual': total_actual,
             'total_aportado': total_aportado,
-            'total_activos': total_activos,
             'rentabilidad_total': rentabilidad,
         })
         return context
-
 
 class InversionDetailView(LoginRequiredMixin, DetailView):
     model = Inversion
