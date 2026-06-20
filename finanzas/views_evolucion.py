@@ -21,16 +21,34 @@ def _get_hogar(request):
     return profile, profile.hogar
 
 
-def _saldos_liquidez_patrimonio(saldos_qs):
-    """Dado un queryset de SaldoRealFondo, devuelve (liquidez, patrimonio)."""
+def _saldos_liquidez_patrimonio(saldos_qs, hogar=None):
+    """
+    Devuelve (liquidez, patrimonio).
+    - Liquidez : fondos comun + ahorro (saldos manuales).
+    - Patrimonio: liquidez + fondos inversion.
+        · Saldo manual registrado tiene prioridad.
+        · Si no hay saldo manual → valor_cartera (precio mercado real).
+    """
     liquidez = Decimal('0')
     patrimonio = Decimal('0')
+    inversion_con_saldo = set()
+
     for s in saldos_qs:
         if s.fondo.tipo_fondo in ('comun', 'ahorro'):
             liquidez += s.saldo
-        patrimonio += s.saldo
-    return liquidez, patrimonio
+            patrimonio += s.saldo
+        elif s.fondo.tipo_fondo == 'inversion':
+            patrimonio += s.saldo
+            inversion_con_saldo.add(s.fondo_id)
 
+    if hogar:
+        for f in FondoFamiliar.objects.filter(
+            hogar=hogar, tipo_fondo='inversion', activo=True
+        ).exclude(id__in=inversion_con_saldo):
+            if f.valor_cartera:
+                patrimonio += Decimal(str(f.valor_cartera))
+
+    return liquidez, patrimonio
 
 def _calcular_resumen(hogar, año):
     hoy = datetime.date.today()
@@ -59,7 +77,7 @@ def _calcular_resumen(hogar, año):
         saldos_actual = SaldoRealFondo.objects.filter(
             fondo__hogar=hogar, año=año, mes=ultimo_mes_con_datos
         ).select_related('fondo')
-        liquidez_actual, patrimonio_actual = _saldos_liquidez_patrimonio(saldos_actual)
+        liquidez_actual, patrimonio_actual = _saldos_liquidez_patrimonio(saldos_actual, hogar=hogar)
 
     # --- Crecimiento YTD: actual − Enero del MISMO año ---
     saldos_enero = SaldoRealFondo.objects.filter(
