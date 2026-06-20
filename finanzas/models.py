@@ -168,7 +168,15 @@ class Inversion(models.Model):
             valor_unitario = self.valor_actual.valor_unitario
         except AttributeError:
             return 0
-        return round(valor_unitario * self.cantidad_actual, 2)
+        # FUENTE ÚNICA: movimientos, no cantidad_actual
+        return round(valor_unitario * self.total_activos, 2)
+
+    def sincronizar_cantidad(self):
+        """Mantiene cantidad_actual en sync con movimientos (para compatibilidad)."""
+        from decimal import Decimal
+        self.cantidad_actual = self.total_activos or Decimal('0')
+        self.save(update_fields=['cantidad_actual'])
+
 
     @property
     def total_activos(self):
@@ -188,6 +196,48 @@ class Inversion(models.Model):
         return self.movimientos.filter(tipo='COMPRA').aggregate(
             total=models.Sum(models.F('cantidad') * models.F('precio_unitario'))
         )['total'] or 0
+
+    
+    @property
+    def precio_medio_compra(self):
+        """Precio medio ponderado de todas las compras (FIFO no implementado)."""
+        compras = self.movimientos.filter(tipo='COMPRA')
+        total_invertido = sum((m.cantidad * m.precio_unitario) for m in compras)
+        total_unidades = sum(m.cantidad for m in compras)
+        if total_unidades > 0:
+            return round(total_invertido / total_unidades, 8)
+        return Decimal('0')
+
+    @property
+    def coste_base_actual(self):
+        """Coste de adquisición de las unidades que aún tienes."""
+        return round(self.total_activos * self.precio_medio_compra, 2)
+
+    @property
+    def ganancia_latente(self):
+        """Valor mercado actual - coste base de la posición abierta."""
+        return self.valor_total_actual - self.coste_base_actual
+
+    @property
+    def rentabilidad_latente_pct(self):
+        """% de rentabilidad sobre la posición abierta actualmente."""
+        base = self.coste_base_actual
+        if base and base > 0:
+            return round(float((self.valor_total_actual - base) / base * 100), 2)
+        return None
+
+    @property
+    def ganancia_realizada(self):
+        """
+        Ganancia/pérdida ya materializada con ventas.
+        = (precio venta - precio medio compra) × cantidad vendida - comisiones venta
+        """
+        ventas = self.movimientos.filter(tipo='VENTA')
+        pmc = self.precio_medio_compra
+        total = Decimal('0')
+        for v in ventas:
+            total += (v.precio_unitario - pmc) * v.cantidad - v.comision
+        return round(total, 2)
 
 
 class MovimientoInversion(models.Model):

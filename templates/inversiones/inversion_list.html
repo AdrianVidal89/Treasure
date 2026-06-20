@@ -8,7 +8,7 @@
 .inv-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
 .inv-header h1 { color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0; font-size: 1.6rem; }
 
-/* Tarjetas resumen */
+/* KPIs */
 .inv-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
 .inv-kpi { background: #1a1a1a; border-radius: 14px; padding: 20px; border: 1px solid #2a2a2a; }
 .inv-kpi .label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
@@ -27,7 +27,7 @@
 .inv-table tbody tr.activo-row:hover { background: rgba(162, 89, 255, 0.07); }
 .inv-table tbody tr.activo-row.open { background: rgba(162, 89, 255, 0.1); }
 
-/* Badge tipo */
+/* Badge tipo activo */
 .badge-tipo { font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-block; }
 .badge-ACCION  { background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid #00ff8844; }
 .badge-ETF     { background: rgba(0,209,255,0.12); color: #00d1ff; border: 1px solid #00d1ff44; }
@@ -35,16 +35,18 @@
 .badge-CRIPTO  { background: rgba(162,89,255,0.12); color: #a259ff; border: 1px solid #a259ff44; }
 .badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid #333; }
 
-/* Fila expandible -- histórico de compras */
+/* Fila expandible — histórico de movimientos */
 .historico-row { display: none; }
 .historico-row.open { display: table-row; }
 .historico-cell { padding: 0 !important; border-top: none !important; }
 .historico-inner { background: #0d0d0d; padding: 16px 24px 20px 24px; border-top: 1px solid #2a2a2a; }
 .historico-inner h4 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
+
+/* Tabla histórico */
 .hist-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
 .hist-table th { text-align: left; color: var(--muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; padding: 6px 12px; border-bottom: 1px solid #222; }
 .hist-table th.right { text-align: right; }
-.hist-table td { padding: 8px 12px; border-bottom: 1px solid #161616; }
+.hist-table td { padding: 9px 12px; border-bottom: 1px solid #161616; }
 .hist-table td.right { text-align: right; }
 .hist-table tr:last-child td { border-bottom: none; }
 .hist-empty { color: var(--muted); font-style: italic; font-size: 0.82rem; padding: 8px 0; }
@@ -55,7 +57,6 @@
 
 /* Sin datos */
 .inv-empty { text-align: center; padding: 60px 20px; color: var(--muted); }
-.inv-empty p { font-size: 1rem; margin-bottom: 20px; }
 
 .pos { color: #00ff88; }
 .neg { color: #ff4d4d; }
@@ -66,12 +67,33 @@
     <!-- HEADER -->
     <div class="inv-header">
         <h1>📊 Cartera de Inversiones</h1>
-        <a href="{% url 'finanzas:crear' %}" class="btn btn-primary" style="font-size: 0.85rem; padding: 10px 18px;">➕ Nueva inversión</a>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{% url 'finanzas:importar_csv' %}"
+               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
+                      border: 1px solid #ffaa00; color: #ffaa00; border-radius: 8px;
+                      text-decoration: none; font-weight: 600;">
+                📥 Importar CSV
+            </a>
+            <a href="{% url 'finanzas:actualizar_precios' %}"
+               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
+                      border: 1px solid #00d1ff; color: #00d1ff; border-radius: 8px;
+                      text-decoration: none; font-weight: 600;">
+                🔄 Actualizar precios
+            </a>
+            <a href="{% url 'finanzas:crear' %}" class="btn btn-primary"
+               style="font-size: 0.85rem; padding: 10px 18px;">
+                ➕ Nueva inversión
+            </a>
+        </div>
     </div>
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; color: var(--text-color);">{{ message }}</div>
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color);
+                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+                    font-size: 0.85rem; color: var(--text-color);">
+            {{ message }}
+        </div>
         {% endfor %}
     {% endif %}
 
@@ -85,7 +107,7 @@
         <div class="inv-kpi" style="border-color: #2a2a2a;">
             <div class="label">Capital invertido</div>
             <div class="valor" style="color: var(--text-color);">€{{ total_aportado|floatformat:2 }}</div>
-            <div class="sub">Total compras</div>
+            <div class="sub">Total compras neto</div>
         </div>
         <div class="inv-kpi" style="border-color: {% if rentabilidad_total >= 0 %}#00ff8844{% else %}#ff4d4d44{% endif %};">
             <div class="label">Rentabilidad total</div>
@@ -93,16 +115,10 @@
                 {% if total_aportado > 0 %}
                     {% if rentabilidad_total >= 0 %}+{% endif %}{{ rentabilidad_total|floatformat:2 }}%
                 {% else %}
-                    --
+                    —
                 {% endif %}
             </div>
-            <div class="sub">
-                {% if total_aportado > 0 %}
-                    {% with plusval=total_valor_actual|add:"-"|add:total_aportado %}
-                    {% if rentabilidad_total >= 0 %}+{% endif %}€{{ total_valor_actual|floatformat:2|add:"-" }}
-                    {% endwith %}
-                {% endif %}
-            </div>
+            <div class="sub">Sobre capital invertido</div>
         </div>
         <div class="inv-kpi" style="border-color: #2a2a2a;">
             <div class="label">Activos en cartera</div>
@@ -123,84 +139,192 @@
                     <th class="right">Nº unidades</th>
                     <th class="right">Precio actual</th>
                     <th class="right">Valor total</th>
+                    <th class="right">Rentab.</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in inv_data %}
-                <!-- Fila principal -->
-                <tr class="activo-row" onclick="toggleHistorico({{ forloop.counter }})" id="fila-{{ forloop.counter }}">
+                <!-- Fila principal del activo -->
+                <tr class="activo-row" onclick="toggleHistorico({{ forloop.counter }})"
+                    id="fila-{{ forloop.counter }}">
                     <td>
                         <span class="chevron-ico">▶</span>
                         <strong style="color: var(--text-color);">{{ item.inv.nombre }}</strong>
                         {% if item.inv.plataforma %}
-                        <div style="font-size: 0.7rem; color: var(--muted); margin-top: 2px; padding-left: 18px;">{{ item.inv.plataforma }}</div>
+                        <div style="font-size: 0.7rem; color: var(--muted); margin-top: 2px; padding-left: 18px;">
+                            {{ item.inv.plataforma }}
+                        </div>
                         {% endif %}
                     </td>
-                    <td style="color: var(--muted); font-family: monospace;">{{ item.inv.ticker|default:"--" }}</td>
-                    <td><span class="badge-tipo badge-{{ item.inv.tipo }}">{{ item.inv.get_tipo_display }}</span></td>
+                    <td style="color: var(--muted); font-family: monospace;">
+                        {{ item.inv.ticker|default:"—" }}
+                    </td>
+                    <td>
+                        <span class="badge-tipo badge-{{ item.inv.tipo }}">
+                            {{ item.inv.get_tipo_display }}
+                        </span>
+                    </td>
                     <td class="right" style="color: var(--text-color);">
                         {{ item.cantidad|floatformat:4 }}
                     </td>
                     <td class="right">
                         {% if item.valor_unitario %}
-                            <span style="color: #a259ff;">{{ item.valor_unitario|floatformat:4 }} {{ item.inv.moneda }}</span>
+                            <span style="color: #a259ff;">
+                                {{ item.valor_unitario|floatformat:4 }} {{ item.inv.moneda }}
+                            </span>
                             {% if not item.inv.actualizable %}
                             <div style="font-size: 0.65rem; color: var(--muted);">manual</div>
                             {% endif %}
                         {% else %}
-                            <span style="color: #333;">--</span>
+                            <span style="color: #333;">—</span>
                         {% endif %}
                     </td>
                     <td class="right">
                         {% if item.valor_total %}
-                            <strong style="color: #a259ff; font-size: 0.95rem;">€{{ item.valor_total|floatformat:2 }}</strong>
+                            <strong style="color: #a259ff; font-size: 0.95rem;">
+                                €{{ item.valor_total|floatformat:2 }}
+                            </strong>
                         {% else %}
-                            <span style="color: #333;">--</span>
+                            <span style="color: #333;">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="right">
+                        {% if item.rentabilidad is not None %}
+                            <span class="{% if item.rentabilidad >= 0 %}pos{% else %}neg{% endif %}"
+                                  style="font-weight: 600; font-size: 0.85rem;">
+                                {% if item.rentabilidad >= 0 %}+{% endif %}{{ item.rentabilidad|floatformat:1 }}%
+                            </span>
+                        {% else %}
+                            <span style="color: #333;">—</span>
                         {% endif %}
                     </td>
                     <td>
-                        <a href="{% url 'finanzas:editar' item.inv.id %}" onclick="event.stopPropagation()"
-                           style="font-size: 0.75rem; color: var(--muted); text-decoration: none; padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">✏️</a>
+                        <a href="{% url 'finanzas:editar' item.inv.id %}"
+                           onclick="event.stopPropagation()"
+                           style="font-size: 0.75rem; color: var(--muted); text-decoration: none;
+                                  padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">✏️</a>
                     </td>
                 </tr>
-                <!-- Fila histórico expandible -->
+
+                <!-- Fila expandible — histórico de movimientos -->
                 <tr class="historico-row" id="historico-{{ forloop.counter }}">
-                    <td colspan="7" class="historico-cell">
+                    <td colspan="8" class="historico-cell">
                         <div class="historico-inner">
-                            <h4>📋 Historial de compras -- {{ item.inv.nombre }}</h4>
-                            {% if item.compras %}
+                            <h4>📋 Historial de movimientos — {{ item.inv.nombre }}
+                                {% if item.inv.plataforma %}
+                                <span style="color: var(--muted); font-weight: 400;">
+                                    · {{ item.inv.plataforma }}
+                                </span>
+                                {% endif %}
+                            </h4>
+
+                            {% if item.movimientos %}
                             <table class="hist-table">
                                 <thead>
                                     <tr>
                                         <th>Fecha</th>
+                                        <th>Tipo</th>
                                         <th class="right">Nº unidades</th>
                                         <th class="right">Precio/ud.</th>
+                                        <th class="right">Comisión</th>
                                         <th class="right">Coste total</th>
+                                        <th></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for c in item.compras %}
+                                    {% for m in item.movimientos %}
                                     <tr>
-                                        <td style="color: var(--muted);">{{ c.fecha }}</td>
-                                        <td class="right" style="color: var(--text-color);">{{ c.cantidad|floatformat:4 }}</td>
-                                        <td class="right" style="color: var(--text-color);">{{ c.precio_unitario|floatformat:4 }} {{ item.inv.moneda }}</td>
-                                        <td class="right" style="color: #ffaa00; font-weight: 600;">€{{ c.coste_total|floatformat:2 }}</td>
+                                        <td style="color: var(--muted);">{{ m.fecha }}</td>
+                                        <td>
+                                            {% if m.tipo == 'COMPRA' %}
+                                                <span style="font-size:0.72rem; padding:2px 8px;
+                                                             border-radius:20px; font-weight:600;
+                                                             background:rgba(0,255,136,0.12);
+                                                             color:#00ff88;
+                                                             border:1px solid #00ff8844;">
+                                                    ▲ Compra
+                                                </span>
+                                            {% elif m.tipo == 'VENTA' %}
+                                                <span style="font-size:0.72rem; padding:2px 8px;
+                                                             border-radius:20px; font-weight:600;
+                                                             background:rgba(255,77,77,0.12);
+                                                             color:#ff4d4d;
+                                                             border:1px solid #ff4d4d44;">
+                                                    ▼ Venta
+                                                </span>
+                                            {% else %}
+                                                <span style="font-size:0.72rem; padding:2px 8px;
+                                                             border-radius:20px; font-weight:600;
+                                                             background:rgba(255,170,0,0.12);
+                                                             color:#ffaa00;
+                                                             border:1px solid #ffaa0044;">
+                                                    💰 Div.
+                                                </span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="right" style="color: var(--text-color);">
+                                            {{ m.cantidad|floatformat:4 }}
+                                        </td>
+                                        <td class="right" style="color: var(--text-color);">
+                                            {{ m.precio_unitario|floatformat:4 }} {{ item.inv.moneda }}
+                                        </td>
+                                        <td class="right" style="color: var(--muted);">
+                                            {% if m.comision > 0 %}
+                                                €{{ m.comision|floatformat:2 }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </td>
+                                        <td class="right" style="color: #ffaa00; font-weight: 600;">
+                                            €{{ m.coste_total|floatformat:2 }}
+                                        </td>
+                                        <td>
+                                            <a href="{% url 'finanzas:editar_movimiento' m.id %}"
+                                               onclick="event.stopPropagation()"
+                                               style="font-size:0.72rem; color:var(--muted);
+                                                      text-decoration:none; padding:3px 8px;
+                                                      border:1px solid #333; border-radius:6px;">✏️</a>
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
-                            <div style="display: flex; justify-content: space-between; margin-top: 12px; padding-top: 10px; border-top: 1px solid #222; font-size: 0.82rem;">
+
+                            <!-- Footer del histórico -->
+                            <div style="display: flex; justify-content: space-between; align-items: center;
+                                        margin-top: 12px; padding-top: 10px; border-top: 1px solid #222;
+                                        font-size: 0.82rem; flex-wrap: wrap; gap: 8px;">
                                 <a href="{% url 'finanzas:nuevo_movimiento' item.inv.id %}"
+                                   onclick="event.stopPropagation()"
                                    style="color: #00ff88; text-decoration: none; font-weight: 600;">
                                     ➕ Añadir movimiento
                                 </a>
-                                <span style="color: var(--muted);">
-                                    Capital total: <strong style="color: #ffaa00;">€{{ item.inv.valor_aportado|floatformat:2 }}</strong>
-                                </span>
+                                <div style="display: flex; gap: 20px;">
+                                    <span style="color: var(--muted);">
+                                        Capital invertido:
+                                        <strong style="color: var(--text-color);">
+                                            €{{ item.inv.valor_aportado|floatformat:2 }}
+                                        </strong>
+                                    </span>
+                                    <span style="color: var(--muted);">
+                                        Posición actual:
+                                        <strong style="color: #a259ff;">
+                                            {{ item.cantidad|floatformat:4 }} uds.
+                                        </strong>
+                                    </span>
+                                </div>
                             </div>
+
                             {% else %}
-                            <p class="hist-empty">Sin compras registradas. <a href="{% url 'finanzas:nuevo_movimiento' item.inv.id %}" style="color: var(--primary-color);">Añadir primera compra</a></p>
+                            <p class="hist-empty">
+                                Sin movimientos registrados.
+                                <a href="{% url 'finanzas:nuevo_movimiento' item.inv.id %}"
+                                   onclick="event.stopPropagation()"
+                                   style="color: var(--primary-color);">
+                                    Añadir primera compra
+                                </a>
+                            </p>
                             {% endif %}
                         </div>
                     </td>
@@ -209,6 +333,7 @@
             </tbody>
         </table>
     </div>
+
     {% else %}
     <div class="inv-empty">
         <p>No tienes inversiones registradas todavía.</p>
@@ -224,11 +349,15 @@ function toggleHistorico(n) {
     const hist = document.getElementById('historico-' + n);
     const isOpen = fila.classList.contains('open');
 
-    // Cerrar todos
-    document.querySelectorAll('.activo-row.open').forEach(function(r) { r.classList.remove('open'); });
-    document.querySelectorAll('.historico-row.open').forEach(function(r) { r.classList.remove('open'); });
+    // Cerrar todos primero
+    document.querySelectorAll('.activo-row.open').forEach(function(r) {
+        r.classList.remove('open');
+    });
+    document.querySelectorAll('.historico-row.open').forEach(function(r) {
+        r.classList.remove('open');
+    });
 
-    // Abrir el clickado (si no estaba abierto)
+    // Abrir el clickado si estaba cerrado
     if (!isOpen) {
         fila.classList.add('open');
         hist.classList.add('open');

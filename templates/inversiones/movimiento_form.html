@@ -1,43 +1,179 @@
 {% extends "base.html" %}
+{% block title %}Nuevo movimiento - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
 
 {% block content %}
-<div class="panel">
-  <h2 class="titulo">➕ Nuevo movimiento para: {{ view.inversion.nombre }} ({{ view.inversion.ticker }})</h2>
-  <p><strong>Tipo:</strong> {{ view.inversion.tipo }} | <strong>Plataforma:</strong> {{ view.inversion.plataforma }}</p>
+<div class="dashboard-container" style="max-width: 520px;">
 
-  <form method="post" class="formulario-dark">
-    {% csrf_token %}
-    {{ form.non_field_errors }}
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 6px;">
+        ➕ Nuevo movimiento
+    </h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">
+        <strong style="color: var(--text-color);">{{ view.inversion.nombre }}</strong>
+        · {{ view.inversion.ticker }}
+        · {{ view.inversion.get_tipo_display }}
+        {% if view.inversion.plataforma %}· {{ view.inversion.plataforma }}{% endif %}
+    </p>
 
-    <div class="form-group">
-      <label for="{{ form.fecha.id_for_label }}">📅 Fecha:</label>
-      {{ form.fecha }}
+    {% if form.non_field_errors %}
+    <div style="background: rgba(255,77,77,0.1); border: 1px solid #ff4d4d; border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #ff4d4d;">
+        {{ form.non_field_errors }}
     </div>
+    {% endif %}
 
-    <div class="form-group">
-      <label for="{{ form.tipo.id_for_label }}">📂 Tipo de movimiento:</label>
-      {{ form.tipo }}
-    </div>
+    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162,89,255,0.25);">
+        <form method="post">
+            {% csrf_token %}
 
-    <div class="form-group">
-      <label for="{{ form.cantidad.id_for_label }}">🔢 Cantidad:</label>
-      {{ form.cantidad }}
-    </div>
+            <!-- Fecha -->
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">📅 Fecha</label>
+                <input type="date" name="fecha"
+                       value="{{ form.fecha.value|default:'' }}"
+                       style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
+                              background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                {% if form.fecha.errors %}<div style="color:#ff4d4d;font-size:0.78rem;margin-top:4px;">{{ form.fecha.errors.0 }}</div>{% endif %}
+            </div>
 
-    <div class="form-group">
-      <label for="{{ form.precio_unitario.id_for_label }}">💲 Precio unitario:</label>
-      {{ form.precio_unitario }}
-    </div>
+            <!-- Tipo -->
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;">📂 Tipo de movimiento</label>
+                <div style="display: flex; gap: 10px;">
+                    <label style="flex: 1; cursor: pointer;">
+                        <input type="radio" name="tipo" value="COMPRA"
+                               {% if form.tipo.value == 'COMPRA' or not form.tipo.value %}checked{% endif %}
+                               style="display: none;" class="tipo-radio">
+                        <div class="tipo-btn" data-val="COMPRA"
+                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid #333;
+                                    font-weight: 700; font-size: 0.9rem; transition: all 0.2s; cursor: pointer;
+                                    background: #111; color: var(--muted);">
+                            📈 Compra
+                        </div>
+                    </label>
+                    <label style="flex: 1; cursor: pointer;">
+                        <input type="radio" name="tipo" value="VENTA"
+                               {% if form.tipo.value == 'VENTA' %}checked{% endif %}
+                               style="display: none;" class="tipo-radio">
+                        <div class="tipo-btn" data-val="VENTA"
+                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid #333;
+                                    font-weight: 700; font-size: 0.9rem; transition: all 0.2s; cursor: pointer;
+                                    background: #111; color: var(--muted);">
+                            📉 Venta
+                        </div>
+                    </label>
+                    <label style="flex: 1; cursor: pointer;">
+                        <input type="radio" name="tipo" value="DIVIDENDO"
+                               {% if form.tipo.value == 'DIVIDENDO' %}checked{% endif %}
+                               style="display: none;" class="tipo-radio">
+                        <div class="tipo-btn" data-val="DIVIDENDO"
+                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid #333;
+                                    font-weight: 700; font-size: 0.9rem; transition: all 0.2s; cursor: pointer;
+                                    background: #111; color: var(--muted);">
+                            💰 Dividendo
+                        </div>
+                    </label>
+                </div>
+                {% if form.tipo.errors %}<div style="color:#ff4d4d;font-size:0.78rem;margin-top:4px;">{{ form.tipo.errors.0 }}</div>{% endif %}
+            </div>
 
-    <div class="form-group">
-      <label for="{{ form.comision.id_for_label }}">💸 Comisión:</label>
-      {{ form.comision }}
-    </div>
+            <!-- Cantidad + Precio -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                <div>
+                    <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">🔢 Cantidad</label>
+                    <input type="number" name="cantidad" step="0.00000001" min="0"
+                           value="{{ form.cantidad.value|default:'' }}"
+                           placeholder="0.00000000"
+                           style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
+                                  background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                    {% if form.cantidad.errors %}<div style="color:#ff4d4d;font-size:0.78rem;margin-top:4px;">{{ form.cantidad.errors.0 }}</div>{% endif %}
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">💲 Precio unitario (€)</label>
+                    <input type="number" name="precio_unitario" step="0.00000001" min="0"
+                           value="{{ form.precio_unitario.value|default:'' }}"
+                           placeholder="0.00"
+                           style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
+                                  background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                    {% if form.precio_unitario.errors %}<div style="color:#ff4d4d;font-size:0.78rem;margin-top:4px;">{{ form.precio_unitario.errors.0 }}</div>{% endif %}
+                </div>
+            </div>
 
-    <div class="form-actions">
-      <button type="submit" class="btn-glow-primary">💾 Guardar</button>
-      <a href="{% url 'inversiones:detalle' view.inversion.id %}" class="btn-glow-secundario">Cancelar</a>
+            <!-- Comisión + Total calculado -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+                <div>
+                    <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">💸 Comisión (€)</label>
+                    <input type="number" name="comision" step="0.01" min="0"
+                           value="{{ form.comision.value|default:'0' }}"
+                           placeholder="0.00"
+                           id="id_comision"
+                           style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
+                                  background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">🧾 Coste total</label>
+                    <div id="coste-total"
+                         style="padding: 13px 16px; border: 1px solid #333; border-radius: 10px;
+                                background: #111; color: #ffaa00; font-size: 1rem; font-weight: 700;">
+                        —
+                    </div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px; margin-top: 28px;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">💾 Guardar movimiento</button>
+                <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary">Cancelar</a>
+            </div>
+        </form>
     </div>
-  </form>
 </div>
+
+<script>
+// Toggle visual botones de tipo
+function actualizarTipoBtns() {
+    document.querySelectorAll('.tipo-radio').forEach(function(radio) {
+        const btn = radio.nextElementSibling;
+        if (radio.checked) {
+            const colores = { 'COMPRA': '#00ff88', 'VENTA': '#ff4d4d', 'DIVIDENDO': '#ffaa00' };
+            const color = colores[radio.value] || 'var(--primary-color)';
+            btn.style.borderColor = color;
+            btn.style.color = color;
+            btn.style.background = 'rgba(0,0,0,0.3)';
+        } else {
+            btn.style.borderColor = '#333';
+            btn.style.color = 'var(--muted)';
+            btn.style.background = '#111';
+        }
+    });
+}
+
+document.querySelectorAll('.tipo-radio').forEach(function(radio) {
+    radio.addEventListener('change', actualizarTipoBtns);
+});
+document.querySelectorAll('.tipo-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        const val = this.dataset.val;
+        document.querySelectorAll('.tipo-radio').forEach(function(r) {
+            r.checked = (r.value === val);
+        });
+        actualizarTipoBtns();
+    });
+});
+actualizarTipoBtns();
+
+// Calcular coste total en tiempo real
+function calcularCoste() {
+    const cantidad = parseFloat(document.querySelector('[name="cantidad"]').value) || 0;
+    const precio   = parseFloat(document.querySelector('[name="precio_unitario"]').value) || 0;
+    const comision = parseFloat(document.querySelector('[name="comision"]').value) || 0;
+    const total    = cantidad * precio + comision;
+    document.getElementById('coste-total').textContent = total > 0
+        ? '€' + total.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '—';
+}
+
+document.querySelector('[name="cantidad"]').addEventListener('input', calcularCoste);
+document.querySelector('[name="precio_unitario"]').addEventListener('input', calcularCoste);
+document.getElementById('id_comision').addEventListener('input', calcularCoste);
+calcularCoste();
+</script>
 {% endblock %}

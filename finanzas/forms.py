@@ -75,11 +75,12 @@ class InversionForm(forms.ModelForm):
 
     class Meta:
         model = Inversion
-        exclude = ['usuario', 'fecha_creacion']
+        # ANTES: exclude = ['usuario', 'fecha_creacion']
+        # AHORA: también excluir cantidad_actual
+        exclude = ['usuario', 'fecha_creacion', 'cantidad_actual']
 
     def __init__(self, *args, hogar=None, **kwargs):
         super().__init__(*args, **kwargs)
-
         if hogar:
             self.fields['fondo'].queryset = FondoFamiliar.objects.filter(
                 hogar=hogar, tipo_fondo='inversion', activo=True
@@ -89,13 +90,14 @@ class InversionForm(forms.ModelForm):
         self.fields['fondo'].required = False
         self.fields['fondo'].empty_label = '— Sin fondo asignado —'
 
-        # Si estamos editando una inversión existente con valor manual
         instance = kwargs.get('instance')
         if instance and not instance.actualizable:
             try:
                 self.fields['valor_unitario_manual'].initial = instance.valor_actual.valor_unitario
             except AttributeError:
                 pass
+
+
 
 class MovimientoInversionForm(forms.ModelForm):
     class Meta:

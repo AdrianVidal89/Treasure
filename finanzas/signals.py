@@ -1,14 +1,12 @@
-from django.db.models.signals import post_save
+from django.db.models import Q
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.utils import timezone
-from .models import ValorActualInversion, HistorialValorInversion
-from django.db.models import Q
+from .models import ValorActualInversion, HistorialValorInversion, MovimientoInversion
+
 
 @receiver(post_save, sender=ValorActualInversion)
 def guardar_historial_valor(sender, instance, created, **kwargs):
-    from django.utils import timezone
-    from .models import HistorialValorInversion
-
     HistorialValorInversion.objects.update_or_create(
         inversion=instance.inversion,
         fecha=timezone.now().date(),
@@ -18,3 +16,13 @@ def guardar_historial_valor(sender, instance, created, **kwargs):
             'fuente': instance.fuente
         }
     )
+
+
+@receiver(post_save, sender=MovimientoInversion)
+def sincronizar_cantidad_tras_movimiento(sender, instance, **kwargs):
+    instance.inversion.sincronizar_cantidad()
+
+
+@receiver(post_delete, sender=MovimientoInversion)
+def sincronizar_cantidad_tras_borrado(sender, instance, **kwargs):
+    instance.inversion.sincronizar_cantidad()
