@@ -7,29 +7,6 @@
     <title>{% block title %}Treasure{% endblock %}</title>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
-
-<script>
-    document.addEventListener("DOMContentLoaded", function () {
-        const toggles = document.querySelectorAll(".nav-user-toggle");
-    
-        toggles.forEach(function(toggle) {
-            const menu = toggle.nextElementSibling;
-            if (!menu || !menu.classList.contains('nav-user-menu')) return;
-    
-            toggle.addEventListener("click", function (e) {
-                e.stopPropagation();
-                document.querySelectorAll(".nav-user-menu").forEach(m => m.style.display = "none");
-                menu.style.display = "block";
-            });
-        });
-    
-        document.addEventListener("click", function () {
-            document.querySelectorAll(".nav-user-menu").forEach(menu => {
-                menu.style.display = "none";
-            });
-        });
-    });
-</script>
 <body class="{% block body_class %}{% endblock %}">
     {% if request.user.is_authenticated and not hide_navbar %}
     <nav class="navbar">
@@ -54,18 +31,23 @@
                     <a href="{% url 'finanzas:crear_partida' %}">➕ Gasto</a>
                 </div>
             </div>
-            
-             <div class="nav-user-dropdown">
+
+            <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Inversiones</span>
                 <div class="nav-user-menu">
                     <a href="{% url 'finanzas:listar' %}">📊 Ver cartera</a>
                     <a href="{% url 'finanzas:crear' %}">➕ Nueva inversión</a>
                 </div>
             </div>
+
             <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle">Distribución</a>
 
             <a href="{% url 'finanzas:vista_evolucion' %}" class="nav-user-toggle">Evolución</a>
         </div>
+
+        <button class="nav-toggle" aria-label="Menú" aria-expanded="false">
+            <span></span><span></span><span></span>
+        </button>
 
         <div class="navbar-right">
             <div class="nav-user-dropdown">
@@ -87,6 +69,37 @@
     {% endif %}
 
     {% block content %}
-    {% endblock %}    
+    {% endblock %}
+
+    <script>
+    document.addEventListener("DOMContentLoaded", function () {
+        // --- Hamburguesa ---
+        const navToggle = document.querySelector(".nav-toggle");
+        const navbar = document.querySelector(".navbar");
+        if (navToggle && navbar) {
+            navToggle.addEventListener("click", function (e) {
+                e.stopPropagation();
+                const open = navbar.classList.toggle("nav-open");
+                navToggle.setAttribute("aria-expanded", open);
+            });
+        }
+
+        // --- Dropdowns ---
+        const toggles = document.querySelectorAll(".nav-user-toggle");
+        toggles.forEach(function (toggle) {
+            const menu = toggle.nextElementSibling;
+            if (!menu || !menu.classList.contains("nav-user-menu")) return;
+            toggle.addEventListener("click", function (e) {
+                e.stopPropagation();
+                document.querySelectorAll(".nav-user-menu").forEach(m => m.style.display = "none");
+                menu.style.display = "block";
+            });
+        });
+
+        document.addEventListener("click", function () {
+            document.querySelectorAll(".nav-user-menu").forEach(menu => menu.style.display = "none");
+        });
+    });
+    </script>
 </body>
 </html>
