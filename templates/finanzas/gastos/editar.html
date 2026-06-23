@@ -73,7 +73,7 @@
             <div class="form-row">
                 <div class="form-group">
                     <label>Importe (&euro;)</label>
-                    <input type="number" name="importe" id="importe" step="0.01" min="0" value="{{ partida.importe }}" required>
+                    <input type="number" name="importe" id="importe" step="0.01" min="0" value="{{ partida.importe|unlocalize }}" required>
                 </div>
                 <div class="form-group">
                     <label>Periodicidad</label>

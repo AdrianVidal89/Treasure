@@ -140,7 +140,7 @@
 
                     <!-- Ingresos reales -->
                     <td class="cell-ingresos"
-                        onclick="abrirModalIngreso({{ fila.mes }}, {{ año_actual }}, '{% if fila.ingreso_real %}{{ fila.ingreso_real.importe }}{% endif %}')"
+                        onclick="abrirModalIngreso({{ fila.mes }}, {{ año_actual }}, '{% if fila.ingreso_real %}{{ fila.ingreso_real.importe|unlocalize }}{% endif %}')"
                         title="Click para editar">
                         {% if fila.ingreso_real %}
                             €{{ fila.ingreso_real.importe|floatformat:0 }}
@@ -162,7 +162,7 @@
 
                     <!-- Saldo por fondo -->
                     {% for celda in fila.celdas %}
-                    <td onclick="abrirModalSaldo({{ celda.fondo.id }}, '{{ celda.fondo.nombre|escapejs }}', {{ fila.mes }}, {{ año_actual }}, '{% if celda.saldo_valor %}{{ celda.saldo_valor }}{% endif %}')"
+                    <td onclick="abrirModalSaldo({{ celda.fondo.id }}, '{{ celda.fondo.nombre|escapejs }}', {{ fila.mes }}, {{ año_actual }}, '{% if celda.saldo_valor is not None %}{{ celda.saldo_valor|unlocalize }}{% endif %}')"
                         title="Click para editar">
                         {% if celda.saldo_valor is not None %}
                             <span class="cell-valor" style="color: {{ celda.fondo.color }};">
@@ -202,7 +202,7 @@
             <input type="hidden" name="año" id="modal-saldo-año">
             <div class="fg">
                 <label>Saldo real (€) — deja vacío para borrar</label>
-                <input type="number" name="saldo" id="modal-saldo-valor" step="0.01" placeholder="Ej: 12500.00" autofocus>
+                <input type="number" name="saldo" id="modal-saldo-valor" step="0.01" placeholder="Ej: 12500.00">
             </div>
             <div class="fg">
                 <label>Nota (opcional)</label>
@@ -226,7 +226,7 @@
             <input type="hidden" name="año" id="modal-ingreso-año">
             <div class="fg">
                 <label>Ingresos netos reales (€) — deja vacío para borrar</label>
-                <input type="number" name="importe" id="modal-ingreso-valor" step="0.01" placeholder="Ej: 6634.00" autofocus>
+                <input type="number" name="importe" id="modal-ingreso-valor" step="0.01" placeholder="Ej: 6634.00">
             </div>
             <div class="fg">
                 <label>Nota (opcional)</label>
