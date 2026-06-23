@@ -1,8 +1,11 @@
+import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.timezone import now
+from django.views.decorators.http import require_POST
 from django.db import models as db_models
 import urllib.request
 import urllib.parse
@@ -12,6 +15,8 @@ import io
 from decimal import Decimal, InvalidOperation
 import datetime
 from django.views.generic import UpdateView
+
+logger = logging.getLogger(__name__)
 
 from .forms import (
     CuentaBancariaForm,
@@ -303,9 +308,6 @@ def buscar_ticker(request):
 
     # 2. Buscar en Yahoo Finance
     try:
-        import urllib.request
-        import urllib.parse
-
         url = (
             'https://query2.finance.yahoo.com/v1/finance/search'
             f'?q={urllib.parse.quote(q)}&quotesCount=8&newsCount=0'
@@ -338,7 +340,8 @@ def buscar_ticker(request):
 
         return JsonResponse({'results': results, 'source': 'yahoo'})
 
-    except Exception:
+    except Exception as e:
+        logger.warning("Yahoo Finance fetch error for '%s': %s", q, e)
         # Fallback: búsqueda parcial en cache
         fallback = TickerCatalogo.objects.filter(
             db_models.Q(symbol__icontains=q) | db_models.Q(nombre__icontains=q)
@@ -359,59 +362,6 @@ from .models import Inversion, MovimientoInversion, ValorActualInversion
 from .forms import InversionForm, MovimientoInversionForm
 from .models import ResumenInversionesMensual
 
-
-class InversionListView(LoginRequiredMixin, ListView):
-    model = Inversion
-    template_name = 'inversiones/inversion_list.html'
-    context_object_name = 'inversiones'
-
-    def get_queryset(self):
-        return Inversion.objects.filter(usuario=self.request.user)
-
-    
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        inversiones = context['inversiones']
-
-        # Enriquecer cada inversión con sus compras para el histórico inline
-        inv_data = []
-        for inv in inversiones:
-            compras = inv.movimientos.filter(tipo='COMPRA').order_by('-fecha')
-            try:
-                valor_unitario = inv.valor_actual.valor_unitario
-            except AttributeError:
-                valor_unitario = None
-
-            inv_data.append({
-                'inv': inv,
-                'valor_unitario': valor_unitario,
-                'valor_total': inv.valor_total_actual,
-                'cantidad': inv.cantidad_actual,
-                'compras': [
-                    {
-                        'fecha': m.fecha,
-                        'cantidad': m.cantidad,
-                        'precio_unitario': m.precio_unitario,
-                        'coste_total': (m.cantidad * m.precio_unitario) + m.comision,
-                        'comision': m.comision,
-                    }
-                    for m in compras
-                ],
-            })
-
-        total_actual = sum(d['valor_total'] for d in inv_data)
-        total_aportado = sum(inv.valor_aportado for inv in inversiones)
-        rentabilidad = 0
-        if total_aportado > 0:
-            rentabilidad = ((total_actual - total_aportado) / total_aportado) * 100
-
-        context.update({
-            'inv_data': inv_data,
-            'total_valor_actual': total_actual,
-            'total_aportado': total_aportado,
-            'rentabilidad_total': rentabilidad,
-        })
-        return context
 
 class InversionDetailView(LoginRequiredMixin, DetailView):
     model = Inversion
@@ -497,6 +447,11 @@ class MovimientoCreateView(LoginRequiredMixin, CreateView):
         form.instance.inversion = self.inversion
         return super().form_valid(form)
 
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['view'] = self
+        return context
+
     def get_success_url(self):
         return reverse_lazy('finanzas:listar')
 
@@ -509,6 +464,7 @@ class ResumenInversionesMensualView(LoginRequiredMixin, DetailView):
         return ResumenInversionesMensual.objects.filter(usuario=self.request.user)
 
 @login_required
+@require_POST
 def actualizar_precios_inversiones(request):
     """Llama a Yahoo Finance para actualizar el precio de cada activo con actualizable=True."""
     inversiones = Inversion.objects.filter(
@@ -527,8 +483,7 @@ def actualizar_precios_inversiones(request):
             )
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=8) as resp:
-                import json as _json
-                data = _json.loads(resp.read())
+                data = json.loads(resp.read())
 
             precio = (
                 data['chart']['result'][0]['meta'].get('regularMarketPrice')
@@ -555,12 +510,6 @@ def actualizar_precios_inversiones(request):
 
     return redirect('finanzas:listar')
 
-import csv
-import io
-import datetime
-from decimal import Decimal, InvalidOperation
-
-
 @login_required
 def importar_movimientos_csv(request):
     """
@@ -568,22 +517,18 @@ def importar_movimientos_csv(request):
     Cabecera en la primera fila no vacía que empiece por 'Fecha'.
     Crea una Inversion por combinación ticker+broker (posiciones separadas por cuenta).
     """
+    columnas = [
+        'Fecha de Operación', 'Activo (Ticker)', 'Tipo de Operación',
+        'Cantidad de Activos', 'Precio por Unidad', 'Monto Total (€)',
+        'Broker/Plataforma', 'Comisiones (€)',
+    ]
+
     if request.method != 'POST':
-        columnas = [
-            'Fecha de Operación', 'Activo (Ticker)', 'Tipo de Operación',
-            'Cantidad de Activos', 'Precio por Unidad', 'Monto Total (€)',
-            'Broker/Plataforma', 'Comisiones (€)',
-        ]
         return render(request, 'inversiones/importar_csv.html', {'columnas': columnas})
 
     archivo = request.FILES.get('archivo')
     if not archivo:
         messages.error(request, "No se subió ningún archivo.")
-        columnas = [
-            'Fecha de Operación', 'Activo (Ticker)', 'Tipo de Operación',
-            'Cantidad de Activos', 'Precio por Unidad', 'Monto Total (€)',
-            'Broker/Plataforma', 'Comisiones (€)',
-        ]
         return render(request, 'inversiones/importar_csv.html', {'columnas': columnas})
 
     # Decodificar — utf-8-sig elimina BOM de Excel/Sheets
@@ -770,7 +715,7 @@ def importar_movimientos_csv(request):
             continue
 
         # ─── Crear movimiento ────────────────────────────────────────────────
-        MovimientoInversion.objects.create(
+        mov = MovimientoInversion(
             inversion=inv,
             fecha=fecha,
             tipo=tipo,
@@ -778,6 +723,12 @@ def importar_movimientos_csv(request):
             precio_unitario=precio,
             comision=comision,
         )
+        try:
+            mov.full_clean()
+        except ValidationError as e:
+            errores.append(f"Fila {i}: {'; '.join(e.messages)} ({ticker_raw})")
+            continue
+        mov.save()
         creados += 1
 
     # ─── Sincronizar cantidad_actual desde movimientos ───────────────────────

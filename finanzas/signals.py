@@ -12,7 +12,7 @@ def guardar_historial_valor(sender, instance, created, **kwargs):
         fecha=timezone.now().date(),
         defaults={
             'valor_unitario': instance.valor_unitario,
-            'cantidad_activos': instance.inversion.cantidad_actual,
+            'cantidad_activos': instance.inversion.total_activos,
             'fuente': instance.fuente
         }
     )
