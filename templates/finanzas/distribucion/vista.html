@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Distribución — {{ d.mes_nombre }} {{ d.anio }}{% endblock %}
 {% load l10n %}
+{% load custom_filters %}
 
 {% block content %}
 <div class="panel">
 
 <!-- ===== CABECERA ===== -->
-<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+<div class="dist-head">
     <h2 class="titulo-glow" style="margin:0;">💰 Distribución mensual</h2>
-    <form method="get" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <form method="get" class="dist-head-form">
         <select name="mes" onchange="this.form.submit()" class="sel-sm">
             {% for num, nombre in meses %}
             <option value="{{ num }}" {% if num == mes_actual %}selected{% endif %}>{{ nombre }}</option>
@@ -27,243 +28,126 @@
 <div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
 {% endfor %}
 
-<!-- ===== KPIs ===== -->
-<div class="kpi-bar">
-    <div class="kpi-item">
-        <div class="kpi-label">Ingresos</div>
-        <div class="kpi-valor" style="color:#00ff88;">€{{ d.ingreso_base_hogar|floatformat:2 }}</div>
+<!-- ===== RESUMEN GENERAL (KPIs + barra) ===== -->
+<div class="resumen-general">
+    <div class="kpi-bar">
+        <div class="kpi-item">
+            <div class="kpi-label">Ingresos</div>
+            <div class="kpi-valor" style="color:#00ff88;">€{{ d.ingreso_base_hogar|floatformat:2 }}</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Gastos</div>
+            <div class="kpi-valor" style="color:#ff4d4d;">€{{ d.total_gastos_all|floatformat:2 }}</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Ahorro</div>
+            <div class="kpi-valor" style="color:#00d1ff;">€{{ d.total_ahorro|floatformat:2 }}</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Inversión</div>
+            <div class="kpi-valor" style="color:#a259ff;">€{{ d.total_inversion|floatformat:2 }}</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Libre</div>
+            <div class="kpi-valor" style="color:{% if d.libre_total >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ d.libre_total|floatformat:2 }}</div>
+        </div>
+        <div class="kpi-item">
+            <div class="kpi-label">Tasa ahorro</div>
+            <div class="kpi-valor semaforo-{{ d.semaforo }}">{{ d.tasa_ahorro }}%</div>
+        </div>
     </div>
-    <div class="kpi-item">
-        <div class="kpi-label">Gastos</div>
-        <div class="kpi-valor" style="color:#ff4d4d;">€{{ d.total_gastos_all|floatformat:2 }}</div>
-    </div>
-    <div class="kpi-item">
-        <div class="kpi-label">Ahorro</div>
-        <div class="kpi-valor" style="color:#00d1ff;">€{{ d.total_ahorro|floatformat:2 }}</div>
-    </div>
-    <div class="kpi-item">
-        <div class="kpi-label">Inversión</div>
-        <div class="kpi-valor" style="color:#a259ff;">€{{ d.total_inversion|floatformat:2 }}</div>
-    </div>
-    <div class="kpi-item">
-        <div class="kpi-label">Libre</div>
-        <div class="kpi-valor" style="color:{% if d.libre_total >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ d.libre_total|floatformat:2 }}</div>
-    </div>
-    <div class="kpi-item">
-        <div class="kpi-label">Tasa ahorro</div>
-        <div class="kpi-valor semaforo-{{ d.semaforo }}">{{ d.tasa_ahorro }}%</div>
+
+    <div class="dist-bar-wrap">
+        <div class="dist-bar">
+            {% if d.pct_gastos > 0 %}<div class="dist-seg seg-gastos" style="width:{{ d.pct_gastos|unlocalize }}%;">{% if d.pct_gastos > 8 %}{{ d.pct_gastos }}%{% endif %}</div>{% endif %}
+            {% if d.pct_ahorro > 0 %}<div class="dist-seg seg-ahorro" style="width:{{ d.pct_ahorro|unlocalize }}%;">{% if d.pct_ahorro > 8 %}{{ d.pct_ahorro }}%{% endif %}</div>{% endif %}
+            {% if d.pct_inversion > 0 %}<div class="dist-seg seg-inversion" style="width:{{ d.pct_inversion|unlocalize }}%;">{% if d.pct_inversion > 8 %}{{ d.pct_inversion }}%{% endif %}</div>{% endif %}
+            {% if d.pct_libre > 0 %}<div class="dist-seg seg-libre" style="width:{{ d.pct_libre|unlocalize }}%;">{% if d.pct_libre > 8 %}{{ d.pct_libre }}%{% endif %}</div>{% endif %}
+        </div>
+        <div class="dist-legend">
+            {% if d.pct_gastos > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ff4d4d;"></span>Gastos {{ d.pct_gastos }}%</span>{% endif %}
+            {% if d.pct_ahorro > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#00d1ff;"></span>Ahorro {{ d.pct_ahorro }}%</span>{% endif %}
+            {% if d.pct_inversion > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#a259ff;"></span>Inversión {{ d.pct_inversion }}%</span>{% endif %}
+            {% if d.pct_libre > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ffaa00;"></span>Libre {{ d.pct_libre }}%</span>{% endif %}
+        </div>
     </div>
 </div>
 
-<!-- ===== BARRA DISTRIBUCIÓN ===== -->
-<div class="dist-bar-wrap">
-    <div class="dist-bar">
-        {% if d.pct_gastos > 0 %}<div class="dist-seg seg-gastos" style="width:{{ d.pct_gastos|unlocalize }}%;">{% if d.pct_gastos > 8 %}{{ d.pct_gastos }}%{% endif %}</div>{% endif %}
-        {% if d.pct_ahorro > 0 %}<div class="dist-seg seg-ahorro" style="width:{{ d.pct_ahorro|unlocalize }}%;">{% if d.pct_ahorro > 8 %}{{ d.pct_ahorro }}%{% endif %}</div>{% endif %}
-        {% if d.pct_inversion > 0 %}<div class="dist-seg seg-inversion" style="width:{{ d.pct_inversion|unlocalize }}%;">{% if d.pct_inversion > 8 %}{{ d.pct_inversion }}%{% endif %}</div>{% endif %}
-        {% if d.pct_libre > 0 %}<div class="dist-seg seg-libre" style="width:{{ d.pct_libre|unlocalize }}%;">{% if d.pct_libre > 8 %}{{ d.pct_libre }}%{% endif %}</div>{% endif %}
-    </div>
-    <div class="dist-legend">
-        {% if d.pct_gastos > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ff4d4d;"></span>Gastos {{ d.pct_gastos }}%</span>{% endif %}
-        {% if d.pct_ahorro > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#00d1ff;"></span>Ahorro {{ d.pct_ahorro }}%</span>{% endif %}
-        {% if d.pct_inversion > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#a259ff;"></span>Inversión {{ d.pct_inversion }}%</span>{% endif %}
-        {% if d.pct_libre > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#ffaa00;"></span>Libre {{ d.pct_libre }}%</span>{% endif %}
-    </div>
+<!-- ===== HUB DE GESTIÓN (todo lo editable, agrupado y a un clic) ===== -->
+<div class="hub-grid">
+    <button class="hub-card" style="--hc:#a259ff;" onclick="abrir('modal-reglas')">
+        <span class="hub-icon">⚙️</span>
+        <span class="hub-num">{{ reglas|length }}</span>
+        <span class="hub-title">Reglas de reparto</span>
+        <span class="hub-go">Gestionar →</span>
+    </button>
+    <button class="hub-card" style="--hc:#00ff88;" onclick="abrir('modal-fondos')">
+        <span class="hub-icon">🗂</span>
+        <span class="hub-num">{{ d.fondos_aportaciones|length }}</span>
+        <span class="hub-title">Fondos</span>
+        <span class="hub-go">Gestionar →</span>
+    </button>
+    <button class="hub-card" style="--hc:#00d1ff;" onclick="abrir('modal-transferencias')">
+        <span class="hub-icon">🔄</span>
+        <span class="hub-num">{{ d.transferencias|length }}</span>
+        <span class="hub-title">Transferencias</span>
+        <span class="hub-go">Ver detalle →</span>
+    </button>
 </div>
 
-<!-- ===== AVISOS ===== -->
+<!-- ===== RESUMEN POR PERSONA (lo principal, siempre visible) ===== -->
+<div class="section-title persona-section-title">👤 Resumen por persona</div>
+<div class="persona-grid">
 {% for dm in d.datos_miembros %}
-{% if dm.ajustes_mes %}
-<div class="aviso-box aviso-ajuste">
-    <span class="aviso-titulo">✏️ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingreso ajustado:</span>
-    {% for aj in dm.ajustes_mes %}
-    <span style="color:#fff; margin-left:10px;">{{ aj.fuente }}: <strong>€{{ aj.importe_ajustado|floatformat:2 }}</strong> <span style="color:var(--muted); font-size:0.72rem;">(base: €{{ aj.importe_base|floatformat:2 }})</span></span>
-    {% endfor %}
-</div>
-{% endif %}
-{% if dm.extras_mes %}
-<div class="aviso-box aviso-extra">
-    <span class="aviso-titulo" style="color:#00d1ff;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — extras:</span>
-    {% for ex in dm.extras_mes %}
-    <span style="color:#fff; margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
-    {% endfor %}
-</div>
-{% endif %}
-{% endfor %}
-
-<!-- ===== REGLAS ===== -->
-<div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
-    <span>⚙️ Reglas de reparto</span>
-    <button onclick="abrirModalRegla()" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nueva regla</button>
-</div>
-{% for regla in reglas %}
-<div class="regla-pill" style="border-left-color: {{ regla.color }};">
-    <div class="regla-pill-info">
-        <div class="regla-pill-nombre">{{ regla.nombre }}</div>
-        <div class="regla-pill-sub">
-            {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}%{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
-            {% if regla.fondo %} → {{ regla.fondo.nombre }}{% endif %}
-            {% if regla.usuario %} · 👤 {{ regla.usuario.first_name|default:regla.usuario.username }}{% else %} · 🏠 Hogar{% endif %}
-            {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
+<div class="persona-card" style="--uc: {{ dm.miembro.user.id|color_usuario }};">
+    <div class="persona-top">
+        <div class="persona-id">
+            <span class="persona-dot"></span>
+            <span class="persona-nombre">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</span>
         </div>
-    </div>
-    <div style="display:flex; gap:6px;">
-        <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn">✏️</button>
-        <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar?')">🗑</button></form>
-    </div>
-</div>
-{% empty %}
-<p class="empty-msg">Sin reglas definidas.</p>
-{% endfor %}
-
-<!-- ===== FONDOS ===== -->
-<div class="section-title" style="display:flex; justify-content:space-between; align-items:center; margin-top:24px;">
-    <span>🗂 Fondos</span>
-    <button onclick="abrirModalFondo()" class="btn btn-secondary" style="font-size:0.8rem;padding:8px 14px;">＋ Nuevo fondo</button>
-</div>
-{% for fa in d.fondos_aportaciones %}
-<div class="regla-pill fondo-pill" style="border-left-color: {{ fa.fondo.color }};">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; width:100%;">
-        <div style="flex:1; min-width:0;">
-            <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                {{ fa.fondo.nombre }}
-                {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
-                <span style="font-size:1rem; font-weight:700; color:{% if fa.libre_fondo >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ fa.libre_fondo|floatformat:2 }}</span>
-                <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }}{% if fa.gastos_cubiertos > 0 %} − gastos €{{ fa.gastos_cubiertos|floatformat:2 }}{% endif %}{% if fa.total_cascada_saliente > 0 %} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }}{% endif %})</span>
-                {% else %}
-                <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
-                {% if fa.total_cascada_saliente > 0 %}
-                <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }})</span>
-                {% endif %}
-                {% endif %}
-            </div>
-            <div class="regla-pill-sub">
-                <span class="tag-tipo tag-{{ fa.fondo.tipo_fondo }}">{{ fa.fondo.get_tipo_fondo_display }}</span>
-                {% if fa.fondo.cuenta_asociada %} · 🏦 {{ fa.fondo.cuenta_asociada }}{% endif %}
-                {% for ap in fa.aportantes %} · {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} €{{ ap.importe_base|floatformat:0 }}{% endfor %}
-            </div>
-        </div>
-        <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
-            <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}')" class="r-btn">✏️</button>
-            {% if fa.fondo.tipo_fondo == 'comun' %}
-            <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos">📋</button>
-            {% endif %}
-            <button onclick="abrirModalSubsobre({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn">＋</button>
-            <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar fondo?')">🗑</button></form>
+        <div class="persona-libre">
+            <span class="persona-libre-lbl">Libre personal</span>
+            <span class="persona-libre-val" style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ dm.libre_base|floatformat:2 }}</span>
         </div>
     </div>
 
-    <!-- Gastos cubiertos -->
-    {% if fa.fondo.tipo_fondo == 'comun' and fa.gastos_asignados %}
-    <div class="fondo-gastos-box">
-        <div style="color:#ff4d4d; font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
-        {% for g in fa.gastos_asignados %}
-        <div style="color:var(--muted); padding:2px 0; display:flex; justify-content:space-between; align-items:center;">
-            <span>{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
-            <form method="post" action="{% url 'finanzas:desasignar_gasto_fondo' g.id %}" style="margin:0;">
-                {% csrf_token %}
-                <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" onclick="return confirm('¿Desasignar {{ g.nombre }}?')">✕</button>
-            </form>
-        </div>
+    {% if dm.ajustes_mes or dm.extras_mes %}
+    <div class="persona-chips">
+        {% for aj in dm.ajustes_mes %}
+        <span class="chip chip-ajuste" title="Base €{{ aj.importe_base|floatformat:2 }}">✏️ {{ aj.fuente }}: €{{ aj.importe_ajustado|floatformat:2 }}</span>
         {% endfor %}
-        {% if fa.libre_fondo is not None %}
-        <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %}; font-weight:600;">
-            Remanente: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}
-        </div>
-        {% endif %}
+        {% for ex in dm.extras_mes %}
+        <span class="chip chip-extra">⚡ {{ ex.fuente }}: +€{{ ex.importe|floatformat:2 }}</span>
+        {% endfor %}
     </div>
     {% endif %}
 
-    <!-- Subsobres -->
-    {% for ss in fa.subsobres %}
-    <div class="subsobre-row">
-        <span>
-            <span style="color:#fff;">{{ ss.nombre }}</span>
-            <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>
-            {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
-            {% if ss.solo_mes %}<span style="font-size:0.7rem; color:#ffaa00; margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
-        </span>
-        <div style="display:flex; align-items:center; gap:10px;">
-            <span style="color:#ffaa00; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
-            <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')">✕</button></form>
-        </div>
-    </div>
-    {% endfor %}
-
-    {% if fa.subsobres %}
-    <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
-        <span>Asignado: €{{ fa.total_cascada_saliente|floatformat:2 }}</span>
-        {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
-        <span style="color:{% if fa.libre_fondo >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span>
-        {% else %}
-        <span style="color:{% if fa.total_aportacion_neta >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre: {% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
-        {% endif %}
+    <!-- Barra de reparto personal -->
+    {% if dm.ingreso_base > 0 %}
+    <div class="persona-bar">
+        {% with g=dm.gastos_individuales|pct_de:dm.ingreso_base a=dm.aportaciones_total|pct_de:dm.ingreso_base l=dm.libre_base|pct_de:dm.ingreso_base %}
+        {% if g > 0 %}<span class="pbar-seg" style="width:{{ g|unlocalize }}%; background:#ff4d4d;"></span>{% endif %}
+        {% if a > 0 %}<span class="pbar-seg" style="width:{{ a|unlocalize }}%; background:var(--uc);"></span>{% endif %}
+        {% if l > 0 %}<span class="pbar-seg" style="width:{{ l|unlocalize }}%; background:#00ff88;"></span>{% endif %}
+        {% endwith %}
     </div>
     {% endif %}
 
-    <!-- ===== NUEVO: Cartera real para fondos de inversión ===== -->
-    {% if fa.fondo.tipo_fondo == 'inversion' and fa.fondo.num_activos_vinculados > 0 %}
-    <div style="margin-top:12px; padding:12px 14px; background:rgba(162,89,255,0.08); border:1px solid rgba(162,89,255,0.2); border-radius:10px;">
-        <div style="font-size:0.72rem; font-weight:600; color:#a259ff; text-transform:uppercase; margin-bottom:8px;">
-            📊 Cartera real · {{ fa.fondo.num_activos_vinculados }} activo{{ fa.fondo.num_activos_vinculados|pluralize:"s" }}
-        </div>
-        <div style="display:flex; gap:20px; flex-wrap:wrap;">
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Valor mercado</div>
-                <div style="font-size:1.05rem; font-weight:700; color:#a259ff;">€{{ fa.fondo.valor_cartera|floatformat:2 }}</div>
-            </div>
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Aportado</div>
-                <div style="font-size:1.05rem; font-weight:700; color:var(--text-color);">€{{ fa.fondo.total_aportado_cartera|floatformat:2 }}</div>
-            </div>
-            {% if fa.fondo.rentabilidad_cartera is not None %}
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Rentabilidad</div>
-                <div style="font-size:1.05rem; font-weight:700; color:{% if fa.fondo.rentabilidad_cartera >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">
-                    {% if fa.fondo.rentabilidad_cartera >= 0 %}+{% endif %}{{ fa.fondo.rentabilidad_cartera }}%
-                </div>
-            </div>
-            {% endif %}
-            <div>
-                <div style="font-size:0.68rem; color:var(--muted);">Flujo presupuestado</div>
-                <div style="font-size:1.05rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}/mes</div>
-            </div>
-        </div>
+    <!-- Desglose -->
+    <div class="persona-rows">
+        <div class="resumen-row"><span class="rl">Ingreso neto {{ d.mes_nombre }}</span><span style="color:#00ff88;">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
+        {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos individuales</span><span style="color:#ff4d4d;">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
+        {% for ap in dm.aportaciones_fondos %}{% if ap.importe_base > 0 %}
+        <div class="resumen-row"><span class="rl"><span class="dot-uc"></span>{{ ap.regla.nombre }}{% if ap.fondo %} → {{ ap.fondo.nombre }}{% endif %}</span><span style="color:var(--uc);">−€{{ ap.importe_base|floatformat:2 }}</span></div>
+        {% endif %}{% endfor %}
     </div>
-    {% endif %}
 
-</div>
-{% empty %}
-<p class="empty-msg">Sin fondos definidos.</p>
-{% endfor %}
+    <div class="resumen-info">ℹ️ Parte proporcional gastos hogar ({{ dm.proporcion }}%): €{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes</div>
 
-<!-- ===== TRANSFERENCIAS ===== -->
-{% if d.transferencias %}
-<div class="section-title" style="margin-top:24px;">🔄 Transferencias del mes</div>
-{% for t in d.transferencias %}
-<div class="transfer-card" style="border-left-color: {{ t.color }};">
-    <div class="transfer-left">
-        <div class="transfer-sub">De: {{ t.origen }}</div>
-        <div style="font-size:0.9rem; font-weight:600;">{{ t.concepto }}{% if t.tipo == 'cascada' %} <span style="font-size:0.68rem; color:var(--muted);">(cascada)</span>{% endif %}</div>
-        <div class="transfer-sub">→ {{ t.destino }}</div>
-        {% if t.cuenta %}<div style="font-size:0.68rem; color:#00d1ff; margin-top:2px;">🏦 {{ t.cuenta }}</div>{% endif %}
-    </div>
-    <div style="font-size:1.1rem; font-weight:700; color:{{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
-</div>
-{% endfor %}
-{% endif %}
-
-<!-- ===== RESUMEN POR PERSONA ===== -->
-<div class="section-title" style="margin-top:24px;">👤 Resumen por persona</div>
-{% for dm in d.datos_miembros %}
-<div class="resumen-persona">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-        <h4 style="margin:0;">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</h4>
-        {% if dm.fuentes %}
-        <button onclick="toggleEl('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.7rem; padding:5px 10px;">🔧 Ajustar ingreso</button>
-        {% endif %}
-    </div>
     {% if dm.fuentes %}
+    <div class="persona-actions">
+        <button onclick="toggleEl('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.72rem; padding:6px 12px;">🔧 Ajustar ingreso</button>
+    </div>
     <div id="ajuste-{{ dm.miembro.user.id }}" style="display:none;">
         <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" class="ajuste-form">
             {% csrf_token %}
@@ -285,19 +169,213 @@
         </form>
     </div>
     {% endif %}
-    <div class="resumen-row"><span class="rl">Ingreso neto {{ d.mes_nombre }}</span><span style="color:#00ff88;">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
-    {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos individuales</span><span style="color:#ff4d4d;">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
-    {% for ap in dm.aportaciones_fondos %}{% if ap.importe_base > 0 %}
-    <div class="resumen-row"><span class="rl">{{ ap.regla.nombre }}{% if ap.fondo %} → {{ ap.fondo.nombre }}{% endif %}</span><span style="color:{{ ap.regla.color }};">−€{{ ap.importe_base|floatformat:2 }}</span></div>
-    {% endif %}{% endfor %}
-    <div class="resumen-info">ℹ️ Parte proporcional gastos hogar ({{ dm.proporcion }}%): €{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes</div>
-    <div class="resumen-row resumen-total"><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre personal</span><span style="color:{% if dm.libre_base >= 0 %}#00ff88{% else %}#ff4d4d{% endif %}; font-size:1.05rem;">€{{ dm.libre_base|floatformat:2 }}</span></div>
 </div>
 {% endfor %}
+</div>
 
 </div><!-- /panel -->
 
-<!-- ===== MODAL FONDO ===== -->
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MODAL LISTA · REGLAS DE REPARTO
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="modal-reglas" class="modal-overlay modal-list">
+    <div class="modal-box modal-box-wide">
+        <div class="modal-list-head">
+            <h2>⚙️ Reglas de reparto</h2>
+            <div class="modal-list-actions">
+                <button onclick="abrirModalRegla()" class="btn btn-primary" style="font-size:0.8rem;padding:8px 14px;">＋ Nueva regla</button>
+                <button onclick="cerrar('modal-reglas')" class="modal-close" aria-label="Cerrar">✕</button>
+            </div>
+        </div>
+        <div class="modal-list-body">
+            {% for regla in reglas %}
+            <div class="regla-pill" style="border-left-color: {{ regla.color }};">
+                <div class="regla-pill-info">
+                    <div class="regla-pill-nombre">{{ regla.nombre }}</div>
+                    <div class="regla-pill-sub">
+                        {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}%{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
+                        {% if regla.fondo %} → {{ regla.fondo.nombre }}{% endif %}
+                        {% if regla.usuario %} · 👤 {{ regla.usuario.first_name|default:regla.usuario.username }}{% else %} · 🏠 Hogar{% endif %}
+                        {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
+                    </div>
+                </div>
+                <div style="display:flex; gap:6px;">
+                    <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn">✏️</button>
+                    <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar?')">🗑</button></form>
+                </div>
+            </div>
+            {% empty %}
+            <p class="empty-msg">Sin reglas definidas. Crea la primera con “＋ Nueva regla”.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MODAL LISTA · FONDOS
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="modal-fondos" class="modal-overlay modal-list">
+    <div class="modal-box modal-box-wide">
+        <div class="modal-list-head">
+            <h2>🗂 Fondos</h2>
+            <div class="modal-list-actions">
+                <button onclick="abrirModalFondo()" class="btn btn-primary" style="font-size:0.8rem;padding:8px 14px;">＋ Nuevo fondo</button>
+                <button onclick="cerrar('modal-fondos')" class="modal-close" aria-label="Cerrar">✕</button>
+            </div>
+        </div>
+        <div class="modal-list-body">
+            {% for fa in d.fondos_aportaciones %}
+            <div class="regla-pill fondo-pill" style="border-left-color: {{ fa.fondo.color }};">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; width:100%;">
+                    <div style="flex:1; min-width:0;">
+                        <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            {{ fa.fondo.nombre }}
+                            {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
+                            <span style="font-size:1rem; font-weight:700; color:{% if fa.libre_fondo >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">€{{ fa.libre_fondo|floatformat:2 }}</span>
+                            <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }}{% if fa.gastos_cubiertos > 0 %} − gastos €{{ fa.gastos_cubiertos|floatformat:2 }}{% endif %}{% if fa.total_cascada_saliente > 0 %} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }}{% endif %})</span>
+                            {% else %}
+                            <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
+                            {% if fa.total_cascada_saliente > 0 %}
+                            <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }})</span>
+                            {% endif %}
+                            {% endif %}
+                        </div>
+                        <div class="regla-pill-sub">
+                            <span class="tag-tipo tag-{{ fa.fondo.tipo_fondo }}">{{ fa.fondo.get_tipo_fondo_display }}</span>
+                            {% if fa.fondo.cuenta_asociada %} · 🏦 {{ fa.fondo.cuenta_asociada }}{% endif %}
+                            {% for ap in fa.aportantes %} · {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} €{{ ap.importe_base|floatformat:0 }}{% endfor %}
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+                        <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}')" class="r-btn">✏️</button>
+                        {% if fa.fondo.tipo_fondo == 'comun' %}
+                        <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos">📋</button>
+                        {% endif %}
+                        <button onclick="abrirModalSubsobre({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn">＋</button>
+                        <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar fondo?')">🗑</button></form>
+                    </div>
+                </div>
+
+                <!-- Gastos cubiertos -->
+                {% if fa.fondo.tipo_fondo == 'comun' and fa.gastos_asignados %}
+                <div class="fondo-gastos-box">
+                    <div style="color:#ff4d4d; font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
+                    {% for g in fa.gastos_asignados %}
+                    <div style="color:var(--muted); padding:2px 0; display:flex; justify-content:space-between; align-items:center;">
+                        <span>{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
+                        <form method="post" action="{% url 'finanzas:desasignar_gasto_fondo' g.id %}" style="margin:0;">
+                            {% csrf_token %}
+                            <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" onclick="return confirm('¿Desasignar {{ g.nombre }}?')">✕</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                    {% if fa.libre_fondo is not None %}
+                    <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %}; font-weight:600;">
+                        Remanente: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Subsobres -->
+                {% for ss in fa.subsobres %}
+                <div class="subsobre-row">
+                    <span>
+                        <span style="color:#fff;">{{ ss.nombre }}</span>
+                        <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>
+                        {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
+                        {% if ss.solo_mes %}<span style="font-size:0.7rem; color:#ffaa00; margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
+                    </span>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="color:#ffaa00; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
+                        <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')">✕</button></form>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% if fa.subsobres %}
+                <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
+                    <span>Asignado: €{{ fa.total_cascada_saliente|floatformat:2 }}</span>
+                    {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
+                    <span style="color:{% if fa.libre_fondo >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span>
+                    {% else %}
+                    <span style="color:{% if fa.total_aportacion_neta >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">Libre: {% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Cartera real para fondos de inversión -->
+                {% if fa.fondo.tipo_fondo == 'inversion' and fa.fondo.num_activos_vinculados > 0 %}
+                <div style="margin-top:12px; padding:12px 14px; background:rgba(162,89,255,0.08); border:1px solid rgba(162,89,255,0.2); border-radius:10px;">
+                    <div style="font-size:0.72rem; font-weight:600; color:#a259ff; text-transform:uppercase; margin-bottom:8px;">
+                        📊 Cartera real · {{ fa.fondo.num_activos_vinculados }} activo{{ fa.fondo.num_activos_vinculados|pluralize:"s" }}
+                    </div>
+                    <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                        <div>
+                            <div style="font-size:0.68rem; color:var(--muted);">Valor mercado</div>
+                            <div style="font-size:1.05rem; font-weight:700; color:#a259ff;">€{{ fa.fondo.valor_cartera|floatformat:2 }}</div>
+                        </div>
+                        <div>
+                            <div style="font-size:0.68rem; color:var(--muted);">Aportado</div>
+                            <div style="font-size:1.05rem; font-weight:700; color:var(--text-color);">€{{ fa.fondo.total_aportado_cartera|floatformat:2 }}</div>
+                        </div>
+                        {% if fa.fondo.rentabilidad_cartera is not None %}
+                        <div>
+                            <div style="font-size:0.68rem; color:var(--muted);">Rentabilidad</div>
+                            <div style="font-size:1.05rem; font-weight:700; color:{% if fa.fondo.rentabilidad_cartera >= 0 %}#00ff88{% else %}#ff4d4d{% endif %};">
+                                {% if fa.fondo.rentabilidad_cartera >= 0 %}+{% endif %}{{ fa.fondo.rentabilidad_cartera }}%
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <div style="font-size:0.68rem; color:var(--muted);">Flujo presupuestado</div>
+                            <div style="font-size:1.05rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}/mes</div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% empty %}
+            <p class="empty-msg">Sin fondos definidos. Crea el primero con “＋ Nuevo fondo”.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     MODAL LISTA · TRANSFERENCIAS
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="modal-transferencias" class="modal-overlay modal-list">
+    <div class="modal-box modal-box-wide">
+        <div class="modal-list-head">
+            <h2>🔄 Transferencias del mes</h2>
+            <div class="modal-list-actions">
+                <button onclick="cerrar('modal-transferencias')" class="modal-close" aria-label="Cerrar">✕</button>
+            </div>
+        </div>
+        <div class="modal-list-body">
+            {% for t in d.transferencias %}
+            <div class="transfer-card" style="border-left-color: {{ t.color }};">
+                <div class="transfer-left">
+                    <div class="transfer-sub">De: {{ t.origen }}</div>
+                    <div style="font-size:0.9rem; font-weight:600;">{{ t.concepto }}{% if t.tipo == 'cascada' %} <span style="font-size:0.68rem; color:var(--muted);">(cascada)</span>{% endif %}</div>
+                    <div class="transfer-sub">→ {{ t.destino }}</div>
+                    {% if t.cuenta %}<div style="font-size:0.68rem; color:#00d1ff; margin-top:2px;">🏦 {{ t.cuenta }}</div>{% endif %}
+                </div>
+                <div style="font-size:1.1rem; font-weight:700; color:{{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
+            </div>
+            {% empty %}
+            <p class="empty-msg">No hay transferencias previstas este mes.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+
+<!-- ===== MODAL FONDO (crear/editar) ===== -->
 <div id="modal-fondo" class="modal-overlay">
     <div class="modal-box">
         <h2 id="modal-fondo-titulo">🗂 Nuevo fondo</h2>
@@ -332,7 +410,7 @@
     </div>
 </div>
 
-<!-- ===== MODAL REGLA ===== -->
+<!-- ===== MODAL REGLA (crear/editar) ===== -->
 <div id="modal-regla" class="modal-overlay">
     <div class="modal-box">
         <h2 id="modal-regla-titulo">⚙️ Nueva regla</h2>
@@ -429,52 +507,94 @@
 
 <!-- ===== ESTILOS ===== -->
 <style>
+.dist-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
+.dist-head-form { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .sel-sm { background:#1a1a1a; color:var(--text-color); border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem; }
 .lbl-sm { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px; }
 .inp-sm { width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
-.empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; }
+.empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; padding:8px 2px; }
+
+/* ── Resumen general ── */
+.resumen-general { background:#161616; border:1px solid var(--border); border-radius:16px; padding:18px; margin-bottom:22px; }
 .kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
-.kpi-item { background:#1a1a1a; border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
+.kpi-item { background:#1a1a1a; border:1px solid var(--border); border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
 .kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
 .kpi-valor { font-size:1.05rem; font-weight:700; }
-.semaforo-verde { color:#00ff88; }
-.semaforo-amarillo { color:#ffee00; }
-.semaforo-naranja { color:#ff8800; }
-.semaforo-rojo { color:#ff4d4d; }
-.dist-bar-wrap { margin:18px 0 24px; }
+.semaforo-verde { color:#00ff88; } .semaforo-amarillo { color:#ffee00; } .semaforo-naranja { color:#ff8800; } .semaforo-rojo { color:#ff4d4d; }
+.dist-bar-wrap { margin:16px 0 4px; }
 .dist-bar { display:flex; height:20px; border-radius:10px; overflow:hidden; background:#111; border:1px solid #222; }
 .dist-seg { transition: width 0.4s ease; position: relative; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; font-weight: 700; color: #fff; overflow: hidden; flex-shrink: 0; }
-.seg-gastos   { background:linear-gradient(135deg, #ff4d4d, #cc3333); }
-.seg-ahorro   { background:linear-gradient(135deg, #00d1ff, #0099bb); }
+.seg-gastos { background:linear-gradient(135deg, #ff4d4d, #cc3333); }
+.seg-ahorro { background:linear-gradient(135deg, #00d1ff, #0099bb); }
 .seg-inversion{ background:linear-gradient(135deg, #a259ff, #7733cc); }
-.seg-libre    { background:linear-gradient(135deg, #ffaa00, #cc8800); }
+.seg-libre { background:linear-gradient(135deg, #ffaa00, #cc8800); }
 .dist-legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:8px; font-size:0.75rem; color:var(--muted); }
 .dist-legend-item { display:flex; align-items:center; gap:5px; }
 .dist-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
-.aviso-box { border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem; }
-.aviso-ajuste { background:rgba(255,170,0,0.07); border:1px solid #ffaa0033; }
-.aviso-extra  { background:rgba(0,209,255,0.07); border:1px solid #00d1ff33; }
-.aviso-titulo { font-weight:600; color:#ffaa00; }
-.section-title { font-size:0.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px; }
-.regla-pill { background:#1a1a1a; border-left:3px solid; border-radius:12px; padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+
+/* ── Hub de gestión ── */
+.hub-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; margin-bottom:30px; }
+@media (max-width:600px){ .hub-grid { grid-template-columns:1fr; } }
+.hub-card {
+    position:relative; text-align:left; cursor:pointer;
+    background:#1a1a1a; border:1px solid var(--border); border-left:3px solid var(--hc);
+    border-radius:16px; padding:18px 20px; color:var(--text-color);
+    display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto;
+    column-gap:14px; row-gap:2px; align-items:center;
+    transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+    font-family:inherit;
+}
+.hub-card:hover { transform:translateY(-2px); border-color:var(--hc); box-shadow:0 0 20px color-mix(in srgb, var(--hc) 25%, transparent); }
+.hub-icon { grid-row:1 / span 2; font-size:1.7rem; }
+.hub-num { font-size:1.5rem; font-weight:800; color:var(--hc); line-height:1; }
+.hub-title { font-size:0.9rem; font-weight:600; color:var(--text-color); }
+.hub-go { grid-column:2; font-size:0.72rem; color:var(--muted); margin-top:4px; }
+.hub-card:hover .hub-go { color:var(--hc); }
+
+/* ── Resumen por persona ── */
+.section-title { font-size:0.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:20px 0 12px; }
+.persona-section-title { font-size:0.95rem; color:var(--text-color); }
+.persona-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:16px; }
+.persona-card {
+    background:linear-gradient(180deg, color-mix(in srgb, var(--uc) 9%, #1a1a1a), #1a1a1a 70%);
+    border:1px solid var(--border); border-left:4px solid var(--uc);
+    border-radius:16px; padding:18px 20px;
+}
+.persona-top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+.persona-id { display:flex; align-items:center; gap:9px; min-width:0; }
+.persona-dot { width:12px; height:12px; border-radius:50%; background:var(--uc); box-shadow:0 0 8px var(--uc); flex-shrink:0; }
+.persona-nombre { font-size:1.05rem; font-weight:700; color:#fff; }
+.persona-libre { text-align:right; }
+.persona-libre-lbl { display:block; font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+.persona-libre-val { font-size:1.15rem; font-weight:800; }
+.persona-chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+.chip { font-size:0.68rem; padding:3px 9px; border-radius:999px; font-weight:600; }
+.chip-ajuste { background:rgba(255,170,0,0.12); color:#ffaa00; border:1px solid #ffaa0033; }
+.chip-extra { background:rgba(0,209,255,0.12); color:#00d1ff; border:1px solid #00d1ff33; }
+.persona-bar { display:flex; height:10px; border-radius:6px; overflow:hidden; background:#111; border:1px solid #222; margin-bottom:14px; }
+.pbar-seg { height:100%; flex-shrink:0; transition:width .4s ease; }
+.persona-rows { }
+.resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #232323; font-size:0.85rem; gap:10px; }
+.resumen-row:last-child { border-bottom:none; }
+.resumen-row .rl { color:var(--muted); display:flex; align-items:center; gap:7px; min-width:0; }
+.dot-uc { width:7px; height:7px; border-radius:50%; background:var(--uc); flex-shrink:0; }
+.resumen-info { font-size:0.74rem; color:#ffaa00; padding:7px 11px; background:rgba(255,170,0,0.08); border-radius:8px; margin:12px 0 0; border-left:2px solid #ffaa00; }
+.persona-actions { margin-top:12px; }
+.ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-top:10px; }
+
+/* ── Listas dentro de modales ── */
+.regla-pill { background:#161616; border-left:3px solid; border-radius:12px; padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .fondo-pill { display:block; padding:14px 16px; }
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
 .tag-tipo { font-size:0.62rem; padding:2px 8px; border-radius:6px; font-weight:600; display:inline-block; }
-.tag-comun     { background:rgba(0,255,136,0.12); color:#00ff88; }
-.tag-ahorro    { background:rgba(0,209,255,0.12); color:#00d1ff; }
+.tag-comun { background:rgba(0,255,136,0.12); color:#00ff88; }
+.tag-ahorro { background:rgba(0,209,255,0.12); color:#00d1ff; }
 .tag-inversion { background:rgba(162,89,255,0.12); color:#a259ff; }
 .fondo-gastos-box { margin-top:10px; padding:8px 12px; background:rgba(255,77,77,0.06); border:1px solid #ff4d4d22; border-radius:8px; font-size:0.78rem; }
 .subsobre-row { margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; }
-.transfer-card { background:#1a1a1a; border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.transfer-card { background:#161616; border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
 .transfer-sub { font-size:0.72rem; color:var(--muted); }
-.resumen-persona { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:14px; padding:18px; margin-bottom:12px; }
-.resumen-persona h4 { color:var(--primary-color); font-size:0.95rem; }
-.resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #222; font-size:0.85rem; }
-.resumen-total { border-bottom:none; font-weight:700; padding-top:10px; }
-.resumen-row .rl { color:var(--muted); }
-.resumen-info { font-size:0.75rem; color:#ffaa00; padding:6px 10px; background:rgba(255,170,0,0.08); border-radius:8px; margin:8px 0; border-left:2px solid #ffaa00; }
-.ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px; }
 .r-btn { background:transparent; border:1px solid #333; color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
 .r-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
 .color-row { display:flex; gap:10px; margin-top:6px; }
@@ -483,19 +603,29 @@
 .cdot.active { border-color:#fff; box-shadow:0 0 12px currentColor; }
 .gasto-check { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #222; font-size:0.85rem; color:var(--text-color); cursor:pointer; }
 .gasto-check input { width:18px; height:18px; accent-color:#00ff88; }
-.modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); }
+
+/* ── Modales ── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); padding:16px; }
+.modal-overlay.modal-list { z-index:1900; align-items:flex-start; padding-top:6vh; }
 .modal-box { background:#1a1a1a; border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
+.modal-box-wide { max-width:720px; padding:22px 24px; }
 .modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.05rem; }
 .modal-box .fg { margin-bottom:14px; }
 .modal-box label { display:block; font-size:0.8rem; color:var(--muted); margin-bottom:5px; }
 .modal-box select, .modal-box input[type="text"], .modal-box input[type="number"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
+.modal-list-head { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; position:sticky; top:-22px; background:#1a1a1a; padding:6px 0 12px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.modal-list-head h2 { margin:0; }
+.modal-list-actions { display:flex; align-items:center; gap:8px; }
+.modal-close { background:transparent; border:1px solid #333; color:var(--muted); width:34px; height:34px; border-radius:9px; cursor:pointer; font-size:0.85rem; transition:all .2s; }
+.modal-close:hover { border-color:#ff5f5f; color:#ff5f5f; }
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
 .msg-toast { background:#1e2a1e; border:1px solid #00ff88; color:#00ff88; border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
 </style>
 
 <!-- ===== JAVASCRIPT ===== -->
 <script>
+function abrir(id){ document.getElementById(id).style.display='flex'; }
 function cerrar(id){ document.getElementById(id).style.display='none'; }
 function toggleEl(id){ var e=document.getElementById(id); e.style.display=e.style.display==='none'?'block':'none'; }
 
@@ -598,6 +728,20 @@ function abrirAsignarGastos(fondoId,fondoNombre){
 
 document.addEventListener('DOMContentLoaded',function(){
     document.querySelectorAll('.msg-toast').forEach(function(el){ setTimeout(function(){el.remove();},4000); });
+
+    // Cerrar al hacer clic en el fondo del overlay (fuera de la caja)
+    document.querySelectorAll('.modal-overlay').forEach(function(ov){
+        ov.addEventListener('mousedown', function(e){ if(e.target===ov){ ov.style.display='none'; } });
+    });
+
+    // Cerrar el modal superior con Escape
+    document.addEventListener('keydown', function(e){
+        if(e.key!=='Escape') return;
+        var abiertos=Array.prototype.filter.call(document.querySelectorAll('.modal-overlay'), function(m){
+            return getComputedStyle(m).display!=='none';
+        });
+        if(abiertos.length){ abiertos[abiertos.length-1].style.display='none'; }
+    });
 });
 </script>
 {% endblock %}

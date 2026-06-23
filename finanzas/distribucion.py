@@ -377,6 +377,12 @@ def calcular_flujos(hogar, mes=None, anio=None):
             'concepto': tc['nombre'], 'tipo': 'cascada', 'color': tc['color'],
         })
 
+    # Total aportado a fondos por cada miembro (para la barra del resumen).
+    for uid, dm in datos_miembros.items():
+        dm['aportaciones_total'] = sum(
+            ap['importe_base'] for ap in dm['aportaciones_fondos']
+        )
+
     return {
         'mes': mes, 'anio': anio, 'mes_nombre': _nombre_mes(mes),
 
