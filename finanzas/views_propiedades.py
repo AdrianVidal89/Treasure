@@ -67,6 +67,12 @@ def crear_propiedad(request):
             )
             p.full_clean()
             p.save()
+            # Auto-registrar snapshot del mes actual para que aparezca en Evolución
+            hoy = datetime.date.today()
+            HistorialPropiedad.objects.get_or_create(
+                propiedad=p, año=hoy.year, mes=hoy.month,
+                defaults={'valor_mercado': p.valor_actual, 'deuda_hipotecaria': p.deuda_hipotecaria},
+            )
             messages.success(request, f"Propiedad '{p.nombre}' añadida.")
             return redirect('finanzas:listar_propiedades')
         except Exception as e:
@@ -103,6 +109,12 @@ def editar_propiedad(request, pk):
             propiedad.color = request.POST.get('color', '#e67e22')
             propiedad.full_clean()
             propiedad.save()
+            # Sincronizar snapshot del mes actual con los valores editados
+            hoy = datetime.date.today()
+            HistorialPropiedad.objects.update_or_create(
+                propiedad=propiedad, año=hoy.year, mes=hoy.month,
+                defaults={'valor_mercado': propiedad.valor_actual, 'deuda_hipotecaria': propiedad.deuda_hipotecaria},
+            )
             messages.success(request, f"Propiedad '{propiedad.nombre}' actualizada.")
             return redirect('finanzas:listar_propiedades')
         except Exception as e:

@@ -311,16 +311,11 @@ function cuotaMensual(P, tipoAnual, años) {
     return P * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
 }
 
-function maxPrecio(maxCuota, entradaPct, tipoAnual, años) {
+function hipMaxima(maxCuota, tipoAnual, años) {
     const n = años * 12;
-    let hipMax;
-    if (tipoAnual === 0) {
-        hipMax = maxCuota * n;
-    } else {
-        const r = tipoAnual / 100 / 12;
-        hipMax = maxCuota * (Math.pow(1 + r, n) - 1) / (r * Math.pow(1 + r, n));
-    }
-    return hipMax / (1 - entradaPct / 100);
+    if (tipoAnual === 0) return maxCuota * n;
+    const r = tipoAnual / 100 / 12;
+    return maxCuota * (Math.pow(1+r, n) - 1) / (r * Math.pow(1+r, n));
 }
 
 function actualizar() {
@@ -357,14 +352,15 @@ function actualizar() {
     const base             = LIBRE > 0 ? LIBRE : INGRESOS;
     const pctIngresos      = INGRESOS > 0 ? (cuota / INGRESOS * 100) : 0;
 
-    // Precio máximo: mínimo entre límite por cuota Y límite por capital disponible
-    const maxCuota         = base * maxIngPct / 100;
-    const precioMaxCuota   = maxPrecio(maxCuota, entradaPct, tipo, plazo);
-    const precioMaxCapital = capitalDisponible > 0
-        ? capitalDisponible / (entradaPct / 100 + gastosPct / 100)
-        : 0;
-    const precioMax        = Math.min(precioMaxCuota, precioMaxCapital);
-    const limiteEs         = precioMaxCapital <= precioMaxCuota ? 'capital' : 'cuota';
+    // Precio máximo óptimo: usa todo el capital disponible como entrada,
+    // tomando prestado el máximo que permite la cuota. Fórmula:
+    //   precioMax = (capitalDisponible + hipMax) / (1 + gastos%)
+    const maxCuota        = base * maxIngPct / 100;
+    const hipMax          = hipMaxima(maxCuota, tipo, plazo);
+    const precioMaxOptimo = (capitalDisponible + hipMax) / (1 + gastosPct / 100);
+    const entOptima       = precioMaxOptimo > 0 ? (1 - hipMax / precioMaxOptimo) * 100 : 0;
+    const MIN_ENT         = 10;
+    const precioMax       = entOptima >= MIN_ENT ? precioMaxOptimo : hipMax / (1 - MIN_ENT / 100);
 
     // Resultados
     document.getElementById('r-entrada').textContent       = fmt(entrada);
@@ -374,10 +370,12 @@ function actualizar() {
     document.getElementById('r-hipoteca').textContent      = fmt(hipoteca);
     document.getElementById('r-cuota').textContent         = fmtDec(cuota, 2) + '/mes';
     document.getElementById('r-intereses').textContent     = fmt(intereses);
-    document.getElementById('r-max-precio').textContent    = fmt(Math.max(0, precioMax));
-    document.getElementById('r-max-sub').textContent       = limiteEs === 'capital'
-        ? 'Limitado por capital disponible (' + fmt(capitalDisponible) + ' tras colchón de ' + mesesColchon + ' meses). Entrada ' + entradaPct + '% + gastos ' + gastosPct + '%.'
-        : 'Tipo ' + tipo.toFixed(2) + '%, ' + plazo + ' años, entrada ' + entradaPct + '%, cuota máx. ' + fmtDec(maxCuota, 0) + '/mes (' + maxIngPct + '% del libre mensual).';
+    document.getElementById('r-max-precio').textContent = fmt(Math.max(0, precioMax));
+    const entMostrada = Math.max(MIN_ENT, Math.round(entOptima));
+    const cuotaAlMax  = cuotaMensual(hipMax, tipo, plazo);
+    const pctCuotaMax = INGRESOS > 0 ? (cuotaAlMax / INGRESOS * 100).toFixed(0) : '—';
+    document.getElementById('r-max-sub').textContent =
+        'Hipoteca máx. ' + fmt(hipMax) + ' · cuota ' + fmtDec(cuotaAlMax, 0) + '/mes (' + pctCuotaMax + '% ingresos) · entrada óptima ' + entMostrada + '% · capital ' + fmt(capitalDisponible) + '.';
 
     const pctEl = document.getElementById('r-pct-ing');
     pctEl.textContent = pctIngresos.toFixed(1) + '%';
@@ -435,21 +433,17 @@ function actualizar() {
     document.getElementById(id).addEventListener('input', actualizar);
 });
 
-// Inicializar con precio máximo sugerido (respetando ambos límites: cuota y capital)
+// Inicializar slider en el precio máximo óptimo
 (function() {
-    const base             = LIBRE > 0 ? LIBRE : INGRESOS;
-    const mesesColchon     = 6;
-    const entradaPct       = 20;
-    const gastosPct        = 11;
-    const colchon          = GASTOS * mesesColchon;
+    const base              = LIBRE > 0 ? LIBRE : INGRESOS;
+    const mesesColchon      = 6;
+    const gastosPct         = 11;
+    const colchon           = GASTOS * mesesColchon;
     const capitalDisponible = Math.max(0, LIQUIDEZ - colchon);
-    const maxCuota         = base * 0.35;
-    const precioMaxCuota   = maxPrecio(maxCuota, entradaPct, 3.5, 25);
-    const precioMaxCapital = capitalDisponible > 0
-        ? capitalDisponible / (entradaPct / 100 + gastosPct / 100)
-        : 0;
-    const precioSug = Math.min(precioMaxCuota, precioMaxCapital);
-    const clamped   = Math.min(1000000, Math.max(50000, Math.round(precioSug / 5000) * 5000));
+    const maxCuota          = base * 0.35;
+    const hipMax            = hipMaxima(maxCuota, 3.5, 25);
+    const precioSug         = (capitalDisponible + hipMax) / (1 + gastosPct / 100);
+    const clamped           = Math.min(1000000, Math.max(50000, Math.round(precioSug / 5000) * 5000));
     document.getElementById('sl-precio').value = clamped;
     actualizar();
 })();
