@@ -4,8 +4,8 @@ from decimal import Decimal
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 
-from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto
-from .distribucion import calcular_flujos
+from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso
+from .distribucion import _neto_fuente_base
 
 
 def _get_hogar(request):
@@ -16,9 +16,6 @@ def _get_hogar(request):
 
 
 def _datos_financieros(hogar):
-    """
-    Devuelve capital disponible e ingresos netos del hogar.
-    """
     hoy = datetime.date.today()
 
     # Último mes con datos de saldo real
@@ -54,15 +51,17 @@ def _datos_financieros(hogar):
                 'saldo': float(s.saldo),
                 'color': s.fondo.color,
             })
-        # Fondos de inversión sin saldo manual → valor mercado
         fondos_con_saldo = {s.fondo_id for s in saldos}
         for f in FondoFamiliar.objects.filter(hogar=hogar, tipo_fondo='inversion', activo=True):
             if f.id not in fondos_con_saldo and f.valor_cartera:
                 capital_inversiones += Decimal(str(f.valor_cartera))
 
-    # Ingresos netos mensuales
-    flujos = calcular_flujos(hogar, mes=hoy.month, anio=hoy.year)
-    ingresos_netos = flujos.get('ingreso_base_hogar', Decimal('0'))
+    # Ingresos netos mensuales RECURRENTES (base, sin pagas extras ni variables del mes)
+    ingresos_netos = Decimal('0')
+    for miembro in hogar.miembros.select_related('user').all():
+        for fuente in FuenteIngreso.objects.filter(usuario=miembro.user, hogar=hogar, activo=True):
+            base, _ = _neto_fuente_base(fuente)
+            ingresos_netos += base
 
     # Gastos fijos mensuales
     gastos_fijos = sum(
@@ -70,13 +69,24 @@ def _datos_financieros(hogar):
         for p in PartidaGasto.objects.filter(hogar=hogar, activo=True)
     )
 
+    libre = max(Decimal('0'), ingresos_netos - gastos_fijos)
+
+    # Pasar como dict Python: json_script lo serializa de forma segura (sin problemas de locale)
+    sim_data = {
+        'capital_liquidez': round(float(capital_liquidez), 2),
+        'capital_inversiones': round(float(capital_inversiones), 2),
+        'ingresos_netos_mensuales': round(float(ingresos_netos), 2),
+        'gastos_fijos_mensuales': round(float(gastos_fijos), 2),
+        'libre_mensual': round(float(libre), 2),
+    }
+
     return {
-        'capital_liquidez': float(capital_liquidez),
-        'capital_inversiones': float(capital_inversiones),
-        'capital_total': float(capital_liquidez + capital_inversiones),
-        'ingresos_netos_mensuales': float(ingresos_netos),
-        'gastos_fijos_mensuales': float(gastos_fijos),
-        'libre_mensual': float(max(Decimal('0'), ingresos_netos - gastos_fijos)),
+        'capital_liquidez': capital_liquidez,
+        'capital_inversiones': capital_inversiones,
+        'ingresos_netos_mensuales': ingresos_netos,
+        'gastos_fijos_mensuales': gastos_fijos,
+        'libre_mensual': libre,
+        'sim_data': sim_data,
         'desglose_fondos': desglose_fondos,
         'ultimo_mes': ultimo_mes,
         'ultimo_anio': ultimo_anio if ultimo_mes else None,

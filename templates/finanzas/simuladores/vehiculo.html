@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load l10n %}
 {% block title %}Simulador de Vehículo - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -13,24 +14,16 @@
 @media (max-width: 720px) { .sim-grid { grid-template-columns: 1fr; } }
 
 .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; }
-.card h2 { color: var(--text-color); font-size: 1rem; margin: 0 0 20px; font-weight: 700;
-           display: flex; align-items: center; gap: 8px; }
+.card h2 { color: var(--text-color); font-size: 1rem; margin: 0 0 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
 .control { margin-bottom: 20px; }
 .control-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .control-label { font-size: 0.82rem; color: var(--muted); }
 .control-value { font-size: 1rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; }
-input[type=range] {
-    -webkit-appearance: none; width: 100%; height: 5px;
-    background: #333; border-radius: 3px; outline: none; cursor: pointer;
-}
-input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
-    background: var(--primary-color); cursor: pointer;
-    box-shadow: 0 0 8px var(--glow);
-}
+input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; background: #333; border-radius: 3px; outline: none; cursor: pointer; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-color); cursor: pointer; box-shadow: 0 0 8px var(--glow); }
 
-.ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .ctx-item { background: #111; border-radius: 10px; padding: 12px 14px; }
 .ctx-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
 .ctx-item .val { font-size: 1rem; font-weight: 700; }
@@ -40,8 +33,7 @@ input[type=range]::-webkit-slider-thumb {
 .result-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
 .result-item .val { font-size: 1.2rem; font-weight: 700; }
 
-.semaforo { border-radius: 14px; padding: 20px 24px; margin-top: 20px;
-            display: flex; align-items: center; gap: 16px; transition: background 0.3s; }
+.semaforo { border-radius: 14px; padding: 20px 24px; margin-top: 20px; display: flex; align-items: center; gap: 16px; transition: all 0.3s; }
 .semaforo-icon { font-size: 2.2rem; line-height: 1; }
 .semaforo-text .title { font-size: 1.1rem; font-weight: 700; }
 .semaforo-text .sub { font-size: 0.85rem; margin-top: 4px; color: rgba(255,255,255,0.7); }
@@ -49,32 +41,27 @@ input[type=range]::-webkit-slider-thumb {
 .semaforo.amarillo { background: rgba(255,170,0,0.1); border: 1px solid #ffaa0044; }
 .semaforo.rojo { background: rgba(255,77,77,0.1); border: 1px solid #ff4d4d44; }
 
-.maximo-box { background: linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,209,255,0.06));
-              border: 1px solid #00ff8833; border-radius: 14px; padding: 20px 24px; margin-top: 16px; }
+.maximo-box { background: linear-gradient(135deg,rgba(0,255,136,0.08),rgba(0,209,255,0.06)); border: 1px solid #00ff8833; border-radius: 14px; padding: 20px 24px; margin-top: 16px; }
 .maximo-box .lbl { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
 .maximo-box .val { font-size: 2rem; font-weight: 700; color: #00ff88; }
 .maximo-box .sub { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
 
 .desglose { margin-top: 16px; }
-.desglose-row { display: flex; justify-content: space-between; padding: 8px 0;
-                border-bottom: 1px solid #1f1f1f; font-size: 0.85rem; }
+.desglose-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1f1f1f; font-size: 0.85rem; }
 .desglose-row:last-child { border-bottom: none; }
 .desglose-row .key { color: var(--muted); }
-.desglose-row .amt { font-weight: 700; }
 
 .tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-radius: 10px; overflow: hidden; border: 1px solid #2a2a2a; }
-.tab-bar a { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 600;
-             text-decoration: none; color: var(--muted); background: #111; transition: all 0.2s; }
+.tab-bar a { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 600; text-decoration: none; color: var(--muted); background: #111; transition: all 0.2s; }
 .tab-bar a.active { background: var(--primary-color); color: #000; }
+.range-hints { display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px; }
 
-/* Opción financiación vs contado */
 .fin-toggle { display: flex; gap: 0; border-radius: 10px; overflow: hidden; border: 1px solid #333; margin-bottom: 20px; }
-.fin-toggle button { flex: 1; padding: 10px; background: #111; border: none; color: var(--muted);
-                     font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.fin-toggle button { flex: 1; padding: 10px; background: #111; border: none; color: var(--muted); font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
 .fin-toggle button.active { background: var(--primary-color); color: #000; }
-
-.seccion-financiacion { transition: opacity 0.2s; }
 </style>
+
+{{ sim_data|json_script:"sim-data" }}
 
 <div class="sim-wrap">
     <div class="tab-bar">
@@ -90,38 +77,34 @@ input[type=range]::-webkit-slider-thumb {
     <div class="sim-grid">
         <!-- IZQUIERDA: controles -->
         <div>
-            <div class="card" style="margin-bottom: 20px;">
+            <div class="card" style="margin-bottom:20px;">
                 <h2>📊 Tu situación actual</h2>
                 <div class="ctx-grid">
                     <div class="ctx-item">
                         <div class="lbl">Liquidez (cuentas)</div>
-                        <div class="val" style="color: #00d1ff;">€{{ capital_liquidez|floatformat:0 }}</div>
+                        <div class="val" style="color:#00d1ff;">€{{ capital_liquidez|floatformat:0 }}</div>
                     </div>
                     <div class="ctx-item">
                         <div class="lbl">Libre mensual</div>
-                        <div class="val" style="color: #00ff88;">€{{ libre_mensual|floatformat:0 }}</div>
+                        <div class="val" style="color:#00ff88;">€{{ libre_mensual|floatformat:0 }}</div>
                     </div>
                     <div class="ctx-item">
-                        <div class="lbl">Ingresos netos/mes</div>
-                        <div class="val" style="color: #ffaa00;">€{{ ingresos_netos_mensuales|floatformat:0 }}</div>
+                        <div class="lbl">Ingresos recurrentes/mes</div>
+                        <div class="val" style="color:#ffaa00;">€{{ ingresos_netos_mensuales|floatformat:0 }}</div>
                     </div>
                     <div class="ctx-item">
                         <div class="lbl">Gastos fijos/mes</div>
-                        <div class="val" style="color: #ff8844;">€{{ gastos_fijos_mensuales|floatformat:0 }}</div>
+                        <div class="val" style="color:#ff8844;">€{{ gastos_fijos_mensuales|floatformat:0 }}</div>
                     </div>
                 </div>
-                {% if ultimo_mes %}
-                <div style="font-size: 0.75rem; color: #444; text-align: right;">
-                    Datos de {{ ultimo_mes }}/{{ ultimo_anio }}
-                </div>
-                {% endif %}
+                {% if ultimo_mes %}<div style="font-size:0.75rem;color:#444;text-align:right;">Datos de {{ ultimo_mes }}/{{ ultimo_anio }}</div>{% endif %}
             </div>
 
             <div class="card">
                 <h2>⚙️ Parámetros</h2>
 
-                <div style="margin-bottom: 18px;">
-                    <div style="font-size: 0.82rem; color: var(--muted); margin-bottom: 8px;">Modalidad de compra</div>
+                <div style="margin-bottom:18px;">
+                    <div style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;">Modalidad de compra</div>
                     <div class="fin-toggle">
                         <button id="btn-financiado" class="active" onclick="setModo('financiado')">🏦 Con financiación</button>
                         <button id="btn-contado" onclick="setModo('contado')">💵 Al contado</button>
@@ -131,80 +114,66 @@ input[type=range]::-webkit-slider-thumb {
                 <div class="control">
                     <div class="control-header">
                         <span class="control-label">🚗 Precio del vehículo</span>
-                        <span class="control-value" id="lbl-precio">€25.000</span>
+                        <span class="control-value" id="lbl-precio">—</span>
                     </div>
                     <input type="range" id="sl-precio" min="3000" max="150000" step="1000" value="25000">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px;">
-                        <span>€3k</span><span>€150k</span>
-                    </div>
+                    <div class="range-hints"><span>€3k</span><span>€150k</span></div>
                 </div>
 
                 <div class="control">
                     <div class="control-header">
                         <span class="control-label">🛡️ % capital seguro a usar</span>
-                        <span class="control-value" id="lbl-cap-pct">40%</span>
+                        <span class="control-value" id="lbl-cap-pct">—</span>
                     </div>
                     <input type="range" id="sl-cap-pct" min="10" max="100" step="5" value="40">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px;">
-                        <span>10%</span><span>100%</span>
-                    </div>
+                    <div class="range-hints"><span>10%</span><span>100%</span></div>
                 </div>
 
-                <div id="seccion-financiacion" class="seccion-financiacion">
+                <div id="seccion-financiacion">
                     <div class="control">
                         <div class="control-header">
                             <span class="control-label">🏦 Entrada (%)</span>
-                            <span class="control-value" id="lbl-entrada-pct">30%</span>
+                            <span class="control-value" id="lbl-entrada-pct">—</span>
                         </div>
                         <input type="range" id="sl-entrada-pct" min="0" max="80" step="5" value="30">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px;">
-                            <span>0%</span><span>80%</span>
-                        </div>
+                        <div class="range-hints"><span>0%</span><span>80%</span></div>
                     </div>
 
                     <div class="control">
                         <div class="control-header">
                             <span class="control-label">📈 Tipo de interés (TAE)</span>
-                            <span class="control-value" id="lbl-tipo">7.00%</span>
+                            <span class="control-value" id="lbl-tipo">—</span>
                         </div>
                         <input type="range" id="sl-tipo" min="0" max="20" step="0.25" value="7">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px;">
-                            <span>0%</span><span>20%</span>
-                        </div>
+                        <div class="range-hints"><span>0%</span><span>20%</span></div>
                     </div>
 
                     <div class="control">
                         <div class="control-header">
                             <span class="control-label">📅 Plazo del préstamo</span>
-                            <span class="control-value" id="lbl-plazo">5 años</span>
+                            <span class="control-value" id="lbl-plazo">—</span>
                         </div>
                         <input type="range" id="sl-plazo" min="1" max="8" step="1" value="5">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px;">
-                            <span>1 año</span><span>8 años</span>
-                        </div>
+                        <div class="range-hints"><span>1 año</span><span>8 años</span></div>
                     </div>
                 </div>
 
                 <div class="control">
                     <div class="control-header">
                         <span class="control-label">⚠️ Máx. % ingresos para el préstamo</span>
-                        <span class="control-value" id="lbl-max-pct">20%</span>
+                        <span class="control-value" id="lbl-max-pct">—</span>
                     </div>
                     <input type="range" id="sl-max-pct" min="5" max="40" step="1" value="20">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px;">
-                        <span>5%</span><span>40%</span>
-                    </div>
+                    <div class="range-hints"><span>5%</span><span>40%</span></div>
                 </div>
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">📝 Gastos extras (matriculación, seguro 1er año...)</span>
-                        <span class="control-value" id="lbl-gastos-pct">5%</span>
+                        <span class="control-label">📝 Gastos extras (matriculación, seguro...)</span>
+                        <span class="control-value" id="lbl-gastos-pct">—</span>
                     </div>
                     <input type="range" id="sl-gastos-pct" min="0" max="15" step="0.5" value="5">
-                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px;">
-                        <span>0%</span><span>15%</span>
-                    </div>
+                    <div class="range-hints"><span>0%</span><span>15%</span></div>
                 </div>
             </div>
         </div>
@@ -216,49 +185,48 @@ input[type=range]::-webkit-slider-thumb {
 
                 <div class="result-grid">
                     <div class="result-item">
-                        <div class="lbl">Entrada / pago</div>
-                        <div class="val" style="color: #00d1ff;" id="r-entrada">—</div>
+                        <div class="lbl">Entrada / pago inicial</div>
+                        <div class="val" style="color:#00d1ff;" id="r-entrada">—</div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Gastos extras</div>
-                        <div class="val" style="color: #ffaa00;" id="r-gastos">—</div>
+                        <div class="val" style="color:#ffaa00;" id="r-gastos">—</div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Capital total necesario</div>
-                        <div class="val" style="color: #ff8844;" id="r-capital-total">—</div>
+                        <div class="val" style="color:#ff8844;" id="r-capital-total">—</div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Capital seguro disponible</div>
-                        <div class="val" style="color: #00ff88;" id="r-capital-disp">—</div>
+                        <div class="val" style="color:#00ff88;" id="r-capital-disp">—</div>
                     </div>
-                    <div class="result-item" id="item-prestamo">
+                    <div class="result-item">
                         <div class="lbl">Préstamo</div>
-                        <div class="val" style="color: var(--primary-color);" id="r-prestamo">—</div>
+                        <div class="val" style="color:var(--primary-color);" id="r-prestamo">—</div>
                     </div>
-                    <div class="result-item" id="item-cuota">
+                    <div class="result-item">
                         <div class="lbl">Cuota mensual</div>
-                        <div class="val" style="color: #fff;" id="r-cuota">—</div>
+                        <div class="val" style="color:#fff;" id="r-cuota">—</div>
                     </div>
-                    <div class="result-item" id="item-pct">
+                    <div class="result-item">
                         <div class="lbl">% sobre ingresos</div>
                         <div class="val" id="r-pct-ing">—</div>
                     </div>
                     <div class="result-item">
-                        <div class="lbl">Coste total (con intereses)</div>
-                        <div class="val" style="color: #ff4d4d;" id="r-coste-total">—</div>
+                        <div class="lbl">Coste total real</div>
+                        <div class="val" style="color:#ff4d4d;" id="r-coste-total">—</div>
                     </div>
                 </div>
 
-                <div id="semaforo" class="semaforo verde" style="margin-top: 20px;">
-                    <div class="semaforo-icon" id="sem-icon">✅</div>
+                <div id="semaforo" class="semaforo verde" style="margin-top:20px;">
+                    <div class="semaforo-icon" id="sem-icon">⏳</div>
                     <div class="semaforo-text">
-                        <div class="title" id="sem-title">Asequible</div>
-                        <div class="sub" id="sem-sub">Dentro de los límites recomendados.</div>
+                        <div class="title" id="sem-title">Calculando…</div>
+                        <div class="sub" id="sem-sub"></div>
                     </div>
                 </div>
 
-                <div id="alerta-capital" style="display:none; margin-top: 12px; background: rgba(255,77,77,0.1);
-                     border: 1px solid #ff4d4d55; border-radius: 10px; padding: 12px 16px; font-size: 0.85rem; color: #ff8888;">
+                <div id="alerta-capital" style="display:none;margin-top:12px;background:rgba(255,77,77,0.1);border:1px solid #ff4d4d55;border-radius:10px;padding:12px 16px;font-size:0.85rem;color:#ff8888;">
                     ⚠️ <span id="alerta-capital-txt"></span>
                 </div>
 
@@ -269,13 +237,13 @@ input[type=range]::-webkit-slider-thumb {
                 </div>
 
                 <div class="desglose">
-                    <div style="font-size: 0.8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; margin: 16px 0 10px;">Resumen del préstamo</div>
-                    <div class="desglose-row"><span class="key">Precio vehículo</span><span class="amt" id="d-precio">—</span></div>
-                    <div class="desglose-row" id="dr-prestamo"><span class="key">Capital financiado</span><span class="amt" id="d-prestamo">—</span></div>
-                    <div class="desglose-row" id="dr-tipo"><span class="key">TAE</span><span class="amt" id="d-tipo">—</span></div>
-                    <div class="desglose-row" id="dr-cuota"><span class="key">Cuota mensual</span><span class="amt" id="d-cuota">—</span></div>
-                    <div class="desglose-row"><span class="key">Gastos extras</span><span class="amt" id="d-gastos">—</span></div>
-                    <div class="desglose-row"><span class="key">Coste total real</span><span class="amt" id="d-coste">—</span></div>
+                    <div style="font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;margin:16px 0 10px;">Resumen del préstamo</div>
+                    <div class="desglose-row"><span class="key">Precio vehículo</span><span id="d-precio">—</span></div>
+                    <div class="desglose-row"><span class="key">Capital financiado</span><span id="d-prestamo">—</span></div>
+                    <div class="desglose-row"><span class="key">TAE</span><span id="d-tipo">—</span></div>
+                    <div class="desglose-row"><span class="key">Cuota mensual</span><span id="d-cuota">—</span></div>
+                    <div class="desglose-row"><span class="key">Gastos extras</span><span id="d-gastos">—</span></div>
+                    <div class="desglose-row"><span class="key">Coste total real</span><span id="d-coste">—</span></div>
                 </div>
             </div>
         </div>
@@ -283,9 +251,10 @@ input[type=range]::-webkit-slider-thumb {
 </div>
 
 <script>
-const LIQUIDEZ  = {{ capital_liquidez }};
-const INGRESOS  = {{ ingresos_netos_mensuales }};
-const LIBRE     = {{ libre_mensual }};
+const D = JSON.parse(document.getElementById('sim-data').textContent);
+const LIQUIDEZ  = D.capital_liquidez;
+const INGRESOS  = D.ingresos_netos_mensuales;
+const LIBRE     = D.libre_mensual;
 
 let modoFinanciado = true;
 
@@ -304,23 +273,24 @@ function cuotaMensual(P, tipoAnual, años) {
 }
 
 function maxPrecioCoche(maxCuota, entradaPct, tipoAnual, años) {
-    let hipMax;
     const n = años * 12;
+    let hipMax;
     if (tipoAnual === 0) {
         hipMax = maxCuota * n;
     } else {
         const r = tipoAnual / 100 / 12;
         hipMax = maxCuota * (Math.pow(1 + r, n) - 1) / (r * Math.pow(1 + r, n));
     }
-    return hipMax / (1 - entradaPct / 100);
+    return entradaPct >= 100 ? hipMax : hipMax / (1 - entradaPct / 100);
 }
 
 function setModo(modo) {
     modoFinanciado = (modo === 'financiado');
     document.getElementById('btn-financiado').classList.toggle('active', modoFinanciado);
     document.getElementById('btn-contado').classList.toggle('active', !modoFinanciado);
-    document.getElementById('seccion-financiacion').style.opacity = modoFinanciado ? '1' : '0.3';
-    document.getElementById('seccion-financiacion').style.pointerEvents = modoFinanciado ? '' : 'none';
+    const sf = document.getElementById('seccion-financiacion');
+    sf.style.opacity = modoFinanciado ? '1' : '0.3';
+    sf.style.pointerEvents = modoFinanciado ? '' : 'none';
     actualizar();
 }
 
@@ -333,55 +303,50 @@ function actualizar() {
     const maxIngPct  = parseFloat(document.getElementById('sl-max-pct').value);
     const gastosPct  = parseFloat(document.getElementById('sl-gastos-pct').value);
 
-    document.getElementById('lbl-precio').textContent     = fmt(precio);
-    document.getElementById('lbl-cap-pct').textContent    = capPct + '%';
+    document.getElementById('lbl-precio').textContent      = fmt(precio);
+    document.getElementById('lbl-cap-pct').textContent     = capPct + '%';
     document.getElementById('lbl-entrada-pct').textContent = entradaPct + '%';
-    document.getElementById('lbl-tipo').textContent       = tipo.toFixed(2) + '%';
-    document.getElementById('lbl-plazo').textContent      = plazo + (plazo === 1 ? ' año' : ' años');
-    document.getElementById('lbl-max-pct').textContent    = maxIngPct + '%';
-    document.getElementById('lbl-gastos-pct').textContent = gastosPct + '%';
+    document.getElementById('lbl-tipo').textContent        = tipo.toFixed(2) + '%';
+    document.getElementById('lbl-plazo').textContent       = plazo + (plazo === 1 ? ' año' : ' años');
+    document.getElementById('lbl-max-pct').textContent     = maxIngPct + '%';
+    document.getElementById('lbl-gastos-pct').textContent  = gastosPct + '%';
 
     const capitalSeguro = LIQUIDEZ * capPct / 100;
     const gastosExtras  = precio * gastosPct / 100;
+    const base          = LIBRE > 0 ? LIBRE : INGRESOS;
 
-    let entrada, prestamo, cuota, totalPagado, intereses, pctIngresos;
-    let capitalNecesario;
+    let entrada, prestamo, cuota, totalPagado, pctIngresos, capitalNecesario;
 
     if (!modoFinanciado) {
-        // Compra al contado
-        entrada         = precio;
-        prestamo        = 0;
-        cuota           = 0;
-        totalPagado     = precio + gastosExtras;
-        intereses       = 0;
-        pctIngresos     = 0;
+        entrada          = precio;
+        prestamo         = 0;
+        cuota            = 0;
+        totalPagado      = precio + gastosExtras;
+        pctIngresos      = 0;
         capitalNecesario = precio + gastosExtras;
     } else {
-        entrada         = precio * entradaPct / 100;
-        prestamo        = precio - entrada;
-        cuota           = cuotaMensual(prestamo, tipo, plazo);
-        totalPagado     = entrada + cuota * plazo * 12 + gastosExtras;
-        intereses       = cuota * plazo * 12 - prestamo;
-        pctIngresos     = INGRESOS > 0 ? (cuota / INGRESOS * 100) : 0;
+        entrada          = precio * entradaPct / 100;
+        prestamo         = precio - entrada;
+        cuota            = cuotaMensual(prestamo, tipo, plazo);
+        totalPagado      = entrada + cuota * plazo * 12 + gastosExtras;
+        pctIngresos      = INGRESOS > 0 ? (cuota / INGRESOS * 100) : 0;
         capitalNecesario = entrada + gastosExtras;
     }
 
-    document.getElementById('r-entrada').textContent      = fmt(entrada);
-    document.getElementById('r-gastos').textContent       = fmt(gastosExtras);
+    document.getElementById('r-entrada').textContent       = fmt(entrada);
+    document.getElementById('r-gastos').textContent        = fmt(gastosExtras);
     document.getElementById('r-capital-total').textContent = fmt(capitalNecesario);
     document.getElementById('r-capital-disp').textContent  = fmt(capitalSeguro);
-    document.getElementById('r-prestamo').textContent     = modoFinanciado ? fmt(prestamo) : '—';
-    document.getElementById('r-cuota').textContent        = modoFinanciado ? fmtDec(cuota, 2) + '/mes' : '—';
-    document.getElementById('r-coste-total').textContent  = fmt(totalPagado);
+    document.getElementById('r-prestamo').textContent      = modoFinanciado ? fmt(prestamo) : '—';
+    document.getElementById('r-cuota').textContent         = modoFinanciado ? fmtDec(cuota, 2) + '/mes' : '—';
+    document.getElementById('r-coste-total').textContent   = fmt(totalPagado);
 
-    // % ingresos
     const pctEl = document.getElementById('r-pct-ing');
-    if (modoFinanciado) {
+    if (modoFinanciado && INGRESOS > 0) {
         pctEl.textContent = pctIngresos.toFixed(1) + '%';
         pctEl.style.color = pctIngresos < 15 ? '#00ff88' : pctIngresos < 25 ? '#ffaa00' : '#ff4d4d';
     } else {
-        pctEl.textContent = '—';
-        pctEl.style.color = 'var(--muted)';
+        pctEl.textContent = '—'; pctEl.style.color = 'var(--muted)';
     }
 
     // Desglose
@@ -395,91 +360,78 @@ function actualizar() {
     // Máximo recomendado
     let precioMax;
     if (!modoFinanciado) {
-        precioMax = capitalSeguro - gastosExtras * 0; // simplificado: capitalSeguro
         precioMax = capitalSeguro / (1 + gastosPct / 100);
     } else {
-        const maxCuota = LIBRE > 0 ? LIBRE * maxIngPct / 100 : INGRESOS * maxIngPct / 100;
+        const maxCuota = base * maxIngPct / 100;
         precioMax = maxPrecioCoche(maxCuota, entradaPct, tipo, plazo);
+        document.getElementById('r-max-sub').textContent =
+            'Tipo ' + tipo.toFixed(2) + '%, ' + plazo + ' años, entrada ' + entradaPct +
+            '%, cuota máx. ' + fmtDec(maxCuota, 0) + '/mes (' + maxIngPct + '% del libre).';
     }
-
     document.getElementById('r-max-precio').textContent = fmt(Math.max(0, precioMax));
-    if (!modoFinanciado) {
-        document.getElementById('r-max-sub').textContent = 'Máximo que cubres con el ' + capPct + '% de tu liquidez (' + fmt(capitalSeguro) + ') menos gastos extras.';
-    } else {
-        const maxCuota = LIBRE > 0 ? LIBRE * maxIngPct / 100 : INGRESOS * maxIngPct / 100;
-        document.getElementById('r-max-sub').textContent = 'Con tipo ' + tipo.toFixed(2) + '%, ' + plazo + ' años, entrada ' + entradaPct + '% y cuota máx. ' + fmtDec(maxCuota, 0) + '/mes.';
-    }
 
     // Alerta capital
-    const alertaEl = document.getElementById('alerta-capital');
+    const alertaEl  = document.getElementById('alerta-capital');
     const alertaTxt = document.getElementById('alerta-capital-txt');
     if (capitalSeguro < capitalNecesario) {
-        const falta = capitalNecesario - capitalSeguro;
         alertaEl.style.display = 'block';
-        alertaTxt.textContent = 'Te faltan ' + fmt(falta) + ' de capital seguro (con el ' + capPct + '% de tu liquidez). Ajusta el porcentaje o el precio.';
+        alertaTxt.textContent = 'Te faltan ' + fmt(capitalNecesario - capitalSeguro) +
+            ' de capital seguro (usando ' + capPct + '% de tu liquidez).';
     } else {
         alertaEl.style.display = 'none';
     }
 
     // Semáforo
-    const sem = document.getElementById('semaforo');
-    const semIcon = document.getElementById('sem-icon');
+    const sem      = document.getElementById('semaforo');
+    const semIcon  = document.getElementById('sem-icon');
     const semTitle = document.getElementById('sem-title');
-    const semSub = document.getElementById('sem-sub');
-    sem.className = 'semaforo';
-
+    const semSub   = document.getElementById('sem-sub');
+    sem.className  = 'semaforo';
     const capitalOk = capitalSeguro >= capitalNecesario;
 
     if (!modoFinanciado) {
         if (capitalOk) {
-            sem.classList.add('verde');
-            semIcon.textContent = '✅';
+            sem.classList.add('verde'); semIcon.textContent = '✅';
             semTitle.textContent = 'Puedes pagarlo al contado';
-            semSub.textContent = 'Tu capital seguro (' + fmt(capitalSeguro) + ') cubre el precio y los gastos.';
+            semSub.textContent   = 'Tu capital seguro (' + fmt(capitalSeguro) + ') cubre el precio y los gastos.';
         } else {
-            sem.classList.add('rojo');
-            semIcon.textContent = '❌';
+            sem.classList.add('rojo'); semIcon.textContent = '❌';
             semTitle.textContent = 'Capital insuficiente';
-            semSub.textContent = 'Necesitas ' + fmt(capitalNecesario) + ' pero tienes ' + fmt(capitalSeguro) + ' disponible (seguro).';
+            semSub.textContent   = 'Necesitas ' + fmt(capitalNecesario) + ' pero tienes ' + fmt(capitalSeguro) + ' disponible (seguro).';
         }
     } else if (!capitalOk && pctIngresos >= 25) {
-        sem.classList.add('rojo');
-        semIcon.textContent = '🚫';
+        sem.classList.add('rojo'); semIcon.textContent = '🚫';
         semTitle.textContent = 'No recomendable';
-        semSub.textContent = 'Capital insuficiente Y la cuota supera el ' + pctIngresos.toFixed(0) + '% de tus ingresos.';
+        semSub.textContent   = 'Capital insuficiente y cuota al ' + pctIngresos.toFixed(0) + '% de ingresos.';
     } else if (!capitalOk || pctIngresos >= 25) {
-        sem.classList.add('rojo');
-        semIcon.textContent = '❌';
+        sem.classList.add('rojo'); semIcon.textContent = '❌';
         semTitle.textContent = 'Ajuste necesario';
-        semSub.textContent = !capitalOk
+        semSub.textContent   = !capitalOk
             ? 'No tienes capital seguro suficiente para la entrada y gastos.'
-            : 'La cuota (' + pctIngresos.toFixed(0) + '% ingresos) supera el umbral del ' + maxIngPct + '%.';
+            : 'La cuota (' + pctIngresos.toFixed(0) + '% ingresos) supera el límite del ' + maxIngPct + '%.';
     } else if (pctIngresos >= 15) {
-        sem.classList.add('amarillo');
-        semIcon.textContent = '⚠️';
+        sem.classList.add('amarillo'); semIcon.textContent = '⚠️';
         semTitle.textContent = 'Con precaución';
-        semSub.textContent = 'La cuota supone el ' + pctIngresos.toFixed(0) + '% de tus ingresos. Es asumible pero ajustado.';
+        semSub.textContent   = 'Cuota al ' + pctIngresos.toFixed(0) + '% de ingresos. Es asumible pero ajustado.';
     } else {
-        sem.classList.add('verde');
-        semIcon.textContent = '✅';
+        sem.classList.add('verde'); semIcon.textContent = '✅';
         semTitle.textContent = 'Asequible';
-        semSub.textContent = modoFinanciado
-            ? 'La cuota (' + pctIngresos.toFixed(0) + '% de ingresos) está dentro de lo recomendado.'
-            : 'Puedes pagarlo cómodamente al contado.';
+        semSub.textContent   = modoFinanciado
+            ? 'La cuota (' + pctIngresos.toFixed(0) + '% ingresos) está dentro de lo recomendado.'
+            : 'Compra cómoda al contado.';
     }
 }
 
-['sl-precio','sl-cap-pct','sl-entrada-pct','sl-tipo','sl-plazo','sl-max-pct','sl-gastos-pct'].forEach(id => {
+['sl-precio','sl-cap-pct','sl-entrada-pct','sl-tipo','sl-plazo','sl-max-pct','sl-gastos-pct'].forEach(function(id) {
     document.getElementById(id).addEventListener('input', actualizar);
 });
 
-// Precio inicial sugerido
-(function init() {
-    const maxCuota = LIBRE > 0 ? LIBRE * 0.20 : INGRESOS * 0.20;
-    const precioSugerido = maxPrecioCoche(maxCuota, 30, 7, 5);
-    const sl = document.getElementById('sl-precio');
-    const clamped = Math.min(150000, Math.max(3000, Math.round(precioSugerido / 1000) * 1000));
-    sl.value = clamped;
+(function() {
+    const base      = LIBRE > 0 ? LIBRE : INGRESOS;
+    const maxCuota  = base * 0.20;
+    const precioSug = maxPrecioCoche(maxCuota, 30, 7, 5);
+    const sl        = document.getElementById('sl-precio');
+    sl.value = Math.min(150000, Math.max(3000, Math.round(precioSug / 1000) * 1000));
     actualizar();
 })();
 </script>
