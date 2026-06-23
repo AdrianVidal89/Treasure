@@ -349,13 +349,12 @@ function actualizar() {
     const cuota            = cuotaMensual(hipoteca, tipo, plazo);
     const totalPagado      = cuota * plazo * 12;
     const intereses        = totalPagado - hipoteca;
-    const base             = LIBRE > 0 ? LIBRE : INGRESOS;
     const pctIngresos      = INGRESOS > 0 ? (cuota / INGRESOS * 100) : 0;
 
     // Precio máximo óptimo: usa todo el capital disponible como entrada,
     // tomando prestado el máximo que permite la cuota. Fórmula:
     //   precioMax = (capitalDisponible + hipMax) / (1 + gastos%)
-    const maxCuota        = base * maxIngPct / 100;
+    const maxCuota        = INGRESOS * maxIngPct / 100;
     const hipMax          = hipMaxima(maxCuota, tipo, plazo);
     const precioMaxOptimo = (capitalDisponible + hipMax) / (1 + gastosPct / 100);
     const entOptima       = precioMaxOptimo > 0 ? (1 - hipMax / precioMaxOptimo) * 100 : 0;
@@ -435,12 +434,11 @@ function actualizar() {
 
 // Inicializar slider en el precio máximo óptimo
 (function() {
-    const base              = LIBRE > 0 ? LIBRE : INGRESOS;
     const mesesColchon      = 6;
     const gastosPct         = 11;
     const colchon           = GASTOS * mesesColchon;
     const capitalDisponible = Math.max(0, LIQUIDEZ - colchon);
-    const maxCuota          = base * 0.35;
+    const maxCuota          = INGRESOS * 0.35;
     const hipMax            = hipMaxima(maxCuota, 3.5, 25);
     const precioSug         = (capitalDisponible + hipMax) / (1 + gastosPct / 100);
     const clamped           = Math.min(1000000, Math.max(50000, Math.round(precioSug / 5000) * 5000));
