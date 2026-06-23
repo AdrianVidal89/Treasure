@@ -138,11 +138,11 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">🛡️ % capital seguro a usar</span>
-                        <span class="control-value" id="lbl-cap-pct">—</span>
+                        <span class="control-label">🛡️ Colchón de emergencia (meses de gastos)</span>
+                        <span class="control-value" id="lbl-colchon">—</span>
                     </div>
-                    <input type="range" id="sl-cap-pct" min="10" max="100" step="5" value="70">
-                    <div class="range-hints"><span>10%</span><span>100%</span></div>
+                    <input type="range" id="sl-colchon" min="3" max="12" step="1" value="6">
+                    <div class="range-hints"><span>3 meses</span><span>12 meses</span></div>
                 </div>
 
                 <div class="control">
@@ -184,7 +184,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                         <div class="val" style="color:#ff8844;" id="r-capital-total">—</div>
                     </div>
                     <div class="result-item">
-                        <div class="lbl">Capital seguro disponible</div>
+                        <div class="lbl">Capital disponible (tras colchón)</div>
                         <div class="val" style="color:#00ff88;" id="r-capital-disp">—</div>
                     </div>
                     <div class="result-item">
@@ -243,6 +243,7 @@ const D = JSON.parse(document.getElementById('sim-data').textContent);
 const LIQUIDEZ  = D.capital_liquidez;
 const INGRESOS  = D.ingresos_netos_mensuales;
 const LIBRE     = D.libre_mensual;
+const GASTOS    = D.gastos_fijos_mensuales;
 
 function fmt(n) {
     return '€' + Math.round(n).toLocaleString('es-ES');
@@ -271,28 +272,31 @@ function maxPrecio(maxCuota, entradaPct, tipoAnual, años) {
 }
 
 function actualizar() {
-    const precio     = parseFloat(document.getElementById('sl-precio').value);
-    const entradaPct = parseFloat(document.getElementById('sl-entrada-pct').value);
-    const tipo       = parseFloat(document.getElementById('sl-tipo').value);
-    const plazo      = parseInt(document.getElementById('sl-plazo').value);
-    const capPct     = parseFloat(document.getElementById('sl-cap-pct').value);
-    const gastosPct  = parseFloat(document.getElementById('sl-gastos-pct').value);
-    const maxIngPct  = parseFloat(document.getElementById('sl-max-pct').value);
+    const precio       = parseFloat(document.getElementById('sl-precio').value);
+    const entradaPct   = parseFloat(document.getElementById('sl-entrada-pct').value);
+    const tipo         = parseFloat(document.getElementById('sl-tipo').value);
+    const plazo        = parseInt(document.getElementById('sl-plazo').value);
+    const mesesColchon = parseInt(document.getElementById('sl-colchon').value);
+    const gastosPct    = parseFloat(document.getElementById('sl-gastos-pct').value);
+    const maxIngPct    = parseFloat(document.getElementById('sl-max-pct').value);
 
     // Actualizar labels
     document.getElementById('lbl-precio').textContent      = fmt(precio);
     document.getElementById('lbl-entrada-pct').textContent = entradaPct + '%';
     document.getElementById('lbl-tipo').textContent        = tipo.toFixed(2) + '%';
     document.getElementById('lbl-plazo').textContent       = plazo + ' años';
-    document.getElementById('lbl-cap-pct').textContent     = capPct + '%';
+    document.getElementById('lbl-colchon').textContent     = mesesColchon + ' meses';
     document.getElementById('lbl-gastos-pct').textContent  = gastosPct + '%';
     document.getElementById('lbl-max-pct').textContent     = maxIngPct + '%';
 
-    // Cálculos
+    // Capital disponible: liquidez menos colchón de emergencia obligatorio
+    const colchon          = GASTOS * mesesColchon;
+    const capitalDisponible = Math.max(0, LIQUIDEZ - colchon);
+
+    // Cálculos vivienda
     const entrada          = precio * entradaPct / 100;
     const gastosCompra     = precio * gastosPct / 100;
     const capitalNecesario = entrada + gastosCompra;
-    const capitalSeguro    = LIQUIDEZ * capPct / 100;
     const hipoteca         = precio - entrada;
     const cuota            = cuotaMensual(hipoteca, tipo, plazo);
     const totalPagado      = cuota * plazo * 12;
@@ -300,22 +304,27 @@ function actualizar() {
     const base             = LIBRE > 0 ? LIBRE : INGRESOS;
     const pctIngresos      = INGRESOS > 0 ? (cuota / INGRESOS * 100) : 0;
 
-    // Precio máximo
-    const maxCuota  = base * maxIngPct / 100;
-    const precioMax = maxPrecio(maxCuota, entradaPct, tipo, plazo);
+    // Precio máximo: mínimo entre límite por cuota Y límite por capital disponible
+    const maxCuota         = base * maxIngPct / 100;
+    const precioMaxCuota   = maxPrecio(maxCuota, entradaPct, tipo, plazo);
+    const precioMaxCapital = capitalDisponible > 0
+        ? capitalDisponible / (entradaPct / 100 + gastosPct / 100)
+        : 0;
+    const precioMax        = Math.min(precioMaxCuota, precioMaxCapital);
+    const limiteEs         = precioMaxCapital <= precioMaxCuota ? 'capital' : 'cuota';
 
     // Resultados
     document.getElementById('r-entrada').textContent       = fmt(entrada);
     document.getElementById('r-gastos').textContent        = fmt(gastosCompra);
     document.getElementById('r-capital-total').textContent = fmt(capitalNecesario);
-    document.getElementById('r-capital-disp').textContent  = fmt(capitalSeguro);
+    document.getElementById('r-capital-disp').textContent  = fmt(capitalDisponible);
     document.getElementById('r-hipoteca').textContent      = fmt(hipoteca);
     document.getElementById('r-cuota').textContent         = fmtDec(cuota, 2) + '/mes';
     document.getElementById('r-intereses').textContent     = fmt(intereses);
     document.getElementById('r-max-precio').textContent    = fmt(Math.max(0, precioMax));
-    document.getElementById('r-max-sub').textContent       =
-        'Tipo ' + tipo.toFixed(2) + '%, ' + plazo + ' años, entrada ' + entradaPct +
-        '%, cuota máx. ' + fmtDec(maxCuota, 0) + '/mes (' + maxIngPct + '% del libre mensual).';
+    document.getElementById('r-max-sub').textContent       = limiteEs === 'capital'
+        ? 'Limitado por capital disponible (' + fmt(capitalDisponible) + ' tras colchón de ' + mesesColchon + ' meses). Entrada ' + entradaPct + '% + gastos ' + gastosPct + '%.'
+        : 'Tipo ' + tipo.toFixed(2) + '%, ' + plazo + ' años, entrada ' + entradaPct + '%, cuota máx. ' + fmtDec(maxCuota, 0) + '/mes (' + maxIngPct + '% del libre mensual).';
 
     const pctEl = document.getElementById('r-pct-ing');
     pctEl.textContent = pctIngresos.toFixed(1) + '%';
@@ -332,10 +341,10 @@ function actualizar() {
     // Alerta capital
     const alertaEl  = document.getElementById('alerta-capital');
     const alertaTxt = document.getElementById('alerta-capital-txt');
-    if (capitalSeguro < capitalNecesario) {
-        const falta = capitalNecesario - capitalSeguro;
+    if (capitalDisponible < capitalNecesario) {
+        const falta = capitalNecesario - capitalDisponible;
         alertaEl.style.display = 'block';
-        alertaTxt.textContent = 'Te faltan ' + fmt(falta) + ' para cubrir entrada + gastos con el ' + capPct + '% de tu liquidez.';
+        alertaTxt.textContent = 'Te faltan ' + fmt(falta) + ' para cubrir entrada + gastos. Capital disponible tras ' + mesesColchon + ' meses de colchón: ' + fmt(capitalDisponible) + '.';
     } else {
         alertaEl.style.display = 'none';
     }
@@ -346,7 +355,7 @@ function actualizar() {
     const semTitle = document.getElementById('sem-title');
     const semSub   = document.getElementById('sem-sub');
     sem.className  = 'semaforo';
-    const capitalOk = capitalSeguro >= capitalNecesario;
+    const capitalOk = capitalDisponible >= capitalNecesario;
 
     if (!capitalOk && pctIngresos >= 40) {
         sem.classList.add('rojo'); semIcon.textContent = '🚫';
@@ -369,15 +378,24 @@ function actualizar() {
     }
 }
 
-['sl-precio','sl-entrada-pct','sl-tipo','sl-plazo','sl-cap-pct','sl-gastos-pct','sl-max-pct'].forEach(function(id) {
+['sl-precio','sl-entrada-pct','sl-tipo','sl-plazo','sl-colchon','sl-gastos-pct','sl-max-pct'].forEach(function(id) {
     document.getElementById(id).addEventListener('input', actualizar);
 });
 
-// Inicializar con precio máximo sugerido
+// Inicializar con precio máximo sugerido (respetando ambos límites: cuota y capital)
 (function() {
-    const base      = LIBRE > 0 ? LIBRE : INGRESOS;
-    const maxCuota  = base * 0.35;
-    const precioSug = maxPrecio(maxCuota, 20, 3.5, 25);
+    const base             = LIBRE > 0 ? LIBRE : INGRESOS;
+    const mesesColchon     = 6;
+    const entradaPct       = 20;
+    const gastosPct        = 11;
+    const colchon          = GASTOS * mesesColchon;
+    const capitalDisponible = Math.max(0, LIQUIDEZ - colchon);
+    const maxCuota         = base * 0.35;
+    const precioMaxCuota   = maxPrecio(maxCuota, entradaPct, 3.5, 25);
+    const precioMaxCapital = capitalDisponible > 0
+        ? capitalDisponible / (entradaPct / 100 + gastosPct / 100)
+        : 0;
+    const precioSug = Math.min(precioMaxCuota, precioMaxCapital);
     const clamped   = Math.min(1000000, Math.max(50000, Math.round(precioSug / 5000) * 5000));
     document.getElementById('sl-precio').value = clamped;
     actualizar();
