@@ -10,7 +10,7 @@ from finanzas.models import (
     RegistroMensual, Inversion, HistorialValorInversion,
     FuenteIngreso, PartidaGasto, FondoFamiliar, CuentaBancaria,
     TarjetaCredito, AjusteIngresoMensual, SaldoRealFondo,
-    IngresoRealMes, ReglaReparto,
+    IngresoRealMes, ReglaReparto, Propiedad, HistorialPropiedad,
 )
 from finanzas.distribucion import calcular_flujos
 
@@ -122,6 +122,11 @@ def dashboard_view(request):
                 liquidez_real += s.saldo
             patrimonio_real += s.saldo
 
+    # ── 4b. Propiedades ──
+    propiedades = Propiedad.objects.filter(hogar=hogar, activo=True)
+    num_propiedades = propiedades.count()
+    patrimonio_inmuebles = sum(p.patrimonio_neto for p in propiedades)
+
     # ── 5. Alertas contextuales ──
     alertas = []
 
@@ -166,7 +171,22 @@ def dashboard_view(request):
             'link_text': 'Registrar',
         })
 
-    # 5c. Sin ingreso real registrado este mes en evolución
+    # 5c. Propiedades sin actualización este mes
+    hoy_prop = date.today()
+    for prop in propiedades:
+        tiene_hist = HistorialPropiedad.objects.filter(
+            propiedad=prop, año=hoy_prop.year, mes=hoy_prop.month
+        ).exists()
+        if not tiene_hist:
+            alertas.append({
+                'tipo': 'info',
+                'icono': '🏡',
+                'texto': f'"{prop.nombre}": actualiza valor e hipoteca de {NOMBRE_MES[hoy_prop.month]}',
+                'link': f'/finanzas/evolucion/?año={hoy_prop.year}',
+                'link_text': 'Evolución',
+            })
+
+    # 5d. Sin ingreso real registrado este mes en evolución
     tiene_ingreso_real = IngresoRealMes.objects.filter(
         hogar=hogar, año=anio, mes=mes
     ).exists()
@@ -241,6 +261,13 @@ def dashboard_view(request):
             'sub': f'{num_tarjetas} tarjeta{"s" if num_tarjetas != 1 else ""}',
             'color': '#ffaa00',
             'link': '/finanzas/gestionar/',
+        },
+        {
+            'icono': '🏡', 'titulo': 'Propiedades',
+            'metrica': f'€{patrimonio_inmuebles:,.0f}' if num_propiedades > 0 else '—',
+            'sub': f'{num_propiedades} inmueble{"s" if num_propiedades != 1 else ""} · patrimonio neto' if num_propiedades > 0 else 'Sin propiedades registradas',
+            'color': '#e67e22',
+            'link': '/finanzas/propiedades/',
         },
     ]
 

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% load l10n %}
+{% block title %}Mis Propiedades - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<style>
+.prop-wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+.prop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
+.prop-header h1 { color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0; font-size: 1.6rem; }
+
+.resumen-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 32px; }
+@media (max-width: 600px) { .resumen-grid { grid-template-columns: 1fr; } }
+.resumen-card { background: #1a1a1a; border-radius: 14px; padding: 20px; border: 1px solid #2a2a2a; }
+.resumen-card .lbl { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.resumen-card .val { font-size: 1.5rem; font-weight: 700; }
+
+.prop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
+@media (max-width: 500px) { .prop-grid { grid-template-columns: 1fr; } }
+
+.prop-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; overflow: hidden; }
+.prop-card-header { padding: 18px 20px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid #222; }
+.prop-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.prop-name { font-size: 1rem; font-weight: 700; color: var(--text-color); }
+.prop-tipo { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+
+.prop-body { padding: 16px 20px; }
+.prop-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e1e1e; font-size: 0.85rem; }
+.prop-row:last-child { border-bottom: none; }
+.prop-row .k { color: var(--muted); }
+.prop-row .v { font-weight: 600; }
+
+.venta-box { margin: 14px 0 0; background: #111; border-radius: 12px; padding: 14px 16px; }
+.venta-box .venta-title { font-size: 0.75rem; text-transform: uppercase; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
+.venta-row { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 4px; }
+.venta-row .k { color: #555; }
+.venta-neto { font-size: 1.1rem; font-weight: 700; color: #00ff88; margin-top: 10px; padding-top: 10px; border-top: 1px solid #222; display: flex; justify-content: space-between; }
+.venta-neto .k { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+
+.prop-actions { padding: 12px 20px; border-top: 1px solid #1e1e1e; display: flex; gap: 8px; }
+.btn { padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; text-decoration: none; display: inline-block; }
+.btn-edit { background: #1e1e1e; border: 1px solid #333; color: var(--text-color); }
+.btn-edit:hover { border-color: var(--primary-color); }
+.btn-del { background: rgba(255,77,77,0.1); border: 1px solid #ff4d4d33; color: #ff8888; }
+.btn-add { background: var(--primary-color); color: #000; padding: 10px 20px; font-size: 0.9rem; }
+
+.empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
+.empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+</style>
+
+<div class="prop-wrap">
+    <div class="prop-header">
+        <h1>🏡 Mis Propiedades</h1>
+        <a href="{% url 'finanzas:crear_propiedad' %}" class="btn btn-add">+ Añadir propiedad</a>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.85rem;">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% if propiedades_con_venta %}
+
+    <div class="resumen-grid">
+        <div class="resumen-card" style="border-color: #e67e2233;">
+            <div class="lbl">Valor bruto total</div>
+            <div class="val" style="color: #e67e22;">€{{ total_valor|floatformat:0 }}</div>
+        </div>
+        <div class="resumen-card" style="border-color: #ff4d4d33;">
+            <div class="lbl">Deuda hipotecaria total</div>
+            <div class="val" style="color: #ff6b6b;">-€{{ total_deuda|floatformat:0 }}</div>
+        </div>
+        <div class="resumen-card" style="border-color: #00ff8833;">
+            <div class="lbl">Patrimonio neto inmuebles</div>
+            <div class="val" style="color: #00ff88;">€{{ total_neto|floatformat:0 }}</div>
+        </div>
+    </div>
+
+    <div class="prop-grid">
+        {% for item in propiedades_con_venta %}
+        {% with p=item.propiedad v=item.neto_venta %}
+        <div class="prop-card">
+            <div class="prop-card-header">
+                <div class="prop-dot" style="background: {{ p.color }};"></div>
+                <div>
+                    <div class="prop-name">{{ p.nombre }}</div>
+                    <div class="prop-tipo">{{ p.get_tipo_display }}{% if p.es_residencia_habitual %} · Residencia habitual{% endif %}</div>
+                </div>
+            </div>
+            <div class="prop-body">
+                <div class="prop-row"><span class="k">Fecha compra</span><span class="v">{{ p.fecha_compra|date:"d/m/Y" }}</span></div>
+                <div class="prop-row"><span class="k">Precio compra</span><span class="v">€{{ p.precio_compra|floatformat:0 }}</span></div>
+                <div class="prop-row"><span class="k">Gastos compra</span><span class="v">€{{ p.gastos_compra|floatformat:0 }}</span></div>
+                <div class="prop-row"><span class="k">Valor actual</span><span class="v" style="color: #e67e22;">€{{ p.valor_actual|floatformat:0 }}</span></div>
+                <div class="prop-row"><span class="k">Deuda hipotecaria</span><span class="v" style="color: #ff6b6b;">-€{{ p.deuda_hipotecaria|floatformat:0 }}</span></div>
+                <div class="prop-row"><span class="k">Patrimonio neto</span><span class="v" style="color: #00ff88;">€{{ p.patrimonio_neto|floatformat:0 }}</span></div>
+
+                <div class="venta-box">
+                    <div class="venta-title">💰 Si vendieras hoy</div>
+                    <div class="venta-row"><span class="k">Valor venta</span><span>€{{ v.valor_actual|floatformat:0 }}</span></div>
+                    <div class="venta-row"><span class="k">− Deuda hipoteca</span><span style="color:#ff6b6b;">-€{{ v.deuda|floatformat:0 }}</span></div>
+                    <div class="venta-row"><span class="k">− Gastos venta ({{ p.gastos_venta_pct }}%)</span><span style="color:#ffaa00;">-€{{ v.gastos_venta|floatformat:0 }}</span></div>
+                    <div class="venta-row"><span class="k">− Plusvalía IRPF</span><span style="color:#ffaa00;">-€{{ v.plusvalia|floatformat:0 }}</span></div>
+                    <div class="venta-neto">
+                        <span class="k">Capital neto libre</span>
+                        <span>€{{ v.neto|floatformat:0 }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="prop-actions">
+                <a href="{% url 'finanzas:editar_propiedad' p.pk %}" class="btn btn-edit">✏️ Editar</a>
+                <form method="post" action="{% url 'finanzas:eliminar_propiedad' p.pk %}" style="display:inline;" onsubmit="return confirm('¿Archivar {{ p.nombre }}?')">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-del">🗑 Archivar</button>
+                </form>
+            </div>
+        </div>
+        {% endwith %}
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="empty-state">
+        <div class="icon">🏡</div>
+        <p style="font-size: 1.1rem; margin-bottom: 8px;">No tienes propiedades registradas</p>
+        <p style="font-size: 0.85rem; margin-bottom: 24px;">Añade tus inmuebles para controlar su patrimonio neto y usarlos en los simuladores.</p>
+        <a href="{% url 'finanzas:crear_propiedad' %}" class="btn btn-add">+ Añadir primera propiedad</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

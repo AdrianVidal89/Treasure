@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 
-from .models import FondoFamiliar, SaldoRealFondo, IngresoRealMes
+from .models import FondoFamiliar, SaldoRealFondo, IngresoRealMes, Propiedad, HistorialPropiedad
 from .distribucion import calcular_flujos
 
 MESES_NOMBRES = [
@@ -161,6 +161,45 @@ def _construir_tabla(hogar, año):
     return fondos, filas
 
 
+def _construir_tabla_propiedades(hogar, año):
+    propiedades = list(Propiedad.objects.filter(hogar=hogar, activo=True).order_by('nombre'))
+    hoy = datetime.date.today()
+    meses_mostrados = list(range(1, min(hoy.month + 1, 13))) if año == hoy.year else list(range(1, 13))
+
+    historial_qs = HistorialPropiedad.objects.filter(
+        propiedad__hogar=hogar, año=año
+    ).select_related('propiedad')
+    hist_map = {(h.propiedad_id, h.mes): h for h in historial_qs}
+
+    filas = []
+    for mes in meses_mostrados:
+        celdas = []
+        total_neto = Decimal('0')
+        tiene_datos = False
+        for p in propiedades:
+            h = hist_map.get((p.id, mes))
+            neto = (h.valor_mercado - h.deuda_hipotecaria) if h else None
+            if neto is not None:
+                total_neto += neto
+                tiene_datos = True
+            celdas.append({
+                'propiedad': p,
+                'historial': h,
+                'valor': h.valor_mercado if h else None,
+                'deuda': h.deuda_hipotecaria if h else None,
+                'neto': neto,
+            })
+        filas.append({
+            'mes': mes,
+            'mes_nombre': MESES_NOMBRES[mes],
+            'celdas': celdas,
+            'total_neto': total_neto if tiene_datos else None,
+        })
+
+    filas.reverse()
+    return propiedades, filas
+
+
 @login_required
 def vista_evolucion(request):
     profile, hogar = _get_hogar(request)
@@ -176,6 +215,7 @@ def vista_evolucion(request):
 
     resumen = _calcular_resumen(hogar, año)
     fondos, filas = _construir_tabla(hogar, año)
+    propiedades, filas_propiedades = _construir_tabla_propiedades(hogar, año)
     años_disponibles = [hoy.year - 1, hoy.year, hoy.year + 1]
 
     return render(request, 'finanzas/evolucion/vista.html', {
@@ -184,6 +224,8 @@ def vista_evolucion(request):
         'resumen': resumen,
         'fondos': fondos,
         'filas': filas,
+        'propiedades': propiedades,
+        'filas_propiedades': filas_propiedades,
         'año_actual': año,
         'años': años_disponibles,
     })

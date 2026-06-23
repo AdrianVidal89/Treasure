@@ -190,6 +190,60 @@
         </table>
     </div>
 
+    <!-- SECCIÓN PROPIEDADES -->
+    {% if propiedades %}
+    <div style="margin-top: 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h2 style="color: #e67e22; margin: 0; font-size: 1.2rem;">🏡 Inmuebles</h2>
+            <a href="{% url 'finanzas:listar_propiedades' %}" style="font-size: 0.8rem; color: var(--muted); text-decoration: none;">Gestionar →</a>
+        </div>
+        <div class="evo-table-wrap">
+            <table class="evo-table">
+                <thead>
+                    <tr>
+                        <th>Mes</th>
+                        {% for prop in propiedades %}
+                        <th>
+                            <div class="fondo-label" style="justify-content: flex-end;">
+                                <span style="color: {{ prop.color }};">{{ prop.nombre }}</span>
+                                <span class="fondo-dot" style="background: {{ prop.color }};"></span>
+                            </div>
+                            <div style="font-size: 0.65rem; color: #444;">{{ prop.get_tipo_display }}</div>
+                        </th>
+                        {% endfor %}
+                        {% if propiedades|length > 1 %}
+                        <th style="color: #e67e22;">Total neto</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fila in filas_propiedades %}
+                    <tr>
+                        <td>{{ fila.mes_nombre }} {{ año_actual }}</td>
+                        {% for celda in fila.celdas %}
+                        <td onclick="abrirModalPropiedad({{ celda.propiedad.id }}, '{{ celda.propiedad.nombre|escapejs }}', {{ fila.mes }}, {{ año_actual }}, '{% if celda.valor is not None %}{{ celda.valor|unlocalize }}{% endif %}', '{% if celda.deuda is not None %}{{ celda.deuda|unlocalize }}{% endif %}')"
+                            title="Click para editar valor y deuda">
+                            {% if celda.neto is not None %}
+                                <span style="color: {{ celda.propiedad.color }}; font-weight: 600;">€{{ celda.neto|floatformat:0 }}</span>
+                                <div style="font-size: 0.68rem; color: #555; margin-top: 2px;">€{{ celda.valor|floatformat:0 }} − €{{ celda.deuda|floatformat:0 }}</div>
+                            {% else %}
+                                <span class="cell-vacio">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        {% if propiedades|length > 1 %}
+                        <td style="color: #e67e22; font-weight: 700;">
+                            {% if fila.total_neto is not None %}€{{ fila.total_neto|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
 </div>
 
 <!-- MODAL: Editar saldo de fondo -->
@@ -276,7 +330,49 @@
     </div>
 </div>
 
+<!-- MODAL: Registrar valor propiedad -->
+<div id="modal-propiedad" class="modal-overlay">
+    <div class="modal-box">
+        <h3 id="modal-prop-titulo">Actualizar propiedad</h3>
+        <form method="post" action="{% url 'finanzas:registrar_historial_propiedad' %}">
+            {% csrf_token %}
+            <input type="hidden" name="propiedad_id" id="modal-prop-id">
+            <input type="hidden" name="mes" id="modal-prop-mes">
+            <input type="hidden" name="año" id="modal-prop-año">
+            <input type="hidden" name="año" value="{{ año_actual }}">
+            <div class="fg">
+                <label>Valor de mercado (€) — deja vacío para borrar</label>
+                <input type="number" name="valor_mercado" id="modal-prop-valor" step="1" placeholder="Ej: 225000">
+            </div>
+            <div class="fg">
+                <label>Deuda hipotecaria pendiente (€)</label>
+                <input type="number" name="deuda_hipotecaria" id="modal-prop-deuda" step="1" placeholder="Capital pendiente (0 si sin hipoteca)">
+            </div>
+            <div class="fg">
+                <label>Nota (opcional)</label>
+                <input type="text" name="nota" placeholder="Ej: Tasación banco, Oferta recibida…">
+            </div>
+            <div class="btn-row">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Guardar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+function abrirModalPropiedad(propId, propNombre, mes, año, valorActual, deudaActual) {
+    const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+    document.getElementById('modal-prop-titulo').textContent = `${propNombre} — ${meses[mes]} ${año}`;
+    document.getElementById('modal-prop-id').value = propId;
+    document.getElementById('modal-prop-mes').value = mes;
+    document.getElementById('modal-prop-año').value = año;
+    document.getElementById('modal-prop-valor').value = valorActual || '';
+    document.getElementById('modal-prop-deuda').value = deudaActual || '';
+    document.getElementById('modal-propiedad').classList.add('active');
+    setTimeout(() => document.getElementById('modal-prop-valor').focus(), 50);
+}
+
 function abrirModalSaldo(fondoId, fondoNombre, mes, año, valorActual) {
     document.getElementById('modal-saldo-titulo').textContent = `${fondoNombre} — ${mes}/${año}`;
     document.getElementById('modal-fondo-id').value = fondoId;

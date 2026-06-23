@@ -6,6 +6,7 @@ from . import views_distribucion
 from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 from . import views_evolucion
 from . import views_simuladores
+from . import views_propiedades
 
 app_name = 'finanzas'
 
@@ -87,4 +88,11 @@ urlpatterns = [
     # ── Simuladores ────────────────────────────────────────────────────────
     path('simuladores/vivienda/', views_simuladores.simulador_vivienda, name='simulador_vivienda'),
     path('simuladores/vehiculo/', views_simuladores.simulador_vehiculo, name='simulador_vehiculo'),
+
+    # ── Propiedades ───────────────────────────────────────────────────────
+    path('propiedades/', views_propiedades.listar_propiedades, name='listar_propiedades'),
+    path('propiedades/crear/', views_propiedades.crear_propiedad, name='crear_propiedad'),
+    path('propiedades/<int:pk>/editar/', views_propiedades.editar_propiedad, name='editar_propiedad'),
+    path('propiedades/<int:pk>/eliminar/', views_propiedades.eliminar_propiedad, name='eliminar_propiedad'),
+    path('propiedades/historial/', views_propiedades.registrar_historial, name='registrar_historial_propiedad'),
 ]

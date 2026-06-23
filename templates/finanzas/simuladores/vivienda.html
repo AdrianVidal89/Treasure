@@ -59,6 +59,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
 <!-- Datos financieros serializados como JSON (sin problemas de locale) -->
 {{ sim_data|json_script:"sim-data" }}
+{{ propiedades_data|json_script:"propiedades-data" }}
 
 <div class="sim-wrap">
     <div class="tab-bar">
@@ -96,6 +97,32 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                 </div>
                 {% if ultimo_mes %}<div style="font-size:0.75rem;color:#444;text-align:right;">Datos de {{ ultimo_mes }}/{{ ultimo_anio }}</div>{% endif %}
             </div>
+
+            {% if propiedades_data %}
+            <div class="card" style="margin-bottom: 20px;">
+                <h2>🏡 Incluir venta de propiedad</h2>
+                <p style="font-size: 0.8rem; color: var(--muted); margin: -10px 0 14px;">Marca las propiedades cuya venta quieras incluir en el capital disponible. Se descuenta la hipoteca, plusvalía IRPF y gastos de venta.</p>
+                <div id="prop-checkboxes">
+                    {% for prop in propiedades_data %}
+                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid #1e1e1e; cursor: pointer;">
+                        <input type="checkbox" class="prop-check"
+                               data-neto="{{ prop.neto }}"
+                               data-nombre="{{ prop.nombre }}"
+                               style="margin-top: 3px; width: 16px; height: 16px; cursor: pointer;">
+                        <div style="flex: 1;">
+                            <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-color);">{{ prop.nombre }}</div>
+                            <div style="font-size: 0.75rem; color: #00ff88; margin-top: 2px;">Neto libre: €{{ prop.neto|floatformat:0 }}</div>
+                            <div style="font-size: 0.7rem; color: #555; margin-top: 1px;">€{{ prop.valor_actual|floatformat:0 }} − hipoteca €{{ prop.deuda|floatformat:0 }} − plusvalía €{{ prop.plusvalia|floatformat:0 }} − gastos €{{ prop.gastos_venta|floatformat:0 }}</div>
+                        </div>
+                    </label>
+                    {% endfor %}
+                </div>
+                <div id="prop-suma-box" style="display:none; margin-top:12px; background: rgba(0,255,136,0.06); border: 1px solid #00ff8833; border-radius: 10px; padding: 10px 14px; font-size: 0.85rem;">
+                    <span style="color: var(--muted);">Capital extra por ventas:</span>
+                    <span id="prop-suma-val" style="color: #00ff88; font-weight: 700; float: right;">€0</span>
+                </div>
+            </div>
+            {% endif %}
 
             <div class="card">
                 <h2>⚙️ Parámetros</h2>
@@ -244,6 +271,31 @@ const LIQUIDEZ  = D.capital_liquidez;
 const INGRESOS  = D.ingresos_netos_mensuales;
 const LIBRE     = D.libre_mensual;
 const GASTOS    = D.gastos_fijos_mensuales;
+const PROPIEDADES = JSON.parse(document.getElementById('propiedades-data').textContent);
+
+// Capital extra por venta de propiedades seleccionadas
+function capitalVentas() {
+    let suma = 0;
+    document.querySelectorAll('.prop-check:checked').forEach(function(cb) {
+        suma += parseFloat(cb.dataset.neto) || 0;
+    });
+    return Math.max(0, suma);
+}
+
+document.querySelectorAll('.prop-check').forEach(function(cb) {
+    cb.addEventListener('change', function() {
+        const suma = capitalVentas();
+        const box = document.getElementById('prop-suma-box');
+        const val = document.getElementById('prop-suma-val');
+        if (suma > 0) {
+            box.style.display = 'block';
+            val.textContent = '€' + Math.round(suma).toLocaleString('es-ES');
+        } else {
+            box.style.display = 'none';
+        }
+        actualizar();
+    });
+});
 
 function fmt(n) {
     return '€' + Math.round(n).toLocaleString('es-ES');
@@ -289,9 +341,10 @@ function actualizar() {
     document.getElementById('lbl-gastos-pct').textContent  = gastosPct + '%';
     document.getElementById('lbl-max-pct').textContent     = maxIngPct + '%';
 
-    // Capital disponible: liquidez menos colchón de emergencia obligatorio
-    const colchon          = GASTOS * mesesColchon;
-    const capitalDisponible = Math.max(0, LIQUIDEZ - colchon);
+    // Capital disponible: liquidez menos colchón + capital neto de propiedades vendidas
+    const colchon           = GASTOS * mesesColchon;
+    const capitalVentasSum  = capitalVentas();
+    const capitalDisponible = Math.max(0, LIQUIDEZ - colchon) + capitalVentasSum;
 
     // Cálculos vivienda
     const entrada          = precio * entradaPct / 100;
