@@ -820,3 +820,134 @@ class TickerCatalogo(models.Model):
 
     def __str__(self):
         return f"{self.symbol} — {self.nombre} ({self.exchange})"
+
+
+# ─── Módulo Inmuebles ─────────────────────────────────────────────────────────
+
+class Propiedad(models.Model):
+    TIPO_CHOICES = [
+        ('vivienda', 'Vivienda'),
+        ('local', 'Local comercial'),
+        ('terreno', 'Terreno'),
+        ('garaje', 'Garaje / Plaza'),
+        ('otro', 'Otro inmueble'),
+    ]
+
+    hogar = models.ForeignKey(
+        'core.Hogar', on_delete=models.CASCADE, related_name='propiedades'
+    )
+    nombre = models.CharField(max_length=200, help_text='Ej: Piso calle Mayor, Local Getafe…')
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='vivienda')
+    descripcion = models.CharField(max_length=500, blank=True)
+
+    # Datos de adquisición
+    fecha_compra = models.DateField()
+    precio_compra = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text='Precio escriturado (sin gastos de compra)'
+    )
+    gastos_compra = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='ITP/AJD, notaría, registro, gestoría…'
+    )
+
+    # Estado actual (se actualiza mensualmente)
+    valor_actual = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        help_text='Valoración actual de mercado'
+    )
+    deuda_hipotecaria = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Capital pendiente de hipoteca a día de hoy'
+    )
+
+    # Estimación de costes de venta
+    gastos_venta_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('6.0'),
+        help_text='% costes de venta: agencia (~3%), notaría+gestoría (~1%), etc.'
+    )
+    es_residencia_habitual = models.BooleanField(
+        default=False,
+        help_text='Puede influir en exenciones fiscales al vender'
+    )
+
+    color = models.CharField(max_length=7, default='#e67e22')
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nombre']
+
+    def __str__(self):
+        return f"{self.nombre} ({self.get_tipo_display()})"
+
+    @property
+    def patrimonio_neto(self):
+        return self.valor_actual - self.deuda_hipotecaria
+
+    @property
+    def coste_base(self):
+        """Precio de compra + gastos de adquisición (base para calcular plusvalía)."""
+        return self.precio_compra + self.gastos_compra
+
+    @property
+    def ganancia_bruta(self):
+        return self.valor_actual - self.coste_base
+
+    def calcular_plusvalia(self):
+        """IRPF 2024 — tramos de ganancias patrimoniales del ahorro."""
+        ganancia = max(Decimal('0'), self.ganancia_bruta)
+        if ganancia == 0:
+            return Decimal('0')
+        tramos = [
+            (Decimal('6000'),    Decimal('0.19')),
+            (Decimal('44000'),   Decimal('0.21')),
+            (Decimal('150000'),  Decimal('0.23')),
+            (Decimal('1000000'), Decimal('0.27')),
+        ]
+        tax = Decimal('0')
+        remaining = ganancia
+        for limit, rate in tramos:
+            chunk = min(remaining, limit)
+            tax += chunk * rate
+            remaining -= chunk
+            if remaining <= 0:
+                break
+        return tax.quantize(Decimal('0.01'))
+
+    def calcular_neto_venta(self):
+        """Capital neto que quedaría libre hoy si se vendiera al valor actual."""
+        gastos = (self.valor_actual * self.gastos_venta_pct / Decimal('100')).quantize(Decimal('0.01'))
+        plusvalia = self.calcular_plusvalia()
+        neto = self.valor_actual - self.deuda_hipotecaria - gastos - plusvalia
+        return {
+            'id': self.pk,
+            'nombre': self.nombre,
+            'valor_actual': round(float(self.valor_actual), 2),
+            'deuda': round(float(self.deuda_hipotecaria), 2),
+            'ganancia_bruta': round(float(self.ganancia_bruta), 2),
+            'plusvalia': round(float(plusvalia), 2),
+            'gastos_venta': round(float(gastos), 2),
+            'neto': round(float(neto), 2),
+        }
+
+
+class HistorialPropiedad(models.Model):
+    propiedad = models.ForeignKey(
+        Propiedad, on_delete=models.CASCADE, related_name='historial'
+    )
+    año = models.IntegerField()
+    mes = models.IntegerField(help_text='1-12')
+    valor_mercado = models.DecimalField(max_digits=12, decimal_places=2)
+    deuda_hipotecaria = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0')
+    )
+    nota = models.CharField(max_length=255, blank=True, default='')
+    registrado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-año', '-mes']
+        unique_together = ('propiedad', 'año', 'mes')
+
+    def __str__(self):
+        return f"{self.propiedad.nombre} {self.mes}/{self.año}: €{self.valor_mercado}"

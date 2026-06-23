@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 
-from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso
+from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad
 from .distribucion import _neto_fuente_base
 
 
@@ -100,8 +100,13 @@ def simulador_vivienda(request):
         return redirect('dashboard')
 
     datos = _datos_financieros(hogar)
+    propiedades_data = [
+        p.calcular_neto_venta()
+        for p in Propiedad.objects.filter(hogar=hogar, activo=True)
+    ]
     return render(request, 'finanzas/simuladores/vivienda.html', {
         'hogar': hogar,
+        'propiedades_data': propiedades_data,
         **datos,
     })
 
