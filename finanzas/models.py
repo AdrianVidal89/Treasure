@@ -200,10 +200,13 @@ class Inversion(models.Model):
     
     @property
     def precio_medio_compra(self):
-        """Precio medio ponderado de todas las compras (FIFO no implementado)."""
-        compras = self.movimientos.filter(tipo='COMPRA')
-        total_invertido = sum((m.cantidad * m.precio_unitario) for m in compras)
-        total_unidades = sum(m.cantidad for m in compras)
+        """Precio medio ponderado de todas las compras."""
+        result = self.movimientos.filter(tipo='COMPRA').aggregate(
+            total_invertido=models.Sum(models.F('cantidad') * models.F('precio_unitario')),
+            total_unidades=models.Sum('cantidad')
+        )
+        total_unidades = result['total_unidades'] or Decimal('0')
+        total_invertido = result['total_invertido'] or Decimal('0')
         if total_unidades > 0:
             return round(total_invertido / total_unidades, 8)
         return Decimal('0')
@@ -222,7 +225,7 @@ class Inversion(models.Model):
     def rentabilidad_latente_pct(self):
         """% de rentabilidad sobre la posición abierta actualmente."""
         base = self.coste_base_actual
-        if base and base > 0:
+        if base > 0:
             return round(float((self.valor_total_actual - base) / base * 100), 2)
         return None
 
@@ -230,14 +233,22 @@ class Inversion(models.Model):
     def ganancia_realizada(self):
         """
         Ganancia/pérdida ya materializada con ventas.
-        = (precio venta - precio medio compra) × cantidad vendida - comisiones venta
+        Usa el PMC vigente en la fecha de cada venta (AVCO histórico).
         """
-        ventas = self.movimientos.filter(tipo='VENTA')
-        pmc = self.precio_medio_compra
-        total = Decimal('0')
-        for v in ventas:
-            total += (v.precio_unitario - pmc) * v.cantidad - v.comision
-        return round(total, 2)
+        movimientos = list(self.movimientos.filter(
+            tipo__in=['COMPRA', 'VENTA']
+        ).order_by('fecha', 'id'))
+        total_invertido = Decimal('0')
+        total_unidades = Decimal('0')
+        ganancia = Decimal('0')
+        for m in movimientos:
+            if m.tipo == 'COMPRA':
+                total_invertido += m.cantidad * m.precio_unitario
+                total_unidades += m.cantidad
+            else:
+                pmc = round(total_invertido / total_unidades, 8) if total_unidades > 0 else Decimal('0')
+                ganancia += (m.precio_unitario - pmc) * m.cantidad - m.comision
+        return round(ganancia, 2)
 
 
 class MovimientoInversion(models.Model):
