@@ -1,22 +1,86 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
+    /* Marca */
     --primary-color: #a259ff;
-    --glow: rgba(162, 89, 255, 0.7);
-    --dark-bg: #101010;
+    --primary-strong: #8b4ae6;
+    --accent-color: #a259ff;
+    --glow: rgba(162, 89, 255, 0.35);
+    --glow-soft: rgba(162, 89, 255, 0.18);
+
+    /* Superficies (jerarquía clara de fondos) */
+    --app-bg: #121212;
+    --dark-bg: #141414;
+    --surface: #1a1a1a;
+    --surface-2: #1f1f1f;
     --input-bg: #1c1c1c;
+
+    /* Texto */
     --text-color: #eaeaea;
-    --muted: #888;
-    --border: #333;
+    --muted: #8a8a8a;
+    --border: #2a2a2a;
+    --border-strong: #3a3a3a;
+
+    /* Colores semánticos (alineados con los usados en toda la app) */
+    --success: #00ff88;
+    --danger: #ff4d4d;
+    --info: #00d1ff;
+    --warning: #ffaa00;
+
+    /* Radios y sombras coherentes */
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 16px;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+    --shadow-glow: 0 0 18px var(--glow);
+    --ease: 0.2s ease;
 }
+
+html { scroll-behavior: smooth; }
 
 /* Estilo base sin centrado */
 body {
     margin: 0;
     padding: 0;
     font-family: 'Inter', sans-serif;
-    background-color: #121212;
-    color: #fff;
+    background-color: var(--app-bg);
+    color: var(--text-color);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+}
+
+/* Accesibilidad: anillo de foco visible y consistente para teclado */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.btn:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+/* Selección de texto en tono de marca */
+::selection { background: rgba(162, 89, 255, 0.35); color: #fff; }
+
+/* Scrollbar discreta y a juego con el tema oscuro */
+* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: #4a4a4a; background-clip: content-box; }
+
+/* Respeta la preferencia de menos movimiento */
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+    }
 }
 
 /* Estilo solo para páginas como login/logout */
@@ -42,27 +106,28 @@ body.dashboard-background {
 }
 
 .login-container {
-    background-color: var(--dark-bg);
+    background-color: rgba(20, 20, 20, 0.92);
+    backdrop-filter: blur(8px);
     padding: 40px;
-    border-radius: 14px;
-    width: 100%;
+    border-radius: var(--radius-lg);
+    width: calc(100% - 32px);
     max-width: 420px;
-    box-shadow: 0 0 30px var(--glow);
+    box-shadow: var(--shadow), var(--shadow-glow);
+    border: 1px solid var(--border);
     text-align: center;
 }
 
 .profile-form-container {
-    background-color: var(--dark-bg);
+    background-color: var(--surface);
     padding: 40px;
-    border-radius: 14px;
-    width: 100%;
+    border-radius: var(--radius-lg);
+    width: calc(100% - 32px);
     max-width: 500px;
-    box-shadow: 0 0 30px var(--glow);
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%); /* 👈 centro exacto en pantalla */
-    z-index: 10;
+    box-shadow: var(--shadow), var(--shadow-glow);
+    border: 1px solid var(--border);
+    /* Flujo normal y centrado: evita solaparse con la navbar o recortar
+       formularios más altos que la pantalla. */
+    margin: 48px auto;
 }
 
 
@@ -197,6 +262,8 @@ h1 {
 }
 
 
+.btn:active { transform: translateY(1px); }
+
 .btn-primary {
     background-color: var(--primary-color);
     color: white;
@@ -279,21 +346,31 @@ h1 {
 
 .dashboard-container {
     max-width: 1100px;
-    margin: 80px auto;
+    margin: 40px auto;
     padding: 2rem;
-    background-color: #1c1c1c;
-    border-radius: 12px;
-    box-shadow: 0 0 20px rgba(162, 89, 255, 0.2);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+}
+
+@media (max-width: 768px) {
+    .dashboard-container { margin: 20px 12px; padding: 1.25rem; }
 }
 
 .navbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #121212;
+    background-color: rgba(18, 18, 18, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     padding: 12px 24px;
-    box-shadow: 0 0 10px rgba(162, 89, 255, 0.3);
-    border-bottom: 1px solid #222;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 1000;
 }
 
 .navbar-left {
@@ -348,11 +425,17 @@ h1 {
 .nav-user-toggle {
     cursor: pointer;
     color: #fff;
-    font-weight: bold;
+    font-weight: 600;
+    font-size: 0.92rem;
+    padding: 7px 11px;
+    border-radius: var(--radius-sm);
+    transition: color var(--ease), background-color var(--ease);
+    display: inline-block;
 }
 
 .nav-user-toggle:hover {
     color: var(--primary-color);
+    background-color: rgba(162, 89, 255, 0.1);
 }
 
 .nav-user-menu {
@@ -529,11 +612,11 @@ h1 {
 }
 
 .chart-section {
-    background-color: #121212;
+    background-color: var(--surface);
     padding: 1rem;
-    border: 1px solid #444;
-    border-radius: 1rem;
-    box-shadow: 0 0 20px rgba(0, 255, 204, 0.3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
     margin-top: 2rem;
 }
 
@@ -553,12 +636,19 @@ h1 {
 }
 
 .cyber-select {
-    background-color: #1c1c1c;
-    color: #00ffcc;
-    border: 1px solid #00ffcc;
-    padding: 0.4rem 0.6rem;
-    border-radius: 0.5rem;
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-strong);
+    padding: 0.5rem 0.7rem;
+    border-radius: var(--radius-sm);
     font-family: 'Inter', sans-serif;
+    transition: border-color var(--ease), box-shadow var(--ease);
+}
+
+.cyber-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--glow-soft);
+    outline: none;
 }
 
 .filtro-checkboxes {
@@ -573,16 +663,19 @@ h1 {
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    background-color: #1c1c1c;
+    background-color: var(--input-bg);
     padding: 0.4rem 0.8rem;
-    border: 1px solid #00ffcc;
-    border-radius: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
     font-family: 'Inter', sans-serif;
     cursor: pointer;
+    transition: border-color var(--ease);
 }
 
+.checkbox-label:hover { border-color: var(--primary-color); }
+
 .checkbox-label input[type="checkbox"] {
-    accent-color: #00ffcc;
+    accent-color: var(--primary-color);
     width: 16px;
     height: 16px;
 }
@@ -635,38 +728,39 @@ h1 {
 
   .total-patrimonio-widget {
     display: inline-block;
-    padding: 14px 28px;
+    padding: 16px 32px;
     margin: 20px auto;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #0f0 10%, #0c3 90%);
-    border: 1px solid #0f0;
-    box-shadow: 0 0 15px #0f08, 0 0 6px #0f08 inset;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, rgba(0, 255, 136, 0.12), rgba(0, 209, 255, 0.08));
+    border: 1px solid rgba(0, 255, 136, 0.35);
+    box-shadow: 0 0 22px rgba(0, 255, 136, 0.15);
     text-align: center;
-    color: black;
+    color: var(--text-color);
     position: relative;
     left: 50%;
     transform: translateX(-50%);
   }
-  
+
   .total-patrimonio-titulo {
-    font-size: 1rem;
+    font-size: 0.78rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
   }
-  
+
   .total-patrimonio-valor {
-    font-size: 1.5rem;
+    font-size: 1.6rem;
     font-weight: 700;
-    color: #000;
-    text-shadow: 0 0 6px #0f0;
+    color: var(--success);
     margin-top: 4px;
   }
   
   .card-glow {
-    background-color: var(--input-bg);
-    border-radius: 16px;
-    box-shadow: 0 0 15px var(--glow);
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-glow);
     padding: 20px;
     margin: 12px 0;
   }
@@ -714,10 +808,11 @@ h1 {
   }
   
   .card-glow {
-    background-color: var(--input-bg);
-    border-radius: 16px;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
     padding: 20px;
-    box-shadow: 0 0 15px var(--glow);
+    box-shadow: var(--shadow-glow);
     text-align: center;
   }
   
@@ -860,4 +955,133 @@ html, body { max-width: 100%; overflow-x: hidden; }
         padding: 10px 20px;
         min-height: 40px;
     }
+}
+
+/* ============================================================
+   CONTENEDORES Y COMPONENTES BASE
+   (clases usadas en plantillas que no tenían definición propia)
+   ============================================================ */
+
+/* Contenedor principal de página: centrado, ancho cómodo de lectura,
+   y separación respecto a la navbar pegajosa. Antes solo existía dentro
+   de una media query, por lo que estas páginas salían pegadas al borde. */
+.panel {
+    max-width: 1040px;
+    margin: 32px auto;
+    padding: 28px 32px;
+    background-color: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+
+@media (max-width: 768px) {
+    .panel { margin: 16px 12px; padding: 20px 16px; }
+}
+
+/* Tarjeta de sección reutilizable (mi_hogar, etc.) */
+.section-card {
+    background-color: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin-top: 20px;
+}
+.section-card h2 {
+    margin-top: 0;
+    font-size: 1.1rem;
+    color: var(--text-color);
+}
+
+.text-muted { color: var(--muted); }
+
+/* Etiqueta de tipo de cuenta en tarjetas */
+.cuenta-tipo {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+}
+
+/* Tabla de miembros del hogar */
+.tabla-miembros {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 12px;
+}
+.tabla-miembros th {
+    text-align: left;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+}
+.tabla-miembros td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-color);
+    font-size: 0.9rem;
+}
+.tabla-miembros tr:last-child td { border-bottom: none; }
+
+/* Distintivo de rol */
+.rol-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-color);
+}
+.rol-badge.rol-admin,
+.rol-badge.rol-titular {
+    background: rgba(162, 89, 255, 0.12);
+    border-color: rgba(162, 89, 255, 0.4);
+    color: var(--primary-color);
+}
+.rol-badge.rol-miembro {
+    background: rgba(0, 209, 255, 0.1);
+    border-color: rgba(0, 209, 255, 0.35);
+    color: var(--info);
+}
+
+/* ============================================================
+   CONSISTENCIA GLOBAL DE FORMULARIOS
+   Iguala selects y textareas a los inputs ya estilizados.
+   ============================================================ */
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    font-size: 15px;
+    font-family: 'Inter', sans-serif;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+    box-sizing: border-box;
+}
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--glow-soft);
+    outline: none;
+}
+
+/* Botones más cómodos en pantallas táctiles sin romper el diseño.
+   inline-flex centra el texto verticalmente con el min-height. */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 42px;
+    line-height: 1.2;
 }
