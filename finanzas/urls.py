@@ -5,6 +5,7 @@ from . import views_gastos
 from . import views_distribucion
 from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 from . import views_evolucion
+from . import views_simuladores
 
 app_name = 'finanzas'
 
@@ -82,4 +83,8 @@ urlpatterns = [
     path('evolucion/saldo/', views_evolucion.registrar_saldo_fondo, name='registrar_saldo_fondo'),
     path('evolucion/ingreso/', views_evolucion.registrar_ingreso_mes, name='registrar_ingreso_mes'),
     path('evolucion/fondo/crear/', views_evolucion.crear_fondo_evolucion, name='crear_fondo_evolucion'),
+
+    # ── Simuladores ────────────────────────────────────────────────────────
+    path('simuladores/vivienda/', views_simuladores.simulador_vivienda, name='simulador_vivienda'),
+    path('simuladores/vehiculo/', views_simuladores.simulador_vehiculo, name='simulador_vehiculo'),
 ]
