@@ -74,12 +74,15 @@
                       text-decoration: none; font-weight: 600;">
                 📥 Importar CSV
             </a>
-            <a href="{% url 'finanzas:actualizar_precios' %}"
-               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
-                      border: 1px solid #00d1ff; color: #00d1ff; border-radius: 8px;
-                      text-decoration: none; font-weight: 600;">
-                🔄 Actualizar precios
-            </a>
+            <form method="post" action="{% url 'finanzas:actualizar_precios' %}" style="display:inline;">
+                {% csrf_token %}
+                <button type="submit"
+                        style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
+                               border: 1px solid #00d1ff; color: #00d1ff; border-radius: 8px;
+                               font-weight: 600; cursor: pointer;">
+                    🔄 Actualizar precios
+                </button>
+            </form>
             <a href="{% url 'finanzas:crear' %}" class="btn btn-primary"
                style="font-size: 0.85rem; padding: 10px 18px;">
                 ➕ Nueva inversión
