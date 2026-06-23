@@ -43,6 +43,14 @@
             <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle">Distribución</a>
 
             <a href="{% url 'finanzas:vista_evolucion' %}" class="nav-user-toggle">Evolución</a>
+
+            <div class="nav-user-dropdown">
+                <span class="nav-user-toggle">Simuladores</span>
+                <div class="nav-user-menu">
+                    <a href="{% url 'finanzas:simulador_vivienda' %}">🏠 Simulador vivienda</a>
+                    <a href="{% url 'finanzas:simulador_vehiculo' %}">🚗 Simulador vehículo</a>
+                </div>
+            </div>
         </div>
 
         <button class="nav-toggle" aria-label="Menú" aria-expanded="false">
