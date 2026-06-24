@@ -10,18 +10,18 @@
 
 /* KPIs */
 .inv-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
-.inv-kpi { background: #1a1a1a; border-radius: 14px; padding: 20px; border: 1px solid #2a2a2a; }
+.inv-kpi { background: var(--surface); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }
 .inv-kpi .label { font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .inv-kpi .valor { font-size: 1.5rem; font-weight: 700; }
 .inv-kpi .sub { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
 
 /* Tabla activos */
-.inv-table-wrap { background: #111; border: 1px solid #2a2a2a; border-radius: 14px; overflow: hidden; }
+.inv-table-wrap { background: var(--app-bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .inv-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-.inv-table thead tr { background: #1a1a1a; }
+.inv-table thead tr { background: var(--surface); }
 .inv-table th { padding: 14px 18px; text-align: left; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
 .inv-table th.right { text-align: right; }
-.inv-table td { padding: 14px 18px; border-top: 1px solid #1a1a1a; vertical-align: middle; }
+.inv-table td { padding: 14px 18px; border-top: 1px solid var(--surface); vertical-align: middle; }
 .inv-table td.right { text-align: right; }
 .inv-table tbody tr.activo-row { cursor: pointer; transition: background 0.15s; }
 .inv-table tbody tr.activo-row:hover { background: rgba(162, 89, 255, 0.07); }
@@ -33,20 +33,20 @@
 .badge-ETF     { background: rgba(0,209,255,0.12); color: #00d1ff; border: 1px solid #00d1ff44; }
 .badge-FONDO   { background: rgba(255,170,0,0.12); color: #ffaa00; border: 1px solid #ffaa0044; }
 .badge-CRIPTO  { background: rgba(162,89,255,0.12); color: #a259ff; border: 1px solid #a259ff44; }
-.badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid #333; }
+.badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid var(--border-strong); }
 
 /* Fila expandible — histórico de movimientos */
 .historico-row { display: none; }
 .historico-row.open { display: table-row; }
 .historico-cell { padding: 0 !important; border-top: none !important; }
-.historico-inner { background: #0d0d0d; padding: 16px 24px 20px 24px; border-top: 1px solid #2a2a2a; }
+.historico-inner { background: var(--app-bg); padding: 16px 24px 20px 24px; border-top: 1px solid var(--border); }
 .historico-inner h4 { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin: 0 0 12px; }
 
 /* Tabla histórico */
 .hist-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-.hist-table th { text-align: left; color: var(--muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; padding: 6px 12px; border-bottom: 1px solid #222; }
+.hist-table th { text-align: left; color: var(--muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; padding: 6px 12px; border-bottom: 1px solid var(--surface-2); }
 .hist-table th.right { text-align: right; }
-.hist-table td { padding: 9px 12px; border-bottom: 1px solid #161616; }
+.hist-table td { padding: 9px 12px; border-bottom: 1px solid var(--dark-bg); }
 .hist-table td.right { text-align: right; }
 .hist-table tr:last-child td { border-bottom: none; }
 .hist-empty { color: var(--muted); font-style: italic; font-size: 0.82rem; padding: 8px 0; }
@@ -92,7 +92,7 @@
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color);
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color);
                     padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
                     font-size: 0.85rem; color: var(--text-color);">
             {{ message }}
@@ -107,7 +107,7 @@
             <div class="valor" style="color: #a259ff;">€{{ total_valor_actual|floatformat:2 }}</div>
             <div class="sub">Valoración actual</div>
         </div>
-        <div class="inv-kpi" style="border-color: #2a2a2a;">
+        <div class="inv-kpi" style="border-color: var(--border);">
             <div class="label">Capital invertido</div>
             <div class="valor" style="color: var(--text-color);">€{{ total_aportado|floatformat:2 }}</div>
             <div class="sub">Total compras neto</div>
@@ -123,7 +123,7 @@
             </div>
             <div class="sub">Sobre capital invertido</div>
         </div>
-        <div class="inv-kpi" style="border-color: #2a2a2a;">
+        <div class="inv-kpi" style="border-color: var(--border);">
             <div class="label">Activos en cartera</div>
             <div class="valor" style="color: var(--text-color);">{{ inv_data|length }}</div>
             <div class="sub">Posiciones abiertas</div>
@@ -180,7 +180,7 @@
                             <div style="font-size: 0.65rem; color: var(--muted);">manual</div>
                             {% endif %}
                         {% else %}
-                            <span style="color: #333;">—</span>
+                            <span style="color: var(--border-strong);">—</span>
                         {% endif %}
                     </td>
                     <td class="right">
@@ -189,7 +189,7 @@
                                 €{{ item.valor_total|floatformat:2 }}
                             </strong>
                         {% else %}
-                            <span style="color: #333;">—</span>
+                            <span style="color: var(--border-strong);">—</span>
                         {% endif %}
                     </td>
                     <td class="right">
@@ -199,14 +199,14 @@
                                 {% if item.rentabilidad >= 0 %}+{% endif %}{{ item.rentabilidad|floatformat:1 }}%
                             </span>
                         {% else %}
-                            <span style="color: #333;">—</span>
+                            <span style="color: var(--border-strong);">—</span>
                         {% endif %}
                     </td>
                     <td>
                         <a href="{% url 'finanzas:editar' item.inv.id %}"
                            onclick="event.stopPropagation()"
                            style="font-size: 0.75rem; color: var(--muted); text-decoration: none;
-                                  padding: 4px 8px; border: 1px solid #333; border-radius: 6px;">✏️</a>
+                                  padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 6px;">✏️</a>
                     </td>
                 </tr>
 
@@ -287,7 +287,7 @@
                                                onclick="event.stopPropagation()"
                                                style="font-size:0.72rem; color:var(--muted);
                                                       text-decoration:none; padding:3px 8px;
-                                                      border:1px solid #333; border-radius:6px;">✏️</a>
+                                                      border:1px solid var(--border-strong); border-radius:6px;">✏️</a>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -296,7 +296,7 @@
 
                             <!-- Footer del histórico -->
                             <div style="display: flex; justify-content: space-between; align-items: center;
-                                        margin-top: 12px; padding-top: 10px; border-top: 1px solid #222;
+                                        margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--surface-2);
                                         font-size: 0.82rem; flex-wrap: wrap; gap: 8px;">
                                 <a href="{% url 'finanzas:nuevo_movimiento' item.inv.id %}"
                                    onclick="event.stopPropagation()"

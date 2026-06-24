@@ -10,11 +10,11 @@
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">{{ message }}</div>
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">{{ message }}</div>
         {% endfor %}
     {% endif %}
 
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);">
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);">
         <form method="post" id="form-ingreso">
             {% csrf_token %}
 
@@ -47,7 +47,7 @@
             <!-- SWITCH: Modo de entrada -->
             <div class="form-group">
                 <label>¿Cómo quieres declarar este ingreso?</label>
-                <div id="modo-switch" style="display: flex; border-radius: 10px; overflow: hidden; border: 1px solid #333;">
+                <div id="modo-switch" style="display: flex; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-strong);">
                     <button type="button" data-modo="anual" class="modo-btn {% if fuente.modo_entrada == 'anual' %}modo-activo{% endif %}"
                             style="flex: 1; padding: 12px; text-align: center; font-weight: 600; font-size: 0.9rem; border: none; cursor: pointer; transition: all 0.2s;">
                         💰 Total anual
@@ -105,7 +105,7 @@
                         <input type="hidden" name="meses_pagas_extras" id="meses_pagas_extras" value="{{ fuente.meses_pagas_extras }}">
                     </div>
                 </div>
-                <div id="resumen-anual" style="display: none; background: #121212; border: 1px solid #333; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+                <div id="resumen-anual" style="display: none; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                         <div><span style="color: var(--muted); font-size: 0.8rem;">Paga mensual:</span> <span style="color: #00ff88; font-weight: 700;" id="calc-mensual">—</span></div>
                         <div><span style="color: var(--muted); font-size: 0.8rem;">Paga extra:</span> <span style="color: #00d1ff; font-weight: 700;" id="calc-extra">—</span></div>
@@ -138,7 +138,7 @@
                         </div>
                     </div>
                 </div>
-                <div id="resumen-periodo" style="display: none; background: #121212; border: 1px solid #333; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
+                <div id="resumen-periodo" style="display: none; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                         <div><span style="color: var(--muted); font-size: 0.8rem;">Cada pago:</span> <span style="color: #00ff88; font-weight: 700;" id="calc-pago">—</span></div>
                         <div><span style="color: var(--muted); font-size: 0.8rem;">Pagos/año:</span> <span style="color: var(--text-color); font-weight: 700;" id="calc-pagos-anio">—</span></div>
@@ -196,7 +196,7 @@
             </div>
 
             <!-- Simulador fiscal -->
-            <div id="simulador-fiscal" style="display: none; background: #121212; border: 1px solid var(--primary-color); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+            <div id="simulador-fiscal" style="display: none; background: var(--app-bg); border: 1px solid var(--primary-color); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                 <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-color); margin-bottom: 12px;">📊 Simulación fiscal en tiempo real</div>
                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
                     <div>
@@ -235,11 +235,11 @@
 </div>
 
 <style>
-.modo-btn { background: #121212; color: var(--muted); }
-.modo-activo { background: var(--primary-color) !important; color: #fff !important; }
+.modo-btn { background: var(--app-bg); color: var(--muted); }
+.modo-activo { background: var(--primary-color) !important; color: var(--text-color) !important; }
 .mes-chip {
     display: flex; align-items: center; gap: 4px; padding: 6px 12px;
-    background: #121212; border: 1px solid #333; border-radius: 8px;
+    background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 8px;
     font-size: 0.85rem; color: var(--text-color); cursor: pointer; user-select: none;
 }
 .mes-chip:has(input:checked) { border-color: var(--primary-color); background: rgba(162,89,255,0.15); }

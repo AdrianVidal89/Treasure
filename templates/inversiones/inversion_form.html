@@ -5,14 +5,14 @@
 {% block content %}
 <style>
 .inv-form {
-    background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
     padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);
 }
 .inv-form .fg { margin-bottom: 20px; }
 .inv-form label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
 .inv-form select, .inv-form input[type="text"], .inv-form input[type="number"] {
-    width: 100%; padding: 14px 16px; border: 1px solid #444; border-radius: 10px;
-    background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;
+    width: 100%; padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+    background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;
 }
 .inv-form select:focus, .inv-form input:focus {
     outline: none; border-color: var(--primary-color); box-shadow: 0 0 8px var(--glow);
@@ -24,13 +24,13 @@
 .ticker-search-wrap { position: relative; }
 .ticker-results {
     position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
-    background: #111; border: 1px solid var(--primary-color); border-top: none;
+    background: var(--app-bg); border: 1px solid var(--primary-color); border-top: none;
     border-radius: 0 0 10px 10px; max-height: 280px; overflow-y: auto;
     display: none;
 }
 .ticker-results.active { display: block; }
 .ticker-item {
-    padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #1a1a1a;
+    padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--surface);
     transition: background 0.15s;
 }
 .ticker-item:hover { background: rgba(162, 89, 255, 0.15); }
@@ -47,7 +47,7 @@
 .ticker-selected-symbol { font-weight: 700; color: #00ff88; }
 .ticker-selected-name { font-size: 0.8rem; color: var(--muted); }
 .ticker-clear {
-    background: transparent; border: 1px solid #444; color: var(--muted);
+    background: transparent; border: 1px solid var(--border-strong); color: var(--muted);
     border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem;
 }
 .ticker-clear:hover { border-color: #ff4d4d; color: #ff4d4d; }

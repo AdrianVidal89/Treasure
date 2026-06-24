@@ -21,7 +21,7 @@
     </div>
     {% endif %}
 
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162,89,255,0.25);">
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: 0 0 20px rgba(162,89,255,0.25);">
         <form method="post">
             {% csrf_token %}
 
@@ -30,8 +30,8 @@
                 <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">📅 Fecha</label>
                 <input type="date" name="fecha"
                        value="{{ form.fecha.value|default:'' }}"
-                       style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
-                              background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                       style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+                              background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
                 {% if form.fecha.errors %}<div style="color:#ff4d4d;font-size:0.78rem;margin-top:4px;">{{ form.fecha.errors.0 }}</div>{% endif %}
             </div>
 
@@ -44,9 +44,9 @@
                                {% if form.tipo.value == 'COMPRA' or not form.tipo.value %}checked{% endif %}
                                style="display: none;" class="tipo-radio">
                         <div class="tipo-btn" data-val="COMPRA"
-                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid #333;
+                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid var(--border-strong);
                                     font-weight: 700; font-size: 0.9rem; transition: all 0.2s; cursor: pointer;
-                                    background: #111; color: var(--muted);">
+                                    background: var(--app-bg); color: var(--muted);">
                             📈 Compra
                         </div>
                     </label>
@@ -55,9 +55,9 @@
                                {% if form.tipo.value == 'VENTA' %}checked{% endif %}
                                style="display: none;" class="tipo-radio">
                         <div class="tipo-btn" data-val="VENTA"
-                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid #333;
+                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid var(--border-strong);
                                     font-weight: 700; font-size: 0.9rem; transition: all 0.2s; cursor: pointer;
-                                    background: #111; color: var(--muted);">
+                                    background: var(--app-bg); color: var(--muted);">
                             📉 Venta
                         </div>
                     </label>
@@ -66,9 +66,9 @@
                                {% if form.tipo.value == 'DIVIDENDO' %}checked{% endif %}
                                style="display: none;" class="tipo-radio">
                         <div class="tipo-btn" data-val="DIVIDENDO"
-                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid #333;
+                             style="text-align: center; padding: 12px; border-radius: 10px; border: 2px solid var(--border-strong);
                                     font-weight: 700; font-size: 0.9rem; transition: all 0.2s; cursor: pointer;
-                                    background: #111; color: var(--muted);">
+                                    background: var(--app-bg); color: var(--muted);">
                             💰 Dividendo
                         </div>
                     </label>
@@ -83,8 +83,8 @@
                     <input type="number" name="cantidad" step="0.00000001" min="0"
                            value="{{ form.cantidad.value|default:'' }}"
                            placeholder="0.00000000"
-                           style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
-                                  background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                           style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+                                  background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
                     {% if form.cantidad.errors %}<div style="color:#ff4d4d;font-size:0.78rem;margin-top:4px;">{{ form.cantidad.errors.0 }}</div>{% endif %}
                 </div>
                 <div>
@@ -92,8 +92,8 @@
                     <input type="number" name="precio_unitario" step="0.00000001" min="0"
                            value="{{ form.precio_unitario.value|default:'' }}"
                            placeholder="0.00"
-                           style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
-                                  background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                           style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+                                  background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
                     {% if form.precio_unitario.errors %}<div style="color:#ff4d4d;font-size:0.78rem;margin-top:4px;">{{ form.precio_unitario.errors.0 }}</div>{% endif %}
                 </div>
             </div>
@@ -106,14 +106,14 @@
                            value="{{ form.comision.value|default:'0' }}"
                            placeholder="0.00"
                            id="id_comision"
-                           style="width: 100%; padding: 13px 16px; border: 1px solid #444; border-radius: 10px;
-                                  background: #0d0d0d; color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                           style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+                                  background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
                 </div>
                 <div>
                     <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">🧾 Coste total</label>
                     <div id="coste-total"
-                         style="padding: 13px 16px; border: 1px solid #333; border-radius: 10px;
-                                background: #111; color: #ffaa00; font-size: 1rem; font-weight: 700;">
+                         style="padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+                                background: var(--app-bg); color: #ffaa00; font-size: 1rem; font-weight: 700;">
                         —
                     </div>
                 </div>
@@ -139,9 +139,9 @@ function actualizarTipoBtns() {
             btn.style.color = color;
             btn.style.background = 'rgba(0,0,0,0.3)';
         } else {
-            btn.style.borderColor = '#333';
+            btn.style.borderColor = 'var(--border-strong)';
             btn.style.color = 'var(--muted)';
-            btn.style.background = '#111';
+            btn.style.background = 'var(--app-bg)';
         }
     });
 }
