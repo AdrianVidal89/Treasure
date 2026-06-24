@@ -35,6 +35,71 @@
     --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
     --shadow-glow: 0 0 18px var(--glow);
     --ease: 0.2s ease;
+
+    /* Componentes específicos (antes con colores fijos) */
+    --navbar-bg: rgba(18, 18, 18, 0.85);
+    --navbar-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+    --menu-bg: #1f1f1f;
+    --menu-text: #ffffff;
+    --menu-hover: #292929;
+    --menu-border: #333333;
+    --nav-text: #ffffff;
+    --nav-text-soft: #cccccc;
+    --login-bg: rgba(20, 20, 20, 0.92);
+    --dashboard-overlay: rgba(18, 18, 18, 0.9);
+    --scrollbar-thumb: #333333;
+    --scrollbar-thumb-hover: #4a4a4a;
+    --social-hover: #222222;
+    --badge-bg: rgba(255, 255, 255, 0.04);
+
+    /* Esquema de color para controles nativos (scrollbars, inputs) */
+    color-scheme: dark;
+}
+
+/* ============================================================
+   TEMA CLARO
+   Redefine solo las variables; el resto del CSS las consume.
+   Se activa con <html data-theme="light">.
+   ============================================================ */
+[data-theme="light"] {
+    /* Superficies */
+    --app-bg: #f5f6f8;
+    --dark-bg: #eceef1;
+    --surface: #ffffff;
+    --surface-2: #f3f4f6;
+    --input-bg: #ffffff;
+
+    /* Texto y bordes */
+    --text-color: #1f2430;
+    --muted: #6b7280;
+    --border: #e2e5ea;
+    --border-strong: #cbd0d8;
+
+    /* Glow más sutil sobre fondo claro */
+    --glow: rgba(162, 89, 255, 0.25);
+    --glow-soft: rgba(162, 89, 255, 0.12);
+
+    /* Sombras suaves en lugar de negras intensas */
+    --shadow-sm: 0 1px 3px rgba(17, 24, 39, 0.08);
+    --shadow: 0 4px 20px rgba(17, 24, 39, 0.10);
+
+    /* Componentes específicos */
+    --navbar-bg: rgba(255, 255, 255, 0.85);
+    --navbar-shadow: 0 2px 14px rgba(17, 24, 39, 0.08);
+    --menu-bg: #ffffff;
+    --menu-text: #1f2430;
+    --menu-hover: #f0ecff;
+    --menu-border: #e7e9ee;
+    --nav-text: #1f2430;
+    --nav-text-soft: #4b5563;
+    --login-bg: rgba(255, 255, 255, 0.92);
+    --dashboard-overlay: rgba(245, 246, 248, 0.92);
+    --scrollbar-thumb: #c7ccd4;
+    --scrollbar-thumb-hover: #aeb4bf;
+    --social-hover: #f0f0f0;
+    --badge-bg: rgba(17, 24, 39, 0.04);
+
+    color-scheme: light;
 }
 
 html { scroll-behavior: smooth; }
@@ -67,11 +132,11 @@ textarea:focus-visible,
 ::selection { background: rgba(162, 89, 255, 0.35); color: #fff; }
 
 /* Scrollbar discreta y a juego con el tema oscuro */
-* { scrollbar-width: thin; scrollbar-color: #3a3a3a transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #333; border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
-::-webkit-scrollbar-thumb:hover { background: #4a4a4a; background-clip: content-box; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); background-clip: content-box; }
 
 /* Respeta la preferencia de menos movimiento */
 @media (prefers-reduced-motion: reduce) {
@@ -97,8 +162,8 @@ body.login-background {
 
 body.dashboard-background {
     background-image: linear-gradient(
-        rgba(18, 18, 18, 0.9),
-        rgba(18, 18, 18, 0.9)
+        var(--dashboard-overlay),
+        var(--dashboard-overlay)
     ), url('../img/bg-cyberpunk-finanzas.png');
     background-size: cover;
     background-position: center;
@@ -106,7 +171,7 @@ body.dashboard-background {
 }
 
 .login-container {
-    background-color: rgba(20, 20, 20, 0.92);
+    background-color: var(--login-bg);
     backdrop-filter: blur(8px);
     padding: 40px;
     border-radius: var(--radius-lg);
@@ -207,7 +272,7 @@ h1 {
 }
 
 .form-container {
-    background-color: #1a1a1a;
+    background-color: var(--surface);
     padding: 40px;
     border-radius: 14px;
     width: 100%;
@@ -290,18 +355,18 @@ h1 {
 
 
 .btn-primary:hover {
-    background-color: #8b4ae6;
+    background-color: var(--primary-strong);
     box-shadow: 0 0 14px var(--glow);
 }
 
 .btn-social {
     background-color: transparent;
-    color: white;
+    color: var(--text-color);
     border: 1px solid var(--border);
 }
 
 .btn-social:hover {
-    background-color: #222;
+    background-color: var(--social-hover);
 }
 
 .btn-danger {
@@ -362,11 +427,11 @@ h1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: rgba(18, 18, 18, 0.85);
+    background-color: var(--navbar-bg);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     padding: 12px 24px;
-    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+    box-shadow: var(--navbar-shadow);
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
@@ -397,12 +462,12 @@ h1 {
 }
 
 .nav-user {
-    color: #ccc;
+    color: var(--nav-text-soft);
     font-size: 14px;
 }
 
 .nav-link:hover {
-    background-color: #8b4ae6;
+    background-color: var(--primary-strong);
 }
 
 .help-text {
@@ -424,7 +489,7 @@ h1 {
 
 .nav-user-toggle {
     cursor: pointer;
-    color: #fff;
+    color: var(--nav-text);
     font-weight: 600;
     font-size: 0.92rem;
     padding: 7px 11px;
@@ -442,7 +507,7 @@ h1 {
     display: none;
     position: absolute;
     right: 0;
-    background-color: #1f1f1f;
+    background-color: var(--menu-bg);
     box-shadow: 0 0 10px rgba(162, 89, 255, 0.2);
     border-radius: 8px;
     margin-top: 10px;
@@ -453,10 +518,10 @@ h1 {
 .nav-user-menu a {
     display: block;
     padding: 10px 16px;
-    color: white;
+    color: var(--menu-text);
     text-decoration: none;
     font-size: 14px;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--menu-border);
 }
 
 .nav-user-menu a:last-child {
@@ -464,13 +529,13 @@ h1 {
 }
 
 .nav-user-menu a:hover {
-    background-color: #292929;
+    background-color: var(--menu-hover);
     color: var(--primary-color);
 }
 
 /* Enlaces de navegación */
 .nav-link {
-    color: #fff;
+    color: var(--nav-text);
     text-decoration: none;
     margin-left: 20px;
     font-size: 15px;
@@ -496,7 +561,7 @@ h1 {
     position: absolute;
     top: 100%;
     left: 0;
-    background-color: #1a1a1a;
+    background-color: var(--menu-bg);
     box-shadow: 0 0 10px rgba(162, 89, 255, 0.2);
     border-radius: 6px;
     padding: 8px 0;
@@ -506,19 +571,19 @@ h1 {
 
 .nav-dropdown-menu a {
     display: block;
-    color: #eee;
+    color: var(--menu-text);
     padding: 10px 16px;
     text-decoration: none;
     font-size: 14px;
 }
 
 .nav-dropdown-menu a:hover {
-    background-color: #292929;
+    background-color: var(--menu-hover);
     color: var(--primary-color);
 }
 
 .cuenta-link {
-    color: #fff;
+    color: var(--text-color);
     text-decoration: none;
     font-size: 15px;
 }
@@ -530,7 +595,7 @@ h1 {
 
 .btn-inline-danger {
     background: transparent;
-    color: #888;
+    color: var(--muted);
     border: none;
     font-size: 0.9rem;
     padding: 0 6px;
@@ -655,7 +720,7 @@ h1 {
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
-    color: #eaeaea;
+    color: var(--text-color);
     margin-bottom: 1rem;
 }
 
@@ -886,7 +951,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     height: 42px;
     padding: 8px;
     background: transparent;
-    border: 1px solid #333;
+    border: 1px solid var(--border-strong);
     border-radius: 10px;
     cursor: pointer;
     margin-left: auto;            /* empuja la hamburguesa a la derecha */
@@ -939,7 +1004,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     .nav-user-toggle {
         display: block;
         padding: 12px 8px;
-        border-bottom: 1px solid #1f1f1f;
+        border-bottom: 1px solid var(--border);
         min-height: 44px;
     }
 
@@ -947,7 +1012,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     .nav-user-menu {
         position: static !important;
         box-shadow: none;
-        background: rgba(255,255,255,0.03);
+        background: var(--badge-bg);
         border-radius: 8px;
         margin: 0 0 6px;
     }
@@ -1036,7 +1101,7 @@ html, body { max-width: 100%; overflow-x: hidden; }
     padding: 3px 10px;
     border-radius: 999px;
     border: 1px solid var(--border-strong);
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--badge-bg);
     color: var(--text-color);
 }
 .rol-badge.rol-admin,
@@ -1084,4 +1149,45 @@ html, body { max-width: 100%; overflow-x: hidden; }
     gap: 8px;
     min-height: 42px;
     line-height: 1.2;
+}
+
+/* ============================================================
+   BOTÓN DE CAMBIO DE TEMA (claro / oscuro)
+   ============================================================ */
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--nav-text);
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: border-color var(--ease), color var(--ease), background-color var(--ease);
+}
+
+.theme-toggle:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background-color: rgba(162, 89, 255, 0.1);
+}
+
+/* Mostrar el icono según el tema activo: luna en oscuro, sol en claro */
+.theme-toggle .icon-light { display: none; }
+.theme-toggle .icon-dark { display: inline; }
+[data-theme="light"] .theme-toggle .icon-light { display: inline; }
+[data-theme="light"] .theme-toggle .icon-dark { display: none; }
+
+@media (max-width: 768px) {
+    /* En móvil la navbar colapsa; el botón ocupa toda la fila como los demás */
+    .navbar-right .theme-toggle {
+        width: 100%;
+        min-height: 44px;
+        margin-top: 4px;
+    }
 }

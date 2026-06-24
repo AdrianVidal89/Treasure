@@ -5,6 +5,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Treasure{% endblock %}</title>
+    <script>
+        // Aplica el tema antes de pintar para evitar parpadeo (FOUC).
+        // Prioridad: preferencia guardada > preferencia del sistema > oscuro.
+        (function () {
+            try {
+                var saved = localStorage.getItem('theme');
+                var theme = saved
+                    || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+                document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
 <body class="{% block body_class %}{% endblock %}">
@@ -60,6 +74,10 @@
         </button>
 
         <div class="navbar-right">
+            <button type="button" class="theme-toggle" aria-label="Cambiar tema" title="Cambiar tema claro/oscuro">
+                <span class="icon-dark" aria-hidden="true">🌙</span>
+                <span class="icon-light" aria-hidden="true">☀️</span>
+            </button>
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">
                     Hola, <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
@@ -83,6 +101,17 @@
 
     <script>
     document.addEventListener("DOMContentLoaded", function () {
+        // --- Cambio de tema (claro / oscuro) ---
+        const themeToggle = document.querySelector(".theme-toggle");
+        if (themeToggle) {
+            themeToggle.addEventListener("click", function () {
+                const current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+                const next = current === "light" ? "dark" : "light";
+                document.documentElement.setAttribute("data-theme", next);
+                try { localStorage.setItem("theme", next); } catch (e) {}
+            });
+        }
+
         // --- Hamburguesa ---
         const navToggle = document.querySelector(".nav-toggle");
         const navbar = document.querySelector(".navbar");

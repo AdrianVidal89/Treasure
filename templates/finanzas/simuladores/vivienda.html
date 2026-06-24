@@ -13,23 +13,23 @@
 .sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 720px) { .sim-grid { grid-template-columns: 1fr; } }
 
-.card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
 .card h2 { color: var(--text-color); font-size: 1rem; margin: 0 0 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
 .control { margin-bottom: 20px; }
 .control-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .control-label { font-size: 0.82rem; color: var(--muted); }
 .control-value { font-size: 1rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; }
-input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; background: #333; border-radius: 3px; outline: none; cursor: pointer; }
+input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; background: var(--border-strong); border-radius: 3px; outline: none; cursor: pointer; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-color); cursor: pointer; box-shadow: 0 0 8px var(--glow); }
 
 .ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-.ctx-item { background: #111; border-radius: 10px; padding: 12px 14px; }
+.ctx-item { background: var(--app-bg); border-radius: 10px; padding: 12px 14px; }
 .ctx-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
 .ctx-item .val { font-size: 1rem; font-weight: 700; }
 
 .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.result-item { background: #111; border-radius: 12px; padding: 14px 16px; }
+.result-item { background: var(--app-bg); border-radius: 12px; padding: 14px 16px; }
 .result-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
 .result-item .val { font-size: 1.2rem; font-weight: 700; }
 
@@ -47,14 +47,14 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 .maximo-box .sub { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
 
 .desglose { margin-top: 16px; }
-.desglose-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1f1f1f; font-size: 0.85rem; }
+.desglose-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--surface-2); font-size: 0.85rem; }
 .desglose-row:last-child { border-bottom: none; }
 .desglose-row .key { color: var(--muted); }
 
-.tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-radius: 10px; overflow: hidden; border: 1px solid #2a2a2a; }
-.tab-bar a { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 600; text-decoration: none; color: var(--muted); background: #111; transition: all 0.2s; }
+.tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.tab-bar a { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 600; text-decoration: none; color: var(--muted); background: var(--app-bg); transition: all 0.2s; }
 .tab-bar a.active { background: var(--primary-color); color: #000; }
-.range-hints { display: flex; justify-content: space-between; font-size: 0.7rem; color: #444; margin-top: 2px; }
+.range-hints { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--border-strong); margin-top: 2px; }
 </style>
 
 <!-- Datos financieros serializados como JSON (sin problemas de locale) -->
@@ -95,7 +95,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                         <div class="val" style="color:#ffaa00;">€{{ libre_mensual|floatformat:0 }}</div>
                     </div>
                 </div>
-                {% if ultimo_mes %}<div style="font-size:0.75rem;color:#444;text-align:right;">Datos de {{ ultimo_mes }}/{{ ultimo_anio }}</div>{% endif %}
+                {% if ultimo_mes %}<div style="font-size:0.75rem;color:var(--border-strong);text-align:right;">Datos de {{ ultimo_mes }}/{{ ultimo_anio }}</div>{% endif %}
             </div>
 
             {% if propiedades_data %}
@@ -104,7 +104,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                 <p style="font-size: 0.8rem; color: var(--muted); margin: -10px 0 14px;">Marca las propiedades cuya venta quieras incluir en el capital disponible. Se descuenta la hipoteca, plusvalía IRPF y gastos de venta.</p>
                 <div id="prop-checkboxes">
                     {% for prop in propiedades_data %}
-                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid #1e1e1e; cursor: pointer;">
+                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--surface); cursor: pointer;">
                         <input type="checkbox" class="prop-check"
                                data-neto="{{ prop.neto }}"
                                data-nombre="{{ prop.nombre }}"
@@ -112,7 +112,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                         <div style="flex: 1;">
                             <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-color);">{{ prop.nombre }}</div>
                             <div style="font-size: 0.75rem; color: #00ff88; margin-top: 2px;">Neto libre: €{{ prop.neto|floatformat:0 }}</div>
-                            <div style="font-size: 0.7rem; color: #555; margin-top: 1px;">€{{ prop.valor_actual|floatformat:0 }} − hipoteca €{{ prop.deuda|floatformat:0 }} − plusvalía €{{ prop.plusvalia|floatformat:0 }} − gastos €{{ prop.gastos_venta|floatformat:0 }}</div>
+                            <div style="font-size: 0.7rem; color: var(--muted); margin-top: 1px;">€{{ prop.valor_actual|floatformat:0 }} − hipoteca €{{ prop.deuda|floatformat:0 }} − plusvalía €{{ prop.plusvalia|floatformat:0 }} − gastos €{{ prop.gastos_venta|floatformat:0 }}</div>
                         </div>
                     </label>
                     {% endfor %}
@@ -188,7 +188,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                     </div>
                     <div style="display:flex;gap:6px;margin-bottom:10px;">
                         <button id="btn-base-libre"     onclick="setBase('libre')"     style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid #00ff88;background:rgba(0,255,136,.15);color:#00ff88;">Libre mensual</button>
-                        <button id="btn-base-ingresos"  onclick="setBase('ingresos')"  style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid #2a2a2a;background:#111;color:#555;">Ingresos netos</button>
+                        <button id="btn-base-ingresos"  onclick="setBase('ingresos')"  style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:var(--app-bg);color:var(--muted);">Ingresos netos</button>
                     </div>
                     <input type="range" id="sl-max-pct" min="20" max="80" step="1" value="35">
                     <div class="range-hints"><span>20%</span><span>80%</span></div>
@@ -224,12 +224,12 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                     </div>
                     <div class="result-item">
                         <div class="lbl">Cuota mensual</div>
-                        <div class="val" style="color:#fff;" id="r-cuota">—</div>
+                        <div class="val" style="color:var(--text-color);" id="r-cuota">—</div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">% cuota s/ <span id="lbl-pct-tipo">libre</span></div>
                         <div class="val" id="r-pct-ing">—</div>
-                        <div style="font-size:0.73rem;color:#555;margin-top:3px;" id="r-pct-otro"></div>
+                        <div style="font-size:0.73rem;color:var(--muted);margin-top:3px;" id="r-pct-otro"></div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Coste total intereses</div>
@@ -328,8 +328,8 @@ let baseMode = 'libre'; // 'libre' | 'ingresos'
 function setBase(mode) {
     baseMode = mode;
     const S = 'flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;';
-    document.getElementById('btn-base-libre').style.cssText    = S + (mode==='libre'    ? 'border:1px solid #00ff88;background:rgba(0,255,136,.15);color:#00ff88;' : 'border:1px solid #2a2a2a;background:#111;color:#555;');
-    document.getElementById('btn-base-ingresos').style.cssText = S + (mode==='ingresos' ? 'border:1px solid #00d1ff;background:rgba(0,209,255,.15);color:#00d1ff;' : 'border:1px solid #2a2a2a;background:#111;color:#555;');
+    document.getElementById('btn-base-libre').style.cssText    = S + (mode==='libre'    ? 'border:1px solid #00ff88;background:rgba(0,255,136,.15);color:#00ff88;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
+    document.getElementById('btn-base-ingresos').style.cssText = S + (mode==='ingresos' ? 'border:1px solid #00d1ff;background:rgba(0,209,255,.15);color:#00d1ff;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
     document.getElementById('lbl-base-nombre').textContent = mode === 'libre' ? 'libre mensual' : 'ingresos netos';
     document.getElementById('lbl-pct-tipo').textContent    = mode === 'libre' ? 'libre' : 'ingresos';
     actualizar();

@@ -42,7 +42,7 @@
 <div style="overflow-x:auto;">
 <table style="width:100%; border-collapse:collapse; font-size:0.82rem;">
     <thead>
-        <tr style="color:var(--muted); border-bottom:1px solid #333;">
+        <tr style="color:var(--muted); border-bottom:1px solid var(--border-strong);">
             <th style="text-align:left; padding:10px 8px;">Mes</th>
             <th style="text-align:right; padding:10px 8px;">Ingresos</th>
             <th style="text-align:right; padding:10px 8px;">Gastos</th>
@@ -55,7 +55,7 @@
     </thead>
     <tbody>
         {% for m in resumen.meses %}
-        <tr style="border-bottom:1px solid #1a1a1a;">
+        <tr style="border-bottom:1px solid var(--surface);">
             <td style="padding:10px 8px; font-weight:600;">{{ m.nombre }}</td>
             <td style="padding:10px 8px; text-align:right; color:#00ff88;">€{{ m.ingresos|floatformat:2 }}</td>
             <td style="padding:10px 8px; text-align:right; color:#ff4d4d;">€{{ m.gastos|floatformat:2 }}</td>
@@ -68,7 +68,7 @@
         {% endfor %}
     </tbody>
     <tfoot>
-        <tr style="border-top:2px solid #333; font-weight:700;">
+        <tr style="border-top:2px solid var(--border-strong); font-weight:700;">
             <td style="padding:12px 8px; color:var(--primary-color);">TOTAL</td>
             <td style="padding:12px 8px; text-align:right; color:#00ff88;">€{{ resumen.total_ingresos|floatformat:2 }}</td>
             <td style="padding:12px 8px; text-align:right; color:#ff4d4d;">€{{ resumen.total_gastos|floatformat:2 }}</td>
@@ -85,7 +85,7 @@
 
 <style>
 .kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
-.kpi-item { background:#1a1a1a; border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
+.kpi-item { background:var(--surface); border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
 .kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
 .kpi-valor { font-size:1.05rem; font-weight:700; }
 .semaforo-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }

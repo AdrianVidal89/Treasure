@@ -12,11 +12,11 @@
 
 /* Selector año */
 .año-selector { display: flex; gap: 8px; align-items: center; }
-.año-selector select { background: #1a1a1a; border: 1px solid #333; color: var(--text-color); border-radius: 8px; padding: 8px 12px; font-size: 0.9rem; }
+.año-selector select { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-color); border-radius: 8px; padding: 8px 12px; font-size: 0.9rem; }
 
 /* Tarjetas resumen */
 .resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
-.resumen-card { background: #1a1a1a; border-radius: 14px; padding: 20px; border: 1px solid #2a2a2a; }
+.resumen-card { background: var(--surface); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }
 .resumen-card .label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .resumen-card .valor { font-size: 1.5rem; font-weight: 700; }
 .resumen-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
@@ -24,17 +24,17 @@
 .pos { color: #00ff88; } .neg { color: #ff4d4d; } .neu { color: var(--muted); }
 
 /* Tabla */
-.evo-table-wrap { overflow-x: auto; border-radius: 14px; background: #111; border: 1px solid #2a2a2a; }
+.evo-table-wrap { overflow-x: auto; border-radius: 14px; background: var(--app-bg); border: 1px solid var(--border); }
 .evo-table { border-collapse: collapse; width: 100%; min-width: max-content; font-size: 0.82rem; }
-.evo-table th { background: #1a1a1a; color: var(--muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; padding: 10px 14px; text-align: right; white-space: nowrap; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid #2a2a2a; }
-.evo-table th:first-child { text-align: left; position: sticky; left: 0; z-index: 20; background: #1a1a1a; }
-.evo-table td { padding: 10px 14px; border-bottom: 1px solid #1a1a1a; text-align: right; white-space: nowrap; vertical-align: middle; }
-.evo-table td:first-child { text-align: left; position: sticky; left: 0; background: #111; z-index: 5; font-weight: 600; color: var(--text-color); }
-.evo-table tr:hover td { background: #161616; }
-.evo-table tr:hover td:first-child { background: #161616; }
+.evo-table th { background: var(--surface); color: var(--muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; padding: 10px 14px; text-align: right; white-space: nowrap; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
+.evo-table th:first-child { text-align: left; position: sticky; left: 0; z-index: 20; background: var(--surface); }
+.evo-table td { padding: 10px 14px; border-bottom: 1px solid var(--surface); text-align: right; white-space: nowrap; vertical-align: middle; }
+.evo-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--app-bg); z-index: 5; font-weight: 600; color: var(--text-color); }
+.evo-table tr:hover td { background: var(--dark-bg); }
+.evo-table tr:hover td:first-child { background: var(--dark-bg); }
 
 .cell-valor { color: var(--text-color); cursor: pointer; }
-.cell-vacio { color: #333; cursor: pointer; font-style: italic; font-size: 0.75rem; }
+.cell-vacio { color: var(--border-strong); cursor: pointer; font-style: italic; font-size: 0.75rem; }
 .cell-total { color: #00d1ff; font-weight: 700; }
 .cell-ahorro.pos { color: #00ff88; }
 .cell-ahorro.neg { color: #ff4d4d; }
@@ -45,16 +45,16 @@
 /* Modal */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 .modal-overlay.active { display: flex; }
-.modal-box { background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 18px; padding: 28px; box-shadow: 0 0 40px var(--glow); max-width: 400px; width: 92%; }
+.modal-box { background: var(--surface); border: 1px solid var(--primary-color); border-radius: 18px; padding: 28px; box-shadow: 0 0 40px var(--glow); max-width: 400px; width: 92%; }
 .modal-box h3 { color: var(--primary-color); margin-top: 0; font-size: 1rem; }
 .fg { margin-bottom: 14px; }
 .fg label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; }
-.fg input, .fg select { width: 100%; padding: 10px 12px; background: #111; border: 1px solid #333; color: var(--text-color); border-radius: 8px; font-size: 0.9rem; box-sizing: border-box; }
+.fg input, .fg select { width: 100%; padding: 10px 12px; background: var(--app-bg); border: 1px solid var(--border-strong); color: var(--text-color); border-radius: 8px; font-size: 0.9rem; box-sizing: border-box; }
 .fg input:focus, .fg select:focus { outline: none; border-color: var(--primary-color); }
 .btn-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 .btn { padding: 10px 18px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.85rem; font-weight: 600; }
 .btn-primary { background: var(--primary-color); color: #000; }
-.btn-secondary { background: transparent; border: 1px solid #444; color: var(--text-color); }
+.btn-secondary { background: transparent; border: 1px solid var(--border-strong); color: var(--text-color); }
 </style>
 
 <div class="evo-wrap">
@@ -80,7 +80,7 @@
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.85rem; color: var(--text-color);">{{ message }}</div>
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.85rem; color: var(--text-color);">{{ message }}</div>
         {% endfor %}
     {% endif %}
 
@@ -127,7 +127,7 @@
                             <span style="color: {{ f.color }};">{{ f.nombre }}</span>
                             <span class="fondo-dot" style="background: {{ f.color }};"></span>
                         </div>
-                        {% if f.cuenta_asociada %}<div style="font-size: 0.65rem; color: #444;">{{ f.cuenta_asociada }}</div>{% endif %}
+                        {% if f.cuenta_asociada %}<div style="font-size: 0.65rem; color: var(--border-strong);">{{ f.cuenta_asociada }}</div>{% endif %}
                     </th>
                     {% endfor %}
                     <th style="color: #00d1ff;">Liquidez</th>
@@ -208,7 +208,7 @@
                                 <span style="color: {{ prop.color }};">{{ prop.nombre }}</span>
                                 <span class="fondo-dot" style="background: {{ prop.color }};"></span>
                             </div>
-                            <div style="font-size: 0.65rem; color: #444;">{{ prop.get_tipo_display }}</div>
+                            <div style="font-size: 0.65rem; color: var(--border-strong);">{{ prop.get_tipo_display }}</div>
                         </th>
                         {% endfor %}
                         {% if propiedades|length > 1 %}
@@ -225,7 +225,7 @@
                             title="Click para editar valor y deuda">
                             {% if celda.neto is not None %}
                                 <span style="color: {{ celda.propiedad.color }}; font-weight: 600;">€{{ celda.neto|floatformat:0 }}</span>
-                                <div style="font-size: 0.68rem; color: #555; margin-top: 2px;">€{{ celda.valor|floatformat:0 }} − €{{ celda.deuda|floatformat:0 }}</div>
+                                <div style="font-size: 0.68rem; color: var(--muted); margin-top: 2px;">€{{ celda.valor|floatformat:0 }} − €{{ celda.deuda|floatformat:0 }}</div>
                             {% else %}
                                 <span class="cell-vacio">—</span>
                             {% endif %}

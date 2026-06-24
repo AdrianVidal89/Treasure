@@ -87,7 +87,7 @@
             min="0"
             placeholder="Vacío = usar estimado ({{ ctx.base_estimada_neto|floatformat:2 }} €)"
             value="{% if ctx.importe_actual %}{{ ctx.importe_actual|floatformat:2 }}{% endif %}"
-            style="width:100%;padding:12px 14px;background:#111;border:1px solid #333;
+            style="width:100%;padding:12px 14px;background:var(--app-bg);border:1px solid var(--border-strong);
                    border-radius:10px;color:var(--text-color);font-size:0.9rem;box-sizing:border-box;"
           >
         </div>
@@ -101,7 +101,7 @@
             name="nota_{{ ctx.fuente.id }}"
             placeholder="Ej: Solo 3 guardias, baja semana 2..."
             value="{{ ctx.nota_actual }}"
-            style="width:100%;padding:10px 14px;background:#111;border:1px solid #333;
+            style="width:100%;padding:10px 14px;background:var(--app-bg);border:1px solid var(--border-strong);
                    border-radius:10px;color:var(--text-color);font-size:0.82rem;box-sizing:border-box;"
           >
         </div>

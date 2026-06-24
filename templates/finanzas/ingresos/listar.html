@@ -10,7 +10,7 @@
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: #1a1a1a; border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
             {{ message }}
         </div>
         {% endfor %}
@@ -18,17 +18,17 @@
 
     <!-- RESUMEN GLOBAL -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px;">
-        <div style="background: #1a1a1a; border: 1px solid #00ff88; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,255,136,0.2);">
+        <div style="background: var(--surface); border: 1px solid #00ff88; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,255,136,0.2);">
             <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #00ff88; margin-bottom: 6px;">Mensual Recurrente</div>
             <div style="font-size: 1.6rem; font-weight: 700; color: #00ff88;">€{{ total_mensual_hogar|floatformat:2 }}</div>
             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 4px;">Base garantizada</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid #00d1ff; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,209,255,0.2);">
+        <div style="background: var(--surface); border: 1px solid #00d1ff; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,209,255,0.2);">
             <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #00d1ff; margin-bottom: 6px;">Mensual Ponderado</div>
             <div style="font-size: 1.6rem; font-weight: 700; color: #00d1ff;">€{{ total_ponderado_hogar|floatformat:2 }}</div>
             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 4px;">Incluyendo extras y pagas</div>
         </div>
-        <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px var(--glow);">
+        <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px var(--glow);">
             <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 6px;">Anual Proyectado</div>
             <div style="font-size: 1.6rem; font-weight: 700; color: var(--primary-color);">€{{ total_anual_hogar|floatformat:2 }}</div>
             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 4px;">Neto estimado</div>
@@ -43,10 +43,10 @@
 
     <!-- POR MIEMBRO -->
     {% for grupo in ingresos_por_miembro %}
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.2); margin-bottom: 24px;">
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.2); margin-bottom: 24px;">
 
         <!-- Header miembro -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #2a2a2a; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px;">
             <div>
                 <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">👤 {{ grupo.miembro.user.first_name|default:grupo.miembro.user.username }}</span>
                 <span style="margin-left: 12px; font-size: 0.75rem; padding: 2px 8px; border-radius: 20px; background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid #00ff88;">{{ grupo.miembro.get_rol_display }}</span>
@@ -69,7 +69,7 @@
 
         <!-- Fuentes -->
         {% for item in grupo.fuentes %}
-        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: #121212; border-radius: 10px; margin-bottom: 8px; gap: 12px; flex-wrap: wrap;">
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; background: var(--app-bg); border-radius: 10px; margin-bottom: 8px; gap: 12px; flex-wrap: wrap;">
             <div style="flex: 1; min-width: 180px;">
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <span style="font-size: 0.95rem; color: var(--text-color); font-weight: 600;">{{ item.fuente.nombre }}</span>
@@ -118,7 +118,7 @@
                 </div>
 
                 <div style="display: flex; gap: 6px;">
-                    <a href="{% url 'finanzas:editar_ingreso' item.fuente.id %}" style="color: var(--muted); text-decoration: none; padding: 6px 10px; border: 1px solid #333; border-radius: 6px;" title="Editar">✏️</a>
+                    <a href="{% url 'finanzas:editar_ingreso' item.fuente.id %}" style="color: var(--muted); text-decoration: none; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px;" title="Editar">✏️</a>
                     <form method="post" action="{% url 'finanzas:eliminar_ingreso' item.fuente.id %}" style="margin: 0;">
                         {% csrf_token %}
                         <button type="submit" class="btn-inline-danger" title="Eliminar" onclick="return confirm('¿Eliminar {{ item.fuente.nombre }}?')">🗑️</button>
@@ -137,11 +137,11 @@
     {% endfor %}
 
     <!-- Destinos -->
-    <div style="background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 16px; padding: 24px; box-shadow: 0 0 12px rgba(162, 89, 255, 0.1);">
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 0 12px rgba(162, 89, 255, 0.1);">
         <h2 style="color: var(--text-color); font-size: 1rem; margin-top: 0;">🏷️ Destinos configurados</h2>
         <div style="display: flex; flex-wrap: wrap; gap: 10px;">
             {% for destino in destinos %}
-            <div style="background: #121212; border: 1px solid #333; border-radius: 8px; padding: 6px 14px; font-size: 0.85rem; color: var(--text-color);">
+            <div style="background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 14px; font-size: 0.85rem; color: var(--text-color);">
                 {{ destino.nombre }}{% if destino.es_predefinido %}<span style="color: var(--muted); font-size: 0.7rem;"> · base</span>{% endif %}
             </div>
             {% endfor %}
@@ -152,7 +152,7 @@
 
 <!-- MODAL CREAR DESTINO -->
 <div id="modal-destino" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;">
-    <div style="background: #1a1a1a; border: 1px solid var(--primary-color); border-radius: 16px; padding: 32px; box-shadow: 0 0 30px var(--glow); max-width: 400px; width: 90%;">
+    <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 32px; box-shadow: 0 0 30px var(--glow); max-width: 400px; width: 90%;">
         <h2 style="color: var(--primary-color); margin-top: 0;">🏷️ Nuevo destino</h2>
         <form method="post" action="{% url 'finanzas:crear_destino' %}">
             {% csrf_token %}

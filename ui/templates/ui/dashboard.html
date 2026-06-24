@@ -47,20 +47,20 @@
     gap: 12px; margin-bottom: 24px;
 }
 .cc-kpi {
-    background: #1a1a1a; border-radius: 14px;
+    background: var(--surface); border-radius: 14px;
     padding: 16px; text-align: center;
-    border: 1px solid #2a2a2a;
+    border: 1px solid var(--border);
     transition: border-color 0.2s, box-shadow 0.2s;
 }
-.cc-kpi:hover { border-color: #444; box-shadow: 0 0 12px rgba(162,89,255,0.15); }
+.cc-kpi:hover { border-color: var(--border-strong); box-shadow: 0 0 12px rgba(162,89,255,0.15); }
 .cc-kpi-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
 .cc-kpi-value { font-size: 1.3rem; font-weight: 700; }
 .cc-kpi-sub { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
 
 /* ─── Distribution bar ─────────────────────────────────────────────────── */
 .cc-dist {
-    background: #1a1a1a; border-radius: 14px;
-    padding: 18px 20px; border: 1px solid #2a2a2a;
+    background: var(--surface); border-radius: 14px;
+    padding: 18px 20px; border: 1px solid var(--border);
     margin-bottom: 24px;
 }
 .cc-dist-title {
@@ -71,7 +71,7 @@
 .cc-dist-title span { color: var(--text-color); font-size: 0.78rem; }
 .cc-bar {
     display: flex; height: 22px; border-radius: 8px;
-    overflow: hidden; background: #111; margin-bottom: 14px;
+    overflow: hidden; background: var(--app-bg); margin-bottom: 14px;
 }
 .cc-bar-seg {
     flex-shrink: 0;            /* ← clave: bloquea el shrink del flex item */
@@ -104,7 +104,7 @@
     gap: 14px; margin-bottom: 24px;
 }
 .cc-mod {
-    background: #1a1a1a; border: 1px solid #2a2a2a;
+    background: var(--surface); border: 1px solid var(--border);
     border-radius: 14px; padding: 20px;
     cursor: pointer; text-decoration: none;
     transition: all 0.25s ease;
@@ -154,12 +154,12 @@
 /* ─── Quick actions ────────────────────────────────────────────────────── */
 .cc-quick {
     display: flex; gap: 10px; flex-wrap: wrap;
-    padding: 16px 0; border-top: 1px solid #2a2a2a;
+    padding: 16px 0; border-top: 1px solid var(--border);
 }
 .cc-quick a {
     font-size: 0.78rem; padding: 8px 14px;
     border-radius: 8px; text-decoration: none;
-    background: #1a1a1a; border: 1px solid #333;
+    background: var(--surface); border: 1px solid var(--border-strong);
     color: var(--text-color); transition: all 0.2s;
 }
 .cc-quick a:hover {

@@ -79,7 +79,7 @@
 <div class="aviso-box aviso-ajuste">
     <span class="aviso-titulo">✏️ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — ingreso ajustado:</span>
     {% for aj in dm.ajustes_mes %}
-    <span style="color:#fff; margin-left:10px;">{{ aj.fuente }}: <strong>€{{ aj.importe_ajustado|floatformat:2 }}</strong> <span style="color:var(--muted); font-size:0.72rem;">(base: €{{ aj.importe_base|floatformat:2 }})</span></span>
+    <span style="color:var(--text-color); margin-left:10px;">{{ aj.fuente }}: <strong>€{{ aj.importe_ajustado|floatformat:2 }}</strong> <span style="color:var(--muted); font-size:0.72rem;">(base: €{{ aj.importe_base|floatformat:2 }})</span></span>
     {% endfor %}
 </div>
 {% endif %}
@@ -87,7 +87,7 @@
 <div class="aviso-box aviso-extra">
     <span class="aviso-titulo" style="color:#00d1ff;">⚡ {{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — extras:</span>
     {% for ex in dm.extras_mes %}
-    <span style="color:#fff; margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
+    <span style="color:var(--text-color); margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
     {% endfor %}
 </div>
 {% endif %}
@@ -180,7 +180,7 @@
     {% for ss in fa.subsobres %}
     <div class="subsobre-row">
         <span>
-            <span style="color:#fff;">{{ ss.nombre }}</span>
+            <span style="color:var(--text-color);">{{ ss.nombre }}</span>
             <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>
             {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
             {% if ss.solo_mes %}<span style="font-size:0.7rem; color:#ffaa00; margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
@@ -408,14 +408,14 @@
 <!-- ===== ESTILOS ===== -->
 <style>
 /* --- Controles --- */
-.sel-sm { background:#1a1a1a; color:var(--text-color); border:1px solid #333; border-radius:8px; padding:8px 12px; font-size:0.85rem; }
+.sel-sm { background:var(--surface); color:var(--text-color); border:1px solid var(--border-strong); border-radius:8px; padding:8px 12px; font-size:0.85rem; }
 .lbl-sm { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px; }
-.inp-sm { width:100%; padding:8px; background:#111; border:1px solid #333; border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
+.inp-sm { width:100%; padding:8px; background:var(--app-bg); border:1px solid var(--border-strong); border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
 .empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; }
 
 /* --- KPIs --- */
 .kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
-.kpi-item { background:#1a1a1a; border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
+.kpi-item { background:var(--surface); border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
 .kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
 .kpi-valor { font-size:1.05rem; font-weight:700; }
 .semaforo-verde { color:#00ff88; }
@@ -427,7 +427,7 @@
 .dist-bar-wrap { margin:18px 0 24px; }
 .dist-bar {
     display:flex; height:20px; border-radius:10px; overflow:hidden;
-    background:#111; border:1px solid #222;
+    background:var(--app-bg); border:1px solid var(--surface-2);
 }
 
 .dist-seg { 
@@ -438,7 +438,7 @@
     justify-content: center; 
     font-size: 0.62rem; 
     font-weight: 700; 
-    color: #fff; 
+    color: var(--text-color); 
     overflow: hidden;
     flex-shrink: 0;
 }
@@ -465,7 +465,7 @@
 .section-title { font-size:0.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px; }
 
 /* --- Regla/Fondo pills --- */
-.regla-pill { background:#1a1a1a; border-left:3px solid; border-radius:12px; padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.regla-pill { background:var(--surface); border-left:3px solid; border-radius:12px; padding:12px 16px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .fondo-pill { display:block; padding:14px 16px; }
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
@@ -480,39 +480,39 @@
 .subsobre-row { margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; }
 
 /* --- Transferencias --- */
-.transfer-card { background:#1a1a1a; border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.transfer-card { background:var(--surface); border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
 .transfer-sub { font-size:0.72rem; color:var(--muted); }
 
 /* --- Resumen persona --- */
-.resumen-persona { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:14px; padding:18px; margin-bottom:12px; }
+.resumen-persona { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:12px; }
 .resumen-persona h4 { color:var(--primary-color); font-size:0.95rem; }
-.resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #222; font-size:0.85rem; }
+.resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--surface-2); font-size:0.85rem; }
 .resumen-total { border-bottom:none; font-weight:700; padding-top:10px; }
 .resumen-row .rl { color:var(--muted); }
 .resumen-info { font-size:0.75rem; color:#ffaa00; padding:6px 10px; background:rgba(255,170,0,0.08); border-radius:8px; margin:8px 0; border-left:2px solid #ffaa00; }
 .ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-bottom:12px; }
 
 /* --- Botones inline --- */
-.r-btn { background:transparent; border:1px solid #333; color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
+.r-btn { background:transparent; border:1px solid var(--border-strong); color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
 .r-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
 
 /* --- Color dots --- */
 .color-row { display:flex; gap:10px; margin-top:6px; }
 .cdot { width:32px; height:32px; border-radius:50%; border:3px solid transparent; cursor:pointer; transition:all .2s; }
 .cdot:hover { transform:scale(1.15); }
-.cdot.active { border-color:#fff; box-shadow:0 0 12px currentColor; }
+.cdot.active { border-color:var(--border); box-shadow:0 0 12px currentColor; }
 
 /* --- Gastos checkbox --- */
-.gasto-check { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #222; font-size:0.85rem; color:var(--text-color); cursor:pointer; }
+.gasto-check { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--surface-2); font-size:0.85rem; color:var(--text-color); cursor:pointer; }
 .gasto-check input { width:18px; height:18px; accent-color:#00ff88; }
 
 /* --- Modales --- */
 .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); }
-.modal-box { background:#1a1a1a; border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
+.modal-box { background:var(--surface); border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
 .modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.05rem; }
 .modal-box .fg { margin-bottom:14px; }
 .modal-box label { display:block; font-size:0.8rem; color:var(--muted); margin-bottom:5px; }
-.modal-box select, .modal-box input[type="text"], .modal-box input[type="number"] { width:100%; padding:12px 14px; background:#111; border:1px solid #333; border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
+.modal-box select, .modal-box input[type="text"], .modal-box input[type="number"] { width:100%; padding:12px 14px; background:var(--app-bg); border:1px solid var(--border-strong); border-radius:10px; color:var(--text-color); font-size:0.88rem; box-sizing:border-box; }
 .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
 
