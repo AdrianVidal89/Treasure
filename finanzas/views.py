@@ -757,6 +757,11 @@ class InversionListView(LoginRequiredMixin, ListView):
     context_object_name = 'inversiones'
 
     def get_queryset(self):
+        from core.models import UserProfile
+        profile = UserProfile.objects.filter(user=self.request.user).select_related('hogar').first()
+        if profile and profile.hogar:
+            miembros_ids = profile.hogar.miembros.values_list('user_id', flat=True)
+            return Inversion.objects.filter(usuario_id__in=miembros_ids)
         return Inversion.objects.filter(usuario=self.request.user)
 
     def get_context_data(self, **kwargs):
@@ -778,6 +783,8 @@ class InversionListView(LoginRequiredMixin, ListView):
 
             inv_data.append({
                 'inv': inv,
+                'owner': inv.usuario.first_name or inv.usuario.username,
+                'es_propio': inv.usuario_id == self.request.user.id,
                 'valor_unitario': valor_unitario,
                 'valor_total': valor_total,
                 'cantidad': cantidad,
