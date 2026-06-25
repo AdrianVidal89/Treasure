@@ -20,6 +20,41 @@
 .cc-saludo span { color: var(--primary-color); text-shadow: 0 0 10px var(--glow); }
 .cc-sub { color: var(--muted); font-size: 0.85rem; }
 
+/* ─── Hero: capital líquido total ──────────────────────────────────────── */
+.cc-hero {
+    background: linear-gradient(135deg, rgba(0,209,255,0.10), rgba(162,89,255,0.08));
+    border: 1px solid var(--border-strong);
+    border-radius: 18px;
+    padding: 26px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 0 28px rgba(0,209,255,0.10);
+}
+.cc-hero-label {
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px;
+}
+.cc-hero-value {
+    font-size: 2.8rem; font-weight: 800; line-height: 1.05;
+    color: #00d1ff; text-shadow: 0 0 18px rgba(0,209,255,0.35);
+}
+.cc-hero-sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+.cc-hero-net {
+    display: flex; align-items: baseline; gap: 8px;
+    margin-top: 16px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+.cc-hero-net-label {
+    font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--muted);
+}
+.cc-hero-net-value { font-size: 1.25rem; font-weight: 700; color: #e67e22; }
+.cc-hero-net-sub { font-size: 0.72rem; color: var(--muted); margin-left: auto; }
+@media (max-width: 600px) {
+    .cc-hero-value { font-size: 2.1rem; }
+    .cc-hero-net { flex-wrap: wrap; }
+    .cc-hero-net-sub { margin-left: 0; width: 100%; }
+}
+
 /* ─── Semáforo ─────────────────────────────────────────────────────────── */
 .cc-semaforo {
     display: inline-flex; align-items: center; gap: 8px;
@@ -153,11 +188,27 @@
     <div class="cc-header">
         <h1 class="cc-saludo">{{ saludo }}, <span>{{ request.user.first_name|default:request.user.username }}</span></h1>
         <div class="cc-sub">{{ hogar.nombre }} · {{ mes_nombre }} {{ anio }}</div>
-        <div class="cc-semaforo {{ flujo.semaforo }}">
+        <div class="cc-semaforo {{ flujo_base.semaforo }}">
             <span class="dot"></span>
-            {{ flujo.semaforo_texto }} — Tasa de ahorro: {{ flujo.tasa_ahorro }}%
+            {{ flujo_base.semaforo_texto }} — Tasa de ahorro: {{ flujo_base.tasa_ahorro }}%
         </div>
     </div>
+
+    <!-- ═══ HERO: CAPITAL LÍQUIDO TOTAL ═══ -->
+    <a href="/finanzas/evolucion/" class="cc-hero" style="display:block; text-decoration:none;">
+        <div class="cc-hero-label">Capital líquido total</div>
+        <div class="cc-hero-value">€{{ capital_liquido_total|floatformat:0 }}</div>
+        <div class="cc-hero-sub">
+            {% if mes_liquidez_nombre %}Liquidez en fondos · {{ mes_liquidez_nombre }} {{ anio }}{% else %}Sin saldos registrados aún{% endif %}
+        </div>
+        {% if num_propiedades > 0 %}
+        <div class="cc-hero-net">
+            <span class="cc-hero-net-label">Valor neto propiedades</span>
+            <span class="cc-hero-net-value">€{{ patrimonio_inmuebles|floatformat:0 }}</span>
+            <span class="cc-hero-net-sub">{{ num_propiedades }} inmueble{{ num_propiedades|pluralize:"s" }} · activos − pasivos</span>
+        </div>
+        {% endif %}
+    </a>
 
     <!-- ═══ KPI STRIP ═══ -->
     <div class="cc-kpis">
