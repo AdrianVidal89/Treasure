@@ -154,6 +154,13 @@
                     <td>
                         <span class="chevron-ico">▶</span>
                         <strong style="color: var(--text-color);">{{ item.inv.nombre }}</strong>
+                        {% if not item.es_propio %}
+                        <span style="font-size: 0.62rem; padding: 1px 6px; border-radius: 10px;
+                                     background: rgba(162,89,255,0.12); color: #a259ff;
+                                     border: 1px solid #a259ff33; margin-left: 6px;">
+                            {{ item.owner }}
+                        </span>
+                        {% endif %}
                         {% if item.inv.plataforma %}
                         <div style="font-size: 0.7rem; color: var(--muted); margin-top: 2px; padding-left: 18px;">
                             {{ item.inv.plataforma }}

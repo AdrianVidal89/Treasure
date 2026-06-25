@@ -31,8 +31,8 @@
     width: 10px; height: 10px; border-radius: 50%;
     display: inline-block;
 }
-.cc-semaforo.verde  { background: rgba(0,255,136,0.08); color: #00ff88; border: 1px solid rgba(0,255,136,0.25); }
-.cc-semaforo.verde .dot  { background: #00ff88; box-shadow: 0 0 6px #00ff88; }
+.cc-semaforo.verde  { background: rgba(0,153,77,0.10); color: #00994d; border: 1px solid rgba(0,153,77,0.35); }
+.cc-semaforo.verde .dot  { background: #00994d; box-shadow: 0 0 5px rgba(0,153,77,0.45); }
 .cc-semaforo.amarillo { background: rgba(255,238,0,0.08); color: #ffee00; border: 1px solid rgba(255,238,0,0.25); }
 .cc-semaforo.amarillo .dot { background: #ffee00; box-shadow: 0 0 6px #ffee00; }
 .cc-semaforo.naranja { background: rgba(255,136,0,0.08); color: #ff8800; border: 1px solid rgba(255,136,0,0.25); }
@@ -163,7 +163,7 @@
     <div class="cc-kpis">
         <div class="cc-kpi">
             <div class="cc-kpi-label">Ingreso neto</div>
-            <div class="cc-kpi-value" style="color: #00ff88;">€{{ flujo.ingreso_base_hogar|floatformat:0 }}</div>
+            <div class="cc-kpi-value" style="color: #00ff88;">€{{ flujo.ingreso_base_puro_hogar|floatformat:0 }}</div>
             <div class="cc-kpi-sub">/mes base</div>
         </div>
         <div class="cc-kpi">
@@ -183,58 +183,6 @@
         </div>
     </div>
 
-    <!-- ═══ DISTRIBUTION BAR ═══ -->
-    {% if donut_data %}
-    <div class="cc-dist">
-        <div class="cc-dist-title">
-            Distribución del ingreso
-            <span>€{{ flujo.ingreso_base_hogar|floatformat:0 }}/mes</span>
-        </div>
-        <div class="cc-bar">
-            {% for seg in donut_data %}
-            <div class="cc-bar-seg" style="width: {{ seg.pct|unlocalize }}%; background: {{ seg.color }};">
-             {% if seg.pct > 8 %}{{ seg.pct }}%{% endif %}
-            </div>
-
-            {% endfor %}
-        </div>
-        <div class="cc-legend">
-            {% for seg in donut_data %}
-            <div class="cc-legend-item">
-                <span class="cc-legend-dot" style="background: {{ seg.color }};"></span>
-                <span class="cc-legend-label">{{ seg.label }}</span>
-                <span class="cc-legend-val">€{{ seg.value|floatformat:0 }}</span>
-                <span class="cc-legend-pct" style="color: {{ seg.color }};">{{ seg.pct }}%</span>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- ═══ MODULE CARDS ═══ -->
-    <div class="cc-modules">
-        {% for mod in modulos %}
-        <a href="{{ mod.link }}" class="cc-mod" style="--mod-color: {{ mod.color }};">
-            <div class="cc-mod-head">
-                <span class="cc-mod-icon">{{ mod.icono }}</span>
-                <span class="cc-mod-title">{{ mod.titulo }}</span>
-            </div>
-            <div class="cc-mod-metric" style="color: {{ mod.color }};">{{ mod.metrica }}</div>
-            <div class="cc-mod-sub">{{ mod.sub }}</div>
-        </a>
-        {% endfor %}
-    </div>
-
-    <!-- ═══ QUICK ACTIONS ═══ -->
-    <div class="cc-quick">
-        <a href="{% url 'finanzas:crear_ingreso' %}">➕ Nuevo ingreso</a>
-        <a href="{% url 'finanzas:crear_partida' %}">➕ Nuevo gasto</a>
-        <a href="/finanzas/distribucion/?mes={{ mes }}&anio={{ anio }}">🔀 Distribución {{ mes_nombre }}</a>
-        <a href="/finanzas/evolucion/?año={{ anio }}">📈 Evolución {{ anio }}</a>
-        {% if request.user.is_superuser or profile.es_admin %}
-        <a href="{% url 'panel_admin' %}">⚙️ Admin</a>
-        {% endif %}
-    </div>
 
 </div>
 
