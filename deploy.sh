@@ -1,13 +1,22 @@
 #!/bin/bash
 # Script de deploy para el NAS QNAP.
-# Ejecutar desde el directorio del proyecto: sh deploy.sh
+# Ejecutar desde el directorio del proyecto: bash deploy.sh
 set -e
-
-# Ampliar PATH para entornos con sh reducido (QNAP, BusyBox, etc.)
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:$PATH"
 export DOCKER_CONFIG=/tmp/dockercfg
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+
+# Git se ejecuta dentro de un contenedor alpine/git (el NAS no tiene git nativo).
+# Se montan las credenciales del usuario para autenticacion HTTPS o SSH.
+GIT() {
+    docker run --rm \
+        -v "$APP_DIR":/work \
+        -v "$HOME/.gitconfig":/root/.gitconfig:ro \
+        -v "$HOME/.git-credentials":/root/.git-credentials:ro \
+        -v "$HOME/.ssh":/root/.ssh:ro \
+        -w /work \
+        alpine/git "$@"
+}
 
 echo "=== [1/6] Backup .env ==="
 if [ -f "$APP_DIR/.env" ]; then
@@ -25,12 +34,10 @@ docker compose -f "$APP_DIR/docker-compose.yml" exec -T db \
 echo "  Volcado guardado en $DUMP_FILE"
 
 echo "=== [3/6] git fetch + reset ==="
-git -C "$APP_DIR" fetch origin main
-git -C "$APP_DIR" reset --hard origin/main
+GIT fetch origin main
+GIT reset --hard origin/main
 
 echo "=== [4/6] Restaurar .env de produccion ==="
-# En la primera ejecucion tras este commit, git reset --hard eliminara .env
-# (estaba trackeado en el commit anterior). Lo restauramos desde el backup.
 if [ ! -f "$APP_DIR/.env" ]; then
     LATEST_BAK="$(ls -t "$APP_DIR"/.env.bak.* 2>/dev/null | head -1)"
     if [ -n "$LATEST_BAK" ]; then
