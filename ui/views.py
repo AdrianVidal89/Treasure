@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
@@ -43,6 +46,75 @@ NOMBRE_MES = [
     '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
 ]
+
+
+def _alerta_key(texto):
+    return hashlib.md5(texto.encode()).hexdigest()[:12]
+
+
+def _get_alertas(hogar, mes, anio, propiedades=None):
+    alertas = []
+
+    fuentes_variable = FuenteIngreso.objects.filter(hogar=hogar, activo=True, tipo='variable')
+    for fv in fuentes_variable:
+        tiene_ajuste = AjusteIngresoMensual.objects.filter(
+            fuente=fv, mes=mes, **{'año': anio}
+        ).exists()
+        if not tiene_ajuste:
+            nombre_user = fv.usuario.first_name or fv.usuario.username
+            texto = f'{nombre_user}: "{fv.nombre}" sin ajuste en {NOMBRE_MES[mes]}'
+            alertas.append({
+                'tipo': 'warning', 'icono': '✏️', 'texto': texto,
+                'link': f'/finanzas/distribucion/?mes={mes}&anio={anio}',
+                'link_text': 'Ajustar',
+                'key': _alerta_key(texto),
+            })
+
+    fondos_sin_saldo = []
+    for fondo in FondoFamiliar.objects.filter(hogar=hogar, activo=True):
+        if not SaldoRealFondo.objects.filter(fondo=fondo, año=anio, mes=mes).exists():
+            fondos_sin_saldo.append(fondo.nombre)
+
+    if fondos_sin_saldo:
+        n = len(fondos_sin_saldo)
+        nombres = ', '.join(fondos_sin_saldo[:3]) + (f' y {n - 3} más' if n > 3 else '')
+        texto = f'{n} fondo{"s" if n > 1 else ""} sin saldo en {NOMBRE_MES[mes]}: {nombres}'
+        alertas.append({
+            'tipo': 'info', 'icono': '📊', 'texto': texto,
+            'link': f'/finanzas/evolucion/?año={anio}',
+            'link_text': 'Registrar',
+            'key': _alerta_key(texto),
+        })
+
+    if propiedades is None:
+        propiedades = Propiedad.objects.filter(hogar=hogar, activo=True)
+    hoy_prop = date.today()
+    for prop in propiedades:
+        if not HistorialPropiedad.objects.filter(propiedad=prop, año=hoy_prop.year, mes=hoy_prop.month).exists():
+            texto = f'"{prop.nombre}": actualiza valor e hipoteca de {NOMBRE_MES[hoy_prop.month]}'
+            alertas.append({
+                'tipo': 'info', 'icono': '🏡', 'texto': texto,
+                'link': f'/finanzas/evolucion/?año={hoy_prop.year}',
+                'link_text': 'Evolución',
+                'key': _alerta_key(texto),
+            })
+
+    if not IngresoRealMes.objects.filter(hogar=hogar, año=anio, mes=mes).exists():
+        texto = f'Ingresos reales de {NOMBRE_MES[mes]} no registrados en Evolución'
+        alertas.append({
+            'tipo': 'info', 'icono': '💰', 'texto': texto,
+            'link': f'/finanzas/evolucion/?año={anio}',
+            'link_text': 'Registrar',
+            'key': _alerta_key(texto),
+        })
+
+    return alertas
+
+
+def _get_alertas_filtradas(request, hogar, mes, anio):
+    alertas = _get_alertas(hogar, mes, anio)
+    dismissed = set(request.session.get('dismissed_alerts', []))
+    return [a for a in alertas if a['key'] not in dismissed]
 
 
 # ─── Auth views ───────────────────────────────────────────────────────────────
@@ -127,77 +199,8 @@ def dashboard_view(request):
     num_propiedades = propiedades.count()
     patrimonio_inmuebles = sum(p.patrimonio_neto for p in propiedades)
 
-    # ── 5. Alertas contextuales ──
-    alertas = []
-
-    # 5a. Fuentes variables sin ajuste este mes
-    fuentes_variable = FuenteIngreso.objects.filter(
-        hogar=hogar, activo=True, tipo='variable'
-    )
-    for fv in fuentes_variable:
-        tiene_ajuste = AjusteIngresoMensual.objects.filter(
-            fuente=fv, mes=mes, **{'año': anio}
-        ).exists()
-        if not tiene_ajuste:
-            nombre_user = fv.usuario.first_name or fv.usuario.username
-            alertas.append({
-                'tipo': 'warning',
-                'icono': '✏️',
-                'texto': f'{nombre_user}: "{fv.nombre}" sin ajuste en {NOMBRE_MES[mes]}',
-                'link': f'/finanzas/distribucion/?mes={mes}&anio={anio}',
-                'link_text': 'Ajustar',
-            })
-
-    # 5b. Fondos sin saldo real este mes
-    fondos_sin_saldo = []
-    for fondo in FondoFamiliar.objects.filter(hogar=hogar, activo=True):
-        tiene_saldo = SaldoRealFondo.objects.filter(
-            fondo=fondo, año=anio, mes=mes
-        ).exists()
-        if not tiene_saldo:
-            fondos_sin_saldo.append(fondo.nombre)
-
-    if fondos_sin_saldo:
-        n = len(fondos_sin_saldo)
-        if n <= 3:
-            nombres = ', '.join(fondos_sin_saldo)
-        else:
-            nombres = f'{fondos_sin_saldo[0]}, {fondos_sin_saldo[1]} y {n - 2} más'
-        alertas.append({
-            'tipo': 'info',
-            'icono': '📊',
-            'texto': f'{n} fondo{"s" if n > 1 else ""} sin saldo registrado en {NOMBRE_MES[mes]}: {nombres}',
-            'link': f'/finanzas/evolucion/?año={anio}',
-            'link_text': 'Registrar',
-        })
-
-    # 5c. Propiedades sin actualización este mes
-    hoy_prop = date.today()
-    for prop in propiedades:
-        tiene_hist = HistorialPropiedad.objects.filter(
-            propiedad=prop, año=hoy_prop.year, mes=hoy_prop.month
-        ).exists()
-        if not tiene_hist:
-            alertas.append({
-                'tipo': 'info',
-                'icono': '🏡',
-                'texto': f'"{prop.nombre}": actualiza valor e hipoteca de {NOMBRE_MES[hoy_prop.month]}',
-                'link': f'/finanzas/evolucion/?año={hoy_prop.year}',
-                'link_text': 'Evolución',
-            })
-
-    # 5d. Sin ingreso real registrado este mes en evolución
-    tiene_ingreso_real = IngresoRealMes.objects.filter(
-        hogar=hogar, año=anio, mes=mes
-    ).exists()
-    if not tiene_ingreso_real:
-        alertas.append({
-            'tipo': 'info',
-            'icono': '💰',
-            'texto': f'Ingresos reales de {NOMBRE_MES[mes]} no registrados en Evolución',
-            'link': f'/finanzas/evolucion/?año={anio}',
-            'link_text': 'Registrar',
-        })
+    # ── 5. Alertas — now shown via bell icon, not inline ──
+    # (still passed for context but not rendered in the page body)
 
     # ── 6. Datos para el donut chart (JS) ──
     donut_data = []
@@ -222,7 +225,7 @@ def dashboard_view(request):
     modulos = [
         {
             'icono': '💰', 'titulo': 'Ingresos',
-            'metrica': f'€{flujo["ingreso_base_hogar"]:,.2f}/mes',
+            'metrica': f'€{flujo["ingreso_base_puro_hogar"]:,.2f}/mes',
             'sub': f'{num_fuentes} fuente{"s" if num_fuentes != 1 else ""} activa{"s" if num_fuentes != 1 else ""}',
             'color': '#00ff88',
             'link': '/finanzas/ingresos/',
@@ -280,13 +283,57 @@ def dashboard_view(request):
         'mes_nombre': NOMBRE_MES[mes],
         'flujo': flujo,
         'modulos': modulos,
-        'alertas': alertas,
         'donut_data': donut_data,
         'liquidez_real': liquidez_real,
         'patrimonio_real': patrimonio_real,
         'total_inversiones': total_inversiones,
     }
     return render(request, 'ui/dashboard.html', context)
+
+
+# ─── Notification API ────────────────────────────────────────────────────────
+
+@login_required
+def api_notificaciones(request):
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'alertas': []})
+    hoy = date.today()
+    alertas = _get_alertas_filtradas(request, hogar, hoy.month, hoy.year)
+    return JsonResponse({'alertas': alertas})
+
+
+@login_required
+def api_descartar_notificacion(request):
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'alertas': []})
+    try:
+        data = json.loads(request.body)
+        key = data.get('key', '')
+    except (json.JSONDecodeError, Exception):
+        return JsonResponse({'error': 'invalid'}, status=400)
+
+    dismissed = set(request.session.get('dismissed_alerts', []))
+    dismissed.add(key)
+    request.session['dismissed_alerts'] = list(dismissed)
+    hoy = date.today()
+    alertas = _get_alertas_filtradas(request, hogar, hoy.month, hoy.year)
+    return JsonResponse({'alertas': alertas})
+
+
+@login_required
+def api_descartar_todas(request):
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'alertas': []})
+    hoy = date.today()
+    todas = _get_alertas(hogar, hoy.month, hoy.year)
+    dismissed = set(request.session.get('dismissed_alerts', []))
+    for a in todas:
+        dismissed.add(a['key'])
+    request.session['dismissed_alerts'] = list(dismissed)
+    return JsonResponse({'alertas': []})
 
 
 # ─── Legacy API (mantener por si acaso) ───────────────────────────────────────

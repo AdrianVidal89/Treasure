@@ -122,35 +122,6 @@
 .cc-mod-metric { font-size: 1.15rem; font-weight: 700; margin-bottom: 3px; }
 .cc-mod-sub { font-size: 0.72rem; color: var(--muted); }
 
-/* ─── Alertas ──────────────────────────────────────────────────────────── */
-.cc-alertas { margin-bottom: 24px; }
-.cc-alerta {
-    display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px; border-radius: 10px;
-    margin-bottom: 8px; font-size: 0.82rem;
-}
-.cc-alerta.warning {
-    background: rgba(255,170,0,0.07); border: 1px solid rgba(255,170,0,0.2);
-    color: #ffaa00;
-}
-.cc-alerta.info {
-    background: rgba(0,209,255,0.06); border: 1px solid rgba(0,209,255,0.15);
-    color: #00d1ff;
-}
-.cc-alerta-icon { font-size: 1rem; flex-shrink: 0; }
-.cc-alerta-text { flex: 1; }
-.cc-alerta-link {
-    font-size: 0.75rem; font-weight: 600;
-    padding: 4px 10px; border-radius: 6px;
-    text-decoration: none; flex-shrink: 0;
-    border: 1px solid currentColor;
-    transition: background 0.2s;
-}
-.cc-alerta.warning .cc-alerta-link { color: #ffaa00; }
-.cc-alerta.warning .cc-alerta-link:hover { background: rgba(255,170,0,0.12); }
-.cc-alerta.info .cc-alerta-link { color: #00d1ff; }
-.cc-alerta.info .cc-alerta-link:hover { background: rgba(0,209,255,0.1); }
-
 /* ─── Quick actions ────────────────────────────────────────────────────── */
 .cc-quick {
     display: flex; gap: 10px; flex-wrap: wrap;
@@ -237,19 +208,6 @@
             </div>
             {% endfor %}
         </div>
-    </div>
-    {% endif %}
-
-    <!-- ═══ ALERTAS ═══ -->
-    {% if alertas %}
-    <div class="cc-alertas">
-        {% for a in alertas %}
-        <div class="cc-alerta {{ a.tipo }}">
-            <span class="cc-alerta-icon">{{ a.icono }}</span>
-            <span class="cc-alerta-text">{{ a.texto }}</span>
-            <a href="{{ a.link }}" class="cc-alerta-link">{{ a.link_text }} →</a>
-        </div>
-        {% endfor %}
     </div>
     {% endif %}
 

@@ -31,34 +31,25 @@
             </a>
 
             <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">Ingresos</span>
+                <span class="nav-user-toggle">Gestión</span>
                 <div class="nav-user-menu">
                     <a href="{% url 'finanzas:listar_ingresos' %}">💰 Ver ingresos</a>
-                    <a href="{% url 'finanzas:crear_ingreso' %}">➕ Ingreso</a>
-                </div>
-            </div>
-
-            <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">Gastos</span>
-                <div class="nav-user-menu">
+                    <a href="{% url 'finanzas:crear_ingreso' %}">➕ Nuevo ingreso</a>
                     <a href="{% url 'finanzas:listar_gastos' %}">📋 Ver gastos</a>
-                    <a href="{% url 'finanzas:crear_partida' %}">➕ Gasto</a>
+                    <a href="{% url 'finanzas:crear_partida' %}">➕ Nuevo gasto</a>
+                    <a href="{% url 'finanzas:listar' %}">📊 Ver inversiones</a>
+                    <a href="{% url 'finanzas:crear' %}">➕ Nueva inversión</a>
+                    <a href="{% url 'finanzas:listar_propiedades' %}">🏡 Propiedades</a>
                 </div>
             </div>
 
             <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">Inversiones</span>
+                <span class="nav-user-toggle">Análisis</span>
                 <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:listar' %}">📊 Ver cartera</a>
-                    <a href="{% url 'finanzas:crear' %}">➕ Nueva inversión</a>
+                    <a href="{% url 'finanzas:vista_distribucion' %}">🔀 Distribución</a>
+                    <a href="{% url 'finanzas:vista_evolucion' %}">📈 Evolución</a>
                 </div>
             </div>
-
-            <a href="{% url 'finanzas:vista_distribucion' %}" class="nav-user-toggle">Distribución</a>
-
-            <a href="{% url 'finanzas:vista_evolucion' %}" class="nav-user-toggle">Evolución</a>
-
-            <a href="{% url 'finanzas:listar_propiedades' %}" class="nav-user-toggle">Propiedades</a>
 
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">Simuladores</span>
@@ -78,6 +69,23 @@
                 <span class="icon-dark" aria-hidden="true">🌙</span>
                 <span class="icon-light" aria-hidden="true">☀️</span>
             </button>
+
+            <div class="nav-bell-wrap">
+                <button type="button" class="nav-bell" id="nav-bell-btn" aria-label="Notificaciones" title="Notificaciones">
+                    🔔
+                    <span class="nav-bell-dot" id="nav-bell-dot"></span>
+                </button>
+                <div class="nav-bell-panel" id="nav-bell-panel">
+                    <div class="nav-bell-panel-header">
+                        <span>Notificaciones</span>
+                        <button type="button" id="nav-bell-dismiss-all">Descartar todas</button>
+                    </div>
+                    <div class="nav-bell-list" id="nav-bell-list">
+                        <div class="nav-bell-empty">Cargando…</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="nav-user-dropdown">
                 <span class="nav-user-toggle">
                     Hola, <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
@@ -137,8 +145,106 @@
 
         document.addEventListener("click", function () {
             document.querySelectorAll(".nav-user-menu").forEach(menu => menu.style.display = "none");
+            document.getElementById("nav-bell-panel")?.classList.remove("open");
         });
     });
     </script>
+
+    {% if request.user.is_authenticated and not hide_navbar %}
+    <script>
+    (function () {
+        var bellBtn = document.getElementById("nav-bell-btn");
+        var bellPanel = document.getElementById("nav-bell-panel");
+        var bellDot = document.getElementById("nav-bell-dot");
+        var bellList = document.getElementById("nav-bell-list");
+        var dismissAllBtn = document.getElementById("nav-bell-dismiss-all");
+
+        if (!bellBtn) return;
+
+        function getCsrf() {
+            var m = document.cookie.match(/csrftoken=([^;]+)/);
+            return m ? m[1] : "";
+        }
+
+        function renderNotificaciones(items) {
+            if (!items || items.length === 0) {
+                bellDot.classList.remove("visible");
+                bellList.innerHTML = '<div class="nav-bell-empty">Sin notificaciones pendientes ✅</div>';
+                return;
+            }
+            bellDot.classList.add("visible");
+            bellList.innerHTML = items.map(function (a) {
+                return '<div class="nav-bell-item ' + a.tipo + '" data-key="' + a.key + '">' +
+                    '<span class="nav-bell-icon">' + a.icono + '</span>' +
+                    '<div class="nav-bell-body">' +
+                    '<span class="nav-bell-text">' + a.texto + '</span>' +
+                    '<div class="nav-bell-actions">' +
+                    '<a href="' + a.link + '" class="nav-bell-action-link">' + a.link_text + ' →</a>' +
+                    '<button class="nav-bell-dismiss" data-key="' + a.key + '" title="Descartar">✕</button>' +
+                    '</div></div></div>';
+            }).join("");
+
+            bellList.querySelectorAll(".nav-bell-dismiss").forEach(function (btn) {
+                btn.addEventListener("click", function (e) {
+                    e.stopPropagation();
+                    dismissar(btn.dataset.key);
+                });
+            });
+        }
+
+        function cargarNotificaciones() {
+            fetch("/ui/notificaciones/", {headers: {"X-Requested-With": "XMLHttpRequest"}})
+                .then(function (r) { return r.json(); })
+                .then(function (data) { renderNotificaciones(data.alertas); })
+                .catch(function () {
+                    bellList.innerHTML = '<div class="nav-bell-empty">Error al cargar notificaciones</div>';
+                });
+        }
+
+        function dismissar(key) {
+            fetch("/ui/notificaciones/descartar/", {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": getCsrf(),
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: JSON.stringify({key: key})
+            }).then(function (r) { return r.json(); })
+              .then(function (data) { renderNotificaciones(data.alertas); });
+        }
+
+        dismissAllBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            fetch("/ui/notificaciones/descartar-todas/", {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": getCsrf(),
+                    "Content-Type": "application/json",
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                body: JSON.stringify({})
+            }).then(function (r) { return r.json(); })
+              .then(function (data) { renderNotificaciones(data.alertas); });
+        });
+
+        bellBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            document.querySelectorAll(".nav-user-menu").forEach(m => m.style.display = "none");
+            var isOpen = bellPanel.classList.toggle("open");
+            if (isOpen) cargarNotificaciones();
+        });
+
+        // Preload dot on page load
+        fetch("/ui/notificaciones/", {headers: {"X-Requested-With": "XMLHttpRequest"}})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data.alertas && data.alertas.length > 0) {
+                    bellDot.classList.add("visible");
+                }
+            }).catch(function () {});
+    })();
+    </script>
+    {% endif %}
 </body>
 </html>
