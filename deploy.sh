@@ -1,10 +1,7 @@
 #!/bin/bash
 # Script de deploy para el NAS QNAP.
-# Ejecutar desde el directorio del proyecto: sh deploy.sh
+# Ejecutar desde el directorio del proyecto: bash deploy.sh
 set -e
-
-# Ampliar PATH para entornos con sh reducido (QNAP, BusyBox, etc.)
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/bin:$PATH"
 export DOCKER_CONFIG=/tmp/dockercfg
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
