@@ -80,14 +80,18 @@ def _neto_fuente_base(f):
 # Motor principal
 # ---------------------------------------------------------------------------
 
-def calcular_flujos(hogar, mes=None, anio=None, usar_base=False):
-    """Calcula el flujo de distribución del hogar para un mes dado.
+def clasificar_salud(tasa):
+    """Devuelve (semaforo, texto) a partir de una tasa de ahorro (en %)."""
+    if tasa >= 20:
+        return 'verde', 'Excelente salud financiera'
+    elif tasa >= 10:
+        return 'amarillo', 'Salud financiera aceptable'
+    elif tasa >= 0:
+        return 'naranja', 'Margen ajustado'
+    return 'rojo', 'Gastas más de lo que ingresas'
 
-    Si ``usar_base`` es True, los ingresos se calculan a partir de la base
-    mensual recurrente (sin pagas extras, ingresos puntuales ni ajustes del
-    mes). Esto sirve para medir la salud financiera "general" del hogar sin
-    que un mes con paga extra distorsione la tasa de ahorro.
-    """
+
+def calcular_flujos(hogar, mes=None, anio=None):
     hoy = datetime.date.today()
     mes = mes or hoy.month
     anio = anio or hoy.year
@@ -127,11 +131,6 @@ def calcular_flujos(hogar, mes=None, anio=None, usar_base=False):
         for f in fuentes:
             b, p, tiene_ajuste = _neto_fuente_mes(f, mes, anio)
             b_base, _ = _neto_fuente_base(f)
-
-            if usar_base:
-                # Modo "base general": ignorar extras/ajustes del mes.
-                b = b_base
-                tiene_ajuste = False
 
             if tiene_ajuste:
                 ajustes_mes.append({
@@ -359,14 +358,7 @@ def calcular_flujos(hogar, mes=None, anio=None, usar_base=False):
 
     tasa_ahorro = round(total_dedicado / total_base_hogar * 100, 1) if total_base_hogar > 0 else Decimal('0')
 
-    if tasa_ahorro >= 20:
-        semaforo, semaforo_texto = 'verde', 'Excelente salud financiera'
-    elif tasa_ahorro >= 10:
-        semaforo, semaforo_texto = 'amarillo', 'Salud financiera aceptable'
-    elif tasa_ahorro >= 0:
-        semaforo, semaforo_texto = 'naranja', 'Margen ajustado'
-    else:
-        semaforo, semaforo_texto = 'rojo', 'Gastas más de lo que ingresas'
+    semaforo, semaforo_texto = clasificar_salud(tasa_ahorro)
 
     def pct(val):
         return round(float(val / total_base_hogar * 100), 1) if total_base_hogar > 0 else 0
