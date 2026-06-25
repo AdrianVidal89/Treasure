@@ -107,11 +107,13 @@ def calcular_flujos(hogar, mes=None, anio=None):
     datos_miembros = {}
     total_base_hogar = Decimal('0')
     total_pond_hogar = Decimal('0')
+    total_base_puro_hogar = Decimal('0')
 
     for m in miembros:
         fuentes = FuenteIngreso.objects.filter(usuario=m.user, hogar=hogar, activo=True)
         ing_base = Decimal('0')
         ing_pond = Decimal('0')
+        ing_base_puro = Decimal('0')
         extras_mes = []
         ajustes_mes = []
 
@@ -131,6 +133,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
 
             ing_base += b
             ing_pond += p
+            ing_base_puro += b_base
 
         fuentes_lista = [{'id': f.id, 'nombre': f.nombre} for f in fuentes]
 
@@ -150,6 +153,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
         }
         total_base_hogar += ing_base
         total_pond_hogar += ing_pond
+        total_base_puro_hogar += ing_base_puro
 
     # =========================================================
     # PASO 2: Gastos
@@ -392,6 +396,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
         'transferencias_cascada': transferencias_cascada,
 
         'ingreso_base_hogar': total_base_hogar,
+        'ingreso_base_puro_hogar': total_base_puro_hogar,
         'ingreso_pond_hogar': total_pond_hogar,
 
         'gastos_hogar_total': gastos_hogar_total,
