@@ -12,7 +12,7 @@ GIT() {
     docker run --rm \
         -v "$APP_DIR":/work \
         -w /work \
-        alpine/git "$@"
+        alpine/git -c safe.directory=/work "$@"
 }
 
 echo "=== [1/6] Backup .env ==="
