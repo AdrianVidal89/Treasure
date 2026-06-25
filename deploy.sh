@@ -18,7 +18,7 @@ fi
 echo "=== [2/6] Backup PostgreSQL ==="
 DUMP_FILE="$APP_DIR/pg_dump_$TIMESTAMP.sql"
 docker compose -f "$APP_DIR/docker-compose.yml" exec -T db \
-    sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+    sh -c 'pg_dump "$DATABASE_URL"' \
     > "$DUMP_FILE"
 echo "  Volcado guardado en $DUMP_FILE"
 
