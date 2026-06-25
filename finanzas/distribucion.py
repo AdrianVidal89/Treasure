@@ -80,7 +80,14 @@ def _neto_fuente_base(f):
 # Motor principal
 # ---------------------------------------------------------------------------
 
-def calcular_flujos(hogar, mes=None, anio=None):
+def calcular_flujos(hogar, mes=None, anio=None, usar_base=False):
+    """Calcula el flujo de distribución del hogar para un mes dado.
+
+    Si ``usar_base`` es True, los ingresos se calculan a partir de la base
+    mensual recurrente (sin pagas extras, ingresos puntuales ni ajustes del
+    mes). Esto sirve para medir la salud financiera "general" del hogar sin
+    que un mes con paga extra distorsione la tasa de ahorro.
+    """
     hoy = datetime.date.today()
     mes = mes or hoy.month
     anio = anio or hoy.year
@@ -120,6 +127,11 @@ def calcular_flujos(hogar, mes=None, anio=None):
         for f in fuentes:
             b, p, tiene_ajuste = _neto_fuente_mes(f, mes, anio)
             b_base, _ = _neto_fuente_base(f)
+
+            if usar_base:
+                # Modo "base general": ignorar extras/ajustes del mes.
+                b = b_base
+                tiene_ajuste = False
 
             if tiene_ajuste:
                 ajustes_mes.append({

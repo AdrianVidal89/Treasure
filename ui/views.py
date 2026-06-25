@@ -155,6 +155,9 @@ def dashboard_view(request):
 
     # ── 1. Motor de distribución (reutilizado, no duplicado) ──
     flujo = calcular_flujos(hogar, mes=mes, anio=anio)
+    # Salud financiera sobre la base general (sin extras/ajustes del mes),
+    # para que un mes con paga extra no distorsione la tasa de ahorro.
+    flujo_base = calcular_flujos(hogar, mes=mes, anio=anio, usar_base=True)
 
     # ── 2. Contadores por módulo ──
     num_fuentes = FuenteIngreso.objects.filter(hogar=hogar, activo=True).count()
@@ -274,6 +277,10 @@ def dashboard_view(request):
         },
     ]
 
+    # Capital líquido total del hogar = liquidez disponible en fondos
+    # (común + ahorro) registrada en el último mes con datos.
+    capital_liquido_total = liquidez_real
+
     context = {
         'hogar': hogar,
         'profile': profile,
@@ -282,11 +289,16 @@ def dashboard_view(request):
         'anio': anio,
         'mes_nombre': NOMBRE_MES[mes],
         'flujo': flujo,
+        'flujo_base': flujo_base,
         'modulos': modulos,
         'donut_data': donut_data,
         'liquidez_real': liquidez_real,
         'patrimonio_real': patrimonio_real,
         'total_inversiones': total_inversiones,
+        'capital_liquido_total': capital_liquido_total,
+        'patrimonio_inmuebles': patrimonio_inmuebles,
+        'num_propiedades': num_propiedades,
+        'mes_liquidez_nombre': NOMBRE_MES[ultimo_mes_con_saldo] if ultimo_mes_con_saldo else None,
     }
     return render(request, 'ui/dashboard.html', context)
 
