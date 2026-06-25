@@ -188,9 +188,9 @@
     <div class="cc-header">
         <h1 class="cc-saludo">{{ saludo }}, <span>{{ request.user.first_name|default:request.user.username }}</span></h1>
         <div class="cc-sub">{{ hogar.nombre }} · {{ mes_nombre }} {{ anio }}</div>
-        <div class="cc-semaforo {{ flujo_base.semaforo }}">
+        <div class="cc-semaforo {{ salud_semaforo }}">
             <span class="dot"></span>
-            {{ flujo_base.semaforo_texto }} — Tasa de ahorro: {{ flujo_base.tasa_ahorro }}%
+            {{ salud_texto }} — Tasa de ahorro: {{ salud_tasa }}%
         </div>
     </div>
 

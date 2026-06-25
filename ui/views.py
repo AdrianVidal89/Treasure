@@ -15,7 +15,7 @@ from finanzas.models import (
     TarjetaCredito, AjusteIngresoMensual, SaldoRealFondo,
     IngresoRealMes, ReglaReparto, Propiedad, HistorialPropiedad,
 )
-from finanzas.distribucion import calcular_flujos
+from finanzas.distribucion import calcular_flujos, clasificar_salud
 
 from django.db.models import Sum, F, FloatField, ExpressionWrapper
 from django.db.models.functions import TruncMonth
@@ -155,9 +155,19 @@ def dashboard_view(request):
 
     # ── 1. Motor de distribución (reutilizado, no duplicado) ──
     flujo = calcular_flujos(hogar, mes=mes, anio=anio)
-    # Salud financiera sobre la base general (sin extras/ajustes del mes),
-    # para que un mes con paga extra no distorsione la tasa de ahorro.
-    flujo_base = calcular_flujos(hogar, mes=mes, anio=anio, usar_base=True)
+
+    # ── 1b. Salud financiera sobre la base general ──
+    # Tasa de ahorro = % del ingreso neto base que queda tras los gastos
+    # recurrentes. Se calcula sobre el ingreso BASE (sin pagas extras ni
+    # ajustes del mes) para que un mes con paga extra —o unas reglas de
+    # ahorro de importe fijo— no disparen la tasa por encima del 100 %.
+    ingreso_base = flujo['ingreso_base_puro_hogar']
+    gastos_recurrentes = flujo['total_gastos_all']
+    if ingreso_base > 0:
+        salud_tasa = round((ingreso_base - gastos_recurrentes) / ingreso_base * 100, 1)
+    else:
+        salud_tasa = Decimal('0')
+    salud_semaforo, salud_texto = clasificar_salud(salud_tasa)
 
     # ── 2. Contadores por módulo ──
     num_fuentes = FuenteIngreso.objects.filter(hogar=hogar, activo=True).count()
@@ -289,7 +299,9 @@ def dashboard_view(request):
         'anio': anio,
         'mes_nombre': NOMBRE_MES[mes],
         'flujo': flujo,
-        'flujo_base': flujo_base,
+        'salud_tasa': salud_tasa,
+        'salud_semaforo': salud_semaforo,
+        'salud_texto': salud_texto,
         'modulos': modulos,
         'donut_data': donut_data,
         'liquidez_real': liquidez_real,
