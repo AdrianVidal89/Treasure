@@ -7,13 +7,10 @@ APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 
 # Git se ejecuta dentro de un contenedor alpine/git (el NAS no tiene git nativo).
-# Se montan las credenciales del usuario para autenticacion HTTPS o SSH.
+# El repo es publico en GitHub, no necesita credenciales para fetch/reset.
 GIT() {
     docker run --rm \
         -v "$APP_DIR":/work \
-        -v "$HOME/.gitconfig":/root/.gitconfig:ro \
-        -v "$HOME/.git-credentials":/root/.git-credentials:ro \
-        -v "$HOME/.ssh":/root/.ssh:ro \
         -w /work \
         alpine/git "$@"
 }
