@@ -16,6 +16,18 @@
         {% endfor %}
     {% endif %}
 
+    <!-- BASE DE DATOS -->
+    <div class="glass-panel glass-panel--accent" style="--accent: var(--info); padding: 24px; margin-bottom: 32px;">
+        <h2 style="color: var(--text-color); margin: 0 0 6px;">🗄️ Base de datos</h2>
+        <p style="color: var(--muted); font-size: 0.85rem; margin: 0 0 16px;">
+            Descarga una copia completa de la base de datos, o restaura una copia previamente descargada.
+        </p>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+            <a href="{% url 'backup_bd' %}" class="btn btn-primary">⬇️ Descargar backup (.dump)</a>
+            <a href="{% url 'restaurar_bd' %}" class="btn" style="background: var(--danger); color: #fff;">⬆️ Restaurar desde backup</a>
+        </div>
+    </div>
+
     <!-- HEADER HOGARES -->
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
         <h2 style="color: var(--text-color); margin: 0;">🏠 Hogares</h2>

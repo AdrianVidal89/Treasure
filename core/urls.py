@@ -12,4 +12,6 @@ urlpatterns = [
     path('admin-panel/miembro/<int:profile_id>/eliminar/', views.eliminar_miembro, name='eliminar_miembro'),
     path('mi-hogar/', views.mi_hogar, name='mi_hogar'),
     path('admin-panel/hogar/<int:hogar_id>/eliminar/', views.eliminar_hogar, name='eliminar_hogar'),
+    path('admin-panel/backup/', views.backup_bd, name='backup_bd'),
+    path('admin-panel/restaurar/', views.restaurar_bd, name='restaurar_bd'),
 ]

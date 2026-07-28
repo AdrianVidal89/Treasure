@@ -354,9 +354,11 @@ def calcular_flujos(hogar, mes=None, anio=None):
     # =========================================================
     libre_personal = sum(dm['libre_base'] for dm in datos_miembros.values())
     libre_total = libre_personal + libre_comun
-    total_dedicado = total_ahorro + total_inversion
+    # Todo lo que no es gasto cuenta como ahorrado (ahorro + inversión + libre),
+    # no solo lo que una regla empuja explícitamente a un fondo de ahorro/inversión.
+    total_ahorrado = total_base_hogar - total_gastos_all
 
-    tasa_ahorro = round(total_dedicado / total_base_hogar * 100, 1) if total_base_hogar > 0 else Decimal('0')
+    tasa_ahorro = round(total_ahorrado / total_base_hogar * 100, 1) if total_base_hogar > 0 else Decimal('0')
 
     semaforo, semaforo_texto = clasificar_salud(tasa_ahorro)
 
