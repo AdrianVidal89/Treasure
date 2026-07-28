@@ -21,88 +21,131 @@
     </script>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}{% if request.user.is_authenticated and not hide_navbar %} has-sidebar{% endif %}">
     {% if request.user.is_authenticated and not hide_navbar %}
-    <nav class="navbar">
-        <div class="navbar-left">
-            <a href="{% url 'dashboard' %}" style="display: flex; align-items: center; gap: 8px; text-decoration: none;">
+    {% with vn=request.resolver_match.view_name %}
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-brand">
+            <a href="{% url 'dashboard' %}">
                 <img src="{% static 'img/logo_treasure_3.png' %}" class="nav-logo" alt="Treasure Logo">
                 <span class="nav-title">Treasure</span>
             </a>
-
-            <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">Gestión</span>
-                <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:listar_ingresos' %}">💰 Ver ingresos</a>
-                    <a href="{% url 'finanzas:listar_gastos' %}">📋 Ver gastos</a>
-                    <a href="{% url 'finanzas:listar' %}">📊 Ver inversiones</a>
-                    <a href="{% url 'finanzas:listar_propiedades' %}">🏡 Propiedades</a>
-                </div>
-            </div>
-
-            <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">Análisis</span>
-                <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:vista_distribucion' %}">🔀 Distribución</a>
-                    <a href="{% url 'finanzas:vista_evolucion' %}">📈 Evolución</a>
-                </div>
-            </div>
-
-            <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">Simuladores</span>
-                <div class="nav-user-menu">
-                    <a href="{% url 'finanzas:simulador_vivienda' %}">🏠 Simulador vivienda</a>
-                    <a href="{% url 'finanzas:simulador_vehiculo' %}">🚗 Simulador vehículo</a>
-                </div>
-            </div>
         </div>
 
+        <nav class="sidebar-nav">
+            <a href="{% url 'dashboard' %}" class="sidebar-link {% if vn == 'dashboard' %}active{% endif %}">
+                <span class="sidebar-link-icon">🏠</span><span>Dashboard</span>
+            </a>
+
+            <div class="sidebar-group">
+                <span class="sidebar-group-label">Gestión</span>
+                <a href="{% url 'finanzas:listar_ingresos' %}" class="sidebar-link {% if vn == 'finanzas:listar_ingresos' %}active{% endif %}">
+                    <span class="sidebar-link-icon">💰</span><span>Ingresos</span>
+                </a>
+                <a href="{% url 'finanzas:listar_gastos' %}" class="sidebar-link {% if vn == 'finanzas:listar_gastos' %}active{% endif %}">
+                    <span class="sidebar-link-icon">📋</span><span>Gastos</span>
+                </a>
+                <a href="{% url 'finanzas:listar' %}" class="sidebar-link {% if vn == 'finanzas:listar' %}active{% endif %}">
+                    <span class="sidebar-link-icon">📊</span><span>Inversiones</span>
+                </a>
+                <a href="{% url 'finanzas:listar_propiedades' %}" class="sidebar-link {% if vn == 'finanzas:listar_propiedades' %}active{% endif %}">
+                    <span class="sidebar-link-icon">🏡</span><span>Propiedades</span>
+                </a>
+            </div>
+
+            <div class="sidebar-group">
+                <span class="sidebar-group-label">Análisis</span>
+                <a href="{% url 'finanzas:vista_distribucion' %}" class="sidebar-link {% if vn == 'finanzas:vista_distribucion' %}active{% endif %}">
+                    <span class="sidebar-link-icon">🔀</span><span>Distribución</span>
+                </a>
+                <a href="{% url 'finanzas:vista_evolucion' %}" class="sidebar-link {% if vn == 'finanzas:vista_evolucion' %}active{% endif %}">
+                    <span class="sidebar-link-icon">📈</span><span>Evolución</span>
+                </a>
+            </div>
+
+            <div class="sidebar-group">
+                <span class="sidebar-group-label">Simuladores</span>
+                <a href="{% url 'finanzas:simulador_vivienda' %}" class="sidebar-link {% if vn == 'finanzas:simulador_vivienda' %}active{% endif %}">
+                    <span class="sidebar-link-icon">🏠</span><span>Vivienda</span>
+                </a>
+                <a href="{% url 'finanzas:simulador_vehiculo' %}" class="sidebar-link {% if vn == 'finanzas:simulador_vehiculo' %}active{% endif %}">
+                    <span class="sidebar-link-icon">🚗</span><span>Vehículo</span>
+                </a>
+            </div>
+
+            <div class="sidebar-group">
+                <span class="sidebar-group-label">Cuenta</span>
+                <a href="{% url 'mi_hogar' %}" class="sidebar-link {% if vn == 'mi_hogar' %}active{% endif %}">
+                    <span class="sidebar-link-icon">👥</span><span>Mi hogar</span>
+                </a>
+                <a href="{% url 'editar_perfil' %}" class="sidebar-link {% if vn == 'editar_perfil' %}active{% endif %}">
+                    <span class="sidebar-link-icon">⚙️</span><span>Editar perfil</span>
+                </a>
+                {% if request.user.is_superuser or request.user.userprofile.es_admin %}
+                <a href="{% url 'panel_admin' %}" class="sidebar-link {% if vn == 'panel_admin' %}active{% endif %}">
+                    <span class="sidebar-link-icon">🛠️</span><span>Panel Admin</span>
+                </a>
+                {% endif %}
+            </div>
+        </nav>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+    <header class="app-header">
         <button class="nav-toggle" aria-label="Menú" aria-expanded="false">
             <span></span><span></span><span></span>
         </button>
 
-        <div class="navbar-right">
-            <button type="button" class="theme-toggle" aria-label="Cambiar tema" title="Cambiar tema claro/oscuro">
-                <span class="icon-dark" aria-hidden="true">🌙</span>
-                <span class="icon-light" aria-hidden="true">☀️</span>
+        <div class="app-header-spacer"></div>
+
+        <button type="button" class="theme-toggle" aria-label="Cambiar tema" title="Cambiar tema claro/oscuro">
+            <span class="icon-dark" aria-hidden="true">🌙</span>
+            <span class="icon-light" aria-hidden="true">☀️</span>
+        </button>
+
+        <div class="nav-bell-wrap">
+            <button type="button" class="nav-bell" id="nav-bell-btn" aria-label="Notificaciones" title="Notificaciones">
+                🔔
+                <span class="nav-bell-dot" id="nav-bell-dot"></span>
             </button>
-
-            <div class="nav-bell-wrap">
-                <button type="button" class="nav-bell" id="nav-bell-btn" aria-label="Notificaciones" title="Notificaciones">
-                    🔔
-                    <span class="nav-bell-dot" id="nav-bell-dot"></span>
-                </button>
-                <div class="nav-bell-panel" id="nav-bell-panel">
-                    <div class="nav-bell-panel-header">
-                        <span>Notificaciones</span>
-                        <button type="button" id="nav-bell-dismiss-all">Descartar todas</button>
-                    </div>
-                    <div class="nav-bell-list" id="nav-bell-list">
-                        <div class="nav-bell-empty">Cargando…</div>
-                    </div>
+            <div class="nav-bell-panel" id="nav-bell-panel">
+                <div class="nav-bell-panel-header">
+                    <span>Notificaciones</span>
+                    <button type="button" id="nav-bell-dismiss-all">Descartar todas</button>
                 </div>
-            </div>
-
-            <div class="nav-user-dropdown">
-                <span class="nav-user-toggle">
-                    Hola, <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
-                </span>
-                <div class="nav-user-menu">
-                    <a href="{% url 'dashboard' %}">🏠 Dashboard</a>
-                    <a href="{% url 'mi_hogar' %}">👥 Mi hogar</a>
-                    <a href="{% url 'editar_perfil' %}">Editar perfil</a>
-                    {% if request.user.is_superuser or request.user.userprofile.es_admin %}
-                    <a href="{% url 'panel_admin' %}">⚙️ Panel Admin</a>
-                    {% endif %}
-                    <a href="{% url 'logout' %}">Cerrar sesion</a>
+                <div class="nav-bell-list" id="nav-bell-list">
+                    <div class="nav-bell-empty">Cargando…</div>
                 </div>
             </div>
         </div>
-    </nav>
+
+        <div class="nav-user-dropdown">
+            <span class="nav-user-toggle nav-profile-chip">
+                <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
+                <span class="nav-profile-avatar">{{ request.user.first_name|default:request.user.username|slice:":1"|upper }}</span>
+            </span>
+            <div class="nav-user-menu">
+                <a href="{% url 'dashboard' %}">🏠 Dashboard</a>
+                <a href="{% url 'mi_hogar' %}">👥 Mi hogar</a>
+                <a href="{% url 'editar_perfil' %}">Editar perfil</a>
+                {% if request.user.is_superuser or request.user.userprofile.es_admin %}
+                <a href="{% url 'panel_admin' %}">⚙️ Panel Admin</a>
+                {% endif %}
+                <a href="{% url 'logout' %}">Cerrar sesion</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="app-main">
+    {% endwith %}
     {% endif %}
 
     {% block content %}
     {% endblock %}
+
+    {% if request.user.is_authenticated and not hide_navbar %}
+    </main>
+    {% endif %}
 
     <script>
     document.addEventListener("DOMContentLoaded", function () {
@@ -117,15 +160,24 @@
             });
         }
 
-        // --- Hamburguesa ---
+        // --- Hamburguesa (sidebar off-canvas en móvil) ---
         const navToggle = document.querySelector(".nav-toggle");
-        const navbar = document.querySelector(".navbar");
-        if (navToggle && navbar) {
+        const sidebar = document.querySelector(".sidebar");
+        const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+        function cerrarSidebar() {
+            if (!sidebar) return;
+            sidebar.classList.remove("nav-open");
+            if (navToggle) navToggle.setAttribute("aria-expanded", false);
+        }
+        if (navToggle && sidebar) {
             navToggle.addEventListener("click", function (e) {
                 e.stopPropagation();
-                const open = navbar.classList.toggle("nav-open");
+                const open = sidebar.classList.toggle("nav-open");
                 navToggle.setAttribute("aria-expanded", open);
             });
+        }
+        if (sidebarBackdrop) {
+            sidebarBackdrop.addEventListener("click", cerrarSidebar);
         }
 
         // --- Dropdowns ---
