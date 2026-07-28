@@ -7,13 +7,13 @@
 <style>
 .sim-wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
 .sim-header { margin-bottom: 28px; }
-.sim-header h1 { color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0 0 6px; font-size: 1.7rem; }
+.sim-header h1 { margin: 0 0 6px; font-size: 1.7rem; font-weight: 700; }
 .sim-header p { color: var(--muted); margin: 0; font-size: 0.9rem; }
 
 .sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 720px) { .sim-grid { grid-template-columns: 1fr; } }
 
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+.card { padding: 24px; }
 .card h2 { color: var(--text-color); font-size: 1rem; margin: 0 0 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
 
 .control { margin-bottom: 20px; }
@@ -24,26 +24,26 @@ input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; backgrou
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-color); cursor: pointer; box-shadow: 0 0 8px var(--glow); }
 
 .ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-.ctx-item { background: var(--app-bg); border-radius: 10px; padding: 12px 14px; }
+.ctx-item { background: color-mix(in srgb, var(--app-bg) 80%, transparent); border-radius: var(--radius); padding: 12px 14px; }
 .ctx-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
-.ctx-item .val { font-size: 1rem; font-weight: 700; }
+.ctx-item .val { font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.result-item { background: var(--app-bg); border-radius: 12px; padding: 14px 16px; }
+.result-item { background: color-mix(in srgb, var(--app-bg) 80%, transparent); border-radius: var(--radius); padding: 14px 16px; }
 .result-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
-.result-item .val { font-size: 1.2rem; font-weight: 700; }
+.result-item .val { font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 
-.semaforo { border-radius: 14px; padding: 20px 24px; margin-top: 20px; display: flex; align-items: center; gap: 16px; transition: all 0.3s; }
+.semaforo { border-radius: var(--radius-lg); padding: 20px 24px; margin-top: 20px; display: flex; align-items: center; gap: 16px; transition: all 0.3s; }
 .semaforo-icon { font-size: 2.2rem; line-height: 1; }
 .semaforo-text .title { font-size: 1.1rem; font-weight: 700; }
 .semaforo-text .sub { font-size: 0.85rem; margin-top: 4px; color: var(--muted); }
-.semaforo.verde { background: rgba(0,255,136,0.1); border: 1px solid #00ff8844; }
-.semaforo.amarillo { background: rgba(255,170,0,0.1); border: 1px solid #ffaa0044; }
-.semaforo.rojo { background: rgba(255,77,77,0.1); border: 1px solid #ff4d4d44; }
+.semaforo.verde { background: color-mix(in srgb, var(--success) 10%, transparent); border: 1px solid color-mix(in srgb, var(--success) 27%, transparent); }
+.semaforo.amarillo { background: color-mix(in srgb, var(--warning) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 27%, transparent); }
+.semaforo.rojo { background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 27%, transparent); }
 
-.maximo-box { background: linear-gradient(135deg,rgba(162,89,255,0.12),rgba(0,209,255,0.08)); border: 1px solid #a259ff44; border-radius: 14px; padding: 20px 24px; margin-top: 16px; }
+.maximo-box { background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color) 12%, transparent), color-mix(in srgb, var(--info) 8%, transparent)); border: 1px solid color-mix(in srgb, var(--primary-color) 27%, transparent); border-radius: var(--radius-lg); padding: 20px 24px; margin-top: 16px; }
 .maximo-box .lbl { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
-.maximo-box .val { font-size: 2rem; font-weight: 700; color: var(--primary-color); }
+.maximo-box .val { font-size: 2rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; }
 .maximo-box .sub { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
 
 .desglose { margin-top: 16px; }
@@ -51,7 +51,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 .desglose-row:last-child { border-bottom: none; }
 .desglose-row .key { color: var(--muted); }
 
-.tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+.tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
 .tab-bar a { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 600; text-decoration: none; color: var(--muted); background: var(--app-bg); transition: all 0.2s; }
 .tab-bar a.active { background: var(--primary-color); color: #000; }
 .range-hints { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--border-strong); margin-top: 2px; }
@@ -68,14 +68,14 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
     </div>
 
     <div class="sim-header">
-        <h1>🏠 Simulador de Vivienda</h1>
+        <h1><span class="title-gradient">🏠 Simulador de Vivienda</span></h1>
         <p>Calcula si puedes permitirte una vivienda usando tus datos financieros reales.</p>
     </div>
 
     <div class="sim-grid">
         <!-- IZQUIERDA: controles -->
         <div>
-            <div class="card" style="margin-bottom: 20px;">
+            <div class="card glass-panel" style="margin-bottom: 20px;">
                 <h2>📊 Tu situación actual</h2>
                 <div class="ctx-grid">
                     <div class="ctx-item">
@@ -99,7 +99,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
             </div>
 
             {% if propiedades_data %}
-            <div class="card" style="margin-bottom: 20px;">
+            <div class="card glass-panel" style="margin-bottom: 20px;">
                 <h2>🏡 Incluir venta de propiedad</h2>
                 <p style="font-size: 0.8rem; color: var(--muted); margin: -10px 0 14px;">Marca las propiedades cuya venta quieras incluir en el capital disponible. Se descuenta la hipoteca, plusvalía IRPF y gastos de venta.</p>
                 <div id="prop-checkboxes">
@@ -124,7 +124,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
             </div>
             {% endif %}
 
-            <div class="card">
+            <div class="card glass-panel">
                 <h2>⚙️ Parámetros</h2>
 
                 <div class="control">
@@ -198,7 +198,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
         <!-- DERECHA: resultados -->
         <div>
-            <div class="card">
+            <div class="card glass-panel">
                 <h2>📋 Resultado del análisis</h2>
 
                 <div class="result-grid">

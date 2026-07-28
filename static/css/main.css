@@ -31,6 +31,8 @@
     --radius-sm: 8px;
     --radius: 12px;
     --radius-lg: 16px;
+    --radius-xl: 20px;
+    --radius-2xl: 24px;
     --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
     --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
     --shadow-glow: 0 0 18px var(--glow);
@@ -1299,4 +1301,88 @@ html, body { max-width: 100%; overflow-x: hidden; }
         min-height: 44px;
         margin-top: 4px;
     }
+}
+
+/* ============================================================
+   SISTEMA DE DISEÑO COMPARTIDO — "Financial Serenity"
+   Capa aditiva inspirada en el mockup Stitch: tarjetas glass,
+   acentos en degradado, tipografía tabular y chips en pastilla.
+   Se apoya en las variables de tema ya existentes, por lo que
+   respeta el toggle claro/oscuro sin necesitar reglas propias.
+   ============================================================ */
+
+.title-gradient {
+    display: inline-block;
+    background: linear-gradient(90deg, var(--text-color), var(--primary-color));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    letter-spacing: -0.01em;
+}
+
+.glass-panel {
+    position: relative;
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow);
+}
+
+.glass-panel--accent {
+    --accent: var(--primary-color);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    transition: transform var(--ease), border-color var(--ease), box-shadow var(--ease);
+    overflow: hidden;
+}
+.glass-panel--accent::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent 85%);
+    opacity: 0.85;
+}
+.glass-panel--accent:hover {
+    transform: translateY(-2px);
+    border-color: var(--accent);
+    box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.stat-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.stat-tile .stat-tile-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+.stat-tile .stat-tile-valor {
+    font-size: 1.5rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+}
+.stat-tile .stat-tile-sub {
+    font-size: 0.78rem;
+    color: var(--muted);
+}
+
+.pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.6;
+    background: color-mix(in srgb, var(--pill-color, var(--primary-color)) 12%, transparent);
+    color: var(--pill-color, var(--primary-color));
+    border: 1px solid color-mix(in srgb, var(--pill-color, var(--primary-color)) 30%, transparent);
 }

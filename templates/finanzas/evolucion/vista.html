@@ -8,7 +8,7 @@
 :root { --cell-w: 110px; }
 .evo-wrap { padding: 24px; max-width: 100%; overflow-x: auto; }
 .evo-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
-.evo-header h1 { color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0; font-size: 1.6rem; }
+.evo-header h1 { margin: 0; font-size: 1.7rem; font-weight: 700; }
 
 /* Selector año */
 .año-selector { display: flex; gap: 8px; align-items: center; }
@@ -16,36 +16,59 @@
 
 /* Tarjetas resumen */
 .resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
-.resumen-card { background: var(--surface); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }
-.resumen-card .label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
-.resumen-card .valor { font-size: 1.5rem; font-weight: 700; }
+.resumen-card { padding: 22px; }
 .resumen-card .sub { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
-.resumen-card .crecimiento { font-size: 0.85rem; margin-top: 4px; }
-.pos { color: #00ff88; } .neg { color: #ff4d4d; } .neu { color: var(--muted); }
+.resumen-card .crecimiento { font-size: 0.85rem; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
+.pos { color: var(--success); } .neg { color: var(--danger); } .neu { color: var(--muted); }
 
 /* Tabla */
-.evo-table-wrap { overflow-x: auto; border-radius: 14px; background: var(--app-bg); border: 1px solid var(--border); }
+.evo-table-wrap { overflow-x: auto; border-radius: var(--radius-xl); background: var(--app-bg); border: 1px solid var(--border); }
 .evo-table { border-collapse: collapse; width: 100%; min-width: max-content; font-size: 0.82rem; }
-.evo-table th { background: var(--surface); color: var(--muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; padding: 10px 14px; text-align: right; white-space: nowrap; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
+.evo-table th { background: var(--surface); color: var(--muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; padding: 12px 14px; text-align: right; white-space: nowrap; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
 .evo-table th:first-child { text-align: left; position: sticky; left: 0; z-index: 20; background: var(--surface); }
-.evo-table td { padding: 10px 14px; border-bottom: 1px solid var(--surface); text-align: right; white-space: nowrap; vertical-align: middle; }
+.evo-table td { padding: 12px 14px; border-bottom: 1px solid color-mix(in srgb, var(--text-color) 6%, transparent); text-align: right; white-space: nowrap; vertical-align: middle; font-variant-numeric: tabular-nums; }
+.evo-table tr:last-child td { border-bottom: none; }
 .evo-table td:first-child { text-align: left; position: sticky; left: 0; background: var(--app-bg); z-index: 5; font-weight: 600; color: var(--text-color); }
-.evo-table tr:hover td { background: var(--dark-bg); }
-.evo-table tr:hover td:first-child { background: var(--dark-bg); }
+.evo-table tr:hover td { background: color-mix(in srgb, var(--primary-color) 5%, var(--dark-bg)); }
+.evo-table tr:hover td:first-child { background: color-mix(in srgb, var(--primary-color) 5%, var(--dark-bg)); }
 
-.cell-valor { color: var(--text-color); cursor: pointer; }
-.cell-vacio { color: var(--border-strong); cursor: pointer; font-style: italic; font-size: 0.75rem; }
-.cell-total { color: #00d1ff; font-weight: 700; }
-.cell-ahorro.pos { color: #00ff88; }
-.cell-ahorro.neg { color: #ff4d4d; }
-.cell-ingresos { color: #ffaa00; }
+.celda-editable { cursor: pointer; border-radius: 8px; transition: background var(--ease); }
+.celda-editable:hover { background: color-mix(in srgb, var(--primary-color) 10%, transparent) !important; }
+.cell-valor { color: var(--text-color); }
+.cell-vacio { color: var(--border-strong); font-style: italic; font-size: 0.75rem; }
+.cell-total { color: var(--info); font-weight: 700; }
+.cell-ahorro.pos { color: var(--success); }
+.cell-ahorro.neg { color: var(--danger); }
+.cell-ingresos { color: var(--warning); }
 .fondo-label { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; padding: 2px 0; }
 .fondo-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Edición en línea */
+.cell-input {
+    width: 100%; min-width: 90px; box-sizing: border-box;
+    background: var(--input-bg); color: var(--text-color);
+    border: 1px solid var(--primary-color); border-radius: 8px;
+    padding: 5px 8px; font-size: 0.85rem; text-align: right;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 20%, transparent);
+}
+.cell-input:focus { outline: none; }
+.celda-guardando { opacity: 0.55; }
+.celda-guardada { animation: celda-flash-ok 0.9s ease; }
+.celda-error { animation: celda-flash-error 0.9s ease; }
+@keyframes celda-flash-ok {
+    0% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 45%, transparent) inset; }
+    100% { box-shadow: 0 0 0 0 transparent inset; }
+}
+@keyframes celda-flash-error {
+    0% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 45%, transparent) inset; }
+    100% { box-shadow: 0 0 0 0 transparent inset; }
+}
 
 /* Modal */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
 .modal-overlay.active { display: flex; }
-.modal-box { background: var(--surface); border: 1px solid var(--primary-color); border-radius: 18px; padding: 28px; box-shadow: 0 0 40px var(--glow); max-width: 400px; width: 92%; }
+.modal-box { border: 1px solid var(--primary-color); padding: 28px; box-shadow: 0 0 40px var(--glow); max-width: 400px; width: 92%; }
 .modal-box h3 { color: var(--primary-color); margin-top: 0; font-size: 1rem; }
 .fg { margin-bottom: 14px; }
 .fg label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; }
@@ -61,7 +84,7 @@
 
     <!-- HEADER -->
     <div class="evo-header">
-        <h1>📈 Evolución Patrimonial</h1>
+        <h1><span class="title-gradient">📈 Evolución Patrimonial</span></h1>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <form method="get" class="año-selector">
                 <label style="color: var(--muted); font-size: 0.8rem;">Año</label>
@@ -86,11 +109,12 @@
 
     <!-- RESUMEN SUPERIOR -->
     <div class="resumen-grid">
-        <div class="resumen-card" style="border-color: #00d1ff33;">
-            <div class="label">Liquidez actual</div>
-            <div class="valor" style="color: #00d1ff;">€{{ resumen.liquidez_actual|floatformat:0 }}</div>
+        <div class="glass-panel glass-panel--accent resumen-card" style="--accent: var(--info);">
+            <div class="stat-tile">
+                <span class="stat-tile-label">Liquidez actual</span>
+                <span class="stat-tile-valor" style="color: var(--info);">€{{ resumen.liquidez_actual|floatformat:0 }}</span>
+            </div>
             <div class="sub">Cuentas corrientes + ahorro</div>
-
 
             <div class="crecimiento {% if resumen.crecimiento_liquidez_ytd >= 0 %}pos{% else %}neg{% endif %}">
                 {% if resumen.crecimiento_liquidez_ytd >= 0 %}▲{% else %}▼{% endif %}
@@ -99,9 +123,11 @@
 
             <div class="crecimiento neu">↗ €{{ resumen.ahorro_esperado_acum|floatformat:0 }} esperado (presupuesto)</div>
         </div>
-        <div class="resumen-card" style="border-color: #a259ff33;">
-            <div class="label">Patrimonio Financiero</div>
-            <div class="valor" style="color: #a259ff;">€{{ resumen.patrimonio_financiero_actual|floatformat:0 }}</div>
+        <div class="glass-panel glass-panel--accent resumen-card" style="--accent: var(--primary-color);">
+            <div class="stat-tile">
+                <span class="stat-tile-label">Patrimonio Financiero</span>
+                <span class="stat-tile-valor" style="color: var(--primary-color);">€{{ resumen.patrimonio_financiero_actual|floatformat:0 }}</span>
+            </div>
             <div class="sub">Liquidez + fondos de inversión</div>
 
             <div class="crecimiento {% if resumen.crecimiento_patrimonio_ytd >= 0 %}pos{% else %}neg{% endif %}">
@@ -140,14 +166,20 @@
                     <td>{{ fila.mes_nombre }} {{ año_actual }}</td>
 
                     <!-- Ingresos reales -->
-                    <td class="cell-ingresos"
-                        onclick="abrirModalIngreso({{ fila.mes }}, {{ año_actual }}, '{% if fila.ingreso_real %}{{ fila.ingreso_real.importe|unlocalize }}{% endif %}')"
+                    <td class="cell-ingresos celda-editable"
+                        data-tipo="ingreso"
+                        data-mes="{{ fila.mes }}"
+                        data-anio="{{ año_actual }}"
+                        data-valor="{% if fila.ingreso_real %}{{ fila.ingreso_real.importe|unlocalize }}{% endif %}"
+                        data-color="var(--warning)"
                         title="Click para editar">
+                        <span class="cell-display">
                         {% if fila.ingreso_real %}
                             €{{ fila.ingreso_real.importe|floatformat:0 }}
                         {% else %}
                             <span class="cell-vacio">—</span>
                         {% endif %}
+                        </span>
                     </td>
 
                     <!-- Ahorro neto -->
@@ -163,8 +195,15 @@
 
                     <!-- Saldo por fondo -->
                     {% for celda in fila.celdas %}
-                    <td onclick="abrirModalSaldo({{ celda.fondo.id }}, '{{ celda.fondo.nombre|escapejs }}', {{ fila.mes }}, {{ año_actual }}, '{% if celda.saldo_valor is not None %}{{ celda.saldo_valor|unlocalize }}{% endif %}')"
+                    <td class="celda-editable"
+                        data-tipo="saldo"
+                        data-fondo-id="{{ celda.fondo.id }}"
+                        data-mes="{{ fila.mes }}"
+                        data-anio="{{ año_actual }}"
+                        data-valor="{% if celda.saldo_valor is not None %}{{ celda.saldo_valor|unlocalize }}{% endif %}"
+                        data-color="{{ celda.fondo.color }}"
                         title="Click para editar">
+                        <span class="cell-display">
                         {% if celda.saldo_valor is not None %}
                             <span class="cell-valor" style="color: {{ celda.fondo.color }};">
                                 €{{ celda.saldo_valor|floatformat:0 }}
@@ -172,6 +211,7 @@
                         {% else %}
                             <span class="cell-vacio">—</span>
                         {% endif %}
+                        </span>
                     </td>
                     {% endfor %}
 
@@ -246,58 +286,9 @@
 
 </div>
 
-<!-- MODAL: Editar saldo de fondo -->
-<div id="modal-saldo" class="modal-overlay">
-    <div class="modal-box">
-        <h3 id="modal-saldo-titulo">Registrar saldo</h3>
-        <form method="post" action="{% url 'finanzas:registrar_saldo_fondo' %}">
-            {% csrf_token %}
-            <input type="hidden" name="fondo_id" id="modal-fondo-id">
-            <input type="hidden" name="mes" id="modal-saldo-mes">
-            <input type="hidden" name="año" id="modal-saldo-año">
-            <div class="fg">
-                <label>Saldo real (€) — deja vacío para borrar</label>
-                <input type="number" name="saldo" id="modal-saldo-valor" step="0.01" placeholder="Ej: 12500.00">
-            </div>
-            <div class="fg">
-                <label>Nota (opcional)</label>
-                <input type="text" name="nota" placeholder="Ej: Incluye depósito pendiente">
-            </div>
-            <div class="btn-row">
-                <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- MODAL: Editar ingresos del mes -->
-<div id="modal-ingreso" class="modal-overlay">
-    <div class="modal-box">
-        <h3 id="modal-ingreso-titulo">Registrar ingresos del mes</h3>
-        <form method="post" action="{% url 'finanzas:registrar_ingreso_mes' %}">
-            {% csrf_token %}
-            <input type="hidden" name="mes" id="modal-ingreso-mes">
-            <input type="hidden" name="año" id="modal-ingreso-año">
-            <div class="fg">
-                <label>Ingresos netos reales (€) — deja vacío para borrar</label>
-                <input type="number" name="importe" id="modal-ingreso-valor" step="0.01" placeholder="Ej: 6634.00">
-            </div>
-            <div class="fg">
-                <label>Nota (opcional)</label>
-                <input type="text" name="nota" placeholder="Ej: Incluye guardia extra Irene">
-            </div>
-            <div class="btn-row">
-                <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- MODAL: Nuevo fondo -->
 <div id="modal-nuevo-fondo" class="modal-overlay">
-    <div class="modal-box">
+    <div class="modal-box glass-panel">
         <h3>Nuevo fondo / cuenta</h3>
         <form method="post" action="{% url 'finanzas:crear_fondo_evolucion' %}">
             {% csrf_token %}
@@ -332,7 +323,7 @@
 
 <!-- MODAL: Registrar valor propiedad -->
 <div id="modal-propiedad" class="modal-overlay">
-    <div class="modal-box">
+    <div class="modal-box glass-panel">
         <h3 id="modal-prop-titulo">Actualizar propiedad</h3>
         <form method="post" action="{% url 'finanzas:registrar_historial_propiedad' %}">
             {% csrf_token %}
@@ -373,26 +364,6 @@ function abrirModalPropiedad(propId, propNombre, mes, año, valorActual, deudaAc
     setTimeout(() => document.getElementById('modal-prop-valor').focus(), 50);
 }
 
-function abrirModalSaldo(fondoId, fondoNombre, mes, año, valorActual) {
-    document.getElementById('modal-saldo-titulo').textContent = `${fondoNombre} — ${mes}/${año}`;
-    document.getElementById('modal-fondo-id').value = fondoId;
-    document.getElementById('modal-saldo-mes').value = mes;
-    document.getElementById('modal-saldo-año').value = año;
-    document.getElementById('modal-saldo-valor').value = valorActual || '';
-    document.getElementById('modal-saldo').classList.add('active');
-    setTimeout(() => document.getElementById('modal-saldo-valor').focus(), 50);
-}
-
-function abrirModalIngreso(mes, año, valorActual) {
-    const meses = ['','Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
-    document.getElementById('modal-ingreso-titulo').textContent = `Ingresos reales — ${meses[mes]} ${año}`;
-    document.getElementById('modal-ingreso-mes').value = mes;
-    document.getElementById('modal-ingreso-año').value = año;
-    document.getElementById('modal-ingreso-valor').value = valorActual || '';
-    document.getElementById('modal-ingreso').classList.add('active');
-    setTimeout(() => document.getElementById('modal-ingreso-valor').focus(), 50);
-}
-
 function cerrarModales() {
     document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active'));
 }
@@ -401,6 +372,127 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', function(e) {
         if (e.target === overlay) cerrarModales();
     });
+});
+
+/* ============================================================
+   EDICIÓN EN LÍNEA DE DEPÓSITOS (saldos de fondo e ingresos)
+   Clic sobre la celda → aparece un input en el sitio → se
+   guarda al instante vía fetch() al perder el foco o pulsar
+   Enter. Escape cancela sin guardar. Sin recarga de página.
+   ============================================================ */
+
+function getCsrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+}
+
+const URLS_GUARDADO = {
+    saldo: "{% url 'finanzas:registrar_saldo_fondo' %}",
+    ingreso: "{% url 'finanzas:registrar_ingreso_mes' %}",
+};
+
+function formatearValor(valorRaw, color) {
+    if (!valorRaw) return '<span class="cell-vacio">—</span>';
+    const num = Number(valorRaw);
+    const texto = num.toLocaleString('es-ES', { maximumFractionDigits: 0 });
+    return `<span class="cell-valor" style="color:${color};">€${texto}</span>`;
+}
+
+function restaurarDisplay(td, valorRaw) {
+    const input = td.querySelector('.cell-input');
+    if (input) input.remove();
+    td.dataset.valor = valorRaw || '';
+    const display = td.querySelector('.cell-display');
+    display.innerHTML = formatearValor(valorRaw, td.dataset.color);
+    display.style.display = '';
+}
+
+function guardarValor(td, valorRaw) {
+    const tipo = td.dataset.tipo;
+    const body = new URLSearchParams();
+    body.set('mes', td.dataset.mes);
+    body.set('año', td.dataset.anio);
+    if (tipo === 'saldo') {
+        body.set('fondo_id', td.dataset.fondoId);
+        body.set('saldo', valorRaw);
+    } else {
+        body.set('importe', valorRaw);
+    }
+    return fetch(URLS_GUARDADO[tipo], {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrf(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: body.toString(),
+    }).then(r => r.json().then(data => {
+        if (!r.ok || !data.ok) throw new Error(data.error || 'No se pudo guardar');
+        return data;
+    }));
+}
+
+function iniciarEdicion(td) {
+    if (td.querySelector('.cell-input')) return;
+
+    const valorOriginal = td.dataset.valor || '';
+    const display = td.querySelector('.cell-display');
+    display.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.01';
+    input.className = 'cell-input';
+    input.value = valorOriginal;
+    td.appendChild(input);
+    input.focus();
+    input.select();
+
+    let resuelto = false;
+
+    function finalizar() {
+        if (resuelto) return;
+        resuelto = true;
+
+        const nuevoValor = input.value.trim();
+        if (nuevoValor === valorOriginal) {
+            restaurarDisplay(td, valorOriginal);
+            return;
+        }
+
+        input.disabled = true;
+        td.classList.add('celda-guardando');
+        guardarValor(td, nuevoValor)
+            .then(() => {
+                td.classList.remove('celda-guardando');
+                restaurarDisplay(td, nuevoValor);
+                td.classList.add('celda-guardada');
+                setTimeout(() => td.classList.remove('celda-guardada'), 900);
+            })
+            .catch(() => {
+                td.classList.remove('celda-guardando');
+                restaurarDisplay(td, valorOriginal);
+                td.classList.add('celda-error');
+                setTimeout(() => td.classList.remove('celda-error'), 900);
+            });
+    }
+
+    function cancelar() {
+        if (resuelto) return;
+        resuelto = true;
+        input.removeEventListener('blur', finalizar);
+        restaurarDisplay(td, valorOriginal);
+    }
+
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancelar(); }
+    });
+    input.addEventListener('blur', finalizar);
+}
+
+document.querySelectorAll('.celda-editable').forEach((td) => {
+    td.addEventListener('click', () => iniciarEdicion(td));
 });
 </script>
 {% endblock %}
