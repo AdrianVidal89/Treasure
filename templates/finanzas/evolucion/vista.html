@@ -21,7 +21,7 @@
 .resumen-card .crecimiento { font-size: 0.85rem; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
 .pos { color: var(--success); } .neg { color: var(--danger); } .neu { color: var(--muted); }
 
-/* Tabla */
+/* Tabla (se usa solo para la sección de Inmuebles) */
 .evo-table-wrap { overflow-x: auto; border-radius: var(--radius-xl); background: var(--app-bg); border: 1px solid var(--border); }
 .evo-table { border-collapse: collapse; width: 100%; min-width: max-content; font-size: 0.82rem; }
 .evo-table th { background: var(--surface); color: var(--muted); font-size: 0.7rem; font-weight: 600; text-transform: uppercase; padding: 12px 14px; text-align: right; white-space: nowrap; position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); }
@@ -42,6 +42,37 @@
 .cell-ingresos { color: var(--warning); }
 .fondo-label { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; padding: 2px 0; }
 .fondo-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* Tarjetas mensuales (acordeón, estilo mockup) */
+.evo-months-list { display: flex; flex-direction: column; gap: 14px; }
+.evo-month-card { overflow: hidden; }
+.evo-month-card > summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; gap: 24px;
+    padding: 16px 20px;
+    transition: background var(--ease);
+}
+.evo-month-card > summary::-webkit-details-marker { display: none; }
+.evo-month-card > summary:hover { background: color-mix(in srgb, var(--primary-color) 4%, transparent); }
+.evo-month-name { font-weight: 700; color: var(--text-color); width: 130px; flex-shrink: 0; }
+.evo-month-stats { display: flex; gap: 28px; flex: 1; justify-content: flex-end; flex-wrap: wrap; }
+.evo-month-stat { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.evo-month-stat .lbl { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.evo-month-stat .val { font-size: 0.92rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.evo-month-chevron { color: var(--muted); transition: transform var(--ease); flex-shrink: 0; }
+.evo-month-card[open] .evo-month-chevron { transform: rotate(180deg); }
+
+.evo-month-body { padding: 4px 20px 20px; border-top: 1px solid var(--border); }
+.evo-dep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 14px; }
+.evo-dep-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 12px;
+    background: color-mix(in srgb, var(--app-bg) 60%, transparent);
+    border: 1px solid var(--border);
+}
+.dep-row-label { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-color); min-width: 0; }
+.dep-row-sub { font-size: 0.68rem; color: var(--muted); display: block; }
+.evo-month-totals { display: flex; gap: 28px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 
 /* Edición en línea */
 .cell-input {
@@ -139,95 +170,99 @@
         </div>
     </div>
 
-    <!-- TABLA MENSUAL -->
-    <div class="evo-table-wrap">
-        <table class="evo-table">
-            <thead>
-                <tr>
-                    <th>Mes</th>
-                    <th style="color: #ffaa00;">Ingresos</th>
-                    <th style="color: #00ff88;">Ahorro neto</th>
-                    {% for f in fondos %}
-                    <th>
-                        <div class="fondo-label" style="justify-content: flex-end;">
-                            <span style="color: {{ f.color }};">{{ f.nombre }}</span>
-                            <span class="fondo-dot" style="background: {{ f.color }};"></span>
-                        </div>
-                        {% if f.cuenta_asociada %}<div style="font-size: 0.65rem; color: var(--border-strong);">{{ f.cuenta_asociada }}</div>{% endif %}
-                    </th>
-                    {% endfor %}
-                    <th style="color: #00d1ff;">Liquidez</th>
-                    <th style="color: #a259ff;">Patrimonio</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for fila in filas %}
-                <tr>
-                    <td>{{ fila.mes_nombre }} {{ año_actual }}</td>
+    <!-- TARJETAS MENSUALES (acordeón, un fondo/depósito por fila, clic para editar) -->
+    <div class="evo-months-list">
+        {% for fila in filas %}
+        <details class="glass-panel evo-month-card" {% if forloop.first %}open{% endif %}>
+            <summary>
+                <span class="evo-month-name">{{ fila.mes_nombre }} {{ año_actual }}</span>
+                <div class="evo-month-stats">
+                    <div class="evo-month-stat">
+                        <span class="lbl">Ingresos</span>
+                        <span class="val" style="color: var(--warning);">
+                            {% if fila.ingreso_real %}€{{ fila.ingreso_real.importe|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                        </span>
+                    </div>
+                    <div class="evo-month-stat">
+                        <span class="lbl">Ahorro neto</span>
+                        <span class="val {% if fila.ahorro_neto is not None %}{% if fila.ahorro_neto >= 0 %}pos{% else %}neg{% endif %}{% endif %}">
+                            {% if fila.ahorro_neto is not None %}{% if fila.ahorro_neto >= 0 %}+{% endif %}€{{ fila.ahorro_neto|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                        </span>
+                    </div>
+                </div>
+                <span class="evo-month-chevron">⌄</span>
+            </summary>
 
-                    <!-- Ingresos reales -->
-                    <td class="cell-ingresos celda-editable"
-                        data-tipo="ingreso"
-                        data-mes="{{ fila.mes }}"
-                        data-anio="{{ año_actual }}"
-                        data-valor="{% if fila.ingreso_real %}{{ fila.ingreso_real.importe|unlocalize }}{% endif %}"
-                        data-color="var(--warning)"
-                        title="Click para editar">
-                        <span class="cell-display">
+            <div class="evo-month-body">
+                <!-- Ingresos del mes (editable) -->
+                <div class="evo-dep-row celda-editable"
+                     data-tipo="ingreso"
+                     data-mes="{{ fila.mes }}"
+                     data-anio="{{ año_actual }}"
+                     data-valor="{% if fila.ingreso_real %}{{ fila.ingreso_real.importe|unlocalize }}{% endif %}"
+                     data-color="var(--warning)"
+                     title="Click para editar">
+                    <span class="dep-row-label">💶 Ingresos netos del mes</span>
+                    <span class="cell-display">
                         {% if fila.ingreso_real %}
-                            €{{ fila.ingreso_real.importe|floatformat:0 }}
+                            <span class="cell-valor" style="color: var(--warning);">€{{ fila.ingreso_real.importe|floatformat:0 }}</span>
                         {% else %}
                             <span class="cell-vacio">—</span>
                         {% endif %}
-                        </span>
-                    </td>
+                    </span>
+                </div>
 
-                    <!-- Ahorro neto -->
-                    <td>
-                        {% if fila.ahorro_neto is not None %}
-                            <span class="cell-ahorro {% if fila.ahorro_neto >= 0 %}pos{% else %}neg{% endif %}">
-                                {% if fila.ahorro_neto >= 0 %}+{% endif %}€{{ fila.ahorro_neto|floatformat:0 }}
-                            </span>
-                        {% else %}
-                            <span class="cell-vacio">—</span>
-                        {% endif %}
-                    </td>
-
-                    <!-- Saldo por fondo -->
+                <!-- Saldo por fondo/depósito -->
+                <div class="evo-dep-grid">
                     {% for celda in fila.celdas %}
-                    <td class="celda-editable"
-                        data-tipo="saldo"
-                        data-fondo-id="{{ celda.fondo.id }}"
-                        data-mes="{{ fila.mes }}"
-                        data-anio="{{ año_actual }}"
-                        data-valor="{% if celda.saldo_valor is not None %}{{ celda.saldo_valor|unlocalize }}{% endif %}"
-                        data-color="{{ celda.fondo.color }}"
-                        title="Click para editar">
-                        <span class="cell-display">
-                        {% if celda.saldo_valor is not None %}
-                            <span class="cell-valor" style="color: {{ celda.fondo.color }};">
-                                €{{ celda.saldo_valor|floatformat:0 }}
+                    <div class="evo-dep-row celda-editable"
+                         data-tipo="saldo"
+                         data-fondo-id="{{ celda.fondo.id }}"
+                         data-mes="{{ fila.mes }}"
+                         data-anio="{{ año_actual }}"
+                         data-valor="{% if celda.saldo_valor is not None %}{{ celda.saldo_valor|unlocalize }}{% endif %}"
+                         data-color="{{ celda.fondo.color }}"
+                         title="Click para editar">
+                        <span class="dep-row-label">
+                            <span class="fondo-dot" style="background: {{ celda.fondo.color }};"></span>
+                            <span>
+                                {{ celda.fondo.nombre }}
+                                {% if celda.fondo.cuenta_asociada %}<span class="dep-row-sub">{{ celda.fondo.cuenta_asociada }}</span>{% endif %}
                             </span>
-                        {% else %}
-                            <span class="cell-vacio">—</span>
-                        {% endif %}
                         </span>
-                    </td>
+                        <span class="cell-display">
+                            {% if celda.saldo_valor is not None %}
+                                <span class="cell-valor" style="color: {{ celda.fondo.color }};">€{{ celda.saldo_valor|floatformat:0 }}</span>
+                            {% else %}
+                                <span class="cell-vacio">—</span>
+                            {% endif %}
+                        </span>
+                    </div>
                     {% endfor %}
+                </div>
 
-                    <!-- Totales -->
-                    <td class="cell-total">
-                        {% if fila.liquidez %}€{{ fila.liquidez|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
-                    </td>
-                    <td style="color: #a259ff; font-weight: 700;">
-                        {% if fila.patrimonio %}€{{ fila.patrimonio|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
-                    </td>
-                </tr>
-                {% empty %}
-                <tr><td colspan="100" style="text-align: center; color: var(--muted); padding: 40px;">Sin datos para {{ año_actual }}. Haz click en cualquier celda para introducir saldos.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                <!-- Totales del mes -->
+                <div class="evo-month-totals">
+                    <div class="stat-tile">
+                        <span class="stat-tile-label">Liquidez</span>
+                        <span class="stat-tile-valor" style="color: var(--info);">
+                            {% if fila.liquidez %}€{{ fila.liquidez|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                        </span>
+                    </div>
+                    <div class="stat-tile">
+                        <span class="stat-tile-label">Patrimonio</span>
+                        <span class="stat-tile-valor" style="color: var(--primary-color);">
+                            {% if fila.patrimonio %}€{{ fila.patrimonio|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </details>
+        {% empty %}
+        <div class="glass-panel" style="text-align: center; color: var(--muted); padding: 40px;">
+            Sin datos para {{ año_actual }}. Haz click en "＋ Nuevo fondo" o expande un mes para introducir saldos.
+        </div>
+        {% endfor %}
     </div>
 
     <!-- SECCIÓN PROPIEDADES -->
