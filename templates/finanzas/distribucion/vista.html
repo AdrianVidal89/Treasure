@@ -8,7 +8,7 @@
 
 <!-- ===== CABECERA ===== -->
 <div class="dist-head">
-    <h2 class="titulo-glow" style="margin:0;">💰 Distribución mensual</h2>
+    <h2 style="margin:0;"><span class="title-gradient">💰 Distribución mensual</span></h2>
     <form method="get" class="dist-head-form">
         <select name="mes" onchange="this.form.submit()" class="sel-sm">
             {% for num, nombre in meses %}
@@ -29,31 +29,31 @@
 {% endfor %}
 
 <!-- ===== RESUMEN GENERAL (KPIs + barra) ===== -->
-<div class="resumen-general">
+<div class="resumen-general glass-panel">
     <div class="kpi-bar">
-        <div class="kpi-item">
-            <div class="kpi-label">Ingresos</div>
-            <div class="kpi-valor" style="color:#00ff88;">€{{ d.ingreso_base_hogar|floatformat:2 }}</div>
+        <div class="kpi-item stat-tile">
+            <span class="stat-tile-label">Ingresos</span>
+            <span class="stat-tile-valor" style="color:var(--success);">€{{ d.ingreso_base_hogar|floatformat:2 }}</span>
         </div>
-        <div class="kpi-item">
-            <div class="kpi-label">Gastos</div>
-            <div class="kpi-valor" style="color:#ff4d4d;">€{{ d.total_gastos_all|floatformat:2 }}</div>
+        <div class="kpi-item stat-tile">
+            <span class="stat-tile-label">Gastos</span>
+            <span class="stat-tile-valor" style="color:var(--danger);">€{{ d.total_gastos_all|floatformat:2 }}</span>
         </div>
-        <div class="kpi-item">
-            <div class="kpi-label">Ahorro</div>
-            <div class="kpi-valor" style="color:#00d1ff;">€{{ d.total_ahorro|floatformat:2 }}</div>
+        <div class="kpi-item stat-tile">
+            <span class="stat-tile-label">Ahorro</span>
+            <span class="stat-tile-valor" style="color:var(--info);">€{{ d.total_ahorro|floatformat:2 }}</span>
         </div>
-        <div class="kpi-item">
-            <div class="kpi-label">Inversión</div>
-            <div class="kpi-valor" style="color:#a259ff;">€{{ d.total_inversion|floatformat:2 }}</div>
+        <div class="kpi-item stat-tile">
+            <span class="stat-tile-label">Inversión</span>
+            <span class="stat-tile-valor" style="color:var(--primary-color);">€{{ d.total_inversion|floatformat:2 }}</span>
         </div>
-        <div class="kpi-item">
-            <div class="kpi-label">Libre</div>
-            <div class="kpi-valor" style="color:{% if d.libre_total >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ d.libre_total|floatformat:2 }}</div>
+        <div class="kpi-item stat-tile">
+            <span class="stat-tile-label">Libre</span>
+            <span class="stat-tile-valor" style="color:{% if d.libre_total >= 0 %}var(--warning){% else %}var(--danger){% endif %};">€{{ d.libre_total|floatformat:2 }}</span>
         </div>
-        <div class="kpi-item">
-            <div class="kpi-label">Tasa ahorro</div>
-            <div class="kpi-valor semaforo-{{ d.semaforo }}">{{ d.tasa_ahorro }}%</div>
+        <div class="kpi-item stat-tile">
+            <span class="stat-tile-label">Tasa ahorro</span>
+            <span class="stat-tile-valor semaforo-{{ d.semaforo }}">{{ d.tasa_ahorro }}%</span>
         </div>
     </div>
 
@@ -75,19 +75,19 @@
 
 <!-- ===== HUB DE GESTIÓN (todo lo editable, agrupado y a un clic) ===== -->
 <div class="hub-grid">
-    <button class="hub-card" style="--hc:#a259ff;" onclick="abrir('modal-reglas')">
+    <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--primary-color); --accent:var(--primary-color);" onclick="abrir('modal-reglas')">
         <span class="hub-icon">⚙️</span>
         <span class="hub-num">{{ reglas|length }}</span>
         <span class="hub-title">Reglas de reparto</span>
         <span class="hub-go">Gestionar →</span>
     </button>
-    <button class="hub-card" style="--hc:#00ff88;" onclick="abrir('modal-fondos')">
+    <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--success); --accent:var(--success);" onclick="abrir('modal-fondos')">
         <span class="hub-icon">🗂</span>
         <span class="hub-num">{{ d.fondos_aportaciones|length }}</span>
         <span class="hub-title">Fondos</span>
         <span class="hub-go">Gestionar →</span>
     </button>
-    <button class="hub-card" style="--hc:#00d1ff;" onclick="abrir('modal-transferencias')">
+    <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--info); --accent:var(--info);" onclick="abrir('modal-transferencias')">
         <span class="hub-icon">🔄</span>
         <span class="hub-num">{{ d.transferencias|length }}</span>
         <span class="hub-title">Transferencias</span>
@@ -99,7 +99,7 @@
 <div class="section-title persona-section-title">👤 Resumen por persona</div>
 <div class="persona-grid">
 {% for dm in d.datos_miembros %}
-<div class="persona-card" style="--uc: {{ dm.miembro.user.id|color_usuario }};">
+<div class="persona-card glass-panel glass-panel--accent" style="--uc: {{ dm.miembro.user.id|color_usuario }}; --accent: {{ dm.miembro.user.id|color_usuario }};">
     <div class="persona-top">
         <div class="persona-id">
             <span class="persona-dot"></span>
@@ -180,7 +180,7 @@
      MODAL LISTA · REGLAS DE REPARTO
      ═══════════════════════════════════════════════════════════════════════ -->
 <div id="modal-reglas" class="modal-overlay modal-list">
-    <div class="modal-box modal-box-wide">
+    <div class="modal-box modal-box-wide glass-panel">
         <div class="modal-list-head">
             <h2>⚙️ Reglas de reparto</h2>
             <div class="modal-list-actions">
@@ -217,7 +217,7 @@
      MODAL LISTA · FONDOS
      ═══════════════════════════════════════════════════════════════════════ -->
 <div id="modal-fondos" class="modal-overlay modal-list">
-    <div class="modal-box modal-box-wide">
+    <div class="modal-box modal-box-wide glass-panel">
         <div class="modal-list-head">
             <h2>🗂 Fondos</h2>
             <div class="modal-list-actions">
@@ -349,7 +349,7 @@
      MODAL LISTA · TRANSFERENCIAS
      ═══════════════════════════════════════════════════════════════════════ -->
 <div id="modal-transferencias" class="modal-overlay modal-list">
-    <div class="modal-box modal-box-wide">
+    <div class="modal-box modal-box-wide glass-panel">
         <div class="modal-list-head">
             <h2>🔄 Transferencias del mes</h2>
             <div class="modal-list-actions">
@@ -377,7 +377,7 @@
 
 <!-- ===== MODAL FONDO (crear/editar) ===== -->
 <div id="modal-fondo" class="modal-overlay">
-    <div class="modal-box">
+    <div class="modal-box glass-panel">
         <h2 id="modal-fondo-titulo">🗂 Nuevo fondo</h2>
         <form method="post" id="form-fondo" action="{% url 'finanzas:crear_fondo' %}">
             {% csrf_token %}
@@ -412,7 +412,7 @@
 
 <!-- ===== MODAL REGLA (crear/editar) ===== -->
 <div id="modal-regla" class="modal-overlay">
-    <div class="modal-box">
+    <div class="modal-box glass-panel">
         <h2 id="modal-regla-titulo">⚙️ Nueva regla</h2>
         <form method="post" id="form-regla" action="{% url 'finanzas:crear_regla' %}">
             {% csrf_token %}
@@ -457,7 +457,7 @@
 
 <!-- ===== MODAL SUBSOBRE ===== -->
 <div id="modal-subsobre" class="modal-overlay">
-    <div class="modal-box">
+    <div class="modal-box glass-panel">
         <h2>↪️ Distribución interna</h2>
         <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Desde: <strong id="ss-fondo-nombre"></strong></p>
         <form method="post" id="form-subsobre" action="">
@@ -483,7 +483,7 @@
 
 <!-- ===== MODAL ASIGNAR GASTOS ===== -->
 <div id="modal-gastos" class="modal-overlay">
-    <div class="modal-box">
+    <div class="modal-box glass-panel">
         <h2>📋 Asignar gastos del hogar</h2>
         <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Fondo: <strong id="gastos-fondo-nombre"></strong></p>
         <form method="post" id="form-gastos" action="">
@@ -515,12 +515,10 @@
 .empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; padding:8px 2px; }
 
 /* ── Resumen general ── */
-.resumen-general { background:var(--dark-bg); border:1px solid var(--border); border-radius:16px; padding:18px; margin-bottom:22px; }
+.resumen-general { padding:18px; margin-bottom:22px; }
 .kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
-.kpi-item { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
-.kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
-.kpi-valor { font-size:1.05rem; font-weight:700; }
-.semaforo-verde { color:#00ff88; } .semaforo-amarillo { color:#ffee00; } .semaforo-naranja { color:#ff8800; } .semaforo-rojo { color:#ff4d4d; }
+.kpi-item { background:color-mix(in srgb, var(--surface) 60%, transparent); border:1px solid var(--border); border-radius:var(--radius); padding:12px 16px; flex:1; min-width:90px; }
+.semaforo-verde { color:var(--success); } .semaforo-amarillo { color:#ffee00; } .semaforo-naranja { color:#ff8800; } .semaforo-rojo { color:var(--danger); }
 .dist-bar-wrap { margin:16px 0 4px; }
 .dist-bar { display:flex; height:20px; border-radius:10px; overflow:hidden; background:var(--app-bg); border:1px solid var(--surface-2); }
 .dist-seg { transition: width 0.4s ease; position: relative; display: flex; align-items: center; justify-content: center; font-size: 0.62rem; font-weight: 700; color: var(--text-color); overflow: hidden; flex-shrink: 0; }
@@ -537,14 +535,12 @@
 @media (max-width:600px){ .hub-grid { grid-template-columns:1fr; } }
 .hub-card {
     position:relative; text-align:left; cursor:pointer;
-    background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--hc);
-    border-radius:16px; padding:18px 20px; color:var(--text-color);
+    border-left:3px solid var(--hc);
+    padding:18px 20px; color:var(--text-color);
     display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto;
     column-gap:14px; row-gap:2px; align-items:center;
-    transition:transform .2s ease, border-color .2s ease, box-shadow .2s ease;
     font-family:inherit;
 }
-.hub-card:hover { transform:translateY(-2px); border-color:var(--hc); box-shadow:0 0 20px color-mix(in srgb, var(--hc) 25%, transparent); }
 .hub-icon { grid-row:1 / span 2; font-size:1.7rem; }
 .hub-num { font-size:1.5rem; font-weight:800; color:var(--hc); line-height:1; }
 .hub-title { font-size:0.9rem; font-weight:600; color:var(--text-color); }
@@ -556,9 +552,8 @@
 .persona-section-title { font-size:0.95rem; color:var(--text-color); }
 .persona-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); gap:16px; }
 .persona-card {
-    background:linear-gradient(180deg, color-mix(in srgb, var(--uc) 9%, var(--surface)), var(--surface) 70%);
-    border:1px solid var(--border); border-left:4px solid var(--uc);
-    border-radius:16px; padding:18px 20px;
+    border-left:4px solid var(--uc);
+    padding:18px 20px;
 }
 .persona-top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
 .persona-id { display:flex; align-items:center; gap:9px; min-width:0; }
@@ -583,7 +578,7 @@
 .ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(255,170,0,0.06); border:1px solid #ffaa0022; border-radius:10px; margin-top:10px; }
 
 /* ── Listas dentro de modales ── */
-.regla-pill { background:var(--dark-bg); border-left:3px solid; border-radius:12px; padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.regla-pill { background:var(--dark-bg); border-left:3px solid; border-radius:var(--radius); padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
 .fondo-pill { display:block; padding:14px 16px; }
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
@@ -593,7 +588,7 @@
 .tag-inversion { background:rgba(162,89,255,0.12); color:#a259ff; }
 .fondo-gastos-box { margin-top:10px; padding:8px 12px; background:rgba(255,77,77,0.06); border:1px solid #ff4d4d22; border-radius:8px; font-size:0.78rem; }
 .subsobre-row { margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; }
-.transfer-card { background:var(--dark-bg); border-radius:14px; padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+.transfer-card { background:var(--dark-bg); border-radius:var(--radius-lg); padding:14px 16px; border-left:4px solid; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
 .transfer-sub { font-size:0.72rem; color:var(--muted); }
 .r-btn { background:transparent; border:1px solid var(--border-strong); color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
 .r-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
@@ -607,7 +602,7 @@
 /* ── Modales ── */
 .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center; backdrop-filter:blur(4px); padding:16px; }
 .modal-overlay.modal-list { z-index:1900; align-items:flex-start; padding-top:6vh; }
-.modal-box { background:var(--surface); border:1px solid var(--primary-color); border-radius:18px; padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
+.modal-box { border:1px solid var(--primary-color); padding:28px; box-shadow:0 0 40px var(--glow); max-width:460px; width:92%; max-height:90vh; overflow-y:auto; }
 .modal-box-wide { max-width:720px; padding:22px 24px; }
 .modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.05rem; }
 .modal-box .fg { margin-bottom:14px; }

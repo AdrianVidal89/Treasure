@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 
 from .models import FondoFamiliar, SaldoRealFondo, IngresoRealMes, Propiedad, HistorialPropiedad
@@ -237,6 +238,8 @@ def registrar_saldo_fondo(request):
     if not hogar:
         return redirect('dashboard')
 
+    es_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
     if request.method == 'POST':
         try:
             fondo_id = int(request.POST.get('fondo_id', 0))
@@ -244,6 +247,8 @@ def registrar_saldo_fondo(request):
             año = int(request.POST.get('año', 0))
             saldo_raw = request.POST.get('saldo', '').strip()
         except (ValueError, TypeError):
+            if es_ajax:
+                return JsonResponse({'ok': False, 'error': 'Datos inválidos.'}, status=400)
             messages.error(request, "Datos inválidos.")
             return redirect('finanzas:vista_evolucion')
 
@@ -251,12 +256,16 @@ def registrar_saldo_fondo(request):
 
         if not saldo_raw:
             SaldoRealFondo.objects.filter(fondo=fondo, año=año, mes=mes).delete()
+            if es_ajax:
+                return JsonResponse({'ok': True, 'valor': None})
             messages.success(request, f"Saldo de '{fondo.nombre}' eliminado.")
         else:
             from decimal import InvalidOperation
             try:
                 saldo = Decimal(saldo_raw.replace(',', '.'))
             except InvalidOperation:
+                if es_ajax:
+                    return JsonResponse({'ok': False, 'error': 'Importe inválido.'}, status=400)
                 messages.error(request, "Importe inválido.")
                 return redirect(f"/finanzas/evolucion/?año={año}")
 
@@ -265,6 +274,8 @@ def registrar_saldo_fondo(request):
                 fondo=fondo, año=año, mes=mes,
                 defaults={'saldo': saldo, 'nota': nota},
             )
+            if es_ajax:
+                return JsonResponse({'ok': True, 'valor': float(saldo)})
             accion = 'registrado' if created else 'actualizado'
             messages.success(request, f"'{fondo.nombre}' {mes}/{año}: €{saldo} {accion}.")
 
@@ -278,22 +289,30 @@ def registrar_ingreso_mes(request):
     if not hogar:
         return redirect('dashboard')
 
+    es_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
     if request.method == 'POST':
         try:
             mes = int(request.POST.get('mes', 0))
             año = int(request.POST.get('año', 0))
             importe_raw = request.POST.get('importe', '').strip()
         except (ValueError, TypeError):
+            if es_ajax:
+                return JsonResponse({'ok': False, 'error': 'Datos inválidos.'}, status=400)
             messages.error(request, "Datos inválidos.")
             return redirect('finanzas:vista_evolucion')
 
         if not importe_raw:
             IngresoRealMes.objects.filter(hogar=hogar, año=año, mes=mes).delete()
+            if es_ajax:
+                return JsonResponse({'ok': True, 'valor': None})
         else:
             from decimal import InvalidOperation
             try:
                 importe = Decimal(importe_raw.replace(',', '.'))
             except InvalidOperation:
+                if es_ajax:
+                    return JsonResponse({'ok': False, 'error': 'Importe inválido.'}, status=400)
                 messages.error(request, "Importe inválido.")
                 return redirect(f"/finanzas/evolucion/?año={año}")
 
@@ -302,6 +321,8 @@ def registrar_ingreso_mes(request):
                 hogar=hogar, año=año, mes=mes,
                 defaults={'importe': importe, 'nota': nota},
             )
+            if es_ajax:
+                return JsonResponse({'ok': True, 'valor': float(importe)})
 
     año_redirect = request.POST.get('año', datetime.date.today().year)
     return redirect(f"/finanzas/evolucion/?año={año_redirect}")
