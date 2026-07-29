@@ -7,16 +7,64 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from core.mixins import hogar_required
 
-from .acciones import aplicar_accion, extraer_accion_propuesta
+from .acciones import aplicar_accion, extraer_accion_propuesta, extraer_llamada_herramienta
 from .contexto import construir_contexto_financiero
-from .forms import AgenteIAForm, ConfiguracionIAForm
+from .forms import AgenteIAForm
+from .herramientas import descripcion_para_prompt, ejecutar_herramienta
 from .models import AccionPropuestaIA, AgenteIA, ConfiguracionIA, ConversacionIA, MensajeIA
-from .providers import ErrorProveedorIA, enviar_mensaje
+from .providers import ErrorProveedorIA, enviar_mensaje, listar_modelos
+
+PROVEEDORES_VALIDOS = {p for p, _ in ConfiguracionIA.PROVEEDOR_CHOICES}
+
+MAX_ITERACIONES_HERRAMIENTAS = 6
+
+INSTRUCCIONES_SIN_AGENTE = (
+    "Eres el asistente de IA de Treasure, la app de finanzas de este hogar. "
+    "Ayudas con finanzas familiares, gestión patrimonial y análisis de activos. "
+    "Responde siempre en español."
+)
+
+INSTRUCCIONES_ACCIONES = (
+    "\n\nSi el usuario te pide crear algo en la app (un gasto, una categoría de "
+    "gasto, un agente o una fuente de ingreso), y tienes datos suficientes, "
+    "incluye al final de tu respuesta, en un bloque separado, exactamente esto "
+    "(sustituyendo los valores): ```accion_ia\n"
+    '{"tipo": "crear_gasto|crear_categoria_gasto|crear_agente|crear_ingreso", '
+    '"datos": {...}}\n```\n'
+    "El usuario deberá confirmar la acción antes de que se aplique. Nunca "
+    "propongas cambios a ficheros o código de la aplicación."
+)
 
 
 def _es_admin(request):
     profile = getattr(request.user, 'userprofile', None)
     return request.user.is_superuser or (profile and profile.es_admin)
+
+
+def _config_admin(request, proveedor=None):
+    """Valida acceso de admin y proveedor para los endpoints de configuración.
+
+    Devuelve (config, None) si todo es correcto, o (None, JsonResponse) con el
+    error a devolver.
+    """
+    if not _es_admin(request):
+        return None, JsonResponse(
+            {'error': 'Solo el administrador del hogar puede configurar la IA.'}, status=403
+        )
+    if proveedor is not None and proveedor not in PROVEEDORES_VALIDOS:
+        return None, JsonResponse({'error': 'Proveedor desconocido.'}, status=404)
+    config, _ = ConfiguracionIA.objects.get_or_create(hogar=request.user.userprofile.hogar)
+    return config, None
+
+
+def _estado_proveedor(config, proveedor):
+    return {
+        'proveedor': proveedor,
+        'conectado': config.tiene_proveedor_configurado(proveedor),
+        'clave_enmascarada': config.get_api_key_enmascarada(proveedor),
+        'modelo': config.get_modelo(proveedor),
+        'activo': config.proveedor_activo == proveedor,
+    }
 
 
 # ─── Páginas ──────────────────────────────────────────────────────────────
@@ -44,18 +92,141 @@ def configuracion(request):
 
     config, _ = ConfiguracionIA.objects.get_or_create(hogar=profile.hogar)
 
-    if request.method == 'POST':
-        form = ConfiguracionIAForm(request.POST, instance=config)
-        if form.is_valid():
-            config = form.save(commit=False)
-            config.actualizado_por = request.user
-            config.save()
-            messages.success(request, "Configuración de IA guardada correctamente.")
-            return redirect('asistente_ia:landing')
-    else:
-        form = ConfiguracionIAForm(instance=config)
+    proveedores = [
+        {
+            'id': identificador,
+            'etiqueta': etiqueta,
+            'ayuda': AYUDA_PROVEEDOR[identificador],
+            **_estado_proveedor(config, identificador),
+        }
+        for identificador, etiqueta in ConfiguracionIA.PROVEEDOR_CHOICES
+    ]
+    return render(request, 'asistente_ia/configuracion.html', {
+        'config': config,
+        'proveedores': proveedores,
+    })
 
-    return render(request, 'asistente_ia/configuracion.html', {'form': form, 'config': config})
+
+AYUDA_PROVEEDOR = {
+    'anthropic': 'Consigue una clave en console.anthropic.com',
+    'openai': 'Consigue una clave en platform.openai.com/api-keys',
+    'gemini': 'Consigue una clave en aistudio.google.com/apikey',
+}
+
+
+# ─── API de configuración de proveedores ─────────────────────────────────
+
+@login_required
+@hogar_required
+def api_guardar_clave(request, proveedor):
+    """Verifica la clave contra el proveedor y, si es válida, la guarda cifrada."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Solicitud inválida.'}, status=400)
+
+    api_key = (data.get('api_key') or '').strip()
+    if not api_key:
+        return JsonResponse({'error': 'Introduce una clave API.'}, status=400)
+
+    # Listar modelos hace de verificación: si la clave no vale, falla aquí y no
+    # llegamos a guardarla.
+    try:
+        modelos = listar_modelos(proveedor, api_key)
+    except ErrorProveedorIA as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+    config.set_api_key(proveedor, api_key)
+    # Si el modelo guardado ya no existe para esta clave, escogemos el primero
+    # disponible para evitar errores 404 al chatear.
+    ids_disponibles = [m['id'] for m in modelos]
+    if modelos and config.get_modelo(proveedor) not in ids_disponibles:
+        setattr(config, f'{proveedor}_modelo', ids_disponibles[0])
+    if not config.proveedor_activo:
+        config.proveedor_activo = proveedor
+    config.actualizado_por = request.user
+    config.save()
+
+    return JsonResponse({
+        'ok': True,
+        'modelos': modelos,
+        **_estado_proveedor(config, proveedor),
+    })
+
+
+@login_required
+@hogar_required
+def api_listar_modelos(request, proveedor):
+    """Devuelve los modelos disponibles usando la clave ya guardada."""
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    if not config.tiene_proveedor_configurado(proveedor):
+        return JsonResponse({'error': 'Este proveedor no tiene ninguna clave guardada.'}, status=400)
+    try:
+        modelos = listar_modelos(proveedor, config.get_api_key(proveedor))
+    except ErrorProveedorIA as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'modelos': modelos, 'modelo_actual': config.get_modelo(proveedor)})
+
+
+@login_required
+@hogar_required
+def api_guardar_modelo(request, proveedor):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Solicitud inválida.'}, status=400)
+
+    modelo = (data.get('modelo') or '').strip()
+    if not modelo:
+        return JsonResponse({'error': 'Selecciona un modelo.'}, status=400)
+
+    setattr(config, f'{proveedor}_modelo', modelo)
+    config.actualizado_por = request.user
+    config.save()
+    return JsonResponse({'ok': True, **_estado_proveedor(config, proveedor)})
+
+
+@login_required
+@hogar_required
+def api_activar_proveedor(request, proveedor):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    if not config.tiene_proveedor_configurado(proveedor):
+        return JsonResponse({'error': 'Guarda primero una clave para este proveedor.'}, status=400)
+    config.proveedor_activo = proveedor
+    config.actualizado_por = request.user
+    config.save()
+    return JsonResponse({'ok': True, **_estado_proveedor(config, proveedor)})
+
+
+@login_required
+@hogar_required
+def api_desconectar_proveedor(request, proveedor):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    config.desconectar(proveedor)
+    config.actualizado_por = request.user
+    config.save()
+    return JsonResponse({'ok': True, **_estado_proveedor(config, proveedor)})
 
 
 @login_required
@@ -120,6 +291,50 @@ def eliminar_agente(request, agente_id):
 
 @login_required
 @hogar_required
+def api_agentes(request):
+    """Agentes del hogar, para el selector dentro de la ventana de chat."""
+    profile = request.user.userprofile
+    agentes = AgenteIA.objects.filter(hogar=profile.hogar, activo=True).values(
+        'id', 'nombre', 'descripcion', 'es_predeterminado'
+    )
+    return JsonResponse({'agentes': list(agentes)})
+
+
+@login_required
+@hogar_required
+def api_cambiar_agente(request, conv_id):
+    """Cambia (o quita) el agente de una conversación ya abierta."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    profile = request.user.userprofile
+    conversacion = get_object_or_404(
+        ConversacionIA, id=conv_id, usuario=request.user, hogar=profile.hogar
+    )
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Solicitud inválida.'}, status=400)
+
+    agente_id = data.get('agente_id')
+    if agente_id in (None, '', 'ninguno'):
+        conversacion.agente = None
+        conversacion.titulo = 'Sin agente'
+    else:
+        agente = get_object_or_404(
+            AgenteIA, id=agente_id, hogar=profile.hogar, activo=True
+        )
+        conversacion.agente = agente
+        conversacion.titulo = agente.nombre
+    conversacion.save()
+    return JsonResponse({
+        'ok': True,
+        'agente_id': conversacion.agente_id,
+        'titulo': conversacion.titulo,
+    })
+
+
+@login_required
+@hogar_required
 def api_listar_conversaciones(request):
     profile = request.user.userprofile
     conversaciones = ConversacionIA.objects.filter(
@@ -141,11 +356,18 @@ def api_crear_conversacion(request):
         data = {}
 
     agente = None
-    agente_id = data.get('agente_id')
-    if agente_id:
-        agente = AgenteIA.objects.filter(id=agente_id, hogar=profile.hogar, activo=True).first()
-    if not agente:
-        agente = AgenteIA.objects.filter(hogar=profile.hogar, es_predeterminado=True, activo=True).first()
+    if 'agente_id' not in data:
+        # Sin indicación explícita, se arranca con el agente predeterminado.
+        agente = AgenteIA.objects.filter(
+            hogar=profile.hogar, es_predeterminado=True, activo=True
+        ).first()
+    else:
+        agente_id = data.get('agente_id')
+        # 'ninguno' (o vacío) es una elección deliberada del usuario: sin agente.
+        if agente_id not in (None, '', 'ninguno'):
+            agente = AgenteIA.objects.filter(
+                id=agente_id, hogar=profile.hogar, activo=True
+            ).first()
 
     contexto = construir_contexto_financiero(profile.hogar)
 
@@ -153,10 +375,14 @@ def api_crear_conversacion(request):
         usuario=request.user,
         hogar=profile.hogar,
         agente=agente,
-        titulo=agente.nombre if agente else 'Nueva conversación',
+        titulo=agente.nombre if agente else 'Sin agente',
         contexto_financiero_cache=contexto,
     )
-    return JsonResponse({'id': conversacion.id, 'titulo': conversacion.titulo})
+    return JsonResponse({
+        'id': conversacion.id,
+        'titulo': conversacion.titulo,
+        'agente_id': conversacion.agente_id,
+    })
 
 
 @login_required
@@ -169,7 +395,11 @@ def api_mensajes(request, conv_id):
 
     if request.method == 'GET':
         mensajes = list(conversacion.mensajes.values('rol', 'contenido', 'creado_en'))
-        payload = {'mensajes': mensajes}
+        payload = {
+            'mensajes': mensajes,
+            'agente_id': conversacion.agente_id,
+            'titulo': conversacion.titulo,
+        }
         pendiente = conversacion.acciones_propuestas.filter(estado='pendiente').first()
         if pendiente:
             payload['accion_propuesta'] = {
@@ -203,37 +433,55 @@ def api_mensajes(request, conv_id):
         })
 
     proveedor = config.proveedor_activo
+    modelo = config.get_modelo(proveedor)
+    api_key = config.get_api_key(proveedor)
     agente = conversacion.agente
-    instrucciones = agente.instrucciones if agente else (
-        "Eres el asistente de IA de Treasure. Ayuda al usuario con sus finanzas."
+    instrucciones = agente.instrucciones if agente else INSTRUCCIONES_SIN_AGENTE
+    system_prompt = (
+        instrucciones
+        + INSTRUCCIONES_ACCIONES
+        + descripcion_para_prompt()
+        + "\n\nRESUMEN INICIAL DEL HOGAR (orientativo, amplíalo con consultar_datos):\n"
+        + conversacion.contexto_financiero_cache
     )
-    instrucciones_acciones = (
-        "\n\nSi el usuario te pide crear algo en la app (un gasto, una categoría de "
-        "gasto, un agente o una fuente de ingreso), y tienes datos suficientes, "
-        "incluye al final de tu respuesta, en un bloque separado, exactamente esto "
-        "(sustituyendo los valores): ```accion_ia\n"
-        '{"tipo": "crear_gasto|crear_categoria_gasto|crear_agente|crear_ingreso", '
-        '"datos": {...}}\n```\n'
-        "El usuario deberá confirmar la acción antes de que se aplique. Nunca "
-        "propongas cambios a ficheros o código de la aplicación."
-    )
-    system_prompt = instrucciones + instrucciones_acciones + "\n\n" + conversacion.contexto_financiero_cache
 
     historial = [
         {'rol': m['rol'], 'contenido': m['contenido']}
         for m in conversacion.mensajes.exclude(rol='system').values('rol', 'contenido')
     ]
 
-    try:
-        respuesta = enviar_mensaje(
-            proveedor,
-            config.get_api_key(proveedor),
-            config.get_modelo(proveedor),
-            historial,
-            system_prompt,
+    # Bucle agéntico: el modelo puede encadenar consultas a la base de datos y a
+    # internet antes de dar su respuesta final.
+    pasos_herramientas = []
+    respuesta = ''
+    for _ in range(MAX_ITERACIONES_HERRAMIENTAS):
+        try:
+            respuesta = enviar_mensaje(proveedor, api_key, modelo, historial, system_prompt)
+        except ErrorProveedorIA as e:
+            return JsonResponse({'error': str(e), 'pasos': pasos_herramientas})
+
+        llamada = extraer_llamada_herramienta(respuesta)
+        if not llamada:
+            break
+
+        nombre, argumentos = llamada
+        resultado = ejecutar_herramienta(nombre, argumentos, profile.hogar)
+        resumen_paso = _resumen_paso(nombre, argumentos)
+        pasos_herramientas.append(resumen_paso)
+        MensajeIA.objects.create(
+            conversacion=conversacion, rol='system', contenido=resumen_paso,
         )
-    except ErrorProveedorIA as e:
-        return JsonResponse({'error': str(e)})
+        historial.append({'rol': 'assistant', 'contenido': respuesta})
+        historial.append({
+            'rol': 'user',
+            'contenido': f'RESULTADO DE {nombre}:\n{resultado}',
+        })
+    else:
+        # Se agotaron las iteraciones sin respuesta final.
+        respuesta = (
+            'He hecho varias consultas pero no he llegado a una conclusión. '
+            'Prueba a preguntarme algo más concreto.'
+        )
 
     respuesta_limpia, accion_propuesta = extraer_accion_propuesta(
         respuesta, conversacion, mensaje_origen=mensaje_usuario
@@ -241,7 +489,7 @@ def api_mensajes(request, conv_id):
 
     mensaje_asistente = MensajeIA.objects.create(
         conversacion=conversacion, rol='assistant', contenido=respuesta_limpia,
-        proveedor=proveedor, modelo=config.get_modelo(proveedor),
+        proveedor=proveedor, modelo=modelo,
     )
     if accion_propuesta:
         accion_propuesta.mensaje_origen = mensaje_asistente
@@ -249,7 +497,7 @@ def api_mensajes(request, conv_id):
 
     conversacion.save()  # actualiza actualizado_en
 
-    payload = {'respuesta': respuesta_limpia}
+    payload = {'respuesta': respuesta_limpia, 'pasos': pasos_herramientas}
     if accion_propuesta:
         payload['accion_propuesta'] = {
             'id': accion_propuesta.id,
@@ -257,6 +505,18 @@ def api_mensajes(request, conv_id):
             'resumen': accion_propuesta.resumen_legible,
         }
     return JsonResponse(payload)
+
+
+def _resumen_paso(nombre, argumentos):
+    """Texto corto que se muestra en el chat mientras el asistente investiga."""
+    argumentos = argumentos or {}
+    if nombre == 'consultar_datos':
+        return f"🔎 Consultando la base de datos: {argumentos.get('entidad', '?')}"
+    if nombre == 'buscar_web':
+        return f"🌐 Buscando en internet: {argumentos.get('consulta', '?')}"
+    if nombre == 'leer_url':
+        return f"📄 Leyendo: {argumentos.get('url', '?')}"
+    return f"🔧 {nombre}"
 
 
 @login_required

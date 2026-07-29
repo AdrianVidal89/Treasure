@@ -708,6 +708,94 @@ h1 {
     display: inline-flex;
 }
 
+/* ─── Asistente IA — tarjetas de proveedores ────────────────────────────── */
+.ia-proveedores-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+    gap: 20px;
+}
+
+.ia-proveedor-card {
+    position: relative;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: border-color var(--ease), box-shadow var(--ease);
+}
+.ia-proveedor-card.conectado { border-color: color-mix(in srgb, var(--info) 45%, var(--border)); }
+.ia-proveedor-card.activo {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 18px var(--glow-soft);
+}
+
+.ia-proveedor-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+}
+.ia-proveedor-nombre { font-weight: 700; color: var(--text-color); }
+.ia-proveedor-badge:not(:empty) {
+    margin-left: 8px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em;
+    padding: 2px 8px; border-radius: 20px;
+    background: rgba(162,89,255,0.15); color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+}
+.ia-proveedor-dot {
+    width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+    background: var(--border-strong);
+}
+.ia-proveedor-card.conectado .ia-proveedor-dot { background: var(--info); }
+.ia-proveedor-card.activo .ia-proveedor-dot {
+    background: var(--success); box-shadow: 0 0 8px var(--success);
+}
+
+.ia-proveedor-estado {
+    margin: 6px 0 14px;
+    font-size: 0.82rem; color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    word-break: break-all;
+}
+
+.ia-proveedor-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.ia-proveedor-acciones[hidden], .ia-proveedor-modelos[hidden], .ia-proveedor-form[hidden] { display: none; }
+
+.ia-btn-sec {
+    background: none; border: 1px solid var(--border-strong); color: var(--text-color);
+    padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.8rem;
+    transition: border-color var(--ease), color var(--ease), background var(--ease);
+}
+.ia-btn-sec:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.ia-btn-peligro:hover { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+
+.ia-btn-principal {
+    background: var(--primary-color); color: #fff; border: none;
+    padding: 8px 16px; border-radius: 8px; cursor: pointer;
+    font-size: 0.82rem; font-weight: 600;
+}
+.ia-btn-principal:disabled { opacity: 0.6; cursor: default; }
+
+.ia-proveedor-modelos { display: flex; gap: 8px; margin-bottom: 12px; }
+.ia-proveedor-modelos select {
+    flex: 1; min-width: 0;
+    background: var(--input-bg); color: var(--text-color);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; font-size: 0.82rem;
+}
+
+.ia-proveedor-form input[type="password"] {
+    width: 100%; box-sizing: border-box;
+    background: var(--input-bg); color: var(--text-color);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; font-size: 0.85rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ia-proveedor-ayuda { color: var(--muted); font-size: 0.75rem; margin: 8px 0 12px; }
+
+.ia-proveedor-msg:not(:empty) {
+    margin-top: 12px; font-size: 0.8rem; color: var(--muted);
+    padding: 8px 10px; border-radius: 6px; background: var(--surface-2);
+}
+.ia-proveedor-msg.ok { color: var(--success); }
+.ia-proveedor-msg.error { color: var(--danger); }
+
 /* ─── Asistente IA — chat flotante ──────────────────────────────────────── */
 .ia-chat-wrap { position: relative; display: inline-flex; }
 
@@ -769,6 +857,71 @@ h1 {
     border: 1px solid var(--danger); color: var(--danger);
     background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
+
+/* Selector de agente en la cabecera del chat */
+.ia-chat-agente-wrap {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.72rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+}
+.ia-chat-agente-wrap select {
+    background: var(--input-bg); color: var(--text-color);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 8px; font-size: 0.78rem; font-weight: 400;
+    text-transform: none; letter-spacing: normal; max-width: 200px;
+}
+
+/* Pasos intermedios (consultas a la BD o a internet) */
+.ia-chat-paso {
+    align-self: flex-start;
+    font-size: 0.76rem; color: var(--muted); font-style: italic;
+    padding: 4px 10px; border-left: 2px solid var(--border-strong);
+    max-width: 90%; word-break: break-word;
+}
+
+/* Markdown dentro de las respuestas del asistente */
+.ia-chat-bubble.assistant > *:first-child { margin-top: 0; }
+.ia-chat-bubble.assistant > *:last-child { margin-bottom: 0; }
+.ia-chat-bubble.assistant p { margin: 0 0 10px; }
+.ia-chat-bubble.assistant h3,
+.ia-chat-bubble.assistant h4,
+.ia-chat-bubble.assistant h5,
+.ia-chat-bubble.assistant h6 {
+    margin: 14px 0 6px; color: var(--primary-color); line-height: 1.3;
+}
+.ia-chat-bubble.assistant h3 { font-size: 1.02rem; }
+.ia-chat-bubble.assistant h4 { font-size: 0.95rem; }
+.ia-chat-bubble.assistant h5,
+.ia-chat-bubble.assistant h6 { font-size: 0.88rem; }
+.ia-chat-bubble.assistant ul,
+.ia-chat-bubble.assistant ol { margin: 0 0 10px; padding-left: 22px; }
+.ia-chat-bubble.assistant li { margin-bottom: 4px; }
+.ia-chat-bubble.assistant code {
+    background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    padding: 1px 5px; border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em;
+}
+.ia-chat-bubble.assistant .ia-md-pre {
+    background: var(--app-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; overflow-x: auto; margin: 0 0 10px;
+}
+.ia-chat-bubble.assistant .ia-md-pre code { background: none; padding: 0; font-size: 0.82rem; }
+.ia-chat-bubble.assistant blockquote {
+    margin: 0 0 10px; padding: 4px 0 4px 12px;
+    border-left: 3px solid var(--primary-color); color: var(--muted);
+}
+.ia-chat-bubble.assistant a { color: var(--primary-color); }
+.ia-chat-bubble.assistant hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.ia-chat-bubble.assistant .ia-md-tabla-wrap { overflow-x: auto; margin: 0 0 10px; }
+.ia-chat-bubble.assistant table { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
+.ia-chat-bubble.assistant th,
+.ia-chat-bubble.assistant td {
+    border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+}
+.ia-chat-bubble.assistant th { background: var(--surface-2); font-weight: 600; }
+
+/* La burbuja del asistente ya no necesita preservar saltos: los pone el Markdown */
+.ia-chat-bubble.assistant { white-space: normal; max-width: 92%; }
 
 .ia-chat-proposal-slot:empty { display: none; }
 .ia-chat-proposal-slot { padding: 0 18px; }

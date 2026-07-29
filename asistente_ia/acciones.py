@@ -20,10 +20,29 @@ import re
 from .models import AccionPropuestaIA, AgenteIA
 
 ACCION_RE = re.compile(r"```accion_ia\s*(\{.*?\})\s*```", re.DOTALL)
+HERRAMIENTA_RE = re.compile(r"```herramienta_ia\s*(\{.*?\})\s*```", re.DOTALL)
 
 ACCIONES_PERMITIDAS = {
     'crear_gasto', 'crear_categoria_gasto', 'crear_agente', 'crear_ingreso',
 }
+
+
+def extraer_llamada_herramienta(texto_respuesta):
+    """Detecta si el modelo ha pedido usar una herramienta de solo lectura.
+
+    Devuelve (nombre, argumentos) o None si la respuesta es texto final.
+    """
+    match = HERRAMIENTA_RE.search(texto_respuesta or '')
+    if not match:
+        return None
+    try:
+        bloque = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    nombre = bloque.get('herramienta')
+    if not nombre:
+        return None
+    return nombre, bloque.get('argumentos') or {}
 
 
 def extraer_accion_propuesta(texto_respuesta, conversacion, mensaje_origen=None):

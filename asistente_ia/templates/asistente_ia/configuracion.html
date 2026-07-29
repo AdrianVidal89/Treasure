@@ -7,8 +7,9 @@
 
     <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">⚙️ Configurar Asistente IA</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">
-        Introduce la clave API del proveedor que quieras usar y selecciona cuál está activo.
-        Las claves se guardan cifradas; no vuelven a mostrarse en texto plano.
+        Conecta el proveedor que quieras usar. La clave se verifica contra el proveedor antes de
+        guardarse, se almacena cifrada y solo se muestran sus últimos cuatro caracteres.
+        Es tu clave: el consumo y los límites corren en tu propia cuenta.
     </p>
 
     {% if messages %}
@@ -19,70 +20,199 @@
         {% endfor %}
     {% endif %}
 
-    <form method="post" class="glass-panel glass-panel--accent" style="--accent: var(--primary-color); padding: 28px; max-width: 640px;">
-        {% csrf_token %}
+    <div class="ia-proveedores-grid">
+        {% for proveedor in proveedores %}
+        <div class="ia-proveedor-card {% if proveedor.activo %}activo{% elif proveedor.conectado %}conectado{% endif %}"
+             data-proveedor="{{ proveedor.id }}">
 
-        {% if form.non_field_errors %}
-            {% for error in form.non_field_errors %}
-                <p class="error-msg">{{ error }}</p>
-            {% endfor %}
-        {% endif %}
+            <div class="ia-proveedor-head">
+                <div>
+                    <span class="ia-proveedor-nombre">{{ proveedor.etiqueta }}</span>
+                    <span class="ia-proveedor-badge" data-rol="badge">{% if proveedor.activo %}EN USO{% elif proveedor.conectado %}CONECTADO{% endif %}</span>
+                </div>
+                <span class="ia-proveedor-dot" data-rol="dot"></span>
+            </div>
 
-        <div class="form-group">
-            {{ form.proveedor_activo.label_tag }}
-            {{ form.proveedor_activo }}
+            <div class="ia-proveedor-estado" data-rol="estado">
+                {% if proveedor.conectado %}
+                    <span data-rol="clave">{{ proveedor.clave_enmascarada }}</span> ·
+                    <span data-rol="modelo-actual">{{ proveedor.modelo }}</span>
+                {% else %}
+                    No conectado
+                {% endif %}
+            </div>
+
+            <div class="ia-proveedor-acciones" data-rol="acciones-conectado" {% if not proveedor.conectado %}hidden{% endif %}>
+                <button type="button" class="ia-btn-sec" data-accion="cambiar-clave">Cambiar clave</button>
+                {% if not proveedor.activo %}
+                <button type="button" class="ia-btn-sec" data-accion="activar">Usar este</button>
+                {% endif %}
+                <button type="button" class="ia-btn-sec ia-btn-peligro" data-accion="desconectar">Desconectar</button>
+            </div>
+
+            <div class="ia-proveedor-modelos" data-rol="bloque-modelos" {% if not proveedor.conectado %}hidden{% endif %}>
+                <select data-rol="select-modelos">
+                    <option value="{{ proveedor.modelo }}">{{ proveedor.modelo }}</option>
+                </select>
+                <button type="button" class="ia-btn-sec" data-accion="fijar-modelo">Fijar</button>
+            </div>
+
+            <div class="ia-proveedor-form" data-rol="form-clave" {% if proveedor.conectado %}hidden{% endif %}>
+                <input type="password" data-rol="input-clave" autocomplete="off" placeholder="Pega aquí tu clave API">
+                <p class="ia-proveedor-ayuda">{{ proveedor.ayuda }}</p>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" class="ia-btn-principal" data-accion="verificar-guardar">🔌 Verificar y guardar</button>
+                    <button type="button" class="ia-btn-sec" data-accion="cancelar-clave" {% if not proveedor.conectado %}hidden{% endif %}>Cancelar</button>
+                </div>
+            </div>
+
+            <div class="ia-proveedor-msg" data-rol="msg"></div>
         </div>
+        {% endfor %}
+    </div>
 
-        <hr style="border-color: var(--border); margin: 24px 0;">
-
-        <h3 style="color: var(--text-color); margin-bottom: 4px;">Claude (Anthropic)</h3>
-        <p style="color: var(--muted); font-size: 0.8rem; margin-top: 0;">
-            {% if config.anthropic_api_key_cifrada %}✅ Clave guardada.{% else %}Sin configurar.{% endif %}
-        </p>
-        <div class="form-group">
-            {{ form.anthropic_api_key.label_tag }}
-            {{ form.anthropic_api_key }}
-        </div>
-        <div class="form-group">
-            {{ form.anthropic_modelo.label_tag }}
-            {{ form.anthropic_modelo }}
-        </div>
-
-        <hr style="border-color: var(--border); margin: 24px 0;">
-
-        <h3 style="color: var(--text-color); margin-bottom: 4px;">ChatGPT (OpenAI)</h3>
-        <p style="color: var(--muted); font-size: 0.8rem; margin-top: 0;">
-            {% if config.openai_api_key_cifrada %}✅ Clave guardada.{% else %}Sin configurar.{% endif %}
-        </p>
-        <div class="form-group">
-            {{ form.openai_api_key.label_tag }}
-            {{ form.openai_api_key }}
-        </div>
-        <div class="form-group">
-            {{ form.openai_modelo.label_tag }}
-            {{ form.openai_modelo }}
-        </div>
-
-        <hr style="border-color: var(--border); margin: 24px 0;">
-
-        <h3 style="color: var(--text-color); margin-bottom: 4px;">Gemini (Google)</h3>
-        <p style="color: var(--muted); font-size: 0.8rem; margin-top: 0;">
-            {% if config.gemini_api_key_cifrada %}✅ Clave guardada.{% else %}Sin configurar.{% endif %}
-        </p>
-        <div class="form-group">
-            {{ form.gemini_api_key.label_tag }}
-            {{ form.gemini_api_key }}
-        </div>
-        <div class="form-group">
-            {{ form.gemini_modelo.label_tag }}
-            {{ form.gemini_modelo }}
-        </div>
-
-        <div style="margin-top: 28px; display: flex; gap: 12px;">
-            <button type="submit" class="btn btn-primary">Guardar configuración</button>
-            <a href="{% url 'asistente_ia:landing' %}" class="btn btn-secondary">Cancelar</a>
-        </div>
-    </form>
+    <div style="margin-top: 28px;">
+        <a href="{% url 'asistente_ia:landing' %}" class="btn btn-secondary">← Volver al Asistente IA</a>
+    </div>
 
 </div>
+
+<script>
+(function () {
+    function getCsrf() {
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : "";
+    }
+
+    function pedir(url, cuerpo) {
+        var opciones = {
+            method: cuerpo ? "POST" : "GET",
+            headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"}
+        };
+        if (cuerpo) opciones.body = JSON.stringify(cuerpo);
+        return fetch(url, opciones).then(function (r) {
+            return r.json().then(function (data) { return {ok: r.ok, data: data}; });
+        });
+    }
+
+    document.querySelectorAll(".ia-proveedor-card").forEach(function (card) {
+        var proveedor = card.dataset.proveedor;
+        var base = "/asistente-ia/api/proveedores/" + proveedor + "/";
+
+        var el = function (rol) { return card.querySelector('[data-rol="' + rol + '"]'); };
+        var msg = el("msg");
+        var formClave = el("form-clave");
+        var inputClave = el("input-clave");
+        var bloqueModelos = el("bloque-modelos");
+        var selectModelos = el("select-modelos");
+        var accionesConectado = el("acciones-conectado");
+
+        function mostrarMsg(texto, tipo) {
+            msg.textContent = texto || "";
+            msg.className = "ia-proveedor-msg" + (tipo ? " " + tipo : "");
+        }
+
+        function pintarEstado(estado) {
+            if (estado.conectado) {
+                el("estado").innerHTML =
+                    '<span>' + estado.clave_enmascarada + '</span> · <span>' + estado.modelo + '</span>';
+                accionesConectado.hidden = false;
+                bloqueModelos.hidden = false;
+                formClave.hidden = true;
+            } else {
+                el("estado").textContent = "No conectado";
+                accionesConectado.hidden = true;
+                bloqueModelos.hidden = true;
+                formClave.hidden = false;
+                inputClave.value = "";
+            }
+            var badge = el("badge");
+            badge.textContent = estado.activo ? "EN USO" : (estado.conectado ? "CONECTADO" : "");
+            card.classList.toggle("activo", !!estado.activo);
+            card.classList.toggle("conectado", !!estado.conectado && !estado.activo);
+        }
+
+        function rellenarModelos(modelos, modeloActual) {
+            if (!modelos || !modelos.length) return;
+            selectModelos.innerHTML = "";
+            modelos.forEach(function (m) {
+                var opt = document.createElement("option");
+                opt.value = m.id;
+                opt.textContent = m.nombre === m.id ? m.id : (m.nombre + " (" + m.id + ")");
+                if (m.id === modeloActual) opt.selected = true;
+                selectModelos.appendChild(opt);
+            });
+        }
+
+        card.addEventListener("click", function (e) {
+            var boton = e.target.closest("[data-accion]");
+            if (!boton) return;
+            var accion = boton.dataset.accion;
+
+            if (accion === "cambiar-clave") {
+                formClave.hidden = false;
+                inputClave.focus();
+                return;
+            }
+            if (accion === "cancelar-clave") {
+                formClave.hidden = true;
+                mostrarMsg("");
+                return;
+            }
+
+            if (accion === "verificar-guardar") {
+                var clave = inputClave.value.trim();
+                if (!clave) { mostrarMsg("Introduce una clave API.", "error"); return; }
+                mostrarMsg("Verificando la clave con el proveedor…");
+                boton.disabled = true;
+                pedir(base + "clave/", {api_key: clave}).then(function (r) {
+                    boton.disabled = false;
+                    if (!r.ok) { mostrarMsg(r.data.error || "No se pudo guardar la clave.", "error"); return; }
+                    rellenarModelos(r.data.modelos, r.data.modelo);
+                    pintarEstado(r.data);
+                    mostrarMsg("Clave verificada y guardada. " + r.data.modelos.length + " modelos disponibles.", "ok");
+                });
+                return;
+            }
+
+            if (accion === "fijar-modelo") {
+                var modelo = selectModelos.value;
+                mostrarMsg("Guardando modelo…");
+                pedir(base + "modelo/", {modelo: modelo}).then(function (r) {
+                    if (!r.ok) { mostrarMsg(r.data.error || "No se pudo guardar el modelo.", "error"); return; }
+                    pintarEstado(r.data);
+                    mostrarMsg("Modelo actualizado.", "ok");
+                });
+                return;
+            }
+
+            if (accion === "activar") {
+                pedir(base + "activar/", {}).then(function (r) {
+                    if (!r.ok) { mostrarMsg(r.data.error || "No se pudo activar.", "error"); return; }
+                    window.location.reload();
+                });
+                return;
+            }
+
+            if (accion === "desconectar") {
+                if (!confirm("¿Desconectar este proveedor y borrar su clave guardada?")) return;
+                pedir(base + "desconectar/", {}).then(function (r) {
+                    if (!r.ok) { mostrarMsg(r.data.error || "No se pudo desconectar.", "error"); return; }
+                    pintarEstado(r.data);
+                    mostrarMsg("Proveedor desconectado.", "ok");
+                });
+            }
+        });
+
+        // Al cargar, si ya hay clave guardada, pedimos la lista real de modelos
+        // para que el desplegable muestre lo que esa clave permite usar.
+        if (!bloqueModelos.hidden) {
+            pedir(base + "modelos/").then(function (r) {
+                if (r.ok) rellenarModelos(r.data.modelos, r.data.modelo_actual);
+                else mostrarMsg(r.data.error || "", "error");
+            });
+        }
+    });
+})();
+</script>
 {% endblock %}
