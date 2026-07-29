@@ -1,12 +1,21 @@
+import os
+import subprocess
+import tempfile
+
+from django.db import connections
 from django.http import HttpResponse
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.utils import timezone
 from .forms import UserRegisterForm, UserProfileForm
 from .models import UserProfile, Hogar
 from .mixins import hogar_required
+
+# Palabra exacta que el admin debe escribir para confirmar una restauración.
+CONFIRMACION_RESTAURAR = 'RESTAURAR'
 
 
 def register_view(request):
@@ -214,3 +223,100 @@ def eliminar_hogar(request, hogar_id):
         return redirect('panel_admin')
 
     return render(request, 'core/confirmar_eliminar_hogar.html', {'hogar': hogar})
+
+
+@login_required
+def backup_bd(request):
+    """Descarga un volcado (.dump, formato custom de pg_dump) de la base de datos."""
+    profile = getattr(request.user, 'userprofile', None)
+    if not request.user.is_superuser and (not profile or not profile.es_admin):
+        messages.error(request, "No tienes permisos para descargar backups de la base de datos.")
+        return redirect('dashboard')
+
+    database_url = os.environ.get('DATABASE_URL', '')
+
+    try:
+        resultado = subprocess.run(
+            ['pg_dump', '-Fc', database_url],
+            capture_output=True, check=True, timeout=120,
+        )
+    except FileNotFoundError:
+        messages.error(request, "pg_dump no está instalado en este servidor.")
+        return redirect('panel_admin')
+    except subprocess.CalledProcessError as e:
+        detalle = e.stderr.decode('utf-8', 'ignore')
+        messages.error(request, f"Error al generar el backup: {detalle}")
+        return redirect('panel_admin')
+    except subprocess.TimeoutExpired:
+        messages.error(request, "El backup ha tardado demasiado y se ha cancelado.")
+        return redirect('panel_admin')
+
+    nombre_archivo = f"treasure_backup_{timezone.now().strftime('%Y%m%d_%H%M%S')}.dump"
+    response = HttpResponse(resultado.stdout, content_type='application/octet-stream')
+    response['Content-Disposition'] = f'attachment; filename="{nombre_archivo}"'
+    return response
+
+
+@login_required
+def restaurar_bd(request):
+    """Restaura la base de datos completa desde un .dump subido por el admin.
+
+    Acción destructiva e irreversible: sobreescribe TODA la base de datos,
+    incluida la tabla de sesiones (el admin quedará desconectado). Por eso
+    exige escribir una palabra de confirmación exacta antes de ejecutar.
+    """
+    profile = getattr(request.user, 'userprofile', None)
+    if not request.user.is_superuser and (not profile or not profile.es_admin):
+        messages.error(request, "No tienes permisos para restaurar la base de datos.")
+        return redirect('dashboard')
+
+    if request.method != 'POST':
+        return render(request, 'core/restaurar_bd.html', {'palabra_confirmacion': CONFIRMACION_RESTAURAR})
+
+    confirmacion = request.POST.get('confirmacion', '').strip()
+    archivo = request.FILES.get('archivo')
+
+    if confirmacion != CONFIRMACION_RESTAURAR:
+        messages.error(request, f'Debes escribir exactamente "{CONFIRMACION_RESTAURAR}" para confirmar.')
+        return redirect('restaurar_bd')
+
+    if not archivo:
+        messages.error(request, "No se subió ningún archivo.")
+        return redirect('restaurar_bd')
+
+    cabecera = archivo.read(5)
+    archivo.seek(0)
+    if cabecera != b'PGDMP':
+        messages.error(request, "El archivo no parece un backup válido (debe ser un .dump generado por esta misma función).")
+        return redirect('restaurar_bd')
+
+    tmp = tempfile.NamedTemporaryFile(suffix='.dump', delete=False)
+    try:
+        for chunk in archivo.chunks():
+            tmp.write(chunk)
+        tmp.close()
+
+        database_url = os.environ.get('DATABASE_URL', '')
+        # Cerramos las conexiones de Django antes de que pg_restore recree las tablas.
+        connections.close_all()
+
+        try:
+            resultado = subprocess.run(
+                ['pg_restore', '--clean', '--if-exists', '--no-owner', '--no-privileges',
+                 '--single-transaction', '-d', database_url, tmp.name],
+                capture_output=True, timeout=300,
+            )
+            exito = resultado.returncode == 0
+            detalle = '' if exito else resultado.stderr.decode('utf-8', 'ignore')
+        except FileNotFoundError:
+            exito = False
+            detalle = "pg_restore no está instalado en este servidor."
+        except subprocess.TimeoutExpired:
+            exito = False
+            detalle = "La restauración ha tardado demasiado y se ha cancelado (no se aplicó ningún cambio)."
+    finally:
+        os.unlink(tmp.name)
+
+    # Página mínima, sin base.html: tras un restore la sesión/BD pueden estar
+    # en un estado distinto al que había al iniciar la petición.
+    return render(request, 'core/restaurar_bd_resultado.html', {'exito': exito, 'detalle': detalle})
