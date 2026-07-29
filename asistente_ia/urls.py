@@ -19,6 +19,9 @@ urlpatterns = [
     path('api/proveedores/<str:proveedor>/activar/', views.api_activar_proveedor, name='api_activar_proveedor'),
     path('api/proveedores/<str:proveedor>/desconectar/', views.api_desconectar_proveedor, name='api_desconectar_proveedor'),
 
+    path('api/agentes/', views.api_agentes, name='api_agentes'),
+    path('api/conversaciones/<int:conv_id>/agente/', views.api_cambiar_agente, name='api_cambiar_agente'),
+
     path('api/conversaciones/', views.api_listar_conversaciones, name='api_listar_conversaciones'),
     path('api/conversaciones/nueva/', views.api_crear_conversacion, name='api_crear_conversacion'),
     path('api/conversaciones/<int:conv_id>/mensajes/', views.api_mensajes, name='api_mensajes'),

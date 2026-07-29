@@ -37,21 +37,29 @@
         {% endif %}
     </div>
 
+    {% if config.esta_configurada %}
+    <div class="glass-panel" style="padding: 24px; margin-bottom: 32px; text-align: center;">
+        <h2 style="color: var(--text-color); margin: 0 0 6px;">💬 Hablar con el asistente</h2>
+        <p style="color: var(--muted); font-size: 0.88rem; margin: 0 0 16px;">
+            Se abre en una ventana flotante que puedes minimizar y seguir consultando desde
+            cualquier sección. Dentro eliges qué agente usar (o ninguno).
+        </p>
+        <button type="button" class="btn btn-primary ia-chat-abrir">⚛️ Abrir chat</button>
+    </div>
+    {% endif %}
+
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-        <h2 style="color: var(--text-color); margin: 0;">🤖 Agentes</h2>
+        <h2 style="color: var(--text-color); margin: 0;">🤖 Agentes disponibles</h2>
         <a href="{% url 'asistente_ia:crear_agente' %}" class="btn btn-primary">➕ Crear agente</a>
     </div>
 
-    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 24px;">
         {% for agente in agentes %}
         <div style="background-color: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px;">
             <div style="font-weight: 700; color: var(--primary-color); margin-bottom: 4px;">
                 {% if agente.es_predeterminado %}⭐ {% endif %}{{ agente.nombre }}
             </div>
-            <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 12px;">{{ agente.descripcion }}</div>
-            <button type="button" class="btn btn-primary ia-chat-abrir-agente" data-agente-id="{{ agente.id }}" data-agente-nombre="{{ agente.nombre }}">
-                💬 Iniciar chat
-            </button>
+            <div style="color: var(--muted); font-size: 0.85rem;">{{ agente.descripcion }}</div>
         </div>
         {% empty %}
         <p style="color: var(--muted); font-style: italic;">No hay agentes todavía.</p>

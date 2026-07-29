@@ -858,6 +858,71 @@ h1 {
     background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
+/* Selector de agente en la cabecera del chat */
+.ia-chat-agente-wrap {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 0.72rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+}
+.ia-chat-agente-wrap select {
+    background: var(--input-bg); color: var(--text-color);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 8px; font-size: 0.78rem; font-weight: 400;
+    text-transform: none; letter-spacing: normal; max-width: 200px;
+}
+
+/* Pasos intermedios (consultas a la BD o a internet) */
+.ia-chat-paso {
+    align-self: flex-start;
+    font-size: 0.76rem; color: var(--muted); font-style: italic;
+    padding: 4px 10px; border-left: 2px solid var(--border-strong);
+    max-width: 90%; word-break: break-word;
+}
+
+/* Markdown dentro de las respuestas del asistente */
+.ia-chat-bubble.assistant > *:first-child { margin-top: 0; }
+.ia-chat-bubble.assistant > *:last-child { margin-bottom: 0; }
+.ia-chat-bubble.assistant p { margin: 0 0 10px; }
+.ia-chat-bubble.assistant h3,
+.ia-chat-bubble.assistant h4,
+.ia-chat-bubble.assistant h5,
+.ia-chat-bubble.assistant h6 {
+    margin: 14px 0 6px; color: var(--primary-color); line-height: 1.3;
+}
+.ia-chat-bubble.assistant h3 { font-size: 1.02rem; }
+.ia-chat-bubble.assistant h4 { font-size: 0.95rem; }
+.ia-chat-bubble.assistant h5,
+.ia-chat-bubble.assistant h6 { font-size: 0.88rem; }
+.ia-chat-bubble.assistant ul,
+.ia-chat-bubble.assistant ol { margin: 0 0 10px; padding-left: 22px; }
+.ia-chat-bubble.assistant li { margin-bottom: 4px; }
+.ia-chat-bubble.assistant code {
+    background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    padding: 1px 5px; border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86em;
+}
+.ia-chat-bubble.assistant .ia-md-pre {
+    background: var(--app-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 12px; overflow-x: auto; margin: 0 0 10px;
+}
+.ia-chat-bubble.assistant .ia-md-pre code { background: none; padding: 0; font-size: 0.82rem; }
+.ia-chat-bubble.assistant blockquote {
+    margin: 0 0 10px; padding: 4px 0 4px 12px;
+    border-left: 3px solid var(--primary-color); color: var(--muted);
+}
+.ia-chat-bubble.assistant a { color: var(--primary-color); }
+.ia-chat-bubble.assistant hr { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.ia-chat-bubble.assistant .ia-md-tabla-wrap { overflow-x: auto; margin: 0 0 10px; }
+.ia-chat-bubble.assistant table { border-collapse: collapse; font-size: 0.82rem; width: 100%; }
+.ia-chat-bubble.assistant th,
+.ia-chat-bubble.assistant td {
+    border: 1px solid var(--border); padding: 6px 10px; text-align: left;
+}
+.ia-chat-bubble.assistant th { background: var(--surface-2); font-weight: 600; }
+
+/* La burbuja del asistente ya no necesita preservar saltos: los pone el Markdown */
+.ia-chat-bubble.assistant { white-space: normal; max-width: 92%; }
+
 .ia-chat-proposal-slot:empty { display: none; }
 .ia-chat-proposal-slot { padding: 0 18px; }
 .ia-chat-proposal-slot button.ia-confirmar {

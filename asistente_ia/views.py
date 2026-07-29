@@ -7,13 +7,33 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from core.mixins import hogar_required
 
-from .acciones import aplicar_accion, extraer_accion_propuesta
+from .acciones import aplicar_accion, extraer_accion_propuesta, extraer_llamada_herramienta
 from .contexto import construir_contexto_financiero
 from .forms import AgenteIAForm
+from .herramientas import descripcion_para_prompt, ejecutar_herramienta
 from .models import AccionPropuestaIA, AgenteIA, ConfiguracionIA, ConversacionIA, MensajeIA
 from .providers import ErrorProveedorIA, enviar_mensaje, listar_modelos
 
 PROVEEDORES_VALIDOS = {p for p, _ in ConfiguracionIA.PROVEEDOR_CHOICES}
+
+MAX_ITERACIONES_HERRAMIENTAS = 6
+
+INSTRUCCIONES_SIN_AGENTE = (
+    "Eres el asistente de IA de Treasure, la app de finanzas de este hogar. "
+    "Ayudas con finanzas familiares, gestión patrimonial y análisis de activos. "
+    "Responde siempre en español."
+)
+
+INSTRUCCIONES_ACCIONES = (
+    "\n\nSi el usuario te pide crear algo en la app (un gasto, una categoría de "
+    "gasto, un agente o una fuente de ingreso), y tienes datos suficientes, "
+    "incluye al final de tu respuesta, en un bloque separado, exactamente esto "
+    "(sustituyendo los valores): ```accion_ia\n"
+    '{"tipo": "crear_gasto|crear_categoria_gasto|crear_agente|crear_ingreso", '
+    '"datos": {...}}\n```\n'
+    "El usuario deberá confirmar la acción antes de que se aplique. Nunca "
+    "propongas cambios a ficheros o código de la aplicación."
+)
 
 
 def _es_admin(request):
@@ -271,6 +291,50 @@ def eliminar_agente(request, agente_id):
 
 @login_required
 @hogar_required
+def api_agentes(request):
+    """Agentes del hogar, para el selector dentro de la ventana de chat."""
+    profile = request.user.userprofile
+    agentes = AgenteIA.objects.filter(hogar=profile.hogar, activo=True).values(
+        'id', 'nombre', 'descripcion', 'es_predeterminado'
+    )
+    return JsonResponse({'agentes': list(agentes)})
+
+
+@login_required
+@hogar_required
+def api_cambiar_agente(request, conv_id):
+    """Cambia (o quita) el agente de una conversación ya abierta."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    profile = request.user.userprofile
+    conversacion = get_object_or_404(
+        ConversacionIA, id=conv_id, usuario=request.user, hogar=profile.hogar
+    )
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Solicitud inválida.'}, status=400)
+
+    agente_id = data.get('agente_id')
+    if agente_id in (None, '', 'ninguno'):
+        conversacion.agente = None
+        conversacion.titulo = 'Sin agente'
+    else:
+        agente = get_object_or_404(
+            AgenteIA, id=agente_id, hogar=profile.hogar, activo=True
+        )
+        conversacion.agente = agente
+        conversacion.titulo = agente.nombre
+    conversacion.save()
+    return JsonResponse({
+        'ok': True,
+        'agente_id': conversacion.agente_id,
+        'titulo': conversacion.titulo,
+    })
+
+
+@login_required
+@hogar_required
 def api_listar_conversaciones(request):
     profile = request.user.userprofile
     conversaciones = ConversacionIA.objects.filter(
@@ -292,11 +356,18 @@ def api_crear_conversacion(request):
         data = {}
 
     agente = None
-    agente_id = data.get('agente_id')
-    if agente_id:
-        agente = AgenteIA.objects.filter(id=agente_id, hogar=profile.hogar, activo=True).first()
-    if not agente:
-        agente = AgenteIA.objects.filter(hogar=profile.hogar, es_predeterminado=True, activo=True).first()
+    if 'agente_id' not in data:
+        # Sin indicación explícita, se arranca con el agente predeterminado.
+        agente = AgenteIA.objects.filter(
+            hogar=profile.hogar, es_predeterminado=True, activo=True
+        ).first()
+    else:
+        agente_id = data.get('agente_id')
+        # 'ninguno' (o vacío) es una elección deliberada del usuario: sin agente.
+        if agente_id not in (None, '', 'ninguno'):
+            agente = AgenteIA.objects.filter(
+                id=agente_id, hogar=profile.hogar, activo=True
+            ).first()
 
     contexto = construir_contexto_financiero(profile.hogar)
 
@@ -304,10 +375,14 @@ def api_crear_conversacion(request):
         usuario=request.user,
         hogar=profile.hogar,
         agente=agente,
-        titulo=agente.nombre if agente else 'Nueva conversación',
+        titulo=agente.nombre if agente else 'Sin agente',
         contexto_financiero_cache=contexto,
     )
-    return JsonResponse({'id': conversacion.id, 'titulo': conversacion.titulo})
+    return JsonResponse({
+        'id': conversacion.id,
+        'titulo': conversacion.titulo,
+        'agente_id': conversacion.agente_id,
+    })
 
 
 @login_required
@@ -320,7 +395,11 @@ def api_mensajes(request, conv_id):
 
     if request.method == 'GET':
         mensajes = list(conversacion.mensajes.values('rol', 'contenido', 'creado_en'))
-        payload = {'mensajes': mensajes}
+        payload = {
+            'mensajes': mensajes,
+            'agente_id': conversacion.agente_id,
+            'titulo': conversacion.titulo,
+        }
         pendiente = conversacion.acciones_propuestas.filter(estado='pendiente').first()
         if pendiente:
             payload['accion_propuesta'] = {
@@ -354,37 +433,55 @@ def api_mensajes(request, conv_id):
         })
 
     proveedor = config.proveedor_activo
+    modelo = config.get_modelo(proveedor)
+    api_key = config.get_api_key(proveedor)
     agente = conversacion.agente
-    instrucciones = agente.instrucciones if agente else (
-        "Eres el asistente de IA de Treasure. Ayuda al usuario con sus finanzas."
+    instrucciones = agente.instrucciones if agente else INSTRUCCIONES_SIN_AGENTE
+    system_prompt = (
+        instrucciones
+        + INSTRUCCIONES_ACCIONES
+        + descripcion_para_prompt()
+        + "\n\nRESUMEN INICIAL DEL HOGAR (orientativo, amplíalo con consultar_datos):\n"
+        + conversacion.contexto_financiero_cache
     )
-    instrucciones_acciones = (
-        "\n\nSi el usuario te pide crear algo en la app (un gasto, una categoría de "
-        "gasto, un agente o una fuente de ingreso), y tienes datos suficientes, "
-        "incluye al final de tu respuesta, en un bloque separado, exactamente esto "
-        "(sustituyendo los valores): ```accion_ia\n"
-        '{"tipo": "crear_gasto|crear_categoria_gasto|crear_agente|crear_ingreso", '
-        '"datos": {...}}\n```\n'
-        "El usuario deberá confirmar la acción antes de que se aplique. Nunca "
-        "propongas cambios a ficheros o código de la aplicación."
-    )
-    system_prompt = instrucciones + instrucciones_acciones + "\n\n" + conversacion.contexto_financiero_cache
 
     historial = [
         {'rol': m['rol'], 'contenido': m['contenido']}
         for m in conversacion.mensajes.exclude(rol='system').values('rol', 'contenido')
     ]
 
-    try:
-        respuesta = enviar_mensaje(
-            proveedor,
-            config.get_api_key(proveedor),
-            config.get_modelo(proveedor),
-            historial,
-            system_prompt,
+    # Bucle agéntico: el modelo puede encadenar consultas a la base de datos y a
+    # internet antes de dar su respuesta final.
+    pasos_herramientas = []
+    respuesta = ''
+    for _ in range(MAX_ITERACIONES_HERRAMIENTAS):
+        try:
+            respuesta = enviar_mensaje(proveedor, api_key, modelo, historial, system_prompt)
+        except ErrorProveedorIA as e:
+            return JsonResponse({'error': str(e), 'pasos': pasos_herramientas})
+
+        llamada = extraer_llamada_herramienta(respuesta)
+        if not llamada:
+            break
+
+        nombre, argumentos = llamada
+        resultado = ejecutar_herramienta(nombre, argumentos, profile.hogar)
+        resumen_paso = _resumen_paso(nombre, argumentos)
+        pasos_herramientas.append(resumen_paso)
+        MensajeIA.objects.create(
+            conversacion=conversacion, rol='system', contenido=resumen_paso,
         )
-    except ErrorProveedorIA as e:
-        return JsonResponse({'error': str(e)})
+        historial.append({'rol': 'assistant', 'contenido': respuesta})
+        historial.append({
+            'rol': 'user',
+            'contenido': f'RESULTADO DE {nombre}:\n{resultado}',
+        })
+    else:
+        # Se agotaron las iteraciones sin respuesta final.
+        respuesta = (
+            'He hecho varias consultas pero no he llegado a una conclusión. '
+            'Prueba a preguntarme algo más concreto.'
+        )
 
     respuesta_limpia, accion_propuesta = extraer_accion_propuesta(
         respuesta, conversacion, mensaje_origen=mensaje_usuario
@@ -392,7 +489,7 @@ def api_mensajes(request, conv_id):
 
     mensaje_asistente = MensajeIA.objects.create(
         conversacion=conversacion, rol='assistant', contenido=respuesta_limpia,
-        proveedor=proveedor, modelo=config.get_modelo(proveedor),
+        proveedor=proveedor, modelo=modelo,
     )
     if accion_propuesta:
         accion_propuesta.mensaje_origen = mensaje_asistente
@@ -400,7 +497,7 @@ def api_mensajes(request, conv_id):
 
     conversacion.save()  # actualiza actualizado_en
 
-    payload = {'respuesta': respuesta_limpia}
+    payload = {'respuesta': respuesta_limpia, 'pasos': pasos_herramientas}
     if accion_propuesta:
         payload['accion_propuesta'] = {
             'id': accion_propuesta.id,
@@ -408,6 +505,18 @@ def api_mensajes(request, conv_id):
             'resumen': accion_propuesta.resumen_legible,
         }
     return JsonResponse(payload)
+
+
+def _resumen_paso(nombre, argumentos):
+    """Texto corto que se muestra en el chat mientras el asistente investiga."""
+    argumentos = argumentos or {}
+    if nombre == 'consultar_datos':
+        return f"🔎 Consultando la base de datos: {argumentos.get('entidad', '?')}"
+    if nombre == 'buscar_web':
+        return f"🌐 Buscando en internet: {argumentos.get('consulta', '?')}"
+    if nombre == 'leer_url':
+        return f"📄 Leyendo: {argumentos.get('url', '?')}"
+    return f"🔧 {nombre}"
 
 
 @login_required

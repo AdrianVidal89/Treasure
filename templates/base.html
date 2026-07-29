@@ -153,6 +153,12 @@
         <div class="ia-chat-header">
             <span>⚛️ Asistente IA</span>
             <div class="ia-chat-header-actions">
+                <label class="ia-chat-agente-wrap">
+                    <span>Agente</span>
+                    <select id="ia-chat-agente" title="Agente que usará el asistente">
+                        <option value="ninguno">Sin agente</option>
+                    </select>
+                </label>
                 <button type="button" id="ia-chat-nueva" title="Nueva conversación">＋ Nueva</button>
                 <button type="button" id="ia-chat-minimizar" title="Minimizar">─</button>
             </div>
@@ -328,6 +334,7 @@
     })();
     </script>
 
+    <script src="{% static 'js/markdown-ia.js' %}"></script>
     <script>
     (function () {
         var toggleBtn = document.getElementById("ia-chat-toggle-btn");
@@ -340,6 +347,7 @@
         var input = document.getElementById("ia-chat-input");
         var nuevaBtn = document.getElementById("ia-chat-nueva");
         var minimizarBtn = document.getElementById("ia-chat-minimizar");
+        var selectAgente = document.getElementById("ia-chat-agente");
 
         var STORAGE_KEY = "ia_chat_state";
         var MENSAJE_BIENVENIDA = transcript.innerHTML;
@@ -358,6 +366,21 @@
         function renderMensaje(rol, texto) {
             var el = document.createElement("div");
             el.className = "ia-chat-bubble " + rol;
+            // Solo las respuestas del asistente se interpretan como Markdown;
+            // lo que escribe el usuario se muestra tal cual.
+            if (rol === "assistant" && window.renderMarkdownIA) {
+                el.innerHTML = window.renderMarkdownIA(texto);
+            } else {
+                el.textContent = texto;
+            }
+            transcript.appendChild(el);
+            el.scrollIntoView({block: "end"});
+            return el;
+        }
+
+        function renderPaso(texto) {
+            var el = document.createElement("div");
+            el.className = "ia-chat-paso";
             el.textContent = texto;
             transcript.appendChild(el);
             el.scrollIntoView({block: "end"});
@@ -370,18 +393,61 @@
             fetch("/asistente-ia/api/conversaciones/" + convId + "/mensajes/")
                 .then(function (r) { return r.json(); })
                 .then(function (data) {
-                    (data.mensajes || []).forEach(function (m) { renderMensaje(m.rol, m.contenido); });
+                    (data.mensajes || []).forEach(function (m) {
+                        if (m.rol === "system") renderPaso(m.contenido);
+                        else renderMensaje(m.rol, m.contenido);
+                    });
+                    // El selector debe reflejar el agente real de esta conversación.
+                    selectAgente.value = data.agente_id ? String(data.agente_id) : "ninguno";
                     if (data.accion_propuesta) renderPropuesta(data.accion_propuesta);
                 });
         }
+
+        // ── Selector de agente ────────────────────────────────────────────
+        function cargarAgentes(seleccionado) {
+            return fetch("/asistente-ia/api/agentes/")
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    selectAgente.innerHTML = '<option value="ninguno">Sin agente</option>';
+                    (data.agentes || []).forEach(function (a) {
+                        var opt = document.createElement("option");
+                        opt.value = a.id;
+                        opt.textContent = a.nombre + (a.es_predeterminado ? " ⭐" : "");
+                        selectAgente.appendChild(opt);
+                    });
+                    var estadoActual = leerEstado();
+                    var elegido = seleccionado || estadoActual.agenteId;
+                    if (elegido) selectAgente.value = String(elegido);
+                    if (!selectAgente.value) selectAgente.value = "ninguno";
+                });
+        }
+
+        selectAgente.addEventListener("change", function () {
+            var estadoActual = leerEstado();
+            estadoActual.agenteId = selectAgente.value;
+            guardarEstado(estadoActual);
+            // Si ya hay conversación abierta, se le cambia el agente en caliente.
+            if (estadoActual.conversacionId) {
+                fetch("/asistente-ia/api/conversaciones/" + estadoActual.conversacionId + "/agente/", {
+                    method: "POST",
+                    headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
+                    body: JSON.stringify({agente_id: selectAgente.value})
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    if (data.ok) renderPaso("Agente cambiado a: " + data.titulo);
+                });
+            }
+        });
 
         var estado = leerEstado();
         if (estado.open) {
             panel.classList.add("open");
         }
-        if (estado.conversacionId) {
-            cargarConversacion(estado.conversacionId);
-        }
+        // Primero se puebla el selector; solo después se carga la conversación,
+        // para que al fijar su agente las opciones ya existan.
+        cargarAgentes().then(function () {
+            var actual = leerEstado();
+            if (actual.conversacionId) cargarConversacion(actual.conversacionId);
+        });
 
         toggleBtn.addEventListener("click", function () {
             var abierto = panel.classList.toggle("open");
@@ -397,12 +463,16 @@
             guardarEstado(estado);
         });
 
-        nuevaBtn.addEventListener("click", function () {
-            fetch("/asistente-ia/api/conversaciones/nueva/", {
+        function crearConversacion() {
+            return fetch("/asistente-ia/api/conversaciones/nueva/", {
                 method: "POST",
                 headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
-                body: JSON.stringify({})
-            }).then(function (r) { return r.json(); }).then(function (data) {
+                body: JSON.stringify({agente_id: selectAgente.value})
+            }).then(function (r) { return r.json(); });
+        }
+
+        nuevaBtn.addEventListener("click", function () {
+            crearConversacion().then(function (data) {
                 estado = leerEstado();
                 estado.conversacionId = data.id;
                 estado.open = true;
@@ -420,11 +490,7 @@
             estado = leerEstado();
             input.value = "";
             if (!estado.conversacionId) {
-                fetch("/asistente-ia/api/conversaciones/nueva/", {
-                    method: "POST",
-                    headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
-                    body: JSON.stringify({})
-                }).then(function (r) { return r.json(); }).then(function (data) {
+                crearConversacion().then(function (data) {
                     estado.conversacionId = data.id;
                     guardarEstado(estado);
                     enviarMensaje(estado.conversacionId, texto);
@@ -436,7 +502,7 @@
 
         function enviarMensaje(convId, texto) {
             renderMensaje("user", texto);
-            var indicador = renderMensaje("assistant", "Escribiendo…");
+            var indicador = renderPaso("Pensando…");
 
             fetch("/asistente-ia/api/conversaciones/" + convId + "/mensajes/", {
                 method: "POST",
@@ -444,6 +510,8 @@
                 body: JSON.stringify({mensaje: texto})
             }).then(function (r) { return r.json(); }).then(function (data) {
                 indicador.remove();
+                // Pasos intermedios: consultas a la base de datos o a internet.
+                (data.pasos || []).forEach(renderPaso);
                 if (data.error) { renderMensaje("error", "⚠️ " + data.error); return; }
                 renderMensaje("assistant", data.respuesta);
                 if (data.accion_propuesta) renderPropuesta(data.accion_propuesta);
@@ -478,23 +546,15 @@
             });
         }
 
-        // Botones "Iniciar chat" de un agente concreto (página de landing del asistente)
-        document.querySelectorAll(".ia-chat-abrir-agente").forEach(function (btn) {
+        // Botón "Abrir chat" de la página del Asistente IA: una sola ventana,
+        // el agente se elige dentro con el selector de la cabecera.
+        document.querySelectorAll(".ia-chat-abrir").forEach(function (btn) {
             btn.addEventListener("click", function () {
-                fetch("/asistente-ia/api/conversaciones/nueva/", {
-                    method: "POST",
-                    headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
-                    body: JSON.stringify({agente_id: btn.dataset.agenteId})
-                }).then(function (r) { return r.json(); }).then(function (data) {
-                    estado = leerEstado();
-                    estado.conversacionId = data.id;
-                    estado.open = true;
-                    guardarEstado(estado);
-                    panel.classList.add("open");
-                    transcript.innerHTML = "";
-                    proposalSlot.innerHTML = "";
-                    renderMensaje("assistant", "Chat con " + (btn.dataset.agenteNombre || "el asistente") + " iniciado. ¿En qué puedo ayudarte?");
-                });
+                estado = leerEstado();
+                estado.open = true;
+                guardarEstado(estado);
+                panel.classList.add("open");
+                input.focus();
             });
         });
     })();
