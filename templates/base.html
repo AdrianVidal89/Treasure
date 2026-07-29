@@ -87,6 +87,13 @@
                 </a>
                 {% endif %}
             </div>
+
+            <div class="sidebar-group">
+                <span class="sidebar-group-label">IA</span>
+                <a href="{% url 'asistente_ia:landing' %}" class="sidebar-link {% if vn == 'asistente_ia:landing' %}active{% endif %}">
+                    <span class="sidebar-link-icon">⚛️</span><span>Asistente IA</span>
+                </a>
+            </div>
         </nav>
     </aside>
     <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
@@ -119,6 +126,12 @@
             </div>
         </div>
 
+        <div class="ia-chat-wrap">
+            <button type="button" class="ia-chat-toggle" id="ia-chat-toggle-btn" aria-label="Asistente IA" title="Asistente IA">
+                ⚛️
+            </button>
+        </div>
+
         <div class="nav-user-dropdown">
             <span class="nav-user-toggle nav-profile-chip">
                 <span class="nav-username">{{ request.user.first_name|default:request.user.username }}</span>
@@ -135,6 +148,26 @@
             </div>
         </div>
     </header>
+
+    <div class="ia-chat-panel" id="ia-chat-panel">
+        <div class="ia-chat-header">
+            <span>⚛️ Asistente IA</span>
+            <div class="ia-chat-header-actions">
+                <button type="button" id="ia-chat-nueva" title="Nueva conversación">＋ Nueva</button>
+                <button type="button" id="ia-chat-minimizar" title="Minimizar">─</button>
+            </div>
+        </div>
+        <div class="ia-chat-transcript" id="ia-chat-transcript">
+            <div class="ia-chat-bubble assistant">
+                👋 Hola, soy tu asistente de finanzas familiares. Pulsa "＋ Nueva" o escribe un mensaje para empezar.
+            </div>
+        </div>
+        <div class="ia-chat-proposal-slot" id="ia-chat-proposal-slot"></div>
+        <form class="ia-chat-input-row" id="ia-chat-form">
+            <textarea id="ia-chat-input" placeholder="Escribe un mensaje…" rows="1"></textarea>
+            <button type="submit">Enviar</button>
+        </form>
+    </div>
 
     <main class="app-main">
     {% endwith %}
@@ -292,6 +325,178 @@
                     bellDot.classList.add("visible");
                 }
             }).catch(function () {});
+    })();
+    </script>
+
+    <script>
+    (function () {
+        var toggleBtn = document.getElementById("ia-chat-toggle-btn");
+        var panel = document.getElementById("ia-chat-panel");
+        if (!toggleBtn) return;
+
+        var transcript = document.getElementById("ia-chat-transcript");
+        var proposalSlot = document.getElementById("ia-chat-proposal-slot");
+        var form = document.getElementById("ia-chat-form");
+        var input = document.getElementById("ia-chat-input");
+        var nuevaBtn = document.getElementById("ia-chat-nueva");
+        var minimizarBtn = document.getElementById("ia-chat-minimizar");
+
+        var STORAGE_KEY = "ia_chat_state";
+        var MENSAJE_BIENVENIDA = transcript.innerHTML;
+
+        function getCsrf() {
+            var m = document.cookie.match(/csrftoken=([^;]+)/);
+            return m ? m[1] : "";
+        }
+        function leerEstado() {
+            try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) { return {}; }
+        }
+        function guardarEstado(estado) {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(estado)); } catch (e) {}
+        }
+
+        function renderMensaje(rol, texto) {
+            var el = document.createElement("div");
+            el.className = "ia-chat-bubble " + rol;
+            el.textContent = texto;
+            transcript.appendChild(el);
+            el.scrollIntoView({block: "end"});
+            return el;
+        }
+
+        function cargarConversacion(convId) {
+            transcript.innerHTML = "";
+            proposalSlot.innerHTML = "";
+            fetch("/asistente-ia/api/conversaciones/" + convId + "/mensajes/")
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    (data.mensajes || []).forEach(function (m) { renderMensaje(m.rol, m.contenido); });
+                    if (data.accion_propuesta) renderPropuesta(data.accion_propuesta);
+                });
+        }
+
+        var estado = leerEstado();
+        if (estado.open) {
+            panel.classList.add("open");
+        }
+        if (estado.conversacionId) {
+            cargarConversacion(estado.conversacionId);
+        }
+
+        toggleBtn.addEventListener("click", function () {
+            var abierto = panel.classList.toggle("open");
+            estado = leerEstado();
+            estado.open = abierto;
+            guardarEstado(estado);
+        });
+
+        minimizarBtn.addEventListener("click", function () {
+            panel.classList.remove("open");
+            estado = leerEstado();
+            estado.open = false;
+            guardarEstado(estado);
+        });
+
+        nuevaBtn.addEventListener("click", function () {
+            fetch("/asistente-ia/api/conversaciones/nueva/", {
+                method: "POST",
+                headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
+                body: JSON.stringify({})
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                estado = leerEstado();
+                estado.conversacionId = data.id;
+                estado.open = true;
+                guardarEstado(estado);
+                panel.classList.add("open");
+                transcript.innerHTML = MENSAJE_BIENVENIDA;
+                proposalSlot.innerHTML = "";
+            });
+        });
+
+        form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var texto = input.value.trim();
+            if (!texto) return;
+            estado = leerEstado();
+            input.value = "";
+            if (!estado.conversacionId) {
+                fetch("/asistente-ia/api/conversaciones/nueva/", {
+                    method: "POST",
+                    headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
+                    body: JSON.stringify({})
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    estado.conversacionId = data.id;
+                    guardarEstado(estado);
+                    enviarMensaje(estado.conversacionId, texto);
+                });
+            } else {
+                enviarMensaje(estado.conversacionId, texto);
+            }
+        });
+
+        function enviarMensaje(convId, texto) {
+            renderMensaje("user", texto);
+            var indicador = renderMensaje("assistant", "Escribiendo…");
+
+            fetch("/asistente-ia/api/conversaciones/" + convId + "/mensajes/", {
+                method: "POST",
+                headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
+                body: JSON.stringify({mensaje: texto})
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                indicador.remove();
+                if (data.error) { renderMensaje("error", "⚠️ " + data.error); return; }
+                renderMensaje("assistant", data.respuesta);
+                if (data.accion_propuesta) renderPropuesta(data.accion_propuesta);
+            }).catch(function () {
+                indicador.remove();
+                renderMensaje("error", "⚠️ No se pudo contactar con el asistente.");
+            });
+        }
+
+        function renderPropuesta(accion) {
+            proposalSlot.innerHTML =
+                '<div class="ia-chat-bubble assistant"><strong>Propuesta:</strong> ' + accion.resumen +
+                '<div style="margin-top:8px;">' +
+                '<button type="button" class="ia-confirmar" data-id="' + accion.id + '">Confirmar</button> ' +
+                '<button type="button" class="ia-rechazar" data-id="' + accion.id + '">Rechazar</button>' +
+                '</div></div>';
+            proposalSlot.querySelector(".ia-confirmar").addEventListener("click", function () {
+                resolverAccion(accion.id, "confirmar");
+            });
+            proposalSlot.querySelector(".ia-rechazar").addEventListener("click", function () {
+                resolverAccion(accion.id, "rechazar");
+            });
+        }
+
+        function resolverAccion(id, tipo) {
+            fetch("/asistente-ia/api/acciones/" + id + "/" + tipo + "/", {
+                method: "POST",
+                headers: {"X-CSRFToken": getCsrf()}
+            }).then(function (r) { return r.json(); }).then(function (data) {
+                proposalSlot.innerHTML = "";
+                renderMensaje("assistant", data.mensaje || "Listo.");
+            });
+        }
+
+        // Botones "Iniciar chat" de un agente concreto (página de landing del asistente)
+        document.querySelectorAll(".ia-chat-abrir-agente").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                fetch("/asistente-ia/api/conversaciones/nueva/", {
+                    method: "POST",
+                    headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
+                    body: JSON.stringify({agente_id: btn.dataset.agenteId})
+                }).then(function (r) { return r.json(); }).then(function (data) {
+                    estado = leerEstado();
+                    estado.conversacionId = data.id;
+                    estado.open = true;
+                    guardarEstado(estado);
+                    panel.classList.add("open");
+                    transcript.innerHTML = "";
+                    proposalSlot.innerHTML = "";
+                    renderMensaje("assistant", "Chat con " + (btn.dataset.agenteNombre || "el asistente") + " iniciado. ¿En qué puedo ayudarte?");
+                });
+            });
+        });
     })();
     </script>
     {% endif %}

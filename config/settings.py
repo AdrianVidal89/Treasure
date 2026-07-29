@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     "core",
     "finanzas",
     "ui",
+    "asistente_ia",
     "exportador",
     "integraciones",
 ]
@@ -58,6 +59,12 @@ DATABASE_URL = config("DATABASE_URL")
 DATABASES = {
     "default": dj_database_url.parse(DATABASE_URL, conn_max_age=600)
 }
+
+# Clave de cifrado (Fernet) para las claves API de los proveedores de IA
+# guardadas en ConfiguracionIA. Perderla hace irrecuperables las claves ya
+# guardadas (habría que volver a introducirlas). Generar con:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+IA_FERNET_KEY = config("IA_FERNET_KEY")
 
 
 AUTH_PASSWORD_VALIDATORS = [

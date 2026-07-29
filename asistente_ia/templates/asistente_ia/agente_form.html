@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{% if modo == 'editar' %}Editar{% else %}Crear{% endif %} agente - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 24px;">
+        {% if modo == 'editar' %}✏️ Editar agente{% else %}➕ Crear agente{% endif %}
+    </h1>
+
+    <form method="post" class="glass-panel glass-panel--accent" style="--accent: var(--primary-color); padding: 28px; max-width: 640px;">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            {% for error in form.non_field_errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        {% endif %}
+
+        <div class="form-group">
+            {{ form.nombre.label_tag }}
+            {{ form.nombre }}
+            {% for error in form.nombre.errors %}<p class="error-msg">{{ error }}</p>{% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.descripcion.label_tag }}
+            {{ form.descripcion }}
+        </div>
+
+        <div class="form-group">
+            {{ form.instrucciones.label_tag }}
+            {{ form.instrucciones }}
+            {% for error in form.instrucciones.errors %}<p class="error-msg">{{ error }}</p>{% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.proveedor_preferido.label_tag }}
+            {{ form.proveedor_preferido }}
+        </div>
+
+        <div class="form-group form-group-checkbox">
+            {{ form.activo.label_tag }}
+            {{ form.activo }}
+        </div>
+
+        <div style="margin-top: 20px; display: flex; gap: 12px;">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="{% url 'asistente_ia:listar_agentes' %}" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+
+</div>
+{% endblock %}
