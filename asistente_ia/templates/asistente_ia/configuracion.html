@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Configurar IA - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">⚙️ Configurar Asistente IA</h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">
+        Introduce la clave API del proveedor que quieras usar y selecciona cuál está activo.
+        Las claves se guardan cifradas; no vuelven a mostrarse en texto plano.
+    </p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" class="glass-panel glass-panel--accent" style="--accent: var(--primary-color); padding: 28px; max-width: 640px;">
+        {% csrf_token %}
+
+        {% if form.non_field_errors %}
+            {% for error in form.non_field_errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        {% endif %}
+
+        <div class="form-group">
+            {{ form.proveedor_activo.label_tag }}
+            {{ form.proveedor_activo }}
+        </div>
+
+        <hr style="border-color: var(--border); margin: 24px 0;">
+
+        <h3 style="color: var(--text-color); margin-bottom: 4px;">Claude (Anthropic)</h3>
+        <p style="color: var(--muted); font-size: 0.8rem; margin-top: 0;">
+            {% if config.anthropic_api_key_cifrada %}✅ Clave guardada.{% else %}Sin configurar.{% endif %}
+        </p>
+        <div class="form-group">
+            {{ form.anthropic_api_key.label_tag }}
+            {{ form.anthropic_api_key }}
+        </div>
+        <div class="form-group">
+            {{ form.anthropic_modelo.label_tag }}
+            {{ form.anthropic_modelo }}
+        </div>
+
+        <hr style="border-color: var(--border); margin: 24px 0;">
+
+        <h3 style="color: var(--text-color); margin-bottom: 4px;">ChatGPT (OpenAI)</h3>
+        <p style="color: var(--muted); font-size: 0.8rem; margin-top: 0;">
+            {% if config.openai_api_key_cifrada %}✅ Clave guardada.{% else %}Sin configurar.{% endif %}
+        </p>
+        <div class="form-group">
+            {{ form.openai_api_key.label_tag }}
+            {{ form.openai_api_key }}
+        </div>
+        <div class="form-group">
+            {{ form.openai_modelo.label_tag }}
+            {{ form.openai_modelo }}
+        </div>
+
+        <hr style="border-color: var(--border); margin: 24px 0;">
+
+        <h3 style="color: var(--text-color); margin-bottom: 4px;">Gemini (Google)</h3>
+        <p style="color: var(--muted); font-size: 0.8rem; margin-top: 0;">
+            {% if config.gemini_api_key_cifrada %}✅ Clave guardada.{% else %}Sin configurar.{% endif %}
+        </p>
+        <div class="form-group">
+            {{ form.gemini_api_key.label_tag }}
+            {{ form.gemini_api_key }}
+        </div>
+        <div class="form-group">
+            {{ form.gemini_modelo.label_tag }}
+            {{ form.gemini_modelo }}
+        </div>
+
+        <div style="margin-top: 28px; display: flex; gap: 12px;">
+            <button type="submit" class="btn btn-primary">Guardar configuración</button>
+            <a href="{% url 'asistente_ia:landing' %}" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+
+</div>
+{% endblock %}

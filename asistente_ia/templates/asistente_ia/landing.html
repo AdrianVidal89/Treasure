@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Asistente IA - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">⚛️ Asistente IA</h1>
+    <p style="color: var(--muted); margin-bottom: 32px;">
+        Un asistente conectado a tus finanzas familiares: cuentas, inversiones, propiedades, ingresos y gastos.
+    </p>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <div class="glass-panel glass-panel--accent" style="--accent: var(--info); padding: 24px; margin-bottom: 32px;">
+        <h2 style="color: var(--text-color); margin: 0 0 6px;">🔌 Estado de conexión</h2>
+        {% if config.esta_configurada %}
+            <p style="color: var(--success); margin: 0 0 12px;">
+                ✅ Conectado a {{ config.get_proveedor_activo_display }} ({{ config.modelo_activo }})
+            </p>
+        {% else %}
+            <p style="color: var(--warning); margin: 0 0 12px;">
+                ⚠️ Todavía no hay ningún proveedor de IA conectado.
+            </p>
+        {% endif %}
+        {% if es_admin %}
+            <a href="{% url 'asistente_ia:configuracion' %}" class="btn btn-primary">⚙️ Configurar proveedores</a>
+        {% else %}
+            <p style="color: var(--muted); font-size: 0.85rem;">Solo el administrador del hogar puede configurar los proveedores de IA.</p>
+        {% endif %}
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+        <h2 style="color: var(--text-color); margin: 0;">🤖 Agentes</h2>
+        <a href="{% url 'asistente_ia:crear_agente' %}" class="btn btn-primary">➕ Crear agente</a>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-bottom: 32px;">
+        {% for agente in agentes %}
+        <div style="background-color: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px;">
+            <div style="font-weight: 700; color: var(--primary-color); margin-bottom: 4px;">
+                {% if agente.es_predeterminado %}⭐ {% endif %}{{ agente.nombre }}
+            </div>
+            <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 12px;">{{ agente.descripcion }}</div>
+            <button type="button" class="btn btn-primary ia-chat-abrir-agente" data-agente-id="{{ agente.id }}" data-agente-nombre="{{ agente.nombre }}">
+                💬 Iniciar chat
+            </button>
+        </div>
+        {% empty %}
+        <p style="color: var(--muted); font-style: italic;">No hay agentes todavía.</p>
+        {% endfor %}
+    </div>
+
+    <a href="{% url 'asistente_ia:listar_agentes' %}" class="btn btn-secondary">Gestionar todos los agentes</a>
+
+</div>
+{% endblock %}

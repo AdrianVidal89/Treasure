@@ -8,6 +8,7 @@ urlpatterns = [
     path('core/', include('core.urls')),
     path('finanzas/', include('finanzas.urls')),
     path('ui/', include('ui.urls')),
+    path('asistente-ia/', include('asistente_ia.urls')),
     path('exportador/', include('exportador.urls')),
     path('integraciones/', include('integraciones.urls')),
 ]
