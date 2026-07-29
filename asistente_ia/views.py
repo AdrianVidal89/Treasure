@@ -9,14 +9,42 @@ from core.mixins import hogar_required
 
 from .acciones import aplicar_accion, extraer_accion_propuesta
 from .contexto import construir_contexto_financiero
-from .forms import AgenteIAForm, ConfiguracionIAForm
+from .forms import AgenteIAForm
 from .models import AccionPropuestaIA, AgenteIA, ConfiguracionIA, ConversacionIA, MensajeIA
-from .providers import ErrorProveedorIA, enviar_mensaje
+from .providers import ErrorProveedorIA, enviar_mensaje, listar_modelos
+
+PROVEEDORES_VALIDOS = {p for p, _ in ConfiguracionIA.PROVEEDOR_CHOICES}
 
 
 def _es_admin(request):
     profile = getattr(request.user, 'userprofile', None)
     return request.user.is_superuser or (profile and profile.es_admin)
+
+
+def _config_admin(request, proveedor=None):
+    """Valida acceso de admin y proveedor para los endpoints de configuración.
+
+    Devuelve (config, None) si todo es correcto, o (None, JsonResponse) con el
+    error a devolver.
+    """
+    if not _es_admin(request):
+        return None, JsonResponse(
+            {'error': 'Solo el administrador del hogar puede configurar la IA.'}, status=403
+        )
+    if proveedor is not None and proveedor not in PROVEEDORES_VALIDOS:
+        return None, JsonResponse({'error': 'Proveedor desconocido.'}, status=404)
+    config, _ = ConfiguracionIA.objects.get_or_create(hogar=request.user.userprofile.hogar)
+    return config, None
+
+
+def _estado_proveedor(config, proveedor):
+    return {
+        'proveedor': proveedor,
+        'conectado': config.tiene_proveedor_configurado(proveedor),
+        'clave_enmascarada': config.get_api_key_enmascarada(proveedor),
+        'modelo': config.get_modelo(proveedor),
+        'activo': config.proveedor_activo == proveedor,
+    }
 
 
 # ─── Páginas ──────────────────────────────────────────────────────────────
@@ -44,18 +72,141 @@ def configuracion(request):
 
     config, _ = ConfiguracionIA.objects.get_or_create(hogar=profile.hogar)
 
-    if request.method == 'POST':
-        form = ConfiguracionIAForm(request.POST, instance=config)
-        if form.is_valid():
-            config = form.save(commit=False)
-            config.actualizado_por = request.user
-            config.save()
-            messages.success(request, "Configuración de IA guardada correctamente.")
-            return redirect('asistente_ia:landing')
-    else:
-        form = ConfiguracionIAForm(instance=config)
+    proveedores = [
+        {
+            'id': identificador,
+            'etiqueta': etiqueta,
+            'ayuda': AYUDA_PROVEEDOR[identificador],
+            **_estado_proveedor(config, identificador),
+        }
+        for identificador, etiqueta in ConfiguracionIA.PROVEEDOR_CHOICES
+    ]
+    return render(request, 'asistente_ia/configuracion.html', {
+        'config': config,
+        'proveedores': proveedores,
+    })
 
-    return render(request, 'asistente_ia/configuracion.html', {'form': form, 'config': config})
+
+AYUDA_PROVEEDOR = {
+    'anthropic': 'Consigue una clave en console.anthropic.com',
+    'openai': 'Consigue una clave en platform.openai.com/api-keys',
+    'gemini': 'Consigue una clave en aistudio.google.com/apikey',
+}
+
+
+# ─── API de configuración de proveedores ─────────────────────────────────
+
+@login_required
+@hogar_required
+def api_guardar_clave(request, proveedor):
+    """Verifica la clave contra el proveedor y, si es válida, la guarda cifrada."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Solicitud inválida.'}, status=400)
+
+    api_key = (data.get('api_key') or '').strip()
+    if not api_key:
+        return JsonResponse({'error': 'Introduce una clave API.'}, status=400)
+
+    # Listar modelos hace de verificación: si la clave no vale, falla aquí y no
+    # llegamos a guardarla.
+    try:
+        modelos = listar_modelos(proveedor, api_key)
+    except ErrorProveedorIA as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+    config.set_api_key(proveedor, api_key)
+    # Si el modelo guardado ya no existe para esta clave, escogemos el primero
+    # disponible para evitar errores 404 al chatear.
+    ids_disponibles = [m['id'] for m in modelos]
+    if modelos and config.get_modelo(proveedor) not in ids_disponibles:
+        setattr(config, f'{proveedor}_modelo', ids_disponibles[0])
+    if not config.proveedor_activo:
+        config.proveedor_activo = proveedor
+    config.actualizado_por = request.user
+    config.save()
+
+    return JsonResponse({
+        'ok': True,
+        'modelos': modelos,
+        **_estado_proveedor(config, proveedor),
+    })
+
+
+@login_required
+@hogar_required
+def api_listar_modelos(request, proveedor):
+    """Devuelve los modelos disponibles usando la clave ya guardada."""
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    if not config.tiene_proveedor_configurado(proveedor):
+        return JsonResponse({'error': 'Este proveedor no tiene ninguna clave guardada.'}, status=400)
+    try:
+        modelos = listar_modelos(proveedor, config.get_api_key(proveedor))
+    except ErrorProveedorIA as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'modelos': modelos, 'modelo_actual': config.get_modelo(proveedor)})
+
+
+@login_required
+@hogar_required
+def api_guardar_modelo(request, proveedor):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Solicitud inválida.'}, status=400)
+
+    modelo = (data.get('modelo') or '').strip()
+    if not modelo:
+        return JsonResponse({'error': 'Selecciona un modelo.'}, status=400)
+
+    setattr(config, f'{proveedor}_modelo', modelo)
+    config.actualizado_por = request.user
+    config.save()
+    return JsonResponse({'ok': True, **_estado_proveedor(config, proveedor)})
+
+
+@login_required
+@hogar_required
+def api_activar_proveedor(request, proveedor):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    if not config.tiene_proveedor_configurado(proveedor):
+        return JsonResponse({'error': 'Guarda primero una clave para este proveedor.'}, status=400)
+    config.proveedor_activo = proveedor
+    config.actualizado_por = request.user
+    config.save()
+    return JsonResponse({'ok': True, **_estado_proveedor(config, proveedor)})
+
+
+@login_required
+@hogar_required
+def api_desconectar_proveedor(request, proveedor):
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Método no permitido.'}, status=405)
+    config, error = _config_admin(request, proveedor)
+    if error:
+        return error
+    config.desconectar(proveedor)
+    config.actualizado_por = request.user
+    config.save()
+    return JsonResponse({'ok': True, **_estado_proveedor(config, proveedor)})
 
 
 @login_required

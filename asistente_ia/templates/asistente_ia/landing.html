@@ -22,7 +22,8 @@
         <h2 style="color: var(--text-color); margin: 0 0 6px;">🔌 Estado de conexión</h2>
         {% if config.esta_configurada %}
             <p style="color: var(--success); margin: 0 0 12px;">
-                ✅ Conectado a {{ config.get_proveedor_activo_display }} ({{ config.modelo_activo }})
+                ✅ Conectado a {{ config.get_proveedor_activo_display }} —
+                <span style="font-family: ui-monospace, monospace;">{{ config.clave_activa_enmascarada }} · {{ config.modelo_activo }}</span>
             </p>
         {% else %}
             <p style="color: var(--warning); margin: 0 0 12px;">

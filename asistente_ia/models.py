@@ -53,6 +53,19 @@ class ConfiguracionIA(models.Model):
     def tiene_proveedor_configurado(self, proveedor):
         return bool(getattr(self, f'{proveedor}_api_key_cifrada'))
 
+    def get_api_key_enmascarada(self, proveedor):
+        """Devuelve solo los últimos 4 caracteres de la clave, para que el
+        usuario pueda reconocerla sin exponerla nunca entera."""
+        clave = self.get_api_key(proveedor)
+        if not clave:
+            return ''
+        return f'…{clave[-4:]}'
+
+    def desconectar(self, proveedor):
+        setattr(self, f'{proveedor}_api_key_cifrada', None)
+        if self.proveedor_activo == proveedor:
+            self.proveedor_activo = None
+
     @property
     def esta_configurada(self):
         return bool(
@@ -64,6 +77,12 @@ class ConfiguracionIA(models.Model):
         if not self.proveedor_activo:
             return ''
         return self.get_modelo(self.proveedor_activo)
+
+    @property
+    def clave_activa_enmascarada(self):
+        if not self.proveedor_activo:
+            return ''
+        return self.get_api_key_enmascarada(self.proveedor_activo)
 
 
 class AgenteIA(models.Model):
