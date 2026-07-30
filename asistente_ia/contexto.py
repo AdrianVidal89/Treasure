@@ -18,6 +18,7 @@ from finanzas.models import (
 MAX_CATEGORIAS_DETALLADAS = 12
 MAX_FONDOS_DETALLADOS = 12
 MAX_PROPIEDADES_DETALLADAS = 12
+MAX_PARTIDAS_DETALLADAS = 10
 
 
 def construir_contexto_financiero(hogar):
@@ -44,20 +45,31 @@ def construir_contexto_financiero(hogar):
         total_valor = sum((inv.valor_total_actual or 0) for inv in inversiones)
         partes.append(f"- Inversiones: {inversiones.count()} activos, valor total aprox. {total_valor}.")
 
-    fuentes = FuenteIngreso.objects.filter(hogar=hogar, activo=True)
-    if fuentes.exists():
+    fuentes = list(FuenteIngreso.objects.filter(hogar=hogar, activo=True).select_related('usuario'))
+    if fuentes:
         total_mensual = sum(f.importe_mensual_ponderado for f in fuentes)
-        partes.append(f"- Fuentes de ingreso activas: {fuentes.count()}, ~{total_mensual}/mes ponderado.")
+        partes.append(f"- Fuentes de ingreso activas ({len(fuentes)}, ~{total_mensual}/mes ponderado):")
+        for f in fuentes[:MAX_PARTIDAS_DETALLADAS]:
+            titular = f.usuario.first_name or f.usuario.username
+            partes.append(
+                f"    · {f.nombre} ({titular}): ~{f.importe_mensual_ponderado}/mes ({f.get_tipo_display()})"
+            )
 
     categorias = list(CategoriaGasto.objects.filter(hogar=hogar, activo=True))
     for categoria in categorias[:MAX_CATEGORIAS_DETALLADAS]:
-        partidas = PartidaGasto.objects.filter(categoria=categoria, activo=True)
-        if partidas.exists():
+        partidas = list(PartidaGasto.objects.filter(categoria=categoria, activo=True))
+        if partidas:
             total_categoria = sum(p.importe_mensual for p in partidas)
             partes.append(
                 f"- Gastos '{categoria.nombre}' ({categoria.get_tipo_display()}): "
-                f"{partidas.count()} partidas, ~{total_categoria}/mes."
+                f"{len(partidas)} partidas, ~{total_categoria}/mes."
             )
+            # Detalle por partida: así preguntas como "¿cuánto gasto en X?" se
+            # responden desde el resumen, sin encadenar consultas (más rápido).
+            for p in partidas[:MAX_PARTIDAS_DETALLADAS]:
+                partes.append(f"    · {p.nombre}: ~{p.importe_mensual}/mes ({p.get_periodicidad_display()})")
+            if len(partidas) > MAX_PARTIDAS_DETALLADAS:
+                partes.append(f"    · … y {len(partidas) - MAX_PARTIDAS_DETALLADAS} partidas más (usa query).")
     if len(categorias) > MAX_CATEGORIAS_DETALLADAS:
         restantes = len(categorias) - MAX_CATEGORIAS_DETALLADAS
         partes.append(

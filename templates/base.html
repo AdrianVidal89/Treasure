@@ -393,6 +393,16 @@
             return el;
         }
 
+        function renderThinking() {
+            var el = document.createElement("div");
+            el.className = "ia-chat-thinking";
+            el.setAttribute("aria-label", "El asistente está pensando");
+            el.innerHTML = "<span></span><span></span><span></span>";
+            transcript.appendChild(el);
+            el.scrollIntoView({block: "end"});
+            return el;
+        }
+
         function cargarConversacion(convId) {
             transcript.innerHTML = "";
             proposalSlot.innerHTML = "";
@@ -503,7 +513,7 @@
 
         function enviarMensaje(convId, texto) {
             renderMensaje("user", texto);
-            var indicador = renderPaso("Pensando…");
+            var indicador = renderThinking();
 
             fetch("/asistente-ia/api/conversaciones/" + convId + "/mensajes/", {
                 method: "POST",

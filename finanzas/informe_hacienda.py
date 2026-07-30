@@ -1,15 +1,15 @@
 """Informe de plusvalías para Hacienda.
 
 Para un año fiscal dado, recorre todas las inversiones del hogar y calcula, por
-cada VENTA, la ganancia o pérdida patrimonial materializada, usando el método de
-**coste medio ponderado** (AVCO móvil): cada venta se valora al precio medio de
-compra vigente en ese momento, y las unidades vendidas se retiran del pool (de
-modo que el precio medio no cambia al vender, solo al comprar).
+cada VENTA, la ganancia o pérdida patrimonial materializada usando el criterio
+**FIFO** (primero en entrar, primero en salir), que es el que exige la Agencia
+Tributaria para valores homogéneos: cada venta consume primero las unidades
+compradas más antiguas. El valor de adquisición incluye las comisiones de compra
+(prorrateadas por unidad) y el valor de transmisión descuenta la comisión de la
+venta, tal como establece la normativa del IRPF.
 
-Nota fiscal: para valores homogéneos, la Agencia Tributaria aplica por defecto el
-criterio FIFO (primero en entrar, primero en salir). Este informe usa coste medio
-ponderado —coherente con el resto de la app— por lo que debe tomarse como una
-estimación orientativa; conviene contrastarlo con un asesor antes de declarar.
+Es una herramienta de apoyo para declarar sin trampas; aun así, conviene
+contrastar las cifras con un asesor antes de presentar la declaración.
 """
 from decimal import Decimal
 
@@ -63,25 +63,36 @@ def calcular_informe_ventas(hogar, anio):
         ]
         movimientos.sort(key=lambda m: (m.fecha, m.id))
 
-        total_invertido = Decimal('0')
-        total_unidades = Decimal('0')
+        # Cola FIFO de lotes de compra pendientes de vender. Cada lote guarda su
+        # precio y la comisión de compra prorrateada por unidad, para incluirla
+        # en el valor de adquisición.
+        lotes = []
         for m in movimientos:
             if m.tipo == 'COMPRA':
-                total_invertido += m.cantidad * m.precio_unitario
-                total_unidades += m.cantidad
+                comision_unit = (m.comision / m.cantidad) if m.cantidad else Decimal('0')
+                lotes.append({
+                    'cantidad': m.cantidad,
+                    'precio': m.precio_unitario,
+                    'comision_unit': comision_unit,
+                })
                 continue
 
-            # VENTA: se valora al PMC vigente y se retiran las unidades del pool.
-            pmc = round(total_invertido / total_unidades, 8) if total_unidades > 0 else Decimal('0')
-            coste = round(pmc * m.cantidad, 2)
-            importe_venta = round(m.precio_unitario * m.cantidad, 2)
-            ganancia = round(importe_venta - coste - m.comision, 2)
+            # VENTA: consume los lotes más antiguos primero (FIFO).
+            unidades_restantes = m.cantidad
+            coste = Decimal('0')
+            while unidades_restantes > 0 and lotes:
+                lote = lotes[0]
+                consumidas = min(unidades_restantes, lote['cantidad'])
+                coste += consumidas * lote['precio'] + consumidas * lote['comision_unit']
+                lote['cantidad'] -= consumidas
+                unidades_restantes -= consumidas
+                if lote['cantidad'] <= 0:
+                    lotes.pop(0)
 
-            total_invertido -= pmc * m.cantidad
-            total_unidades -= m.cantidad
-            if total_unidades < 0:
-                total_unidades = Decimal('0')
-                total_invertido = Decimal('0')
+            coste = round(coste, 2)
+            importe_venta = round(m.precio_unitario * m.cantidad, 2)
+            # Valor de transmisión = importe − comisión de venta.
+            ganancia = round(importe_venta - m.comision - coste, 2)
 
             if m.fecha.year == anio:
                 ventas.append({
@@ -94,7 +105,6 @@ def calcular_informe_ventas(hogar, anio):
                     'cantidad': m.cantidad,
                     'precio_venta': m.precio_unitario,
                     'importe_venta': importe_venta,
-                    'pmc': pmc,
                     'coste_adquisicion': coste,
                     'comision': m.comision,
                     'ganancia': ganancia,

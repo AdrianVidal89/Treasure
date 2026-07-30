@@ -26,8 +26,9 @@ COMO_DECLARAR = [
     "queda saldo negativo, puede compensarse en los 4 años siguientes.",
     "Sobre la ganancia neta se aplican los tramos de la base del ahorro (19 % / 21 % / "
     "23 % / 27 % / 28 %). La cuota mostrada es una ESTIMACIÓN orientativa.",
-    "Este informe usa coste medio ponderado; Hacienda aplica FIFO para valores "
-    "homogéneos. Contrasta las cifras con tu asesor antes de presentar la declaración.",
+    "Este informe aplica el criterio FIFO (primero en entrar, primero en salir) que "
+    "exige Hacienda para valores homogéneos, incluyendo las comisiones de compra en el "
+    "valor de adquisición. Contrasta las cifras con tu asesor antes de presentarlas.",
 ]
 
 
@@ -101,7 +102,7 @@ def informe_hacienda_xlsx(request):
     columnas = [
         ('Fecha venta', 14), ('Activo', 26), ('Ticker', 12), ('Tipo', 12),
         ('Titular', 14), ('Cantidad', 14), ('Precio venta', 14),
-        ('Importe venta', 15), ('Coste (PMC)', 15), ('Comisión', 12),
+        ('Importe venta', 15), ('Coste (FIFO)', 15), ('Comisión', 12),
         ('Ganancia/Pérdida', 17),
     ]
     fila_encabezado = 3
@@ -215,7 +216,7 @@ def informe_hacienda_pdf(request):
 
     if informe['ventas']:
         cabecera = ['Fecha', 'Activo', 'Ticker', 'Titular', 'Cant.', 'P. venta',
-                    'Importe', 'Coste (PMC)', 'Comisión', 'Ganancia/Pérdida']
+                    'Importe', 'Coste (FIFO)', 'Comisión', 'Ganancia/Pérdida']
         filas = [cabecera]
         for v in informe['ventas']:
             filas.append([
