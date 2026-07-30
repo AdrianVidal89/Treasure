@@ -7,6 +7,7 @@ from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 from . import views_evolucion
 from . import views_simuladores
 from . import views_propiedades
+from . import views_hacienda
 
 app_name = 'finanzas'
 
@@ -41,6 +42,9 @@ urlpatterns = [
     path('inversiones/actualizar-precios/', views.actualizar_precios_inversiones, name='actualizar_precios'),
     path('inversiones/importar-csv/', views.importar_movimientos_csv, name='importar_csv'),
     path('inversiones/movimiento/<int:pk>/editar/', views.MovimientoUpdateView.as_view(), name='editar_movimiento'),
+    path('inversiones/informe-hacienda/', views_hacienda.informe_hacienda, name='informe_hacienda'),
+    path('inversiones/informe-hacienda/pdf/', views_hacienda.informe_hacienda_pdf, name='informe_hacienda_pdf'),
+    path('inversiones/informe-hacienda/xlsx/', views_hacienda.informe_hacienda_xlsx, name='informe_hacienda_xlsx'),
 
 
     # ── Ingresos ───────────────────────────────────────────────────────────

@@ -51,17 +51,21 @@ def _saldos_liquidez_patrimonio(saldos_qs, hogar=None):
 
     return liquidez, patrimonio
 
-def _calcular_resumen(hogar, año):
+def _flujos_por_mes(hogar, año):
+    """Calcula (una sola vez) el motor de distribución para los 12 meses.
+    Se reutiliza tanto para el resumen como para el ingreso derivado de cada
+    fila, evitando recalcular calcular_flujos por duplicado."""
+    return {mes: calcular_flujos(hogar, mes=mes, anio=año) for mes in range(1, 13)}
+
+
+def _calcular_resumen(hogar, año, flujos_por_mes):
     hoy = datetime.date.today()
-    
-    # Iteramos siempre los 12 meses para el esperado anual
-    meses_totales = range(1, 13)
 
     # --- Esperado según presupuesto (motor de distribución) ---
     ahorro_esperado_acum = Decimal('0')
     inversion_esperada_acum = Decimal('0')
-    for mes in meses_totales:
-        d = calcular_flujos(hogar, mes=mes, anio=año)
+    for mes in range(1, 13):
+        d = flujos_por_mes[mes]
         ahorro_esperado_acum += d['total_ahorro']
         inversion_esperada_acum += d['total_inversion']
 
@@ -105,7 +109,7 @@ def _calcular_resumen(hogar, año):
     }
 
 
-def _construir_tabla(hogar, año):
+def _construir_tabla(hogar, año, flujos_por_mes):
     fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True).order_by('orden', 'nombre'))
     hoy = datetime.date.today()
     meses_mostrados = list(range(1, min(hoy.month + 1, 13))) if año == hoy.year else list(range(1, 13))
@@ -114,11 +118,6 @@ def _construir_tabla(hogar, año):
         fondo__hogar=hogar, año=año
     ).select_related('fondo')
     saldos_map = {(s.fondo_id, s.mes): s for s in saldos_qs}
-
-    ingresos_map = {
-        ir.mes: ir
-        for ir in IngresoRealMes.objects.filter(hogar=hogar, año=año)
-    }
 
     filas = []
     prev_liquidez = None
@@ -138,7 +137,9 @@ def _construir_tabla(hogar, año):
                     liquidez_mes += sr.saldo
                 patrimonio_mes += sr.saldo
 
-        ingreso_real = ingresos_map.get(mes)
+        # El ingreso del mes se DERIVA de Distribución (suma de ingresos reales
+        # del mes, con los ajustes aplicados allí), no se introduce a mano.
+        ingreso_mes = flujos_por_mes[mes]['ingreso_base_hogar']
 
         if prev_liquidez is not None and liquidez_mes > 0:
             ahorro_neto = liquidez_mes - prev_liquidez
@@ -152,7 +153,7 @@ def _construir_tabla(hogar, año):
             'mes': mes,
             'mes_nombre': MESES_NOMBRES[mes],
             'celdas': celdas_fondos,
-            'ingreso_real': ingreso_real,
+            'ingreso_mes': ingreso_mes if ingreso_mes and ingreso_mes > 0 else None,
             'liquidez': liquidez_mes if liquidez_mes > 0 else None,
             'patrimonio': patrimonio_mes if patrimonio_mes > 0 else None,
             'ahorro_neto': ahorro_neto,
@@ -160,6 +161,38 @@ def _construir_tabla(hogar, año):
 
     filas.reverse()
     return fondos, filas
+
+
+def _estado_json(resumen, filas):
+    """Serializa el estado recalculado para refrescar la vista sin recargar."""
+    def f(valor):
+        return float(valor) if valor is not None else None
+
+    return {
+        'resumen': {
+            'liquidez_actual': f(resumen['liquidez_actual']),
+            'patrimonio_financiero_actual': f(resumen['patrimonio_financiero_actual']),
+            'crecimiento_liquidez_ytd': f(resumen['crecimiento_liquidez_ytd']),
+            'crecimiento_patrimonio_ytd': f(resumen['crecimiento_patrimonio_ytd']),
+            'tiene_enero': resumen['tiene_enero'],
+        },
+        'meses': {
+            fila['mes']: {
+                'liquidez': f(fila['liquidez']),
+                'patrimonio': f(fila['patrimonio']),
+                'ahorro_neto': f(fila['ahorro_neto']),
+                'ingreso': f(fila['ingreso_mes']),
+            }
+            for fila in filas
+        },
+    }
+
+
+def _calcular_estado_json(hogar, año):
+    flujos_por_mes = _flujos_por_mes(hogar, año)
+    resumen = _calcular_resumen(hogar, año, flujos_por_mes)
+    _, filas = _construir_tabla(hogar, año, flujos_por_mes)
+    return _estado_json(resumen, filas)
 
 
 def _construir_tabla_propiedades(hogar, año):
@@ -214,8 +247,9 @@ def vista_evolucion(request):
     except (ValueError, TypeError):
         año = hoy.year
 
-    resumen = _calcular_resumen(hogar, año)
-    fondos, filas = _construir_tabla(hogar, año)
+    flujos_por_mes = _flujos_por_mes(hogar, año)
+    resumen = _calcular_resumen(hogar, año, flujos_por_mes)
+    fondos, filas = _construir_tabla(hogar, año, flujos_por_mes)
     propiedades, filas_propiedades = _construir_tabla_propiedades(hogar, año)
     años_disponibles = [hoy.year - 1, hoy.year, hoy.year + 1]
 
@@ -257,7 +291,7 @@ def registrar_saldo_fondo(request):
         if not saldo_raw:
             SaldoRealFondo.objects.filter(fondo=fondo, año=año, mes=mes).delete()
             if es_ajax:
-                return JsonResponse({'ok': True, 'valor': None})
+                return JsonResponse({'ok': True, 'valor': None, 'estado': _calcular_estado_json(hogar, año)})
             messages.success(request, f"Saldo de '{fondo.nombre}' eliminado.")
         else:
             from decimal import InvalidOperation
@@ -275,7 +309,7 @@ def registrar_saldo_fondo(request):
                 defaults={'saldo': saldo, 'nota': nota},
             )
             if es_ajax:
-                return JsonResponse({'ok': True, 'valor': float(saldo)})
+                return JsonResponse({'ok': True, 'valor': float(saldo), 'estado': _calcular_estado_json(hogar, año)})
             accion = 'registrado' if created else 'actualizado'
             messages.success(request, f"'{fondo.nombre}' {mes}/{año}: €{saldo} {accion}.")
 

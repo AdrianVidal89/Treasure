@@ -143,11 +143,12 @@
         <div class="glass-panel glass-panel--accent resumen-card" style="--accent: var(--info);">
             <div class="stat-tile">
                 <span class="stat-tile-label">Liquidez actual</span>
-                <span class="stat-tile-valor" style="color: var(--info);">€{{ resumen.liquidez_actual|floatformat:0 }}</span>
+                <span class="stat-tile-valor js-res-liquidez" style="color: var(--info);">€{{ resumen.liquidez_actual|floatformat:0 }}</span>
             </div>
             <div class="sub">Cuentas corrientes + ahorro</div>
 
-            <div class="crecimiento {% if resumen.crecimiento_liquidez_ytd >= 0 %}pos{% else %}neg{% endif %}">
+            <div class="crecimiento js-res-liquidez-ytd {% if resumen.crecimiento_liquidez_ytd >= 0 %}pos{% else %}neg{% endif %}"
+                 {% if not resumen.tiene_enero %}style="display:none;"{% endif %}>
                 {% if resumen.crecimiento_liquidez_ytd >= 0 %}▲{% else %}▼{% endif %}
                 €{{ resumen.crecimiento_liquidez_ytd|floatformat:0 }} YTD
             </div>
@@ -157,11 +158,12 @@
         <div class="glass-panel glass-panel--accent resumen-card" style="--accent: var(--primary-color);">
             <div class="stat-tile">
                 <span class="stat-tile-label">Patrimonio Financiero</span>
-                <span class="stat-tile-valor" style="color: var(--primary-color);">€{{ resumen.patrimonio_financiero_actual|floatformat:0 }}</span>
+                <span class="stat-tile-valor js-res-patrimonio" style="color: var(--primary-color);">€{{ resumen.patrimonio_financiero_actual|floatformat:0 }}</span>
             </div>
             <div class="sub">Liquidez + fondos de inversión</div>
 
-            <div class="crecimiento {% if resumen.crecimiento_patrimonio_ytd >= 0 %}pos{% else %}neg{% endif %}">
+            <div class="crecimiento js-res-patrimonio-ytd {% if resumen.crecimiento_patrimonio_ytd >= 0 %}pos{% else %}neg{% endif %}"
+                 {% if not resumen.tiene_enero %}style="display:none;"{% endif %}>
                 {% if resumen.crecimiento_patrimonio_ytd >= 0 %}▲{% else %}▼{% endif %}
                 €{{ resumen.crecimiento_patrimonio_ytd|floatformat:0 }} YTD
             </div>
@@ -173,19 +175,19 @@
     <!-- TARJETAS MENSUALES (acordeón, un fondo/depósito por fila, clic para editar) -->
     <div class="evo-months-list">
         {% for fila in filas %}
-        <details class="glass-panel evo-month-card" {% if forloop.first %}open{% endif %}>
+        <details class="glass-panel evo-month-card" data-mes="{{ fila.mes }}" {% if forloop.first %}open{% endif %}>
             <summary>
                 <span class="evo-month-name">{{ fila.mes_nombre }} {{ año_actual }}</span>
                 <div class="evo-month-stats">
                     <div class="evo-month-stat">
                         <span class="lbl">Ingresos</span>
-                        <span class="val" style="color: var(--warning);">
-                            {% if fila.ingreso_real %}€{{ fila.ingreso_real.importe|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                        <span class="val js-mes-ingresos" style="color: var(--warning);">
+                            {% if fila.ingreso_mes %}€{{ fila.ingreso_mes|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
                         </span>
                     </div>
                     <div class="evo-month-stat">
                         <span class="lbl">Ahorro neto</span>
-                        <span class="val {% if fila.ahorro_neto is not None %}{% if fila.ahorro_neto >= 0 %}pos{% else %}neg{% endif %}{% endif %}">
+                        <span class="val js-mes-ahorro {% if fila.ahorro_neto is not None %}{% if fila.ahorro_neto >= 0 %}pos{% else %}neg{% endif %}{% endif %}">
                             {% if fila.ahorro_neto is not None %}{% if fila.ahorro_neto >= 0 %}+{% endif %}€{{ fila.ahorro_neto|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
                         </span>
                     </div>
@@ -194,23 +196,21 @@
             </summary>
 
             <div class="evo-month-body">
-                <!-- Ingresos del mes (editable) -->
-                <div class="evo-dep-row celda-editable"
-                     data-tipo="ingreso"
-                     data-mes="{{ fila.mes }}"
-                     data-anio="{{ año_actual }}"
-                     data-valor="{% if fila.ingreso_real %}{{ fila.ingreso_real.importe|unlocalize }}{% endif %}"
-                     data-color="var(--warning)"
-                     title="Click para editar">
-                    <span class="dep-row-label">Ingresos netos del mes</span>
-                    <span class="cell-display">
-                        {% if fila.ingreso_real %}
-                            <span class="cell-valor" style="color: var(--warning);">€{{ fila.ingreso_real.importe|floatformat:0 }}</span>
-                        {% else %}
-                            <span class="cell-vacio">—</span>
-                        {% endif %}
+                <!-- Ingresos del mes: derivados de Distribución (enlace, no editable) -->
+                <a class="evo-dep-row"
+                   href="{% url 'finanzas:vista_distribucion' %}?mes={{ fila.mes }}&anio={{ año_actual }}"
+                   style="text-decoration: none;"
+                   title="Los ingresos salen automáticamente de Distribución. Click para ajustarlos allí.">
+                    <span class="dep-row-label">
+                        Ingresos netos del mes
+                        <span class="dep-row-sub">desde Distribución →</span>
                     </span>
-                </div>
+                    <span class="cell-display">
+                        <span class="cell-valor js-mes-ingresos-body" style="color: var(--warning);">
+                            {% if fila.ingreso_mes %}€{{ fila.ingreso_mes|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
+                        </span>
+                    </span>
+                </a>
 
                 <!-- Saldo por fondo/depósito -->
                 <div class="evo-dep-grid">
@@ -245,13 +245,13 @@
                 <div class="evo-month-totals">
                     <div class="stat-tile">
                         <span class="stat-tile-label">Liquidez</span>
-                        <span class="stat-tile-valor" style="color: var(--info);">
+                        <span class="stat-tile-valor js-mes-liquidez" style="color: var(--info);">
                             {% if fila.liquidez %}€{{ fila.liquidez|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
                         </span>
                     </div>
                     <div class="stat-tile">
                         <span class="stat-tile-label">Patrimonio</span>
-                        <span class="stat-tile-valor" style="color: var(--primary-color);">
+                        <span class="stat-tile-valor js-mes-patrimonio" style="color: var(--primary-color);">
                             {% if fila.patrimonio %}€{{ fila.patrimonio|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
                         </span>
                     </div>
@@ -498,11 +498,14 @@ function iniciarEdicion(td) {
         input.disabled = true;
         td.classList.add('celda-guardando');
         guardarValor(td, nuevoValor)
-            .then(() => {
+            .then((data) => {
                 td.classList.remove('celda-guardando');
                 restaurarDisplay(td, nuevoValor);
                 td.classList.add('celda-guardada');
                 setTimeout(() => td.classList.remove('celda-guardada'), 900);
+                // Refresca en el sitio todos los cálculos derivados (ahorro,
+                // liquidez, patrimonio, tarjetas de resumen) sin recargar.
+                if (data && data.estado) refrescarEstado(data.estado);
             })
             .catch(() => {
                 td.classList.remove('celda-guardando');
@@ -529,5 +532,72 @@ function iniciarEdicion(td) {
 document.querySelectorAll('.celda-editable').forEach((td) => {
     td.addEventListener('click', () => iniciarEdicion(td));
 });
+
+/* ============================================================
+   REFRESCO EN VIVO DE LOS CÁLCULOS DERIVADOS
+   Tras guardar un saldo, el servidor devuelve el estado
+   recalculado (ahorro neto de todos los meses, liquidez,
+   patrimonio y tarjetas de resumen). Aquí se vuelca al DOM
+   sin recargar la página.
+   ============================================================ */
+
+function euro0(v) {
+    return '€' + Number(v).toLocaleString('es-ES', { maximumFractionDigits: 0 });
+}
+
+function ponValorOVacio(el, valor) {
+    if (!el) return;
+    if (valor === null || valor === undefined) {
+        el.innerHTML = '<span class="cell-vacio">—</span>';
+    } else {
+        el.textContent = euro0(valor);
+    }
+}
+
+function ponAhorro(el, valor) {
+    if (!el) return;
+    el.classList.remove('pos', 'neg');
+    if (valor === null || valor === undefined) {
+        el.innerHTML = '<span class="cell-vacio">—</span>';
+        return;
+    }
+    const positivo = valor >= 0;
+    el.classList.add(positivo ? 'pos' : 'neg');
+    el.textContent = (positivo ? '+' : '') + euro0(valor);
+}
+
+function ponYtd(el, valor, tieneEnero) {
+    if (!el) return;
+    el.classList.remove('pos', 'neg');
+    if (!tieneEnero || valor === null || valor === undefined) {
+        el.style.display = 'none';
+        return;
+    }
+    el.style.display = '';
+    const positivo = valor >= 0;
+    el.classList.add(positivo ? 'pos' : 'neg');
+    el.textContent = (positivo ? '▲ ' : '▼ ') + euro0(valor) + ' YTD';
+}
+
+function refrescarEstado(estado) {
+    if (!estado) return;
+
+    Object.keys(estado.meses || {}).forEach((mes) => {
+        const m = estado.meses[mes];
+        const card = document.querySelector('.evo-month-card[data-mes="' + mes + '"]');
+        if (!card) return;
+        ponValorOVacio(card.querySelector('.js-mes-liquidez'), m.liquidez);
+        ponValorOVacio(card.querySelector('.js-mes-patrimonio'), m.patrimonio);
+        ponAhorro(card.querySelector('.js-mes-ahorro'), m.ahorro_neto);
+        ponValorOVacio(card.querySelector('.js-mes-ingresos'), m.ingreso);
+        ponValorOVacio(card.querySelector('.js-mes-ingresos-body'), m.ingreso);
+    });
+
+    const r = estado.resumen || {};
+    ponValorOVacio(document.querySelector('.js-res-liquidez'), r.liquidez_actual);
+    ponValorOVacio(document.querySelector('.js-res-patrimonio'), r.patrimonio_financiero_actual);
+    ponYtd(document.querySelector('.js-res-liquidez-ytd'), r.crecimiento_liquidez_ytd, r.tiene_enero);
+    ponYtd(document.querySelector('.js-res-patrimonio-ytd'), r.crecimiento_patrimonio_ytd, r.tiene_enero);
+}
 </script>
 {% endblock %}

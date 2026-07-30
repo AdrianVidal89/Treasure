@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Informe Hacienda - Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-file"/></svg> Informe Hacienda</h1>
+            <div class="page-sub">Plusvalías por ventas de inversiones y cómo declararlas · ejercicio {{ anio_actual }}.</div>
+        </div>
+        <div class="toolbar">
+            <form method="get" style="display:flex; gap:8px; align-items:center;">
+                <label class="text-muted" style="font-size:0.85rem;">Año</label>
+                <select name="anio" onchange="this.form.submit()" class="cyber-select">
+                    {% for a in anios %}
+                    <option value="{{ a }}" {% if a == anio_actual %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            <a href="{% url 'finanzas:informe_hacienda_pdf' %}?anio={{ anio_actual }}" class="btn btn-secondary">
+                <svg class="icon"><use href="#i-download"/></svg> PDF
+            </a>
+            <a href="{% url 'finanzas:informe_hacienda_xlsx' %}?anio={{ anio_actual }}" class="btn btn-primary">
+                <svg class="icon"><use href="#i-download"/></svg> Excel
+            </a>
+        </div>
+    </div>
+
+    <div class="stat-row">
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Ventas del año</span>
+            <span class="stat-tile-valor num">{{ informe.num_ventas }}</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Ganancias</span>
+            <span class="stat-tile-valor num text-positive">{{ informe.ganancias_positivas|floatformat:2 }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Pérdidas</span>
+            <span class="stat-tile-valor num text-negative">{{ informe.perdidas|floatformat:2 }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Ganancia neta declarable</span>
+            <span class="stat-tile-valor num {% if informe.ganancia_neta < 0 %}text-negative{% else %}text-positive{% endif %}">{{ informe.ganancia_neta|floatformat:2 }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Impuesto estimado</span>
+            <span class="stat-tile-valor num">{{ informe.impuesto_estimado|floatformat:2 }} €</span>
+            {% if informe.tipo_efectivo %}<span class="stat-tile-sub">tipo efectivo {{ informe.tipo_efectivo }}%</span>{% endif %}
+        </div>
+    </div>
+
+    {% if informe.ventas %}
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Fecha</th>
+                    <th>Activo</th>
+                    <th>Ticker</th>
+                    <th>Titular</th>
+                    <th class="num">Cantidad</th>
+                    <th class="num">Precio venta</th>
+                    <th class="num">Importe</th>
+                    <th class="num">Coste (PMC)</th>
+                    <th class="num">Comisión</th>
+                    <th class="num">Ganancia/Pérdida</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in informe.ventas %}
+                <tr>
+                    <td class="num">{{ v.fecha|date:"d/m/Y" }}</td>
+                    <td>{{ v.inversion }} <span class="text-muted" style="font-size:0.75rem;">· {{ v.tipo_activo }}</span></td>
+                    <td>{{ v.ticker|default:"—" }}</td>
+                    <td>{{ v.titular }}</td>
+                    <td class="num">{{ v.cantidad|floatformat:"-4" }}</td>
+                    <td class="num">{{ v.precio_venta|floatformat:2 }} €</td>
+                    <td class="num">{{ v.importe_venta|floatformat:2 }} €</td>
+                    <td class="num">{{ v.coste_adquisicion|floatformat:2 }} €</td>
+                    <td class="num text-muted">{{ v.comision|floatformat:2 }} €</td>
+                    <td class="num {% if v.ganancia >= 0 %}text-positive{% else %}text-negative{% endif %}" style="font-weight:650;">{{ v.ganancia|floatformat:2 }} €</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="6" style="text-align:right; font-weight:650;">Totales</td>
+                    <td class="num" style="font-weight:650;">{{ informe.total_importe|floatformat:2 }} €</td>
+                    <td class="num" style="font-weight:650;">{{ informe.total_coste|floatformat:2 }} €</td>
+                    <td class="num" style="font-weight:650;">{{ informe.total_comisiones|floatformat:2 }} €</td>
+                    <td class="num {% if informe.ganancia_neta < 0 %}text-negative{% else %}text-positive{% endif %}" style="font-weight:700;">{{ informe.ganancia_neta|floatformat:2 }} €</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <svg class="icon icon-xl empty-icon"><use href="#i-file"/></svg>
+        <h3>Sin ventas en {{ anio_actual }}</h3>
+        <p>No hay movimientos de venta registrados en este ejercicio. Registra ventas en la cartera de inversiones para que aparezcan aquí.</p>
+        <a href="{% url 'finanzas:listar' %}" class="btn btn-primary"><svg class="icon"><use href="#i-investments"/></svg> Ir a Inversiones</a>
+    </div>
+    {% endif %}
+
+    <div class="section-card" style="margin-top:28px;">
+        <h2><svg class="icon"><use href="#i-info"/></svg> Cómo declararlo a Hacienda</h2>
+        <ul style="margin:12px 0 0; padding-left:20px; line-height:1.7; color:var(--text-color);">
+            {% for punto in como_declarar %}
+            <li style="margin-bottom:8px;">{{ punto }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
