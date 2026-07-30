@@ -25,6 +25,6 @@ urlpatterns = [
     path('api/conversaciones/', views.api_listar_conversaciones, name='api_listar_conversaciones'),
     path('api/conversaciones/nueva/', views.api_crear_conversacion, name='api_crear_conversacion'),
     path('api/conversaciones/<int:conv_id>/mensajes/', views.api_mensajes, name='api_mensajes'),
-    path('api/acciones/<int:accion_id>/confirmar/', views.api_confirmar_accion, name='api_confirmar_accion'),
-    path('api/acciones/<int:accion_id>/rechazar/', views.api_rechazar_accion, name='api_rechazar_accion'),
+    path('api/acciones/<str:accion_id>/confirmar/', views.api_confirmar_accion, name='api_confirmar_accion'),
+    path('api/acciones/<str:accion_id>/rechazar/', views.api_rechazar_accion, name='api_rechazar_accion'),
 ]

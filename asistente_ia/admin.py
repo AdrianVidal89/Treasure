@@ -12,7 +12,7 @@ class ConfiguracionIAAdmin(admin.ModelAdmin):
 
 @admin.register(AgenteIA)
 class AgenteIAAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'hogar', 'es_predeterminado', 'activo')
+    list_display = ('nombre', 'hogar', 'es_predeterminado', 'activo', 'allowed_tools')
     list_filter = ('es_predeterminado', 'activo')
     search_fields = ('nombre',)
 
@@ -31,5 +31,5 @@ class MensajeIAAdmin(admin.ModelAdmin):
 
 @admin.register(AccionPropuestaIA)
 class AccionPropuestaIAAdmin(admin.ModelAdmin):
-    list_display = ('tipo_accion', 'conversacion', 'estado', 'creado_en')
+    list_display = ('tipo_accion', 'conversacion', 'estado', 'creado_en', 'resuelto_en')
     list_filter = ('tipo_accion', 'estado')

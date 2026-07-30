@@ -7,7 +7,7 @@
 <style>
 .form-card {
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-    padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);
+    padding: 32px; box-shadow: 0 1px 2px rgba(28,35,33,.06);
 }
 .form-card .form-group { margin-bottom: 20px; }
 .form-card label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
@@ -20,19 +20,19 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
     background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px;
 }
-.form-card select:focus, .form-card input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 8px var(--glow); }
+.form-card select:focus, .form-card input:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 1px 2px rgba(28,35,33,.06); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .calc-box {
     background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px;
     padding: 14px 16px; margin-bottom: 16px; display: flex; justify-content: space-between;
 }
 .calc-label { color: var(--muted); font-size: 0.85rem; }
-.calc-value { color: #00d1ff; font-weight: 700; font-size: 1rem; }
+.calc-value { color: #2c5f7a; font-weight: 700; font-size: 1rem; }
 </style>
 
 <div class="dashboard-container" style="max-width: 560px;">
 
-    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">&#9998;&#65039; Editar Gasto</h1>
+    <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;"> Editar Gasto</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">{{ hogar.nombre }}</p>
 
     {% if messages %}
@@ -90,9 +90,9 @@
             <div class="form-group">
                 <label>Quien paga este gasto?</label>
                 <select name="responsable_id">
-                    <option value="" {% if not partida.responsable_id %}selected{% endif %}>&#127968; Todo el hogar (compartido)</option>
+                    <option value="" {% if not partida.responsable_id %}selected{% endif %}> Todo el hogar (compartido)</option>
                     {% for miembro in miembros %}
-                    <option value="{{ miembro.user.id }}" {% if partida.responsable_id == miembro.user.id %}selected{% endif %}>&#128100; {{ miembro.user.first_name|default:miembro.user.username }}</option>
+                    <option value="{{ miembro.user.id }}" {% if partida.responsable_id == miembro.user.id %}selected{% endif %}> {{ miembro.user.first_name|default:miembro.user.username }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -115,7 +115,7 @@
             </div>
 
             <div style="display: flex; gap: 12px; margin-top: 24px;">
-                <button type="submit" class="btn btn-primary">&#128190; Guardar cambios</button>
+                <button type="submit" class="btn btn-primary"> Guardar cambios</button>
                 <a href="{% url 'finanzas:listar_gastos' %}" class="btn btn-secondary">Cancelar</a>
             </div>
         </form>

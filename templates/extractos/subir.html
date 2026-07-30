@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Importar extracto · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel" style="max-width:720px;">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-upload"/></svg> Importar extracto</h1>
+            <div class="page-sub">Sube uno o varios CSV. El sistema los leerá, agrupará y categorizará por código.</div>
+        </div>
+        <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" style="display:block;padding:10px 14px;margin-bottom:8px;">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+
+        <div class="form-group">
+            <label for="nombre_banco">Banco (opcional)</label>
+            <input type="text" id="nombre_banco" name="nombre_banco" placeholder="Ej. BBVA, Santander, N26…">
+        </div>
+
+        {% if cuentas %}
+        <div class="form-group">
+            <label for="cuenta">Cuenta asociada (opcional)</label>
+            <select id="cuenta" name="cuenta">
+                <option value="">— Sin asignar —</option>
+                {% for c in cuentas %}
+                <option value="{{ c.id }}">{{ c.nombre }} ({{ c.moneda }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="form-group">
+            <label>Archivos CSV</label>
+            <label class="upload-drop" for="archivos">
+                <svg class="icon icon-xl"><use href="#i-upload"/></svg>
+                <div><strong>Haz clic para seleccionar</strong> uno o varios CSV</div>
+                <div class="upload-hint">Se detectan automáticamente la fecha, el concepto, el importe y el saldo.</div>
+                <div class="upload-file-list" id="file-list"></div>
+            </label>
+            <input type="file" id="archivos" name="archivos" accept=".csv,text/csv" multiple hidden>
+        </div>
+
+        <div class="badge badge-info" style="display:flex;gap:8px;padding:12px 14px;margin-bottom:16px;align-items:flex-start;">
+            <svg class="icon"><use href="#i-info"/></svg>
+            <span>Los movimientos que no se puedan clasificar por código quedarán <strong>sin categorizar</strong>. La categorización con IA se activará más adelante.</span>
+        </div>
+
+        <div class="toolbar">
+            <button type="submit" class="btn btn-primary">
+                <svg class="icon"><use href="#i-check"/></svg> Procesar e importar
+            </button>
+            <button type="button" class="btn btn-secondary" disabled title="Disponible próximamente">
+                <svg class="icon"><use href="#i-ai"/></svg> Categorizar con IA (próximamente)
+            </button>
+        </div>
+    </form>
+</div>
+
+<script>
+(function () {
+    var input = document.getElementById('archivos');
+    var lista = document.getElementById('file-list');
+    if (!input) return;
+    input.addEventListener('change', function () {
+        if (!input.files.length) { lista.textContent = ''; return; }
+        var nombres = Array.prototype.map.call(input.files, function (f) { return f.name; });
+        lista.textContent = nombres.length + ' archivo(s): ' + nombres.join(', ');
+    });
+})();
+</script>
+{% endblock %}

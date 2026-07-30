@@ -12,11 +12,11 @@
     <div style="text-align: center; margin-top: 40px;">
         <button type="button" class="btn btn-primary" onclick="window.location.href='{% url 'dashboard' %}'">Volver al Dashboard Principal</button>
     </div>        
-    <h2 class="section-title">💳 Tarjetas de Crédito</h2>
+    <h2 class="section-title">Tarjetas de Crédito</h2>
     <div class="cuentas-container">
         {% for tarjeta in tarjetas %}
         <div class="cuenta-card">
-            <div class="cuenta-tipo">💳 Tarjeta de Crédito</div>
+            <div class="cuenta-tipo">Tarjeta de Crédito</div>
             <div class="cuenta-nombre">{{ tarjeta.nombre }} {% if tarjeta.entidad %}— {{ tarjeta.entidad }}{% endif %}</div>
             <div class="cuenta-detalle">
                 {% if saldos_tarjetas|get_item:tarjeta.id %}
@@ -35,12 +35,12 @@
         {% endfor %}
     </div>
     
-    <h2 class="section-title">💰 Cuentas Bancarias</h2>
+    <h2 class="section-title">Cuentas Bancarias</h2>
 
     <div class="cuentas-container">
         {% for cuenta in cuentas_bancarias %}
         <div class="cuenta-card">
-            <div class="cuenta-tipo">💼 Cuenta Bancaria</div>
+            <div class="cuenta-tipo">Cuenta Bancaria</div>
             <div class="cuenta-nombre">{{ cuenta.nombre }}</div>
             <div class="cuenta-detalle">
                 {% if saldos|get_item:cuenta.id %}

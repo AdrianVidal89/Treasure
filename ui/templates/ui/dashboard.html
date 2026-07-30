@@ -17,17 +17,17 @@
     color: var(--text-color);
     margin: 0 0 4px;
 }
-.cc-saludo span { color: var(--primary-color); text-shadow: 0 0 10px var(--glow); }
+.cc-saludo span { color: var(--primary-color); }
 .cc-sub { color: var(--muted); font-size: 0.85rem; }
 
 /* ─── Hero: capital líquido total ──────────────────────────────────────── */
 .cc-hero {
-    background: linear-gradient(135deg, rgba(0,209,255,0.10), rgba(162,89,255,0.08));
-    border: 1px solid var(--border-strong);
-    border-radius: 18px;
+    background: var(--accent-soft);
+    border: 1px solid var(--border);
+    border-radius: 16px;
     padding: 26px 28px;
     margin-bottom: 20px;
-    box-shadow: 0 0 28px rgba(0,209,255,0.10);
+    box-shadow: var(--shadow-sm);
 }
 .cc-hero-label {
     font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
@@ -35,7 +35,7 @@
 }
 .cc-hero-value {
     font-size: 2.8rem; font-weight: 800; line-height: 1.05;
-    color: #00d1ff; text-shadow: 0 0 18px rgba(0,209,255,0.35);
+    color: var(--primary-color); font-variant-numeric: tabular-nums;
 }
 .cc-hero-sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
 .cc-hero-net {
@@ -47,7 +47,7 @@
     font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.05em; color: var(--muted);
 }
-.cc-hero-net-value { font-size: 1.25rem; font-weight: 700; color: #e67e22; }
+.cc-hero-net-value { font-size: 1.25rem; font-weight: 700; color: #b7791f; }
 .cc-hero-net-sub { font-size: 0.72rem; color: var(--muted); margin-left: auto; }
 @media (max-width: 600px) {
     .cc-hero-value { font-size: 2.1rem; }
@@ -66,14 +66,14 @@
     width: 10px; height: 10px; border-radius: 50%;
     display: inline-block;
 }
-.cc-semaforo.verde  { background: rgba(0,153,77,0.10); color: #00994d; border: 1px solid rgba(0,153,77,0.35); }
-.cc-semaforo.verde .dot  { background: #00994d; box-shadow: 0 0 5px rgba(0,153,77,0.45); }
-.cc-semaforo.amarillo { background: rgba(255,238,0,0.08); color: #ffee00; border: 1px solid rgba(255,238,0,0.25); }
-.cc-semaforo.amarillo .dot { background: #ffee00; box-shadow: 0 0 6px #ffee00; }
-.cc-semaforo.naranja { background: rgba(255,136,0,0.08); color: #ff8800; border: 1px solid rgba(255,136,0,0.25); }
-.cc-semaforo.naranja .dot { background: #ff8800; box-shadow: 0 0 6px #ff8800; }
-.cc-semaforo.rojo { background: rgba(255,77,77,0.08); color: #ff4d4d; border: 1px solid rgba(255,77,77,0.25); }
-.cc-semaforo.rojo .dot { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
+.cc-semaforo.verde  { background: rgba(45, 106, 79,0.10); color: #2d6a4f; border: 1px solid rgba(45, 106, 79,0.30); }
+.cc-semaforo.verde .dot  { background: #2d6a4f; }
+.cc-semaforo.amarillo { background: rgba(183, 121, 31,0.10); color: #b7791f; border: 1px solid rgba(183, 121, 31,0.28); }
+.cc-semaforo.amarillo .dot { background: #b7791f; }
+.cc-semaforo.naranja { background: rgba(183, 121, 31,0.10); color: #b7791f; border: 1px solid rgba(183, 121, 31,0.28); }
+.cc-semaforo.naranja .dot { background: #b7791f; }
+.cc-semaforo.rojo { background: rgba(180, 68, 46,0.08); color: #b4442e; border: 1px solid rgba(180, 68, 46,0.25); }
+.cc-semaforo.rojo .dot { background: #b4442e; }
 
 /* ─── KPI Strip ────────────────────────────────────────────────────────── */
 .cc-kpis {
@@ -87,7 +87,7 @@
     border: 1px solid var(--border);
     transition: border-color 0.2s, box-shadow 0.2s;
 }
-.cc-kpi:hover { border-color: var(--border-strong); box-shadow: 0 0 12px rgba(162,89,255,0.15); }
+.cc-kpi:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
 .cc-kpi-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
 .cc-kpi-value { font-size: 1.3rem; font-weight: 700; }
 .cc-kpi-sub { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
@@ -125,7 +125,7 @@
     display: flex; align-items: center; gap: 8px;
     font-size: 0.8rem; color: var(--text-color);
     padding: 6px 10px; border-radius: 8px;
-    background: rgba(255,255,255,0.02);
+    background: var(--surface-2);
 }
 .cc-legend-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
 .cc-legend-label { flex: 1; }
@@ -144,12 +144,12 @@
     cursor: pointer; text-decoration: none;
     transition: all 0.25s ease;
     display: block;
-    border-left: 3px solid var(--mod-color, #a259ff);
+    border-left: 3px solid var(--mod-color, #1b4332);
 }
 .cc-mod:hover {
-    border-color: var(--mod-color, #a259ff);
-    box-shadow: 0 0 20px color-mix(in srgb, var(--mod-color) 25%, transparent);
-    transform: translateY(-2px);
+    border-color: var(--mod-color, #1b4332);
+    box-shadow: var(--shadow);
+    transform: translateY(-1px);
 }
 .cc-mod-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .cc-mod-icon { font-size: 1.4rem; }
@@ -171,7 +171,7 @@
 .cc-quick a:hover {
     border-color: var(--primary-color);
     color: var(--primary-color);
-    box-shadow: 0 0 8px var(--glow);
+    background: var(--surface-2);
 }
 
 /* ─── Responsive ───────────────────────────────────────────────────────── */
@@ -214,22 +214,22 @@
     <div class="cc-kpis">
         <div class="cc-kpi">
             <div class="cc-kpi-label">Ingreso neto</div>
-            <div class="cc-kpi-value" style="color: #00ff88;">€{{ flujo.ingreso_base_puro_hogar|floatformat:0 }}</div>
+            <div class="cc-kpi-value" style="color: #2d6a4f;">€{{ flujo.ingreso_base_puro_hogar|floatformat:0 }}</div>
             <div class="cc-kpi-sub">/mes base</div>
         </div>
         <div class="cc-kpi">
             <div class="cc-kpi-label">Gastos</div>
-            <div class="cc-kpi-value" style="color: #ff4d4d;">€{{ flujo.total_gastos_all|floatformat:0 }}</div>
+            <div class="cc-kpi-value" style="color: #b4442e;">€{{ flujo.total_gastos_all|floatformat:0 }}</div>
             <div class="cc-kpi-sub">{{ flujo.pct_gastos }}% del ingreso</div>
         </div>
         <div class="cc-kpi">
             <div class="cc-kpi-label">Ahorro + Inversión</div>
-            <div class="cc-kpi-value" style="color: #00d1ff;">€{{ flujo.total_ahorro|floatformat:0 }}</div>
+            <div class="cc-kpi-value" style="color: #2c5f7a;">€{{ flujo.total_ahorro|floatformat:0 }}</div>
             <div class="cc-kpi-sub">+ €{{ flujo.total_inversion|floatformat:0 }} inversión</div>
         </div>
         <div class="cc-kpi">
             <div class="cc-kpi-label">Libre</div>
-            <div class="cc-kpi-value" style="color: {% if flujo.libre_total >= 0 %}#ffaa00{% else %}#ff4d4d{% endif %};">€{{ flujo.libre_total|floatformat:0 }}</div>
+            <div class="cc-kpi-value" style="color: {% if flujo.libre_total >= 0 %}#b7791f{% else %}#b4442e{% endif %};">€{{ flujo.libre_total|floatformat:0 }}</div>
             <div class="cc-kpi-sub">{{ flujo.pct_libre }}% disponible</div>
         </div>
     </div>

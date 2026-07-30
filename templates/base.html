@@ -4,86 +4,110 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1b4332">
     <title>{% block title %}Treasure{% endblock %}</title>
-    <script>
-        // Aplica el tema antes de pintar para evitar parpadeo (FOUC).
-        // Prioridad: preferencia guardada > preferencia del sistema > oscuro.
-        (function () {
-            try {
-                var saved = localStorage.getItem('theme');
-                var theme = saved
-                    || (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-                document.documentElement.setAttribute('data-theme', theme);
-            } catch (e) {
-                document.documentElement.setAttribute('data-theme', 'dark');
-            }
-        })();
-    </script>
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
 </head>
 <body class="{% block body_class %}{% endblock %}{% if request.user.is_authenticated and not hide_navbar %} has-sidebar{% endif %}">
+
+    {# ── Sprite de iconos SVG (definido una sola vez, reutilizado con <use>) ── #}
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="i-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+        <symbol id="i-income" viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></symbol>
+        <symbol id="i-expense" viewBox="0 0 24 24"><path d="M5 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1V2l-2 1-2-1-2 1-2-1-2 1-2-1z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></symbol>
+        <symbol id="i-investments" viewBox="0 0 24 24"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></symbol>
+        <symbol id="i-properties" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
+        <symbol id="i-distribution" viewBox="0 0 24 24"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></symbol>
+        <symbol id="i-evolution" viewBox="0 0 24 24"><polyline points="3 12 7 12 10 5 14 19 17 12 21 12"/></symbol>
+        <symbol id="i-car" viewBox="0 0 24 24"><path d="M5 13l1.6-4.6A2 2 0 0 1 8.5 7h7a2 2 0 0 1 1.9 1.4L19 13"/><path d="M4 13h16v4H4z"/><circle cx="8" cy="17.5" r="1.4"/><circle cx="16" cy="17.5" r="1.4"/></symbol>
+        <symbol id="i-users" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+        <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+        <symbol id="i-admin" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+        <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/></symbol>
+        <symbol id="i-statements" viewBox="0 0 24 24"><line x1="3" y1="21" x2="21" y2="21"/><path d="M4 10h16"/><path d="M12 3 3 8h18z"/><line x1="6" y1="10" x2="6" y2="18"/><line x1="10" y1="10" x2="10" y2="18"/><line x1="14" y1="10" x2="14" y2="18"/><line x1="18" y1="10" x2="18" y2="18"/></symbol>
+        <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+        <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></symbol>
+        <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+        <symbol id="i-edit" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+        <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+        <symbol id="i-close" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+        <symbol id="i-chevron-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+        <symbol id="i-chevron-down" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></symbol>
+        <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+        <symbol id="i-refresh" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></symbol>
+        <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></symbol>
+        <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+        <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+        <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></symbol>
+    </svg>
+
     {% if request.user.is_authenticated and not hide_navbar %}
     {% with vn=request.resolver_match.view_name %}
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
             <a href="{% url 'dashboard' %}">
-                <img src="{% static 'img/logo_treasure_3.png' %}" class="nav-logo" alt="Treasure Logo">
+                <img src="{% static 'img/logo_treasure_3.png' %}" class="nav-logo" alt="Treasure">
                 <span class="nav-title">Treasure</span>
             </a>
         </div>
 
         <nav class="sidebar-nav">
             <a href="{% url 'dashboard' %}" class="sidebar-link {% if vn == 'dashboard' %}active{% endif %}">
-                <span class="sidebar-link-icon">🏠</span><span>Dashboard</span>
+                <svg class="icon"><use href="#i-dashboard"/></svg><span>Dashboard</span>
             </a>
 
             <div class="sidebar-group">
                 <span class="sidebar-group-label">Gestión</span>
                 <a href="{% url 'finanzas:listar_ingresos' %}" class="sidebar-link {% if vn == 'finanzas:listar_ingresos' %}active{% endif %}">
-                    <span class="sidebar-link-icon">💰</span><span>Ingresos</span>
+                    <svg class="icon"><use href="#i-income"/></svg><span>Ingresos</span>
                 </a>
                 <a href="{% url 'finanzas:listar_gastos' %}" class="sidebar-link {% if vn == 'finanzas:listar_gastos' %}active{% endif %}">
-                    <span class="sidebar-link-icon">📋</span><span>Gastos</span>
+                    <svg class="icon"><use href="#i-expense"/></svg><span>Gastos</span>
                 </a>
                 <a href="{% url 'finanzas:listar' %}" class="sidebar-link {% if vn == 'finanzas:listar' %}active{% endif %}">
-                    <span class="sidebar-link-icon">📊</span><span>Inversiones</span>
+                    <svg class="icon"><use href="#i-investments"/></svg><span>Inversiones</span>
                 </a>
                 <a href="{% url 'finanzas:listar_propiedades' %}" class="sidebar-link {% if vn == 'finanzas:listar_propiedades' %}active{% endif %}">
-                    <span class="sidebar-link-icon">🏡</span><span>Propiedades</span>
+                    <svg class="icon"><use href="#i-properties"/></svg><span>Propiedades</span>
+                </a>
+                <a href="{% url 'extractos:listar' %}" class="sidebar-link {% if vn == 'extractos:listar' or vn == 'extractos:subir' or vn == 'extractos:detalle' or vn == 'extractos:conciliacion' %}active{% endif %}">
+                    <svg class="icon"><use href="#i-statements"/></svg><span>Extractos</span>
                 </a>
             </div>
 
             <div class="sidebar-group">
                 <span class="sidebar-group-label">Análisis</span>
                 <a href="{% url 'finanzas:vista_distribucion' %}" class="sidebar-link {% if vn == 'finanzas:vista_distribucion' %}active{% endif %}">
-                    <span class="sidebar-link-icon">🔀</span><span>Distribución</span>
+                    <svg class="icon"><use href="#i-distribution"/></svg><span>Distribución</span>
                 </a>
                 <a href="{% url 'finanzas:vista_evolucion' %}" class="sidebar-link {% if vn == 'finanzas:vista_evolucion' %}active{% endif %}">
-                    <span class="sidebar-link-icon">📈</span><span>Evolución</span>
+                    <svg class="icon"><use href="#i-evolution"/></svg><span>Evolución</span>
                 </a>
             </div>
 
             <div class="sidebar-group">
                 <span class="sidebar-group-label">Simuladores</span>
                 <a href="{% url 'finanzas:simulador_vivienda' %}" class="sidebar-link {% if vn == 'finanzas:simulador_vivienda' %}active{% endif %}">
-                    <span class="sidebar-link-icon">🏠</span><span>Vivienda</span>
+                    <svg class="icon"><use href="#i-properties"/></svg><span>Vivienda</span>
                 </a>
                 <a href="{% url 'finanzas:simulador_vehiculo' %}" class="sidebar-link {% if vn == 'finanzas:simulador_vehiculo' %}active{% endif %}">
-                    <span class="sidebar-link-icon">🚗</span><span>Vehículo</span>
+                    <svg class="icon"><use href="#i-car"/></svg><span>Vehículo</span>
                 </a>
             </div>
 
             <div class="sidebar-group">
                 <span class="sidebar-group-label">Cuenta</span>
                 <a href="{% url 'mi_hogar' %}" class="sidebar-link {% if vn == 'mi_hogar' %}active{% endif %}">
-                    <span class="sidebar-link-icon">👥</span><span>Mi hogar</span>
+                    <svg class="icon"><use href="#i-users"/></svg><span>Mi hogar</span>
                 </a>
                 <a href="{% url 'editar_perfil' %}" class="sidebar-link {% if vn == 'editar_perfil' %}active{% endif %}">
-                    <span class="sidebar-link-icon">⚙️</span><span>Editar perfil</span>
+                    <svg class="icon"><use href="#i-settings"/></svg><span>Editar perfil</span>
                 </a>
                 {% if request.user.is_superuser or request.user.userprofile.es_admin %}
                 <a href="{% url 'panel_admin' %}" class="sidebar-link {% if vn == 'panel_admin' %}active{% endif %}">
-                    <span class="sidebar-link-icon">🛠️</span><span>Panel Admin</span>
+                    <svg class="icon"><use href="#i-admin"/></svg><span>Panel Admin</span>
                 </a>
                 {% endif %}
             </div>
@@ -91,7 +115,7 @@
             <div class="sidebar-group">
                 <span class="sidebar-group-label">IA</span>
                 <a href="{% url 'asistente_ia:landing' %}" class="sidebar-link {% if vn == 'asistente_ia:landing' %}active{% endif %}">
-                    <span class="sidebar-link-icon">⚛️</span><span>Asistente IA</span>
+                    <svg class="icon"><use href="#i-ai"/></svg><span>Asistente IA</span>
                 </a>
             </div>
         </nav>
@@ -105,14 +129,9 @@
 
         <div class="app-header-spacer"></div>
 
-        <button type="button" class="theme-toggle" aria-label="Cambiar tema" title="Cambiar tema claro/oscuro">
-            <span class="icon-dark" aria-hidden="true">🌙</span>
-            <span class="icon-light" aria-hidden="true">☀️</span>
-        </button>
-
         <div class="nav-bell-wrap">
             <button type="button" class="nav-bell" id="nav-bell-btn" aria-label="Notificaciones" title="Notificaciones">
-                🔔
+                <svg class="icon"><use href="#i-bell"/></svg>
                 <span class="nav-bell-dot" id="nav-bell-dot"></span>
             </button>
             <div class="nav-bell-panel" id="nav-bell-panel">
@@ -128,7 +147,7 @@
 
         <div class="ia-chat-wrap">
             <button type="button" class="ia-chat-toggle" id="ia-chat-toggle-btn" aria-label="Asistente IA" title="Asistente IA">
-                ⚛️
+                <svg class="icon"><use href="#i-ai"/></svg>
             </button>
         </div>
 
@@ -138,20 +157,20 @@
                 <span class="nav-profile-avatar">{{ request.user.first_name|default:request.user.username|slice:":1"|upper }}</span>
             </span>
             <div class="nav-user-menu">
-                <a href="{% url 'dashboard' %}">🏠 Dashboard</a>
-                <a href="{% url 'mi_hogar' %}">👥 Mi hogar</a>
+                <a href="{% url 'dashboard' %}">Dashboard</a>
+                <a href="{% url 'mi_hogar' %}">Mi hogar</a>
                 <a href="{% url 'editar_perfil' %}">Editar perfil</a>
                 {% if request.user.is_superuser or request.user.userprofile.es_admin %}
-                <a href="{% url 'panel_admin' %}">⚙️ Panel Admin</a>
+                <a href="{% url 'panel_admin' %}">Panel Admin</a>
                 {% endif %}
-                <a href="{% url 'logout' %}">Cerrar sesion</a>
+                <a href="{% url 'logout' %}">Cerrar sesión</a>
             </div>
         </div>
     </header>
 
     <div class="ia-chat-panel" id="ia-chat-panel">
         <div class="ia-chat-header">
-            <span>⚛️ Asistente IA</span>
+            <span><svg class="icon"><use href="#i-ai"/></svg> Asistente IA</span>
             <div class="ia-chat-header-actions">
                 <label class="ia-chat-agente-wrap">
                     <span>Agente</span>
@@ -159,13 +178,13 @@
                         <option value="ninguno">Sin agente</option>
                     </select>
                 </label>
-                <button type="button" id="ia-chat-nueva" title="Nueva conversación">＋ Nueva</button>
-                <button type="button" id="ia-chat-minimizar" title="Minimizar">─</button>
+                <button type="button" id="ia-chat-nueva" title="Nueva conversación">Nueva</button>
+                <button type="button" id="ia-chat-minimizar" title="Minimizar">Minimizar</button>
             </div>
         </div>
         <div class="ia-chat-transcript" id="ia-chat-transcript">
             <div class="ia-chat-bubble assistant">
-                👋 Hola, soy tu asistente de finanzas familiares. Pulsa "＋ Nueva" o escribe un mensaje para empezar.
+                Hola, soy tu asistente de finanzas familiares. Pulsa "Nueva" o escribe un mensaje para empezar.
             </div>
         </div>
         <div class="ia-chat-proposal-slot" id="ia-chat-proposal-slot"></div>
@@ -188,17 +207,6 @@
 
     <script>
     document.addEventListener("DOMContentLoaded", function () {
-        // --- Cambio de tema (claro / oscuro) ---
-        const themeToggle = document.querySelector(".theme-toggle");
-        if (themeToggle) {
-            themeToggle.addEventListener("click", function () {
-                const current = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
-                const next = current === "light" ? "dark" : "light";
-                document.documentElement.setAttribute("data-theme", next);
-                try { localStorage.setItem("theme", next); } catch (e) {}
-            });
-        }
-
         // --- Hamburguesa (sidebar off-canvas en móvil) ---
         const navToggle = document.querySelector(".nav-toggle");
         const sidebar = document.querySelector(".sidebar");
@@ -257,18 +265,18 @@
         function renderNotificaciones(items) {
             if (!items || items.length === 0) {
                 bellDot.classList.remove("visible");
-                bellList.innerHTML = '<div class="nav-bell-empty">Sin notificaciones pendientes ✅</div>';
+                bellList.innerHTML = '<div class="nav-bell-empty">Sin notificaciones pendientes</div>';
                 return;
             }
             bellDot.classList.add("visible");
             bellList.innerHTML = items.map(function (a) {
                 return '<div class="nav-bell-item ' + a.tipo + '" data-key="' + a.key + '">' +
-                    '<span class="nav-bell-icon">' + a.icono + '</span>' +
+                    '<span class="nav-bell-icon"><svg class="icon"><use href="#i-info"/></svg></span>' +
                     '<div class="nav-bell-body">' +
                     '<span class="nav-bell-text">' + a.texto + '</span>' +
                     '<div class="nav-bell-actions">' +
-                    '<a href="' + a.link + '" class="nav-bell-action-link">' + a.link_text + ' →</a>' +
-                    '<button class="nav-bell-dismiss" data-key="' + a.key + '" title="Descartar">✕</button>' +
+                    '<a href="' + a.link + '" class="nav-bell-action-link">' + a.link_text + '</a>' +
+                    '<button class="nav-bell-dismiss" data-key="' + a.key + '" title="Descartar">Descartar</button>' +
                     '</div></div></div>';
             }).join("");
 
@@ -366,8 +374,6 @@
         function renderMensaje(rol, texto) {
             var el = document.createElement("div");
             el.className = "ia-chat-bubble " + rol;
-            // Solo las respuestas del asistente se interpretan como Markdown;
-            // lo que escribe el usuario se muestra tal cual.
             if (rol === "assistant" && window.renderMarkdownIA) {
                 el.innerHTML = window.renderMarkdownIA(texto);
             } else {
@@ -397,13 +403,11 @@
                         if (m.rol === "system") renderPaso(m.contenido);
                         else renderMensaje(m.rol, m.contenido);
                     });
-                    // El selector debe reflejar el agente real de esta conversación.
                     selectAgente.value = data.agente_id ? String(data.agente_id) : "ninguno";
                     if (data.accion_propuesta) renderPropuesta(data.accion_propuesta);
                 });
         }
 
-        // ── Selector de agente ────────────────────────────────────────────
         function cargarAgentes(seleccionado) {
             return fetch("/asistente-ia/api/agentes/")
                 .then(function (r) { return r.json(); })
@@ -412,7 +416,7 @@
                     (data.agentes || []).forEach(function (a) {
                         var opt = document.createElement("option");
                         opt.value = a.id;
-                        opt.textContent = a.nombre + (a.es_predeterminado ? " ⭐" : "");
+                        opt.textContent = a.nombre + (a.es_predeterminado ? " (predeterminado)" : "");
                         selectAgente.appendChild(opt);
                     });
                     var estadoActual = leerEstado();
@@ -426,7 +430,6 @@
             var estadoActual = leerEstado();
             estadoActual.agenteId = selectAgente.value;
             guardarEstado(estadoActual);
-            // Si ya hay conversación abierta, se le cambia el agente en caliente.
             if (estadoActual.conversacionId) {
                 fetch("/asistente-ia/api/conversaciones/" + estadoActual.conversacionId + "/agente/", {
                     method: "POST",
@@ -442,8 +445,6 @@
         if (estado.open) {
             panel.classList.add("open");
         }
-        // Primero se puebla el selector; solo después se carga la conversación,
-        // para que al fijar su agente las opciones ya existan.
         cargarAgentes().then(function () {
             var actual = leerEstado();
             if (actual.conversacionId) cargarConversacion(actual.conversacionId);
@@ -510,14 +511,13 @@
                 body: JSON.stringify({mensaje: texto})
             }).then(function (r) { return r.json(); }).then(function (data) {
                 indicador.remove();
-                // Pasos intermedios: consultas a la base de datos o a internet.
                 (data.pasos || []).forEach(renderPaso);
-                if (data.error) { renderMensaje("error", "⚠️ " + data.error); return; }
+                if (data.error) { renderMensaje("error", data.error); return; }
                 renderMensaje("assistant", data.respuesta);
                 if (data.accion_propuesta) renderPropuesta(data.accion_propuesta);
             }).catch(function () {
                 indicador.remove();
-                renderMensaje("error", "⚠️ No se pudo contactar con el asistente.");
+                renderMensaje("error", "No se pudo contactar con el asistente.");
             });
         }
 
@@ -546,8 +546,6 @@
             });
         }
 
-        // Botón "Abrir chat" de la página del Asistente IA: una sola ventana,
-        // el agente se elige dentro con el selector de la cabecera.
         document.querySelectorAll(".ia-chat-abrir").forEach(function (btn) {
             btn.addEventListener("click", function () {
                 estado = leerEstado();

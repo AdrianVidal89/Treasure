@@ -13,6 +13,7 @@ NOMBRE_AGENTE_PREDETERMINADO = 'Gestión Patrimonial'
 def crear_agente_predeterminado(hogar, agente_model):
     """Crea (si no existe) el agente por defecto de un hogar. Reutilizada por la
     migración de datos (hogares existentes) y por la señal post_save (hogares nuevos)."""
+    from .acciones import ACCIONES  # import perezoso: evita ciclo en tiempo de carga de apps
     agente_model.objects.get_or_create(
         hogar=hogar,
         es_predeterminado=True,
@@ -24,5 +25,6 @@ def crear_agente_predeterminado(hogar, agente_model):
             ),
             'instrucciones': INSTRUCCIONES_AGENTE_PREDETERMINADO,
             'activo': True,
+            'allowed_tools': list(ACCIONES),
         },
     )

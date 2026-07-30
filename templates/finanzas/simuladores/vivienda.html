@@ -21,7 +21,7 @@
 .control-label { font-size: 0.82rem; color: var(--muted); }
 .control-value { font-size: 1rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; }
 input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; background: var(--border-strong); border-radius: 3px; outline: none; cursor: pointer; }
-input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-color); cursor: pointer; box-shadow: 0 0 8px var(--glow); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-color); cursor: pointer; box-shadow: 0 1px 2px rgba(28,35,33,.06); }
 
 .ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
 .ctx-item { background: color-mix(in srgb, var(--app-bg) 80%, transparent); border-radius: var(--radius); padding: 12px 14px; }
@@ -63,12 +63,12 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
 <div class="sim-wrap">
     <div class="tab-bar">
-        <a href="{% url 'finanzas:simulador_vivienda' %}" class="active">🏠 Vivienda</a>
-        <a href="{% url 'finanzas:simulador_vehiculo' %}">🚗 Vehículo</a>
+        <a href="{% url 'finanzas:simulador_vivienda' %}" class="active">Vivienda</a>
+        <a href="{% url 'finanzas:simulador_vehiculo' %}">Vehículo</a>
     </div>
 
     <div class="sim-header">
-        <h1><span class="title-gradient">🏠 Simulador de Vivienda</span></h1>
+        <h1><span class="title-gradient">Simulador de Vivienda</span></h1>
         <p>Calcula si puedes permitirte una vivienda usando tus datos financieros reales.</p>
     </div>
 
@@ -76,23 +76,23 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
         <!-- IZQUIERDA: controles -->
         <div>
             <div class="card glass-panel" style="margin-bottom: 20px;">
-                <h2>📊 Tu situación actual</h2>
+                <h2>Tu situación actual</h2>
                 <div class="ctx-grid">
                     <div class="ctx-item">
                         <div class="lbl">Liquidez (cuentas)</div>
-                        <div class="val" style="color:#00d1ff;">€{{ capital_liquidez|floatformat:0 }}</div>
+                        <div class="val" style="color:#2c5f7a;">€{{ capital_liquidez|floatformat:0 }}</div>
                     </div>
                     <div class="ctx-item">
                         <div class="lbl">Inversiones</div>
-                        <div class="val" style="color:#a259ff;">€{{ capital_inversiones|floatformat:0 }}</div>
+                        <div class="val" style="color:#1b4332;">€{{ capital_inversiones|floatformat:0 }}</div>
                     </div>
                     <div class="ctx-item">
                         <div class="lbl">Ingresos recurrentes/mes</div>
-                        <div class="val" style="color:#00ff88;">€{{ ingresos_netos_mensuales|floatformat:0 }}</div>
+                        <div class="val" style="color:#2d6a4f;">€{{ ingresos_netos_mensuales|floatformat:0 }}</div>
                     </div>
                     <div class="ctx-item">
                         <div class="lbl">Libre mensual</div>
-                        <div class="val" style="color:#ffaa00;">€{{ libre_mensual|floatformat:0 }}</div>
+                        <div class="val" style="color:#b7791f;">€{{ libre_mensual|floatformat:0 }}</div>
                     </div>
                 </div>
                 {% if ultimo_mes %}<div style="font-size:0.75rem;color:var(--border-strong);text-align:right;">Datos de {{ ultimo_mes }}/{{ ultimo_anio }}</div>{% endif %}
@@ -100,7 +100,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
             {% if propiedades_data %}
             <div class="card glass-panel" style="margin-bottom: 20px;">
-                <h2>🏡 Incluir venta de propiedad</h2>
+                <h2>Incluir venta de propiedad</h2>
                 <p style="font-size: 0.8rem; color: var(--muted); margin: -10px 0 14px;">Marca las propiedades cuya venta quieras incluir en el capital disponible. Se descuenta la hipoteca, plusvalía IRPF y gastos de venta.</p>
                 <div id="prop-checkboxes">
                     {% for prop in propiedades_data %}
@@ -111,25 +111,25 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                                style="margin-top: 3px; width: 16px; height: 16px; cursor: pointer;">
                         <div style="flex: 1;">
                             <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-color);">{{ prop.nombre }}</div>
-                            <div style="font-size: 0.75rem; color: #00ff88; margin-top: 2px;">Neto libre: €{{ prop.neto|floatformat:0 }}</div>
+                            <div style="font-size: 0.75rem; color: #2d6a4f; margin-top: 2px;">Neto libre: €{{ prop.neto|floatformat:0 }}</div>
                             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 1px;">€{{ prop.valor_actual|floatformat:0 }} − hipoteca €{{ prop.deuda|floatformat:0 }} − plusvalía €{{ prop.plusvalia|floatformat:0 }} − gastos €{{ prop.gastos_venta|floatformat:0 }}</div>
                         </div>
                     </label>
                     {% endfor %}
                 </div>
-                <div id="prop-suma-box" style="display:none; margin-top:12px; background: rgba(0,255,136,0.06); border: 1px solid #00ff8833; border-radius: 10px; padding: 10px 14px; font-size: 0.85rem;">
+                <div id="prop-suma-box" style="display:none; margin-top:12px; background: rgba(45, 106, 79,0.06); border: 1px solid #2d6a4f33; border-radius: 10px; padding: 10px 14px; font-size: 0.85rem;">
                     <span style="color: var(--muted);">Capital extra por ventas:</span>
-                    <span id="prop-suma-val" style="color: #00ff88; font-weight: 700; float: right;">€0</span>
+                    <span id="prop-suma-val" style="color: #2d6a4f; font-weight: 700; float: right;">€0</span>
                 </div>
             </div>
             {% endif %}
 
             <div class="card glass-panel">
-                <h2>⚙️ Parámetros</h2>
+                <h2>Parámetros</h2>
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">💰 Precio de la vivienda</span>
+                        <span class="control-label">Precio de la vivienda</span>
                         <span class="control-value" id="lbl-precio">—</span>
                     </div>
                     <input type="range" id="sl-precio" min="50000" max="1000000" step="5000" value="300000">
@@ -138,7 +138,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">🏦 Entrada (%)</span>
+                        <span class="control-label">Entrada (%)</span>
                         <span class="control-value" id="lbl-entrada-pct">—</span>
                     </div>
                     <input type="range" id="sl-entrada-pct" min="10" max="70" step="1" value="20">
@@ -147,7 +147,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">📈 Tipo de interés anual</span>
+                        <span class="control-label">Tipo de interés anual</span>
                         <span class="control-value" id="lbl-tipo">—</span>
                     </div>
                     <input type="range" id="sl-tipo" min="0.5" max="8" step="0.1" value="3.5">
@@ -156,7 +156,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">📅 Plazo de la hipoteca</span>
+                        <span class="control-label">Plazo de la hipoteca</span>
                         <span class="control-value" id="lbl-plazo">—</span>
                     </div>
                     <input type="range" id="sl-plazo" min="5" max="35" step="1" value="25">
@@ -165,7 +165,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">🛡️ Colchón de emergencia (meses de gastos)</span>
+                        <span class="control-label">Colchón de emergencia (meses de gastos)</span>
                         <span class="control-value" id="lbl-colchon">—</span>
                     </div>
                     <input type="range" id="sl-colchon" min="3" max="12" step="1" value="6">
@@ -174,7 +174,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">📝 Gastos de compra (ITP/notaría...)</span>
+                        <span class="control-label">Gastos de compra (ITP/notaría...)</span>
                         <span class="control-value" id="lbl-gastos-pct">—</span>
                     </div>
                     <input type="range" id="sl-gastos-pct" min="6" max="18" step="0.5" value="11">
@@ -183,11 +183,11 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">⚠️ Máx. % <span id="lbl-base-nombre">libre mensual</span> para hipoteca</span>
+                        <span class="control-label">Máx. % <span id="lbl-base-nombre">libre mensual</span> para hipoteca</span>
                         <span class="control-value" id="lbl-max-pct">—</span>
                     </div>
                     <div style="display:flex;gap:6px;margin-bottom:10px;">
-                        <button id="btn-base-libre"     onclick="setBase('libre')"     style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid #00ff88;background:rgba(0,255,136,.15);color:#00ff88;">Libre mensual</button>
+                        <button id="btn-base-libre"     onclick="setBase('libre')"     style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid #2d6a4f;background:rgba(45, 106, 79,.15);color:#2d6a4f;">Libre mensual</button>
                         <button id="btn-base-ingresos"  onclick="setBase('ingresos')"  style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:var(--app-bg);color:var(--muted);">Ingresos netos</button>
                     </div>
                     <input type="range" id="sl-max-pct" min="20" max="80" step="1" value="35">
@@ -199,16 +199,16 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
         <!-- DERECHA: resultados -->
         <div>
             <div class="card glass-panel">
-                <h2>📋 Resultado del análisis</h2>
+                <h2>Resultado del análisis</h2>
 
                 <div class="result-grid">
                     <div class="result-item">
                         <div class="lbl">Entrada aportada</div>
-                        <div class="val" style="color:#00d1ff;" id="r-entrada">—</div>
+                        <div class="val" style="color:#2c5f7a;" id="r-entrada">—</div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Gastos de compra</div>
-                        <div class="val" style="color:#ffaa00;" id="r-gastos">—</div>
+                        <div class="val" style="color:#b7791f;" id="r-gastos">—</div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Capital total necesario</div>
@@ -216,7 +216,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                     </div>
                     <div class="result-item">
                         <div class="lbl">Capital disponible (tras colchón)</div>
-                        <div class="val" style="color:#00ff88;" id="r-capital-disp">—</div>
+                        <div class="val" style="color:#2d6a4f;" id="r-capital-disp">—</div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Hipoteca</div>
@@ -233,7 +233,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                     </div>
                     <div class="result-item">
                         <div class="lbl">Coste total intereses</div>
-                        <div class="val" style="color:#ff4d4d;" id="r-intereses">—</div>
+                        <div class="val" style="color:#b4442e;" id="r-intereses">—</div>
                     </div>
                 </div>
 
@@ -245,12 +245,12 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                     </div>
                 </div>
 
-                <div id="alerta-capital" style="display:none;margin-top:12px;background:rgba(255,77,77,0.1);border:1px solid #ff4d4d55;border-radius:10px;padding:12px 16px;font-size:0.85rem;color:#ff8888;">
-                    ⚠️ <span id="alerta-capital-txt"></span>
+                <div id="alerta-capital" style="display:none;margin-top:12px;background:rgba(180, 68, 46,0.1);border:1px solid #b4442e55;border-radius:10px;padding:12px 16px;font-size:0.85rem;color:#ff8888;">
+                    <span id="alerta-capital-txt"></span>
                 </div>
 
                 <div class="maximo-box">
-                    <div class="lbl">💡 Precio máximo recomendado</div>
+                    <div class="lbl">Precio máximo recomendado</div>
                     <div class="val" id="r-max-precio">—</div>
                     <div class="sub" id="r-max-sub">Con los parámetros actuales.</div>
                 </div>
@@ -262,7 +262,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                     <div class="desglose-row"><span class="key">Tipo de interés</span><span id="d-tipo">—</span></div>
                     <div class="desglose-row"><span class="key">Cuota mensual</span><span id="d-cuota">—</span></div>
                     <div class="desglose-row"><span class="key">Total pagado</span><span id="d-total">—</span></div>
-                    <div class="desglose-row"><span class="key">Intereses totales</span><span style="color:#ff4d4d;" id="d-int">—</span></div>
+                    <div class="desglose-row"><span class="key">Intereses totales</span><span style="color:#b4442e;" id="d-int">—</span></div>
                 </div>
             </div>
         </div>
@@ -328,8 +328,8 @@ let baseMode = 'libre'; // 'libre' | 'ingresos'
 function setBase(mode) {
     baseMode = mode;
     const S = 'flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;';
-    document.getElementById('btn-base-libre').style.cssText    = S + (mode==='libre'    ? 'border:1px solid #00ff88;background:rgba(0,255,136,.15);color:#00ff88;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
-    document.getElementById('btn-base-ingresos').style.cssText = S + (mode==='ingresos' ? 'border:1px solid #00d1ff;background:rgba(0,209,255,.15);color:#00d1ff;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
+    document.getElementById('btn-base-libre').style.cssText    = S + (mode==='libre'    ? 'border:1px solid #2d6a4f;background:rgba(45, 106, 79,.15);color:#2d6a4f;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
+    document.getElementById('btn-base-ingresos').style.cssText = S + (mode==='ingresos' ? 'border:1px solid #2c5f7a;background:rgba(44, 95, 122,.15);color:#2c5f7a;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
     document.getElementById('lbl-base-nombre').textContent = mode === 'libre' ? 'libre mensual' : 'ingresos netos';
     document.getElementById('lbl-pct-tipo').textContent    = mode === 'libre' ? 'libre' : 'ingresos';
     actualizar();
@@ -392,7 +392,7 @@ function actualizar() {
 
     const pctEl = document.getElementById('r-pct-ing');
     pctEl.textContent = pctBase.toFixed(1) + '%';
-    pctEl.style.color = pctBase < maxIngPct * 0.8 ? '#00ff88' : pctBase < maxIngPct ? '#ffaa00' : '#ff4d4d';
+    pctEl.style.color = pctBase < maxIngPct * 0.8 ? '#2d6a4f' : pctBase < maxIngPct ? '#b7791f' : '#b4442e';
     document.getElementById('r-pct-otro').textContent = baseMode === 'libre'
         ? pctIngresos.toFixed(1) + '% s/ ingresos netos'
         : (LIBRE > 0 ? pctLibre.toFixed(1) + '% s/ libre mensual' : '');
@@ -434,21 +434,21 @@ function actualizar() {
     const baseLabel = baseMode === 'libre' ? 'libre mensual' : 'ingresos netos';
 
     if (!capitalOk && pctBase >= maxIngPct) {
-        sem.classList.add('rojo'); semIcon.textContent = '🚫';
+        sem.classList.add('rojo'); semIcon.textContent = '';
         semTitle.textContent = 'No recomendable';
         semSub.textContent   = 'Capital insuficiente y cuota al ' + pctBase.toFixed(0) + '% del ' + baseLabel + '.';
     } else if (!capitalOk || pctBase >= maxIngPct) {
-        sem.classList.add('rojo'); semIcon.textContent = '❌';
+        sem.classList.add('rojo'); semIcon.textContent = '';
         semTitle.textContent = 'Ajuste necesario';
         semSub.textContent   = !capitalOk
             ? 'No tienes capital suficiente para la entrada y gastos de compra.'
             : 'La cuota (' + pctBase.toFixed(0) + '% del ' + baseLabel + ') supera el límite del ' + maxIngPct + '%.';
     } else if (pctBase >= maxIngPct * 0.8) {
-        sem.classList.add('amarillo'); semIcon.textContent = '⚠️';
+        sem.classList.add('amarillo'); semIcon.textContent = '';
         semTitle.textContent = 'Con precaución';
         semSub.textContent   = 'Cuota al ' + pctBase.toFixed(0) + '% del ' + baseLabel + '. Cerca del límite configurado (' + maxIngPct + '%).';
     } else {
-        sem.classList.add('verde'); semIcon.textContent = '✅';
+        sem.classList.add('verde'); semIcon.textContent = '';
         semTitle.textContent = 'Asequible';
         semSub.textContent   = 'La cuota (' + pctBase.toFixed(0) + '% del ' + baseLabel + ') está dentro de lo recomendado.';
     }

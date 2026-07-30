@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Conciliación · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-distribution"/></svg> Conciliación</h1>
+            <div class="page-sub">Gasto <strong>declarado</strong> frente al <strong>observado</strong> en tus extractos (media mensual sobre {{ num_meses }} mes(es)).</div>
+        </div>
+        <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+    </div>
+
+    {% if not hay_datos %}
+    <div class="empty-state">
+        <svg class="icon icon-xl empty-icon"><use href="#i-distribution"/></svg>
+        <h3>Sin movimientos que conciliar</h3>
+        <p>Importa un extracto bancario para comparar tus gastos reales con lo que has declarado en la sección de Gastos.</p>
+        <a href="{% url 'extractos:subir' %}" class="btn btn-primary"><svg class="icon"><use href="#i-upload"/></svg> Importar CSV</a>
+    </div>
+    {% else %}
+
+    <div class="stat-row">
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Declarado / mes</span>
+            <span class="stat-tile-valor num">{{ total_declarado|floatformat:2|intcomma }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Observado / mes</span>
+            <span class="stat-tile-valor num">{{ total_observado|floatformat:2|intcomma }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Diferencia</span>
+            <span class="stat-tile-valor num {% if total_diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ total_diferencia|floatformat:2|intcomma }} €</span>
+        </div>
+    </div>
+
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Categoría</th>
+                    <th class="num">Declarado / mes</th>
+                    <th class="num">Observado / mes</th>
+                    <th class="num">Diferencia</th>
+                    <th style="width:120px;">Ejecución</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in filas %}
+                <tr>
+                    <td>{{ f.categoria }} <span class="text-muted" style="font-size:0.75rem;">· {{ f.tipo }}</span></td>
+                    <td class="num">{{ f.declarado|floatformat:2|intcomma }} €</td>
+                    <td class="num">{{ f.observado|floatformat:2|intcomma }} €</td>
+                    <td class="num {% if f.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ f.diferencia|floatformat:2|intcomma }} €</td>
+                    <td>
+                        <div class="recon-bar" title="{{ f.pct }}% de lo declarado"><span style="width:{% if f.pct > 100 %}100{% else %}{{ f.pct }}{% endif %}%;{% if f.pct > 100 %}background:var(--danger);{% endif %}"></span></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if sin_categorizar_importe %}
+    <p class="text-muted" style="margin-top:14px;">
+        <svg class="icon"><use href="#i-info"/></svg>
+        Hay <strong>{{ sin_categorizar_importe|floatformat:2|intcomma }} €/mes</strong> en gastos sin categorizar que no se han podido cruzar. La categorización con IA ayudará a asignarlos más adelante.
+    </p>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}

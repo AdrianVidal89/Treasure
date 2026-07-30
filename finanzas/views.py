@@ -16,6 +16,8 @@ from decimal import Decimal, InvalidOperation
 import datetime
 from django.views.generic import UpdateView
 
+from .parsing import parse_decimal, parse_fecha
+
 logger = logging.getLogger(__name__)
 
 from .forms import (
@@ -563,44 +565,8 @@ def importar_movimientos_csv(request):
     ]
 
     # ─── Helpers ────────────────────────────────────────────────────────────
-
-    def parse_decimal(s):
-        """
-        Convierte cadenas como '10.20€', '1,842€', '9,30€', '0.00€', '#N/A' → Decimal o None.
-        Regla de coma:
-          - Si coma con exactamente 3 dígitos tras ella → separador de miles (1,842 → 1842)
-          - En cualquier otro caso → separador decimal (9,30 → 9.30)
-        """
-        if not s:
-            return None
-        s = s.strip()
-        if s.lower() in ('', '#n/a', 'n/a', 'xx.xx€', 'xx.xx', '-', '—'):
-            return None
-        # Eliminar símbolos de moneda y espacios
-        s = s.replace('€', '').replace('$', '').replace(' ', '').strip()
-        if not s:
-            return None
-        if ',' in s and '.' not in s:
-            partes = s.split(',')
-            if len(partes) == 2 and len(partes[1]) == 3 and partes[1].isdigit():
-                s = s.replace(',', '')   # miles: "1,842" → "1842"
-            else:
-                s = s.replace(',', '.')  # decimal europeo: "9,30" → "9.30"
-        elif ',' in s and '.' in s:
-            s = s.replace(',', '')       # "1,842.50" → "1842.50"
-        try:
-            return Decimal(s)
-        except InvalidOperation:
-            return None
-
-    def parse_fecha(s):
-        s = s.strip()
-        for fmt in ('%m/%d/%Y', '%d/%m/%Y', '%Y-%m-%d', '%d-%m-%Y'):
-            try:
-                return datetime.datetime.strptime(s, fmt).date()
-            except ValueError:
-                continue
-        return None
+    # parse_decimal y parse_fecha viven ahora en finanzas.parsing (compartidos
+    # con la importación de extractos bancarios).
 
     def parse_tipo(s):
         s = s.strip().upper()
