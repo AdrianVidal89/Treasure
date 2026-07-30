@@ -1,26 +1,23 @@
-"""Herramientas que el asistente puede usar durante una conversación.
+"""Herramientas de LECTURA que el asistente puede usar durante una conversación.
 
-Son de SOLO LECTURA: consultar la base de datos del hogar, buscar en internet
-y leer una página web. Cualquier escritura sigue pasando por el flujo de
-propuesta → confirmación del usuario definido en `acciones.py`.
-
-Las consultas a la base de datos están siempre acotadas al hogar del usuario:
-cada entidad declara explícitamente cómo se filtra por hogar y no hay forma de
-consultar una entidad que no esté en este registro.
+Todas se construyen sobre el registro de esquema (`registro.py`): no hay
+ninguna tool ad-hoc que consulte un modelo por su cuenta. Se ejecutan de
+forma INMEDIATA dentro del turno — nunca mutan nada, así que no requieren
+confirmación del usuario. Cualquier escritura pasa por `acciones.py`.
 """
 import ipaddress
 import json
 import re
 import socket
-from datetime import date, datetime
-from decimal import Decimal
 from urllib.parse import urlparse, quote_plus
 
 import requests
-from django.apps import apps
+
+from . import registro
 
 MAX_FILAS = 500
 FILAS_POR_DEFECTO = 150
+MAX_FILAS_BUSQUEDA = 60
 MAX_CARACTERES_RESULTADO = 12000
 TIMEOUT_WEB = 15
 MAX_BYTES_PAGINA = 400_000
@@ -30,135 +27,129 @@ class ErrorHerramienta(Exception):
     """Error de una herramienta, apto para devolverse al modelo como resultado."""
 
 
-# ─── Registro de entidades consultables ──────────────────────────────────
-# nombre_expuesto -> (app, modelo, ruta_de_filtrado_por_hogar | None)
-# None = tabla de referencia global (no contiene datos de ningún hogar).
-
-ENTIDADES = {
-    # Núcleo
-    'hogar': ('core', 'Hogar', 'id'),
-    'miembros': ('core', 'UserProfile', 'hogar'),
-
-    # Cuentas, tarjetas y préstamos
-    'cuentas_bancarias': ('finanzas', 'CuentaBancaria', 'usuario__userprofile__hogar'),
-    'saldos_cuentas': ('finanzas', 'SaldoMensualCuenta', 'cuenta__usuario__userprofile__hogar'),
-    'cuentas_credito': ('finanzas', 'CuentaCredito', 'usuario__userprofile__hogar'),
-    'deudas_credito': ('finanzas', 'DeudaMensualCredito', 'cuenta__usuario__userprofile__hogar'),
-    'tarjetas': ('finanzas', 'TarjetaCredito', 'usuario__userprofile__hogar'),
-    'saldos_tarjetas': ('finanzas', 'SaldoMensualTarjeta', 'tarjeta__usuario__userprofile__hogar'),
-    'prestamos': ('finanzas', 'PrestamoSimple', 'usuario__userprofile__hogar'),
-
-    # Inversiones
-    'inversiones': ('finanzas', 'Inversion', 'usuario__userprofile__hogar'),
-    'movimientos_inversion': ('finanzas', 'MovimientoInversion', 'inversion__usuario__userprofile__hogar'),
-    'valores_actuales_inversion': ('finanzas', 'ValorActualInversion', 'inversion__usuario__userprofile__hogar'),
-    'historial_valores_inversion': ('finanzas', 'HistorialValorInversion', 'inversion__usuario__userprofile__hogar'),
-    'resumenes_inversiones': ('finanzas', 'ResumenInversionesMensual', 'usuario__userprofile__hogar'),
-
-    # Ingresos
-    'fuentes_ingreso': ('finanzas', 'FuenteIngreso', 'hogar'),
-    'ajustes_ingreso': ('finanzas', 'AjusteIngresoMensual', 'fuente__hogar'),
-    'ingresos_extraordinarios': ('finanzas', 'IngresoExtraordinario', 'hogar'),
-    'ingresos_reales': ('finanzas', 'IngresoRealMes', 'hogar'),
-    'destinos_ingreso': ('finanzas', 'DestinoIngreso', 'hogar'),
-
-    # Gastos
-    'categorias_gasto': ('finanzas', 'CategoriaGasto', 'hogar'),
-    'partidas_gasto': ('finanzas', 'PartidaGasto', 'hogar'),
-
-    # Distribución
-    'fondos': ('finanzas', 'FondoFamiliar', 'hogar'),
-    'reglas_reparto': ('finanzas', 'ReglaReparto', 'hogar'),
-    'subsobres': ('finanzas', 'SubsobreFondo', 'fondo__hogar'),
-    'saldos_fondos': ('finanzas', 'SaldoRealFondo', 'fondo__hogar'),
-
-    # Patrimonio inmobiliario
-    'propiedades': ('finanzas', 'Propiedad', 'hogar'),
-    'historial_propiedades': ('finanzas', 'HistorialPropiedad', 'propiedad__hogar'),
-
-    # Registros mensuales
-    'registros_mensuales': ('finanzas', 'RegistroMensual', 'usuario__userprofile__hogar'),
-
-    # Extractos bancarios (movimientos observados; la IA los categorizará más adelante)
-    'extractos_bancarios': ('extractos', 'ExtractoBancario', 'hogar'),
-    'movimientos_bancarios': ('extractos', 'MovimientoBancario', 'hogar'),
-
-    # Tablas de referencia (sin datos personales)
-    'tablas_irpf': ('finanzas', 'TablaIRPF', None),
-    'cotizaciones_ss': ('finanzas', 'CotizacionSS', None),
-    'catalogo_tickers': ('finanzas', 'TickerCatalogo', None),
-}
-
-# Campos que nunca se exponen al modelo, aunque pertenezcan al hogar.
-CAMPOS_OCULTOS = {'password', 'api_key', 'avatar'}
+def _clamp_limite(limite, por_defecto=FILAS_POR_DEFECTO, tope=MAX_FILAS):
+    try:
+        return max(1, min(int(limite), tope))
+    except (TypeError, ValueError):
+        return por_defecto
 
 
-def _serializar_valor(valor):
-    if isinstance(valor, Decimal):
-        return float(valor)
-    if isinstance(valor, (datetime, date)):
-        return valor.isoformat()
-    if isinstance(valor, (bytes, memoryview)):
-        return '<binario>'
-    return valor
+# ─── Lectura genérica sobre el registro ────────────────────────────────────
 
+def search(hogar, texto, entidades=None, limite=MAX_FILAS_BUSQUEDA):
+    """Búsqueda de texto libre sobre los campos de texto de las entidades
+    indicadas (o de todas, si no se indica ninguna). Útil cuando no se sabe
+    en qué entidad concreta está lo que se busca."""
+    texto = (texto or '').strip()
+    if not texto:
+        raise ErrorHerramienta('Indica qué texto quieres buscar.')
 
-def _serializar_instancia(obj):
-    fila = {'id': obj.pk}
-    for campo in obj._meta.fields:
-        if campo.name == 'id' or campo.name in CAMPOS_OCULTOS:
+    if entidades:
+        entidades_a_buscar = [e for e in entidades if e in registro.ENTIDADES]
+        if not entidades_a_buscar:
+            raise ErrorHerramienta(
+                f"Ninguna de las entidades indicadas es válida. Disponibles: "
+                f"{', '.join(registro.listar_entidades())}"
+            )
+    else:
+        entidades_a_buscar = registro.listar_entidades()
+
+    limite = _clamp_limite(limite, por_defecto=MAX_FILAS_BUSQUEDA, tope=MAX_FILAS)
+    resultados = []
+    for nombre_entidad in entidades_a_buscar:
+        if len(resultados) >= limite:
+            break
+        modelo, ruta_hogar = registro.obtener_modelo(nombre_entidad)
+        if not registro.campos_texto_de(modelo):
             continue
-        if campo.is_relation:
-            relacionado = getattr(obj, campo.name, None)
-            fila[campo.name] = str(relacionado) if relacionado else None
-            fila[f'{campo.name}_id'] = getattr(obj, f'{campo.name}_id', None)
-        else:
-            fila[campo.name] = _serializar_valor(getattr(obj, campo.name, None))
+        consulta = registro.filtrar_por_hogar(modelo.objects.all(), hogar, ruta_hogar)
+        q = registro.construir_q_texto(modelo, texto)
+        restantes = limite - len(resultados)
+        for obj in consulta.filter(q)[:restantes]:
+            fila = registro.serializar_instancia(obj)
+            fila['_entidad'] = nombre_entidad
+            resultados.append(fila)
+
+    return {'texto': texto, 'devueltas': len(resultados), 'filas': resultados}
+
+
+def get_item(hogar, entidad, id):
+    """Un registro completo por id, incluyendo un adelanto de sus relaciones
+    inversas (movimientos, historial…) para no tener que encadenar `query`."""
+    if id in (None, ''):
+        raise ErrorHerramienta('Indica el id del registro.')
+    modelo, ruta_hogar = registro.obtener_modelo(entidad)
+    consulta = registro.filtrar_por_hogar(modelo.objects.all(), hogar, ruta_hogar)
+    obj = consulta.filter(pk=id).first()
+    if not obj:
+        raise ErrorHerramienta(f"No se encontró '{entidad}' con id {id} en este hogar.")
+
+    fila = registro.serializar_instancia(obj)
+    relaciones = {}
+    for rel in obj._meta.related_objects:
+        if not (rel.one_to_many or rel.one_to_one):
+            continue
+        try:
+            accesor = rel.get_accessor_name()
+            gestor = getattr(obj, accesor, None)
+            if gestor is None or not hasattr(gestor, 'all'):
+                continue
+            filas_rel = [registro.serializar_instancia(o) for o in gestor.all()[:20]]
+            if filas_rel:
+                relaciones[accesor] = {'total': gestor.count(), 'filas': filas_rel}
+        except Exception:
+            continue
+    if relaciones:
+        fila['_relaciones'] = relaciones
     return fila
 
 
-def consultar_datos(hogar, entidad, limite=FILAS_POR_DEFECTO, filtros=None):
-    """Devuelve filas de una entidad del hogar. Solo lectura."""
-    if entidad not in ENTIDADES:
-        raise ErrorHerramienta(
-            f"Entidad '{entidad}' no disponible. Entidades válidas: {', '.join(sorted(ENTIDADES))}"
-        )
-    nombre_app, nombre_modelo, ruta_hogar = ENTIDADES[entidad]
-    modelo = apps.get_model(nombre_app, nombre_modelo)
+def query(hogar, entidad, filtros=None, orden=None, limite=FILAS_POR_DEFECTO):
+    """Consulta estilo ORM: filtros y orden validados contra el esquema
+    permitido (todos los segmentos del lookup, no solo el primero)."""
+    modelo, ruta_hogar = registro.obtener_modelo(entidad)
+    consulta = registro.filtrar_por_hogar(modelo.objects.all(), hogar, ruta_hogar)
 
-    consulta = modelo.objects.all()
-    if ruta_hogar:
-        # Para el propio Hogar el filtro es sobre su clave primaria; para el
-        # resto, sobre la relación que lo enlaza con el hogar.
-        valor = hogar.pk if ruta_hogar in ('id', 'pk') else hogar
-        consulta = consulta.filter(**{ruta_hogar: valor})
-
-    # Filtros extra opcionales, restringidos a campos reales del modelo para
-    # que el modelo no pueda atravesar relaciones fuera del hogar.
     if filtros:
-        nombres_validos = {c.name for c in modelo._meta.fields}
-        seguros = {
-            clave: valor for clave, valor in filtros.items()
-            if clave.split('__')[0] in nombres_validos
-        }
-        if seguros:
-            try:
-                consulta = consulta.filter(**seguros)
-            except Exception as e:
-                raise ErrorHerramienta(f'Filtro no válido: {e}')
+        seguros = {}
+        for clave, valor in filtros.items():
+            if not registro.validar_lookup(modelo, clave):
+                raise ErrorHerramienta(f"Filtro no permitido: '{clave}'")
+            seguros[clave] = valor
+        try:
+            consulta = consulta.filter(**seguros)
+        except Exception as e:
+            raise ErrorHerramienta(f'Filtro no válido: {e}')
 
-    try:
-        limite = max(1, min(int(limite), MAX_FILAS))
-    except (TypeError, ValueError):
-        limite = FILAS_POR_DEFECTO
+    if orden:
+        campo_orden = orden.lstrip('-')
+        if not registro.validar_lookup(modelo, campo_orden):
+            raise ErrorHerramienta(f"Orden no permitido: '{orden}'")
+        try:
+            consulta = consulta.order_by(orden)
+        except Exception as e:
+            raise ErrorHerramienta(f'Orden no válido: {e}')
 
+    limite = _clamp_limite(limite)
     total = consulta.count()
-    filas = [_serializar_instancia(obj) for obj in consulta[:limite]]
+    filas = [registro.serializar_instancia(obj) for obj in consulta[:limite]]
     return {'entidad': entidad, 'total': total, 'devueltas': len(filas), 'filas': filas}
 
 
-def listar_entidades():
-    return sorted(ENTIDADES)
+def count(hogar, entidad, filtros=None):
+    modelo, ruta_hogar = registro.obtener_modelo(entidad)
+    consulta = registro.filtrar_por_hogar(modelo.objects.all(), hogar, ruta_hogar)
+    if filtros:
+        seguros = {}
+        for clave, valor in filtros.items():
+            if not registro.validar_lookup(modelo, clave):
+                raise ErrorHerramienta(f"Filtro no permitido: '{clave}'")
+            seguros[clave] = valor
+        try:
+            consulta = consulta.filter(**seguros)
+        except Exception as e:
+            raise ErrorHerramienta(f'Filtro no válido: {e}')
+    return {'entidad': entidad, 'total': consulta.count()}
 
 
 # ─── Internet ────────────────────────────────────────────────────────────
@@ -177,9 +168,7 @@ def _url_segura(url):
     try:
         infos = socket.getaddrinfo(partes.hostname, None)
     except socket.gaierror:
-        # Sin resolución local (p. ej. detrás de un proxy) no se puede
-        # comprobar la IP; el resto de límites siguen aplicando.
-        return url
+        raise ErrorHerramienta('No se pudo resolver el host de esa URL.')
     for info in infos:
         direccion = ipaddress.ip_address(info[4][0])
         if (direccion.is_private or direccion.is_loopback or direccion.is_link_local
@@ -216,6 +205,9 @@ def buscar_web(consulta, max_resultados=6):
     consulta = (consulta or '').strip()
     if not consulta:
         raise ErrorHerramienta('Indica qué quieres buscar.')
+    # Mismo host fijo que _url_segura validaría igualmente; se descarga
+    # directamente porque la consulta va en la query string, no la controla
+    # el modelo como URL arbitraria.
     try:
         html = _descargar(f'https://html.duckduckgo.com/html/?q={quote_plus(consulta)}')
     except requests.RequestException:
@@ -237,8 +229,6 @@ def buscar_web(consulta, max_resultados=6):
             break
 
     if not resultados:
-        # Si cambia el formato del buscador, devolvemos el texto plano para que
-        # el modelo pueda aprovecharlo igualmente.
         return {'consulta': consulta, 'resultados': [], 'texto': _texto_de_html(html)[:4000]}
     return {'consulta': consulta, 'resultados': resultados}
 
@@ -256,56 +246,145 @@ def leer_url(url):
     return {'url': url, 'texto': _texto_de_html(html)[:MAX_CARACTERES_RESULTADO]}
 
 
-# ─── Despacho ────────────────────────────────────────────────────────────
+# ─── Declaración de tools (JSON schema) + despacho ────────────────────────
+
+SCHEMA_LECTURA = [
+    {
+        'name': 'search',
+        'description': (
+            'Busca texto libre en todas las entidades del hogar, o en una lista '
+            'concreta de entidades. Úsala cuando no sepas en qué entidad está '
+            'lo que buscas.'
+        ),
+        'parametros': {
+            'type': 'object',
+            'properties': {
+                'texto': {'type': 'string', 'description': 'Texto a buscar'},
+                'entidades': {
+                    'type': 'array', 'items': {'type': 'string'},
+                    'description': 'Opcional: limita la búsqueda a estas entidades',
+                },
+            },
+            'required': ['texto'],
+        },
+    },
+    {
+        'name': 'get_item',
+        'description': (
+            'Obtiene un registro completo por id, incluyendo un adelanto de sus '
+            'relaciones (movimientos, historial…). Úsala tras encontrar un id con '
+            'search o query.'
+        ),
+        'parametros': {
+            'type': 'object',
+            'properties': {
+                'entidad': {'type': 'string', 'enum': registro.listar_entidades()},
+                'id': {'type': 'integer'},
+            },
+            'required': ['entidad', 'id'],
+        },
+    },
+    {
+        'name': 'query',
+        'description': (
+            'Consulta tipo ORM sobre una entidad: filtros (dict de campo→valor, '
+            'admite lookups como "importe__gte"), orden ("-fecha") y límite.'
+        ),
+        'parametros': {
+            'type': 'object',
+            'properties': {
+                'entidad': {'type': 'string', 'enum': registro.listar_entidades()},
+                'filtros': {'type': 'object', 'description': 'p.ej. {"categoria__nombre": "Ocio"}'},
+                'orden': {'type': 'string', 'description': 'p.ej. "-fecha"'},
+                'limite': {'type': 'integer'},
+            },
+            'required': ['entidad'],
+        },
+    },
+    {
+        'name': 'count',
+        'description': 'Cuenta registros de una entidad, con filtros opcionales.',
+        'parametros': {
+            'type': 'object',
+            'properties': {
+                'entidad': {'type': 'string', 'enum': registro.listar_entidades()},
+                'filtros': {'type': 'object'},
+            },
+            'required': ['entidad'],
+        },
+    },
+    {
+        'name': 'buscar_web',
+        'description': (
+            'Busca en internet. Útil para cotizaciones, tipos de interés o '
+            'normativa fiscal actualizada — datos que no están en la base de datos.'
+        ),
+        'parametros': {
+            'type': 'object',
+            'properties': {
+                'consulta': {'type': 'string'},
+                'max_resultados': {'type': 'integer'},
+            },
+            'required': ['consulta'],
+        },
+    },
+    {
+        'name': 'leer_url',
+        'description': 'Descarga y lee el texto de una URL concreta.',
+        'parametros': {
+            'type': 'object',
+            'properties': {'url': {'type': 'string'}},
+            'required': ['url'],
+        },
+    },
+]
 
 HERRAMIENTAS = {
-    'consultar_datos': lambda hogar, args: consultar_datos(
-        hogar,
-        args.get('entidad'),
-        args.get('limite', FILAS_POR_DEFECTO),
-        args.get('filtros'),
-    ),
+    'search': lambda hogar, args: search(hogar, args.get('texto'), args.get('entidades'), args.get('limite', MAX_FILAS_BUSQUEDA)),
+    'get_item': lambda hogar, args: get_item(hogar, args.get('entidad'), args.get('id')),
+    'query': lambda hogar, args: query(hogar, args.get('entidad'), args.get('filtros'), args.get('orden'), args.get('limite', FILAS_POR_DEFECTO)),
+    'count': lambda hogar, args: count(hogar, args.get('entidad'), args.get('filtros')),
     'buscar_web': lambda hogar, args: buscar_web(args.get('consulta'), args.get('max_resultados', 6)),
     'leer_url': lambda hogar, args: leer_url(args.get('url')),
 }
 
 
 def ejecutar_herramienta(nombre, argumentos, hogar):
-    """Ejecuta una herramienta y devuelve su resultado serializado en texto."""
+    """Ejecuta una tool de lectura y devuelve su resultado serializado en texto.
+    Nunca lanza: cualquier fallo se convierte en un `{"error": ...}` para que
+    el modelo pueda reaccionar (reintentar con otros argumentos, etc.)."""
     funcion = HERRAMIENTAS.get(nombre)
     if not funcion:
-        return json.dumps({'error': f"Herramienta '{nombre}' no existe. Disponibles: {', '.join(HERRAMIENTAS)}"},
-                          ensure_ascii=False)
+        return json.dumps(
+            {'error': f"Herramienta '{nombre}' no existe. Disponibles: {', '.join(HERRAMIENTAS)}"},
+            ensure_ascii=False,
+        )
     try:
         resultado = funcion(hogar, argumentos or {})
-    except ErrorHerramienta as e:
+    except (ErrorHerramienta, registro.ErrorRegistro) as e:
         return json.dumps({'error': str(e)}, ensure_ascii=False)
     except Exception as e:  # noqa: BLE001 — nunca debe tumbar el chat
         return json.dumps({'error': f'Fallo al ejecutar la herramienta: {e}'}, ensure_ascii=False)
 
     texto = json.dumps(resultado, ensure_ascii=False, default=str)
     if len(texto) > MAX_CARACTERES_RESULTADO:
-        texto = texto[:MAX_CARACTERES_RESULTADO] + '… (resultado truncado)'
+        texto = texto[:MAX_CARACTERES_RESULTADO] + '… (resultado truncado, acota con filtros/limite)'
     return texto
 
 
-def descripcion_para_prompt():
-    """Instrucciones que se añaden al system prompt explicando las herramientas."""
-    return (
-        "\n\nHERRAMIENTAS DISPONIBLES\n"
-        "Puedes consultar datos reales antes de responder. Para usar una herramienta, "
-        "responde ÚNICAMENTE con un bloque como este y nada más:\n"
-        "```herramienta_ia\n"
-        '{"herramienta": "consultar_datos", "argumentos": {"entidad": "partidas_gasto", "limite": 100}}\n'
-        "```\n"
-        "Recibirás el resultado y podrás pedir otra herramienta o dar la respuesta final.\n\n"
-        "1) consultar_datos — lee la base de datos del hogar (solo lectura).\n"
-        f"   argumentos: entidad (obligatorio), limite (opcional), filtros (opcional, dict de campos).\n"
-        f"   entidades: {', '.join(listar_entidades())}\n"
-        "2) buscar_web — busca en internet. argumentos: consulta, max_resultados (opcional).\n"
-        "3) leer_url — lee el contenido de una página. argumentos: url.\n\n"
-        "Usa consultar_datos siempre que necesites cifras exactas: el resumen inicial "
-        "es solo orientativo. Usa buscar_web/leer_url para datos de mercado, cotizaciones, "
-        "tipos de interés o normativa fiscal actualizada. Cuando tengas lo necesario, "
-        "responde en Markdown, en español y con cifras concretas."
-    )
+def resumen_paso(nombre, argumentos):
+    """Texto corto que se muestra en el chat mientras el asistente investiga."""
+    argumentos = argumentos or {}
+    if nombre == 'search':
+        return f"Buscando: {argumentos.get('texto', '?')}"
+    if nombre == 'get_item':
+        return f"Consultando {argumentos.get('entidad', '?')} #{argumentos.get('id', '?')}"
+    if nombre == 'query':
+        return f"Consultando la base de datos: {argumentos.get('entidad', '?')}"
+    if nombre == 'count':
+        return f"Contando: {argumentos.get('entidad', '?')}"
+    if nombre == 'buscar_web':
+        return f"Buscando en internet: {argumentos.get('consulta', '?')}"
+    if nombre == 'leer_url':
+        return f"Leyendo: {argumentos.get('url', '?')}"
+    return f"Ejecutando {nombre}"

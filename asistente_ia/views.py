@@ -4,36 +4,18 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from core.mixins import hogar_required
 
-from .acciones import aplicar_accion, extraer_accion_propuesta, extraer_llamada_herramienta
+from . import acciones
 from .contexto import construir_contexto_financiero
 from .forms import AgenteIAForm
-from .herramientas import descripcion_para_prompt, ejecutar_herramienta
-from .models import AccionPropuestaIA, AgenteIA, ConfiguracionIA, ConversacionIA, MensajeIA
-from .providers import ErrorProveedorIA, enviar_mensaje, listar_modelos
+from .loop import procesar_mensaje
+from .models import AgenteIA, ConfiguracionIA, ConversacionIA, MensajeIA
+from .proveedores import ErrorProveedorIA, listar_modelos
 
 PROVEEDORES_VALIDOS = {p for p, _ in ConfiguracionIA.PROVEEDOR_CHOICES}
-
-MAX_ITERACIONES_HERRAMIENTAS = 6
-
-INSTRUCCIONES_SIN_AGENTE = (
-    "Eres el asistente de IA de Treasure, la app de finanzas de este hogar. "
-    "Ayudas con finanzas familiares, gestión patrimonial y análisis de activos. "
-    "Responde siempre en español."
-)
-
-INSTRUCCIONES_ACCIONES = (
-    "\n\nSi el usuario te pide crear algo en la app (un gasto, una categoría de "
-    "gasto, un agente o una fuente de ingreso), y tienes datos suficientes, "
-    "incluye al final de tu respuesta, en un bloque separado, exactamente esto "
-    "(sustituyendo los valores): ```accion_ia\n"
-    '{"tipo": "crear_gasto|crear_categoria_gasto|crear_agente|crear_ingreso", '
-    '"datos": {...}}\n```\n'
-    "El usuario deberá confirmar la acción antes de que se aplique. Nunca "
-    "propongas cambios a ficheros o código de la aplicación."
-)
 
 
 def _es_admin(request):
@@ -377,6 +359,7 @@ def api_crear_conversacion(request):
         agente=agente,
         titulo=agente.nombre if agente else 'Sin agente',
         contexto_financiero_cache=contexto,
+        contexto_generado_en=timezone.now(),
     )
     return JsonResponse({
         'id': conversacion.id,
@@ -400,12 +383,14 @@ def api_mensajes(request, conv_id):
             'agente_id': conversacion.agente_id,
             'titulo': conversacion.titulo,
         }
-        pendiente = conversacion.acciones_propuestas.filter(estado='pendiente').first()
-        if pendiente:
+        propuesta_id, datos_propuesta = acciones.obtener_propuesta_pendiente_de_conversacion(
+            request.session, conversacion.id
+        )
+        if propuesta_id:
             payload['accion_propuesta'] = {
-                'id': pendiente.id,
-                'tipo': pendiente.tipo_accion,
-                'resumen': pendiente.resumen_legible,
+                'id': propuesta_id,
+                'tipo': datos_propuesta['tipo'],
+                'resumen': datos_propuesta['preview'],
             }
         return JsonResponse(payload)
 
@@ -421,102 +406,8 @@ def api_mensajes(request, conv_id):
     if not texto_usuario:
         return JsonResponse({'error': 'El mensaje no puede estar vacío.'}, status=400)
 
-    mensaje_usuario = MensajeIA.objects.create(
-        conversacion=conversacion, rol='user', contenido=texto_usuario,
-    )
-
-    config = ConfiguracionIA.objects.filter(hogar=profile.hogar).first()
-    if not config or not config.esta_configurada:
-        return JsonResponse({
-            'error': 'No hay ningún proveedor de IA configurado para tu hogar. '
-                     'Pídele a un administrador que lo configure.'
-        })
-
-    proveedor = config.proveedor_activo
-    modelo = config.get_modelo(proveedor)
-    api_key = config.get_api_key(proveedor)
-    agente = conversacion.agente
-    instrucciones = agente.instrucciones if agente else INSTRUCCIONES_SIN_AGENTE
-    system_prompt = (
-        instrucciones
-        + INSTRUCCIONES_ACCIONES
-        + descripcion_para_prompt()
-        + "\n\nRESUMEN INICIAL DEL HOGAR (orientativo, amplíalo con consultar_datos):\n"
-        + conversacion.contexto_financiero_cache
-    )
-
-    historial = [
-        {'rol': m['rol'], 'contenido': m['contenido']}
-        for m in conversacion.mensajes.exclude(rol='system').values('rol', 'contenido')
-    ]
-
-    # Bucle agéntico: el modelo puede encadenar consultas a la base de datos y a
-    # internet antes de dar su respuesta final.
-    pasos_herramientas = []
-    respuesta = ''
-    for _ in range(MAX_ITERACIONES_HERRAMIENTAS):
-        try:
-            respuesta = enviar_mensaje(proveedor, api_key, modelo, historial, system_prompt)
-        except ErrorProveedorIA as e:
-            return JsonResponse({'error': str(e), 'pasos': pasos_herramientas})
-
-        llamada = extraer_llamada_herramienta(respuesta)
-        if not llamada:
-            break
-
-        nombre, argumentos = llamada
-        resultado = ejecutar_herramienta(nombre, argumentos, profile.hogar)
-        resumen_paso = _resumen_paso(nombre, argumentos)
-        pasos_herramientas.append(resumen_paso)
-        MensajeIA.objects.create(
-            conversacion=conversacion, rol='system', contenido=resumen_paso,
-        )
-        historial.append({'rol': 'assistant', 'contenido': respuesta})
-        historial.append({
-            'rol': 'user',
-            'contenido': f'RESULTADO DE {nombre}:\n{resultado}',
-        })
-    else:
-        # Se agotaron las iteraciones sin respuesta final.
-        respuesta = (
-            'He hecho varias consultas pero no he llegado a una conclusión. '
-            'Prueba a preguntarme algo más concreto.'
-        )
-
-    respuesta_limpia, accion_propuesta = extraer_accion_propuesta(
-        respuesta, conversacion, mensaje_origen=mensaje_usuario
-    )
-
-    mensaje_asistente = MensajeIA.objects.create(
-        conversacion=conversacion, rol='assistant', contenido=respuesta_limpia,
-        proveedor=proveedor, modelo=modelo,
-    )
-    if accion_propuesta:
-        accion_propuesta.mensaje_origen = mensaje_asistente
-        accion_propuesta.save(update_fields=['mensaje_origen'])
-
-    conversacion.save()  # actualiza actualizado_en
-
-    payload = {'respuesta': respuesta_limpia, 'pasos': pasos_herramientas}
-    if accion_propuesta:
-        payload['accion_propuesta'] = {
-            'id': accion_propuesta.id,
-            'tipo': accion_propuesta.tipo_accion,
-            'resumen': accion_propuesta.resumen_legible,
-        }
+    payload = procesar_mensaje(request, conversacion, texto_usuario)
     return JsonResponse(payload)
-
-
-def _resumen_paso(nombre, argumentos):
-    """Texto corto que se muestra en el chat mientras el asistente investiga."""
-    argumentos = argumentos or {}
-    if nombre == 'consultar_datos':
-        return f"🔎 Consultando la base de datos: {argumentos.get('entidad', '?')}"
-    if nombre == 'buscar_web':
-        return f"🌐 Buscando en internet: {argumentos.get('consulta', '?')}"
-    if nombre == 'leer_url':
-        return f"📄 Leyendo: {argumentos.get('url', '?')}"
-    return f"🔧 {nombre}"
 
 
 @login_required
@@ -525,20 +416,8 @@ def api_confirmar_accion(request, accion_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Método no permitido.'}, status=405)
     profile = request.user.userprofile
-    accion = get_object_or_404(
-        AccionPropuestaIA, id=accion_id,
-        conversacion__usuario=request.user, conversacion__hogar=profile.hogar,
-    )
-    if accion.estado != 'pendiente':
-        return JsonResponse({'mensaje': 'Esta acción ya había sido resuelta.'})
-
-    accion.estado = 'confirmada'
-    accion.save(update_fields=['estado'])
-    aplicar_accion(accion, profile.hogar, request.user)
-
-    if accion.estado == 'aplicada':
-        return JsonResponse({'mensaje': f'✅ {accion.resumen_legible} — aplicado.'})
-    return JsonResponse({'mensaje': f'⚠️ No se pudo aplicar la acción: {accion.detalle_error}'})
+    resultado = acciones.confirmar_propuesta(request.session, accion_id, profile.hogar, request.user)
+    return JsonResponse({'mensaje': resultado.mensaje})
 
 
 @login_required
@@ -546,11 +425,5 @@ def api_confirmar_accion(request, accion_id):
 def api_rechazar_accion(request, accion_id):
     if request.method != 'POST':
         return JsonResponse({'error': 'Método no permitido.'}, status=405)
-    profile = request.user.userprofile
-    accion = get_object_or_404(
-        AccionPropuestaIA, id=accion_id,
-        conversacion__usuario=request.user, conversacion__hogar=profile.hogar,
-    )
-    if accion.estado == 'pendiente':
-        accion.marcar_resuelta('rechazada')
-    return JsonResponse({'mensaje': 'Acción descartada.'})
+    mensaje = acciones.rechazar_propuesta(request.session, accion_id)
+    return JsonResponse({'mensaje': mensaje})

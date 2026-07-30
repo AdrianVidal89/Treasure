@@ -21,12 +21,15 @@ class ConfiguracionIA(models.Model):
     )
 
     anthropic_api_key_cifrada = models.BinaryField(null=True, blank=True)
+    anthropic_api_key_hint = models.CharField(max_length=8, blank=True, default='')
     anthropic_modelo = models.CharField(max_length=60, default='claude-sonnet-5')
 
     openai_api_key_cifrada = models.BinaryField(null=True, blank=True)
+    openai_api_key_hint = models.CharField(max_length=8, blank=True, default='')
     openai_modelo = models.CharField(max_length=60, default='gpt-4o')
 
     gemini_api_key_cifrada = models.BinaryField(null=True, blank=True)
+    gemini_api_key_hint = models.CharField(max_length=8, blank=True, default='')
     gemini_modelo = models.CharField(max_length=60, default='gemini-2.0-flash')
 
     actualizado_en = models.DateTimeField(auto_now=True)
@@ -41,6 +44,7 @@ class ConfiguracionIA(models.Model):
         from .crypto import cifrar
         valor = cifrar(api_key_plano) if api_key_plano else None
         setattr(self, f'{proveedor}_api_key_cifrada', valor)
+        setattr(self, f'{proveedor}_api_key_hint', api_key_plano[-4:] if api_key_plano else '')
 
     def get_api_key(self, proveedor):
         from .crypto import descifrar
@@ -54,15 +58,15 @@ class ConfiguracionIA(models.Model):
         return bool(getattr(self, f'{proveedor}_api_key_cifrada'))
 
     def get_api_key_enmascarada(self, proveedor):
-        """Devuelve solo los últimos 4 caracteres de la clave, para que el
-        usuario pueda reconocerla sin exponerla nunca entera."""
-        clave = self.get_api_key(proveedor)
-        if not clave:
-            return ''
-        return f'…{clave[-4:]}'
+        """Últimos 4 caracteres de la clave, para que el usuario pueda
+        reconocerla sin exponerla nunca entera. Se lee del hint guardado en
+        claro (no requiere descifrar la clave completa en cada render)."""
+        hint = getattr(self, f'{proveedor}_api_key_hint', '')
+        return f'…{hint}' if hint else ''
 
     def desconectar(self, proveedor):
         setattr(self, f'{proveedor}_api_key_cifrada', None)
+        setattr(self, f'{proveedor}_api_key_hint', '')
         if self.proveedor_activo == proveedor:
             self.proveedor_activo = None
 
@@ -95,6 +99,15 @@ class AgenteIA(models.Model):
     proveedor_preferido = models.CharField(
         max_length=20, choices=ConfiguracionIA.PROVEEDOR_CHOICES, null=True, blank=True,
         help_text='Si está vacío, se usa el proveedor activo del hogar.'
+    )
+    allowed_tools = models.JSONField(
+        default=list, blank=True,
+        help_text=(
+            'Tipos de acciones de escritura que este agente puede proponer '
+            '(p.ej. ["crear_gasto", "editar_gasto"]). Vacío = agente de solo '
+            'lectura: las tools de lectura siempre están disponibles para '
+            'cualquier agente, esto solo controla la escritura.'
+        ),
     )
     es_predeterminado = models.BooleanField(default=False)
     activo = models.BooleanField(default=True)
@@ -163,13 +176,19 @@ class MensajeIA(models.Model):
 
 
 class AccionPropuestaIA(models.Model):
-    """Acción que la IA propone realizar sobre datos de la app; requiere confirmación del usuario."""
+    """Registro de AUDITORÍA de una acción de escritura ya resuelta (aplicada
+    o fallida). La propuesta en sí — mientras está pendiente de confirmación
+    — vive en `request.session` (`asistente_ia.acciones`), no aquí: es
+    contexto de trabajo efímero. Esta tabla solo se escribe en el momento de
+    confirmar, como historial permanente de qué se aplicó y cuándo."""
 
     TIPO_CHOICES = [
         ('crear_gasto', 'Crear partida de gasto'),
+        ('editar_gasto', 'Editar partida de gasto'),
         ('crear_categoria_gasto', 'Crear categoría de gasto'),
         ('crear_agente', 'Crear agente IA'),
         ('crear_ingreso', 'Crear fuente de ingreso'),
+        ('editar_ingreso', 'Editar fuente de ingreso'),
     ]
     ESTADO_CHOICES = [
         ('pendiente', 'Pendiente'),

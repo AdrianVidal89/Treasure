@@ -45,6 +45,12 @@
             {{ form.activo }}
         </div>
 
+        <div class="form-group">
+            {{ form.allowed_tools.label_tag }}
+            <div class="help-text" style="margin-bottom: 8px;">{{ form.allowed_tools.help_text }}</div>
+            {{ form.allowed_tools }}
+        </div>
+
         <div style="margin-top: 20px; display: flex; gap: 12px;">
             <button type="submit" class="btn btn-primary">Guardar</button>
             <a href="{% url 'asistente_ia:listar_agentes' %}" class="btn btn-secondary">Cancelar</a>
