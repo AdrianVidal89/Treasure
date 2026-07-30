@@ -6,7 +6,7 @@
 <style>
 .inv-wrap { padding: 24px; max-width: 1100px; margin: 0 auto; }
 .inv-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
-.inv-header h1 { color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0; font-size: 1.6rem; }
+.inv-header h1 { color: var(--primary-color); text-shadow: none; margin: 0; font-size: 1.6rem; }
 
 /* KPIs */
 .inv-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
@@ -24,15 +24,15 @@
 .inv-table td { padding: 14px 18px; border-top: 1px solid var(--surface); vertical-align: middle; }
 .inv-table td.right { text-align: right; }
 .inv-table tbody tr.activo-row { cursor: pointer; transition: background 0.15s; }
-.inv-table tbody tr.activo-row:hover { background: rgba(162, 89, 255, 0.07); }
-.inv-table tbody tr.activo-row.open { background: rgba(162, 89, 255, 0.1); }
+.inv-table tbody tr.activo-row:hover { background: rgba(45, 106, 79, 0.07); }
+.inv-table tbody tr.activo-row.open { background: rgba(45, 106, 79, 0.1); }
 
 /* Badge tipo activo */
 .badge-tipo { font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-block; }
-.badge-ACCION  { background: rgba(0,255,136,0.12); color: #00ff88; border: 1px solid #00ff8844; }
-.badge-ETF     { background: rgba(0,209,255,0.12); color: #00d1ff; border: 1px solid #00d1ff44; }
-.badge-FONDO   { background: rgba(255,170,0,0.12); color: #ffaa00; border: 1px solid #ffaa0044; }
-.badge-CRIPTO  { background: rgba(162,89,255,0.12); color: #a259ff; border: 1px solid #a259ff44; }
+.badge-ACCION  { background: rgba(45, 106, 79,0.12); color: #2d6a4f; border: 1px solid #2d6a4f44; }
+.badge-ETF     { background: rgba(44, 95, 122,0.12); color: #2c5f7a; border: 1px solid #2c5f7a44; }
+.badge-FONDO   { background: rgba(183, 121, 31,0.12); color: #b7791f; border: 1px solid #b7791f44; }
+.badge-CRIPTO  { background: rgba(45, 106, 79,0.12); color: #1b4332; border: 1px solid #1b433244; }
 .badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid var(--border-strong); }
 
 /* Fila expandible — histórico de movimientos */
@@ -58,34 +58,34 @@
 /* Sin datos */
 .inv-empty { text-align: center; padding: 60px 20px; color: var(--muted); }
 
-.pos { color: #00ff88; }
-.neg { color: #ff4d4d; }
+.pos { color: #2d6a4f; }
+.neg { color: #b4442e; }
 </style>
 
 <div class="inv-wrap">
 
     <!-- HEADER -->
     <div class="inv-header">
-        <h1>📊 Cartera de Inversiones</h1>
+        <h1>Cartera de Inversiones</h1>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <a href="{% url 'finanzas:importar_csv' %}"
                style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
-                      border: 1px solid #ffaa00; color: #ffaa00; border-radius: 8px;
+                      border: 1px solid #b7791f; color: #b7791f; border-radius: 8px;
                       text-decoration: none; font-weight: 600;">
-                📥 Importar CSV
+                Importar CSV
             </a>
             <form method="post" action="{% url 'finanzas:actualizar_precios' %}" style="display:inline;">
                 {% csrf_token %}
                 <button type="submit"
                         style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
-                               border: 1px solid #00d1ff; color: #00d1ff; border-radius: 8px;
+                               border: 1px solid #2c5f7a; color: #2c5f7a; border-radius: 8px;
                                font-weight: 600; cursor: pointer;">
-                    🔄 Actualizar precios
+                    Actualizar precios
                 </button>
             </form>
             <a href="{% url 'finanzas:crear' %}" class="btn btn-primary"
                style="font-size: 0.85rem; padding: 10px 18px;">
-                ➕ Nueva inversión
+                Nueva inversión
             </a>
         </div>
     </div>
@@ -102,9 +102,9 @@
 
     <!-- KPIs -->
     <div class="inv-kpi-grid">
-        <div class="inv-kpi" style="border-color: #a259ff44;">
+        <div class="inv-kpi" style="border-color: #1b433244;">
             <div class="label">Valor de mercado</div>
-            <div class="valor" style="color: #a259ff;">€{{ total_valor_actual|floatformat:2 }}</div>
+            <div class="valor" style="color: #1b4332;">€{{ total_valor_actual|floatformat:2 }}</div>
             <div class="sub">Valoración actual</div>
         </div>
         <div class="inv-kpi" style="border-color: var(--border);">
@@ -112,7 +112,7 @@
             <div class="valor" style="color: var(--text-color);">€{{ total_aportado|floatformat:2 }}</div>
             <div class="sub">Total compras neto</div>
         </div>
-        <div class="inv-kpi" style="border-color: {% if rentabilidad_total >= 0 %}#00ff8844{% else %}#ff4d4d44{% endif %};">
+        <div class="inv-kpi" style="border-color: {% if rentabilidad_total >= 0 %}#2d6a4f44{% else %}#b4442e44{% endif %};">
             <div class="label">Rentabilidad total</div>
             <div class="valor {% if rentabilidad_total >= 0 %}pos{% else %}neg{% endif %}">
                 {% if total_aportado > 0 %}
@@ -156,8 +156,8 @@
                         <strong style="color: var(--text-color);">{{ item.inv.nombre }}</strong>
                         {% if not item.es_propio %}
                         <span style="font-size: 0.62rem; padding: 1px 6px; border-radius: 10px;
-                                     background: rgba(162,89,255,0.12); color: #a259ff;
-                                     border: 1px solid #a259ff33; margin-left: 6px;">
+                                     background: rgba(45, 106, 79,0.12); color: #1b4332;
+                                     border: 1px solid #1b433233; margin-left: 6px;">
                             {{ item.owner }}
                         </span>
                         {% endif %}
@@ -180,7 +180,7 @@
                     </td>
                     <td class="right">
                         {% if item.valor_unitario %}
-                            <span style="color: #a259ff;">
+                            <span style="color: #1b4332;">
                                 {{ item.valor_unitario|floatformat:4 }} {{ item.inv.moneda }}
                             </span>
                             {% if not item.inv.actualizable %}
@@ -192,7 +192,7 @@
                     </td>
                     <td class="right">
                         {% if item.valor_total %}
-                            <strong style="color: #a259ff; font-size: 0.95rem;">
+                            <strong style="color: #1b4332; font-size: 0.95rem;">
                                 €{{ item.valor_total|floatformat:2 }}
                             </strong>
                         {% else %}
@@ -213,7 +213,7 @@
                         <a href="{% url 'finanzas:editar' item.inv.id %}"
                            onclick="event.stopPropagation()"
                            style="font-size: 0.75rem; color: var(--muted); text-decoration: none;
-                                  padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 6px;">✏️</a>
+                                  padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 6px;"></a>
                     </td>
                 </tr>
 
@@ -221,7 +221,7 @@
                 <tr class="historico-row" id="historico-{{ forloop.counter }}">
                     <td colspan="8" class="historico-cell">
                         <div class="historico-inner">
-                            <h4>📋 Historial de movimientos — {{ item.inv.nombre }}
+                            <h4>Historial de movimientos — {{ item.inv.nombre }}
                                 {% if item.inv.plataforma %}
                                 <span style="color: var(--muted); font-weight: 400;">
                                     · {{ item.inv.plataforma }}
@@ -250,26 +250,26 @@
                                             {% if m.tipo == 'COMPRA' %}
                                                 <span style="font-size:0.72rem; padding:2px 8px;
                                                              border-radius:20px; font-weight:600;
-                                                             background:rgba(0,255,136,0.12);
-                                                             color:#00ff88;
-                                                             border:1px solid #00ff8844;">
+                                                             background:rgba(45, 106, 79,0.12);
+                                                             color:#2d6a4f;
+                                                             border:1px solid #2d6a4f44;">
                                                     ▲ Compra
                                                 </span>
                                             {% elif m.tipo == 'VENTA' %}
                                                 <span style="font-size:0.72rem; padding:2px 8px;
                                                              border-radius:20px; font-weight:600;
-                                                             background:rgba(255,77,77,0.12);
-                                                             color:#ff4d4d;
-                                                             border:1px solid #ff4d4d44;">
+                                                             background:rgba(180, 68, 46,0.12);
+                                                             color:#b4442e;
+                                                             border:1px solid #b4442e44;">
                                                     ▼ Venta
                                                 </span>
                                             {% else %}
                                                 <span style="font-size:0.72rem; padding:2px 8px;
                                                              border-radius:20px; font-weight:600;
-                                                             background:rgba(255,170,0,0.12);
-                                                             color:#ffaa00;
-                                                             border:1px solid #ffaa0044;">
-                                                    💰 Div.
+                                                             background:rgba(183, 121, 31,0.12);
+                                                             color:#b7791f;
+                                                             border:1px solid #b7791f44;">
+                                                    Div.
                                                 </span>
                                             {% endif %}
                                         </td>
@@ -286,7 +286,7 @@
                                                 —
                                             {% endif %}
                                         </td>
-                                        <td class="right" style="color: #ffaa00; font-weight: 600;">
+                                        <td class="right" style="color: #b7791f; font-weight: 600;">
                                             €{{ m.coste_total|floatformat:2 }}
                                         </td>
                                         <td>
@@ -294,7 +294,7 @@
                                                onclick="event.stopPropagation()"
                                                style="font-size:0.72rem; color:var(--muted);
                                                       text-decoration:none; padding:3px 8px;
-                                                      border:1px solid var(--border-strong); border-radius:6px;">✏️</a>
+                                                      border:1px solid var(--border-strong); border-radius:6px;"></a>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -307,8 +307,8 @@
                                         font-size: 0.82rem; flex-wrap: wrap; gap: 8px;">
                                 <a href="{% url 'finanzas:nuevo_movimiento' item.inv.id %}"
                                    onclick="event.stopPropagation()"
-                                   style="color: #00ff88; text-decoration: none; font-weight: 600;">
-                                    ➕ Añadir movimiento
+                                   style="color: #2d6a4f; text-decoration: none; font-weight: 600;">
+                                    Añadir movimiento
                                 </a>
                                 <div style="display: flex; gap: 20px;">
                                     <span style="color: var(--muted);">
@@ -319,7 +319,7 @@
                                     </span>
                                     <span style="color: var(--muted);">
                                         Posición actual:
-                                        <strong style="color: #a259ff;">
+                                        <strong style="color: #1b4332;">
                                             {{ item.cantidad|floatformat:4 }} uds.
                                         </strong>
                                     </span>
@@ -347,7 +347,7 @@
     {% else %}
     <div class="inv-empty">
         <p>No tienes inversiones registradas todavía.</p>
-        <a href="{% url 'finanzas:crear' %}" class="btn btn-primary">➕ Añadir primera inversión</a>
+        <a href="{% url 'finanzas:crear' %}" class="btn btn-primary">Añadir primera inversión</a>
     </div>
     {% endif %}
 

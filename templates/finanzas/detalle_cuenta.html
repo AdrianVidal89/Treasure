@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="profile-form-container">
-    <h2>💼 {{ cuenta.nombre }} ({{ cuenta.moneda }})</h2>
+    <h2>{{ cuenta.nombre }} ({{ cuenta.moneda }})</h2>
     <p>Mes actual: {{ registro.mes }}/{{ registro.anio }}</p>
     {% if saldo_obj %}
         <p>Saldo actual registrado: <strong>{{ saldo_obj.saldo }} €</strong></p>

@@ -5,7 +5,7 @@
 {% block content %}
 <div class="dashboard-container">
 
-    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">💰 Ingresos del Hogar</h1>
+    <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;">Ingresos del Hogar</h1>
     <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
 
     {% if messages %}
@@ -18,17 +18,17 @@
 
     <!-- RESUMEN GLOBAL -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px;">
-        <div style="background: var(--surface); border: 1px solid #00ff88; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,255,136,0.2);">
-            <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #00ff88; margin-bottom: 6px;">Mensual Recurrente</div>
-            <div style="font-size: 1.6rem; font-weight: 700; color: #00ff88;">€{{ total_mensual_hogar|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid #2d6a4f; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
+            <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #2d6a4f; margin-bottom: 6px;">Mensual Recurrente</div>
+            <div style="font-size: 1.6rem; font-weight: 700; color: #2d6a4f;">€{{ total_mensual_hogar|floatformat:2 }}</div>
             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 4px;">Base garantizada</div>
         </div>
-        <div style="background: var(--surface); border: 1px solid #00d1ff; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px rgba(0,209,255,0.2);">
-            <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #00d1ff; margin-bottom: 6px;">Mensual Ponderado</div>
-            <div style="font-size: 1.6rem; font-weight: 700; color: #00d1ff;">€{{ total_ponderado_hogar|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid #2c5f7a; border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
+            <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: #2c5f7a; margin-bottom: 6px;">Mensual Ponderado</div>
+            <div style="font-size: 1.6rem; font-weight: 700; color: #2c5f7a;">€{{ total_ponderado_hogar|floatformat:2 }}</div>
             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 4px;">Incluyendo extras y pagas</div>
         </div>
-        <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 0 15px var(--glow);">
+        <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
             <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 6px;">Anual Proyectado</div>
             <div style="font-size: 1.6rem; font-weight: 700; color: var(--primary-color);">€{{ total_anual_hogar|floatformat:2 }}</div>
             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 4px;">Neto estimado</div>
@@ -37,28 +37,28 @@
 
     <!-- BOTONES -->
     <div style="display: flex; gap: 12px; margin-bottom: 32px; flex-wrap: wrap;">
-        <a href="{% url 'finanzas:crear_ingreso' %}" class="btn btn-primary">➕ Nuevo ingreso</a>
-        <button onclick="document.getElementById('modal-destino').style.display='flex'" class="btn btn-secondary">🏷️ Crear destino</button>
+        <a href="{% url 'finanzas:crear_ingreso' %}" class="btn btn-primary">Nuevo ingreso</a>
+        <button onclick="document.getElementById('modal-destino').style.display='flex'" class="btn btn-secondary">Crear destino</button>
     </div>
 
     <!-- POR MIEMBRO -->
     {% for grupo in ingresos_por_miembro %}
-    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.2); margin-bottom: 24px;">
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 1px 2px rgba(28,35,33,.06); margin-bottom: 24px;">
 
         <!-- Header miembro -->
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 12px;">
             <div>
-                <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">👤 {{ grupo.miembro.user.first_name|default:grupo.miembro.user.username }}</span>
-                <span style="margin-left: 12px; font-size: 0.75rem; padding: 2px 8px; border-radius: 20px; background: rgba(0,255,136,0.1); color: #00ff88; border: 1px solid #00ff88;">{{ grupo.miembro.get_rol_display }}</span>
+                <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">{{ grupo.miembro.user.first_name|default:grupo.miembro.user.username }}</span>
+                <span style="margin-left: 12px; font-size: 0.75rem; padding: 2px 8px; border-radius: 20px; background: rgba(45, 106, 79,0.1); color: #2d6a4f; border: 1px solid #2d6a4f;">{{ grupo.miembro.get_rol_display }}</span>
             </div>
             <div style="display: flex; gap: 20px; text-align: right;">
                 <div>
                     <div style="font-size: 0.7rem; color: var(--muted);">Mensual base</div>
-                    <div style="font-size: 1rem; font-weight: 700; color: #00ff88;">€{{ grupo.total_mensual|floatformat:2 }}</div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #2d6a4f;">€{{ grupo.total_mensual|floatformat:2 }}</div>
                 </div>
                 <div>
                     <div style="font-size: 0.7rem; color: var(--muted);">Mensual ponderado</div>
-                    <div style="font-size: 1rem; font-weight: 700; color: #00d1ff;">€{{ grupo.total_ponderado|floatformat:2 }}</div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #2c5f7a;">€{{ grupo.total_ponderado|floatformat:2 }}</div>
                 </div>
                 <div>
                     <div style="font-size: 0.7rem; color: var(--muted);">Anual neto</div>
@@ -75,22 +75,22 @@
                     <span style="font-size: 0.95rem; color: var(--text-color); font-weight: 600;">{{ item.fuente.nombre }}</span>
                     <!-- Badge tipo -->
                     {% if item.fuente.tipo == 'variable' %}
-                    <span style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: rgba(255,170,0,0.15); color: #ffaa00; border: 1px solid #ffaa00;">variable</span>
+                    <span style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: rgba(183, 121, 31,0.15); color: #b7791f; border: 1px solid #b7791f;">variable</span>
                     {% elif item.fuente.tipo == 'mixto' %}
-                    <span style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: rgba(0,209,255,0.1); color: #00d1ff; border: 1px solid #00d1ff;">mixto</span>
+                    <span style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: rgba(44, 95, 122,0.1); color: #2c5f7a; border: 1px solid #2c5f7a;">mixto</span>
                     {% endif %}
                     {% if not item.fuente.incluir_en_mensual %}
-                    <span style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: rgba(255,77,77,0.1); color: #ff4d4d; border: 1px solid #ff4d4d;">solo ponderado</span>
+                    <span style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: rgba(180, 68, 46,0.1); color: #b4442e; border: 1px solid #b4442e;">solo ponderado</span>
                     {% endif %}
                 </div>
                 <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px; display: flex; gap: 10px; flex-wrap: wrap;">
                     <span>{{ item.fuente.get_periodicidad_display }}</span>
                     {% if item.fuente.num_pagas != 12 %}<span>· {{ item.fuente.num_pagas }} pagas</span>{% endif %}
-                    {% if item.fuente.es_bruto %}<span style="color: #ffaa00;">· Bruto</span>{% else %}<span style="color: #00ff88;">· Neto</span>{% endif %}
-                    {% if item.fuente.porcentaje_variabilidad > 0 %}<span style="color: #ffaa00;">· ±{{ item.fuente.porcentaje_variabilidad }}% variabilidad</span>{% endif %}
+                    {% if item.fuente.es_bruto %}<span style="color: #b7791f;">· Bruto</span>{% else %}<span style="color: #2d6a4f;">· Neto</span>{% endif %}
+                    {% if item.fuente.porcentaje_variabilidad > 0 %}<span style="color: #b7791f;">· ±{{ item.fuente.porcentaje_variabilidad }}% variabilidad</span>{% endif %}
                     {% if item.fuente.mes_cobro %}<span>· Mes {{ item.fuente.get_mes_cobro_display }}</span>{% endif %}
-                    {% if item.fuente.destino %}<span>· 🏷️ {{ item.fuente.destino.nombre }}</span>{% endif %}
-                    {% if item.tipo_efectivo > 0 %}<span style="color: #ff4d4d;">· IRPF {{ item.tipo_efectivo }}%</span>{% endif %}
+                    {% if item.fuente.destino %}<span>· {{ item.fuente.destino.nombre }}</span>{% endif %}
+                    {% if item.tipo_efectivo > 0 %}<span style="color: #b4442e;">· IRPF {{ item.tipo_efectivo }}%</span>{% endif %}
                 </div>
             </div>
 
@@ -104,24 +104,24 @@
                 {% if item.fuente.es_mensual_recurrente %}
                 <div>
                     <div style="font-size: 0.7rem; color: var(--muted);">Base/mes</div>
-                    <div style="font-size: 1rem; font-weight: 700; color: #00ff88;">€{{ item.neto_mensual_base|floatformat:2 }}</div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #2d6a4f;">€{{ item.neto_mensual_base|floatformat:2 }}</div>
                 </div>
                 {% else %}
                 <div>
                     <div style="font-size: 0.7rem; color: var(--muted);">Neto anual</div>
-                    <div style="font-size: 1rem; font-weight: 700; color: #00ff88;">€{{ item.neto_anual|floatformat:2 }}</div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #2d6a4f;">€{{ item.neto_anual|floatformat:2 }}</div>
                 </div>
                 {% endif %}
                 <div>
                     <div style="font-size: 0.7rem; color: var(--muted);">Ponderado/mes</div>
-                    <div style="font-size: 1rem; font-weight: 700; color: #00d1ff;">€{{ item.neto_mensual_ponderado|floatformat:2 }}</div>
+                    <div style="font-size: 1rem; font-weight: 700; color: #2c5f7a;">€{{ item.neto_mensual_ponderado|floatformat:2 }}</div>
                 </div>
 
                 <div style="display: flex; gap: 6px;">
-                    <a href="{% url 'finanzas:editar_ingreso' item.fuente.id %}" style="color: var(--muted); text-decoration: none; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px;" title="Editar">✏️</a>
+                    <a href="{% url 'finanzas:editar_ingreso' item.fuente.id %}" style="color: var(--muted); text-decoration: none; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px;" title="Editar"></a>
                     <form method="post" action="{% url 'finanzas:eliminar_ingreso' item.fuente.id %}" style="margin: 0;">
                         {% csrf_token %}
-                        <button type="submit" class="btn-inline-danger" title="Eliminar" onclick="return confirm('¿Eliminar {{ item.fuente.nombre }}?')">🗑️</button>
+                        <button type="submit" class="btn-inline-danger" title="Eliminar" onclick="return confirm('¿Eliminar {{ item.fuente.nombre }}?')"></button>
                     </form>
                 </div>
             </div>
@@ -137,8 +137,8 @@
     {% endfor %}
 
     <!-- Destinos -->
-    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 0 12px rgba(162, 89, 255, 0.1);">
-        <h2 style="color: var(--text-color); font-size: 1rem; margin-top: 0;">🏷️ Destinos configurados</h2>
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
+        <h2 style="color: var(--text-color); font-size: 1rem; margin-top: 0;">Destinos configurados</h2>
         <div style="display: flex; flex-wrap: wrap; gap: 10px;">
             {% for destino in destinos %}
             <div style="background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 8px; padding: 6px 14px; font-size: 0.85rem; color: var(--text-color);">
@@ -152,8 +152,8 @@
 
 <!-- MODAL CREAR DESTINO -->
 <div id="modal-destino" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 2000; justify-content: center; align-items: center;">
-    <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 32px; box-shadow: 0 0 30px var(--glow); max-width: 400px; width: 90%;">
-        <h2 style="color: var(--primary-color); margin-top: 0;">🏷️ Nuevo destino</h2>
+    <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 32px; box-shadow: 0 1px 2px rgba(28,35,33,.06); max-width: 400px; width: 90%;">
+        <h2 style="color: var(--primary-color); margin-top: 0;">Nuevo destino</h2>
         <form method="post" action="{% url 'finanzas:crear_destino' %}">
             {% csrf_token %}
             <div class="form-group">

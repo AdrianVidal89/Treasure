@@ -10,16 +10,16 @@
     border-radius: 16px;
     cursor: pointer;
     transition: all 0.3s ease;
-    box-shadow: 0 0 12px rgba(0,0,0,0.3);
+    box-shadow: 0 1px 2px rgba(28,35,33,.06);
     position: relative;
 }
 .gasto-card:hover {
     border-color: var(--border-strong);
-    box-shadow: 0 0 20px rgba(162, 89, 255, 0.2);
+    box-shadow: 0 1px 2px rgba(28,35,33,.06);
     transform: translateY(-2px);
 }
-.gasto-card.tipo-fijo { border-left: 3px solid #ffaa00; }
-.gasto-card.tipo-anual { border-left: 3px solid #00d1ff; }
+.gasto-card.tipo-fijo { border-left: 3px solid #b7791f; }
+.gasto-card.tipo-anual { border-left: 3px solid #2c5f7a; }
 .gasto-card.tipo-variable { border-left: 3px solid var(--primary-color); }
 
 .gasto-card-header {
@@ -128,12 +128,12 @@
     border-left: 1px solid var(--border);
 }
 .gasto-action-btn:hover {
-    background: rgba(162, 89, 255, 0.15);
+    background: rgba(45, 106, 79, 0.15);
     color: var(--primary-color);
 }
 .gasto-action-btn.danger:hover {
-    background: rgba(255, 77, 77, 0.15);
-    color: #ff4d4d;
+    background: rgba(180, 68, 46, 0.15);
+    color: #b4442e;
 }
 
 .grid-gastos {
@@ -161,14 +161,14 @@
     z-index: 2000;
     justify-content: center;
     align-items: center;
-    backdrop-filter: blur(4px);
+    
 }
 .modal-box {
     background: var(--surface);
     border: 1px solid var(--primary-color);
     border-radius: 20px;
     padding: 36px;
-    box-shadow: 0 0 40px var(--glow);
+    box-shadow: 0 1px 2px rgba(28,35,33,.06);
     max-width: 440px;
     width: 92%;
 }
@@ -190,7 +190,7 @@
 }
 .modal-box select:focus, .modal-box input:focus {
     outline: none; border-color: var(--primary-color);
-    box-shadow: 0 0 8px var(--glow);
+    box-shadow: 0 1px 2px rgba(28,35,33,.06);
 }
 .modal-btns { display: flex; gap: 12px; margin-top: 20px; }
 
@@ -210,7 +210,7 @@
 
 <div class="dashboard-container">
 
-    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">&#128203; Presupuesto de Gastos</h1>
+    <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;"> Presupuesto de Gastos</h1>
     <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
 
     {% if messages %}
@@ -221,17 +221,17 @@
 
     <!-- RESUMEN -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 28px;">
-        <div style="background: var(--surface); border: 1px solid #ff4d4d; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 0 15px rgba(255,77,77,0.15);">
-            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #ff4d4d; margin-bottom: 4px;">Total Mensual</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #ff4d4d;">&euro;{{ total_mensual|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid #b4442e; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #b4442e; margin-bottom: 4px;">Total Mensual</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #b4442e;">&euro;{{ total_mensual|floatformat:2 }}</div>
         </div>
-        <div style="background: var(--surface); border: 1px solid #ffaa00; border-radius: 16px; padding: 18px; text-align: center;">
-            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #ffaa00; margin-bottom: 4px;">Fijos</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #ffaa00;">&euro;{{ total_fijos|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid #b7791f; border-radius: 16px; padding: 18px; text-align: center;">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #b7791f; margin-bottom: 4px;">Fijos</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #b7791f;">&euro;{{ total_fijos|floatformat:2 }}</div>
         </div>
-        <div style="background: var(--surface); border: 1px solid #00d1ff; border-radius: 16px; padding: 18px; text-align: center;">
-            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #00d1ff; margin-bottom: 4px;">Provision</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #00d1ff;">&euro;{{ total_provision|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid #2c5f7a; border-radius: 16px; padding: 18px; text-align: center;">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #2c5f7a; margin-bottom: 4px;">Provision</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #2c5f7a;">&euro;{{ total_provision|floatformat:2 }}</div>
             <div style="font-size: 0.6rem; color: var(--muted);">anual: &euro;{{ total_anuales_anual|floatformat:0 }}</div>
         </div>
         <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 18px; text-align: center;">
@@ -242,13 +242,13 @@
 
     <!-- BOTONES -->
     <div style="display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap;">
-        <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary">&#10133; Nuevo gasto</a>
-        <button onclick="document.getElementById('modal-categoria').style.display='flex'" class="btn btn-secondary">&#128193; Nueva categoria</button>
+        <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary"> Nuevo gasto</a>
+        <button onclick="document.getElementById('modal-categoria').style.display='flex'" class="btn btn-secondary"> Nueva categoria</button>
     </div>
 
     <!-- GASTOS FIJOS -->
     {% if gastos_fijos %}
-    <div class="section-label" style="color: #ffaa00;">&#128204; Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
+    <div class="section-label" style="color: #b7791f;"> Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_fijos %}
         <div class="gasto-card tipo-fijo {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
@@ -258,7 +258,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
-                    <div class="gasto-card-monto" style="color: #ffaa00;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: #b7791f;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
@@ -274,13 +274,13 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: #ffaa00;">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            <div class="gasto-partida-importe" style="color: #b7791f;">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
                             {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
                         </div>
-                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar">&#9998;&#65039;</a>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"></a>
                         <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
                             {% csrf_token %}
-                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')"></button>
                         </form>
                     </div>
                 </div>
@@ -293,7 +293,7 @@
 
     <!-- GASTOS ANUALES -->
     {% if gastos_anuales %}
-    <div class="section-label" style="color: #00d1ff;">&#128197; Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
+    <div class="section-label" style="color: #2c5f7a;"> Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
     <div class="grid-gastos">
         {% for grupo in gastos_anuales %}
         <div class="gasto-card tipo-anual {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
@@ -303,7 +303,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div class="gasto-card-monto" style="color: #00d1ff;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: #2c5f7a;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
                     <div class="gasto-card-sub">/mes &middot; &euro;{{ grupo.subtotal_anual|floatformat:0 }}/a</div>
                 </div>
             </div>
@@ -319,13 +319,13 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: #00d1ff;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></div>
+                            <div class="gasto-partida-importe" style="color: #2c5f7a;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></div>
                             <div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>
                         </div>
-                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar">&#9998;&#65039;</a>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"></a>
                         <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
                             {% csrf_token %}
-                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')"></button>
                         </form>
                     </div>
                 </div>
@@ -338,7 +338,7 @@
 
     <!-- GASTOS VARIABLES -->
     {% if gastos_variables %}
-    <div class="section-label" style="color: var(--primary-color);">&#128200; Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes</div>
+    <div class="section-label" style="color: var(--primary-color);"> Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_variables %}
         <div class="gasto-card tipo-variable {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
@@ -367,10 +367,10 @@
                             <div class="gasto-partida-importe" style="color: var(--primary-color);">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
                             {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
                         </div>
-                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar">&#9998;&#65039;</a>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"></a>
                         <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
                             {% csrf_token %}
-                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')">&#128465;</button>
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')"></button>
                         </form>
                     </div>
                 </div>
@@ -384,7 +384,7 @@
     {% if not gastos_fijos and not gastos_anuales and not gastos_variables %}
     <div style="text-align: center; padding: 60px; color: var(--muted);">
         <p style="font-size: 1.1rem;">No hay gastos registrados todavia.</p>
-        <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary" style="margin-top: 16px;">&#10133; Crear primer gasto</a>
+        <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary" style="margin-top: 16px;"> Crear primer gasto</a>
     </div>
     {% endif %}
 
@@ -393,7 +393,7 @@
 <!-- MODAL CREAR CATEGORIA -->
 <div id="modal-categoria" class="modal-overlay">
     <div class="modal-box">
-        <h2>&#128193; Nueva categoria</h2>
+        <h2> Nueva categoria</h2>
         <form method="post" action="{% url 'finanzas:crear_categoria' %}">
             {% csrf_token %}
             <div class="form-group">

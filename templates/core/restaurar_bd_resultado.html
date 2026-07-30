@@ -22,14 +22,14 @@
 <body style="display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px;">
     <div class="glass-panel" style="max-width: 520px; width: 100%; padding: 36px; text-align: center; border-color: {% if exito %}var(--success){% else %}var(--danger){% endif %};">
         {% if exito %}
-            <div style="font-size: 2.4rem; margin-bottom: 12px;">✅</div>
+            <div style="font-size: 2.4rem; margin-bottom: 12px;"></div>
             <h1 style="color: var(--success); margin: 0 0 12px;">Restauración completada</h1>
             <p style="color: var(--text-color); font-size: 0.95rem; line-height: 1.6;">
                 La base de datos se ha restaurado correctamente desde el backup. Tu sesión (y la de cualquier
                 otra persona conectada) ha quedado invalidada — vuelve a iniciar sesión para continuar.
             </p>
         {% else %}
-            <div style="font-size: 2.4rem; margin-bottom: 12px;">❌</div>
+            <div style="font-size: 2.4rem; margin-bottom: 12px;"></div>
             <h1 style="color: var(--danger); margin: 0 0 12px;">No se pudo restaurar</h1>
             <p style="color: var(--text-color); font-size: 0.95rem; line-height: 1.6;">
                 No se aplicó ningún cambio en la base de datos (la operación se revirtió por completo al fallar).

@@ -79,6 +79,10 @@ ENTIDADES = {
     # Registros mensuales
     'registros_mensuales': ('finanzas', 'RegistroMensual', 'usuario__userprofile__hogar'),
 
+    # Extractos bancarios (movimientos observados; la IA los categorizará más adelante)
+    'extractos_bancarios': ('extractos', 'ExtractoBancario', 'hogar'),
+    'movimientos_bancarios': ('extractos', 'MovimientoBancario', 'hogar'),
+
     # Tablas de referencia (sin datos personales)
     'tablas_irpf': ('finanzas', 'TablaIRPF', None),
     'cotizaciones_ss': ('finanzas', 'CotizacionSS', None),

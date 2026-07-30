@@ -5,7 +5,7 @@
 {% block content %}
 <div class="dashboard-container" style="max-width: 560px;">
 
-    <h1 style="color: var(--danger); margin-bottom: 8px;">⚠️ Restaurar base de datos</h1>
+    <h1 style="color: var(--danger); margin-bottom: 8px;">Restaurar base de datos</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">Esta acción no se puede deshacer.</p>
 
     {% if messages %}
@@ -44,7 +44,7 @@
             </div>
             <div style="display: flex; gap: 12px;">
                 <button type="submit" class="btn" style="background: var(--danger); color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 700; cursor: pointer;">
-                    ⚠️ Sí, restaurar y sobreescribir
+                    Sí, restaurar y sobreescribir
                 </button>
                 <a href="{% url 'panel_admin' %}" class="btn btn-secondary">Cancelar</a>
             </div>

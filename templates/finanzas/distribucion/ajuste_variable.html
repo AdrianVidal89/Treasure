@@ -6,9 +6,9 @@
 
   <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;">
     <a href="{% url 'finanzas:vista_distribucion' %}?año={{ año }}&mes={{ mes }}"
-       style="color:var(--muted);font-size:1.2rem;text-decoration:none;">&#8592;</a>
+       style="color:var(--muted);font-size:1.2rem;text-decoration:none;"></a>
     <div>
-      <h2 class="titulo-glow" style="margin:0;">&#128200; Ajuste de ingresos variables</h2>
+      <h2 class="titulo-glow" style="margin:0;"> Ajuste de ingresos variables</h2>
       <div style="color:var(--muted);font-size:0.82rem;margin-top:3px;">
         {{ mes_nombre }} {{ año }} &mdash; Declara el importe <strong>neto</strong> real cobrado.
       </div>
@@ -34,17 +34,17 @@
               {{ ctx.fuente.nombre }}
             </div>
             <div style="font-size:0.78rem;color:var(--muted);margin-top:2px;">
-              &#128100; {{ ctx.nombre_usuario }} &middot; Variable
+               {{ ctx.nombre_usuario }} &middot; Variable
             </div>
           </div>
           {% if ctx.override %}
-            <span style="font-size:0.72rem;background:rgba(0,255,136,0.12);color:#00ff88;
-                         padding:4px 10px;border-radius:20px;border:1px solid rgba(0,255,136,0.3);">
-              &#10003; Ajustado
+            <span style="font-size:0.72rem;background:rgba(45, 106, 79,0.12);color:#2d6a4f;
+                         padding:4px 10px;border-radius:20px;border:1px solid rgba(45, 106, 79,0.3);">
+               Ajustado
             </span>
           {% else %}
-            <span style="font-size:0.72rem;background:rgba(255,170,0,0.1);color:#ffaa00;
-                         padding:4px 10px;border-radius:20px;border:1px solid rgba(255,170,0,0.3);">
+            <span style="font-size:0.72rem;background:rgba(183, 121, 31,0.1);color:#b7791f;
+                         padding:4px 10px;border-radius:20px;border:1px solid rgba(183, 121, 31,0.3);">
               Estimado
             </span>
           {% endif %}
@@ -54,7 +54,7 @@
                     background:rgba(255,255,255,0.03);border-radius:10px;font-size:0.8rem;">
           <div>
             <div style="color:var(--muted);">Neto estimado base</div>
-            <div style="color:#ffaa00;font-weight:600;">
+            <div style="color:#b7791f;font-weight:600;">
               &euro;{{ ctx.base_estimada_neto|floatformat:2 }}/mes
             </div>
           </div>
@@ -69,7 +69,7 @@
           {% if ctx.override %}
           <div>
             <div style="color:var(--muted);">Declarado</div>
-            <div style="color:#00ff88;font-weight:600;">
+            <div style="color:#2d6a4f;font-weight:600;">
               &euro;{{ ctx.override.importe_real|floatformat:2 }}
             </div>
           </div>
@@ -109,7 +109,7 @@
       {% endfor %}
 
       <div style="font-size:0.78rem;color:var(--muted);padding:12px 16px;
-                  background:rgba(0,209,255,0.06);border-left:3px solid #00d1ff;
+                  background:rgba(44, 95, 122,0.06);border-left:3px solid #2c5f7a;
                   border-radius:0 8px 8px 0;margin-bottom:20px;">
         &#9432; Introduce siempre el <strong>neto</strong> que llegó a tu cuenta.
         Los valores originales no se modifican — esto es un apunte mensual.
@@ -117,7 +117,7 @@
 
       <div style="display:flex;gap:12px;">
         <button type="submit" class="btn btn-primary" style="flex:1;">
-          &#10003; Guardar y recalcular
+           Guardar y recalcular
         </button>
         <a href="{% url 'finanzas:vista_distribucion' %}?año={{ año }}&mes={{ mes }}"
            class="btn btn-secondary" style="flex:1;text-align:center;text-decoration:none;">
@@ -131,7 +131,7 @@
       <p>No hay ingresos variables configurados.</p>
       <p style="font-size:0.82rem;">
         Marca una fuente como <strong>Variable</strong> en
-        <a href="{% url 'finanzas:listar_ingresos' %}" style="color:#00d1ff;">Ingresos</a>.
+        <a href="{% url 'finanzas:listar_ingresos' %}" style="color:#2c5f7a;">Ingresos</a>.
       </p>
     </div>
   {% endif %}

@@ -5,13 +5,13 @@
   <p><strong>Tipo:</strong> {{ inversion.tipo }} | <strong>Plataforma:</strong> {{ inversion.plataforma }}</p>
 
   {% if inversion.valor_actual %}
-    <p>💰 Valor actual unitario: {{ inversion.valor_actual.valor_unitario }} {{ inversion.moneda }}</p>
+    <p>Valor actual unitario: {{ inversion.valor_actual.valor_unitario }} {{ inversion.moneda }}</p>
   {% endif %}
 
-  <a href="{% url 'finanzas:editar' inversion.id %}" class="btn-glow-primary">✏️ Editar inversión</a>
+  <a href="{% url 'finanzas:editar' inversion.id %}" class="btn-glow-primary">Editar inversión</a>
   <a href="{% url 'finanzas:nuevo_movimiento' inversion.id %}" class="btn-glow-secundario">+ Añadir movimiento</a>
 
-  <h3 class="subtitulo">📈 Movimientos</h3>
+  <h3 class="subtitulo">Movimientos</h3>
   {% if movimientos %}
     <table class="tabla-oscura">
       <thead>

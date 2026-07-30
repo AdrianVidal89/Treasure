@@ -5,7 +5,7 @@
 {% block content %}
 <div class="dashboard-container">
 
-    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">⚙️ Configurar Asistente IA</h1>
+    <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;">Configurar Asistente IA</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">
         Conecta el proveedor que quieras usar. La clave se verifica contra el proveedor antes de
         guardarse, se almacena cifrada y solo se muestran sus últimos cuatro caracteres.
@@ -61,7 +61,7 @@
                 <input type="password" data-rol="input-clave" autocomplete="off" placeholder="Pega aquí tu clave API">
                 <p class="ia-proveedor-ayuda">{{ proveedor.ayuda }}</p>
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <button type="button" class="ia-btn-principal" data-accion="verificar-guardar">🔌 Verificar y guardar</button>
+                    <button type="button" class="ia-btn-principal" data-accion="verificar-guardar">Verificar y guardar</button>
                     <button type="button" class="ia-btn-sec" data-accion="cancelar-clave" {% if not proveedor.conectado %}hidden{% endif %}>Cancelar</button>
                 </div>
             </div>

@@ -6,7 +6,7 @@
 <style>
 .inv-form {
     background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-    padding: 32px; box-shadow: 0 0 20px rgba(162, 89, 255, 0.25);
+    padding: 32px; box-shadow: 0 1px 2px rgba(28,35,33,.06);
 }
 .inv-form .fg { margin-bottom: 20px; }
 .inv-form label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
@@ -15,7 +15,7 @@
     background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;
 }
 .inv-form select:focus, .inv-form input:focus {
-    outline: none; border-color: var(--primary-color); box-shadow: 0 0 8px var(--glow);
+    outline: none; border-color: var(--primary-color); box-shadow: 0 1px 2px rgba(28,35,33,.06);
 }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
@@ -33,36 +33,36 @@
     padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--surface);
     transition: background 0.15s;
 }
-.ticker-item:hover { background: rgba(162, 89, 255, 0.15); }
+.ticker-item:hover { background: rgba(45, 106, 79, 0.15); }
 .ticker-item-symbol { font-weight: 700; color: var(--primary-color); font-size: 0.95rem; }
 .ticker-item-name { color: var(--text-color); font-size: 0.85rem; margin-top: 2px; }
 .ticker-item-meta { color: var(--muted); font-size: 0.72rem; margin-top: 2px; }
 .ticker-selected {
     display: none; align-items: center; gap: 10px; padding: 10px 14px;
-    background: rgba(0, 255, 136, 0.08); border: 1px solid #00ff8844;
+    background: rgba(45, 106, 79, 0.08); border: 1px solid #2d6a4f44;
     border-radius: 10px; margin-top: 8px;
 }
 .ticker-selected.active { display: flex; }
 .ticker-selected-info { flex: 1; }
-.ticker-selected-symbol { font-weight: 700; color: #00ff88; }
+.ticker-selected-symbol { font-weight: 700; color: #2d6a4f; }
 .ticker-selected-name { font-size: 0.8rem; color: var(--muted); }
 .ticker-clear {
     background: transparent; border: 1px solid var(--border-strong); color: var(--muted);
     border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem;
 }
-.ticker-clear:hover { border-color: #ff4d4d; color: #ff4d4d; }
+.ticker-clear:hover { border-color: #b4442e; color: #b4442e; }
 .ticker-loading { color: var(--muted); font-size: 0.8rem; padding: 12px 16px; }
 </style>
 
 <div class="dashboard-container" style="max-width: 600px;">
 
-    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 8px;">
-        {% if form.instance.pk %}✏️ Editar inversión{% else %}➕ Nueva inversión{% endif %}
+    <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;">
+        {% if form.instance.pk %}Editar inversión{% else %}Nueva inversión{% endif %}
     </h1>
     <p style="color: var(--muted); margin-bottom: 32px;">Registra un activo de tu cartera.</p>
 
     {% if form.errors %}
-    <div style="background: rgba(255,77,77,0.1); border: 1px solid #ff4d4d; border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #ff4d4d;">
+    <div style="background: rgba(180, 68, 46,0.1); border: 1px solid #b4442e; border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #b4442e;">
         {{ form.non_field_errors }}
         {% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}
     </div>
@@ -96,7 +96,7 @@
                         <span class="ticker-selected-symbol" id="sel-symbol"></span>
                         <div class="ticker-selected-name" id="sel-name"></div>
                     </div>
-                    <button type="button" class="ticker-clear" onclick="clearTicker()">✕ Cambiar</button>
+                    <button type="button" class="ticker-clear" onclick="clearTicker()">Cambiar</button>
                 </div>
             </div>
 
@@ -164,7 +164,7 @@
 
             <div style="display: flex; gap: 12px; margin-top: 28px;">
                 <button type="submit" class="btn btn-primary">
-                    💾 {% if form.instance.pk %}Guardar cambios{% else %}Crear inversión{% endif %}
+                    {% if form.instance.pk %}Guardar cambios{% else %}Crear inversión{% endif %}
                 </button>
                 <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary">Cancelar</a>
             </div>

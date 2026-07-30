@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     "asistente_ia",
     "exportador",
     "integraciones",
+    "extractos",
 ]
 
 MIDDLEWARE = [

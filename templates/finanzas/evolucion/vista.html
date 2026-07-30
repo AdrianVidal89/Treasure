@@ -81,25 +81,25 @@
     border: 1px solid var(--primary-color); border-radius: 8px;
     padding: 5px 8px; font-size: 0.85rem; text-align: right;
     font-variant-numeric: tabular-nums;
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 20%, transparent);
+    box-shadow: 0 1px 2px rgba(28,35,33,.06);
 }
 .cell-input:focus { outline: none; }
 .celda-guardando { opacity: 0.55; }
 .celda-guardada { animation: celda-flash-ok 0.9s ease; }
 .celda-error { animation: celda-flash-error 0.9s ease; }
 @keyframes celda-flash-ok {
-    0% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--success) 45%, transparent) inset; }
-    100% { box-shadow: 0 0 0 0 transparent inset; }
+    0% { box-shadow: 0 1px 2px rgba(28,35,33,.06); }
+    100% { box-shadow: 0 1px 2px rgba(28,35,33,.06); }
 }
 @keyframes celda-flash-error {
-    0% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 45%, transparent) inset; }
-    100% { box-shadow: 0 0 0 0 transparent inset; }
+    0% { box-shadow: 0 1px 2px rgba(28,35,33,.06); }
+    100% { box-shadow: 0 1px 2px rgba(28,35,33,.06); }
 }
 
 /* Modal */
-.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 2000; justify-content: center; align-items: center; backdrop-filter: blur(4px); }
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.75); z-index: 2000; justify-content: center; align-items: center;  }
 .modal-overlay.active { display: flex; }
-.modal-box { border: 1px solid var(--primary-color); padding: 28px; box-shadow: 0 0 40px var(--glow); max-width: 400px; width: 92%; }
+.modal-box { border: 1px solid var(--primary-color); padding: 28px; box-shadow: 0 1px 2px rgba(28,35,33,.06); max-width: 400px; width: 92%; }
 .modal-box h3 { color: var(--primary-color); margin-top: 0; font-size: 1rem; }
 .fg { margin-bottom: 14px; }
 .fg label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; }
@@ -115,7 +115,7 @@
 
     <!-- HEADER -->
     <div class="evo-header">
-        <h1><span class="title-gradient">📈 Evolución Patrimonial</span></h1>
+        <h1><span class="title-gradient">Evolución Patrimonial</span></h1>
         <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
             <form method="get" class="año-selector">
                 <label style="color: var(--muted); font-size: 0.8rem;">Año</label>
@@ -202,7 +202,7 @@
                      data-valor="{% if fila.ingreso_real %}{{ fila.ingreso_real.importe|unlocalize }}{% endif %}"
                      data-color="var(--warning)"
                      title="Click para editar">
-                    <span class="dep-row-label">💶 Ingresos netos del mes</span>
+                    <span class="dep-row-label">Ingresos netos del mes</span>
                     <span class="cell-display">
                         {% if fila.ingreso_real %}
                             <span class="cell-valor" style="color: var(--warning);">€{{ fila.ingreso_real.importe|floatformat:0 }}</span>
@@ -269,7 +269,7 @@
     {% if propiedades %}
     <div style="margin-top: 40px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="color: #e67e22; margin: 0; font-size: 1.2rem;">🏡 Inmuebles</h2>
+            <h2 style="color: #b7791f; margin: 0; font-size: 1.2rem;">Inmuebles</h2>
             <a href="{% url 'finanzas:listar_propiedades' %}" style="font-size: 0.8rem; color: var(--muted); text-decoration: none;">Gestionar →</a>
         </div>
         <div class="evo-table-wrap">
@@ -287,7 +287,7 @@
                         </th>
                         {% endfor %}
                         {% if propiedades|length > 1 %}
-                        <th style="color: #e67e22;">Total neto</th>
+                        <th style="color: #b7791f;">Total neto</th>
                         {% endif %}
                     </tr>
                 </thead>
@@ -307,7 +307,7 @@
                         </td>
                         {% endfor %}
                         {% if propiedades|length > 1 %}
-                        <td style="color: #e67e22; font-weight: 700;">
+                        <td style="color: #b7791f; font-weight: 700;">
                             {% if fila.total_neto is not None %}€{{ fila.total_neto|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
                         </td>
                         {% endif %}
@@ -346,7 +346,7 @@
             </div>
             <div class="fg">
                 <label>Color</label>
-                <input type="color" name="color" value="#00d1ff" style="height: 40px; padding: 4px;">
+                <input type="color" name="color" value="#2c5f7a" style="height: 40px; padding: 4px;">
             </div>
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>

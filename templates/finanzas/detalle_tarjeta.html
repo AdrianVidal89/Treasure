@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="profile-form-container">
-    <h2>💳 {{ tarjeta.nombre }} {% if tarjeta.entidad %}({{ tarjeta.entidad }}){% endif %}</h2>
+    <h2>{{ tarjeta.nombre }} {% if tarjeta.entidad %}({{ tarjeta.entidad }}){% endif %}</h2>
     <p>Mes actual: {{ registro.mes }}/{{ registro.anio }}</p>
 
     <form method="post">

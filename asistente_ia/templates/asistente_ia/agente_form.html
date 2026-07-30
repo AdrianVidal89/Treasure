@@ -5,8 +5,8 @@
 {% block content %}
 <div class="dashboard-container">
 
-    <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin-bottom: 24px;">
-        {% if modo == 'editar' %}✏️ Editar agente{% else %}➕ Crear agente{% endif %}
+    <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 24px;">
+        {% if modo == 'editar' %}Editar agente{% else %}Crear agente{% endif %}
     </h1>
 
     <form method="post" class="glass-panel glass-panel--accent" style="--accent: var(--primary-color); padding: 28px; max-width: 640px;">

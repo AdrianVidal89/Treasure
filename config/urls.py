@@ -11,4 +11,5 @@ urlpatterns = [
     path('asistente-ia/', include('asistente_ia.urls')),
     path('exportador/', include('exportador.urls')),
     path('integraciones/', include('integraciones.urls')),
+    path('extractos/', include('extractos.urls')),
 ]

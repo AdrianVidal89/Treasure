@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}{{ extracto.nombre_banco|default:"Extracto" }} · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-file"/></svg> {{ extracto.nombre_banco|default:"Extracto" }}</h1>
+            <div class="page-sub">
+                {{ extracto.archivo_nombre }}
+                {% if extracto.periodo_inicio %}· {{ extracto.periodo_inicio|date:"d/m/Y" }} – {{ extracto.periodo_fin|date:"d/m/Y" }}{% endif %}
+                · {{ extracto.num_movimientos }} movimientos
+            </div>
+        </div>
+        <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+    </div>
+
+    <div class="stat-row">
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Ingresos</span>
+            <span class="stat-tile-valor num text-positive">{{ extracto.total_ingresos|floatformat:2|intcomma }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Gastos</span>
+            <span class="stat-tile-valor num text-negative">{{ extracto.total_gastos|floatformat:2|intcomma }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Neto</span>
+            <span class="stat-tile-valor num {% if extracto.saldo_neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ extracto.saldo_neto|floatformat:2|intcomma }} €</span>
+        </div>
+    </div>
+
+    {% if categorias %}
+    <h2 style="font-size:1.05rem;margin:24px 0 8px;">Gasto por categoría</h2>
+    <div class="table-scroll">
+        <table class="table">
+            <thead><tr><th>Categoría</th><th class="num">Importe</th></tr></thead>
+            <tbody>
+                {% for nombre, importe in categorias %}
+                <tr>
+                    <td>{% if nombre == 'Sin categorizar' %}<span class="badge badge-muted">{{ nombre }}</span>{% else %}{{ nombre }}{% endif %}</td>
+                    <td class="num text-negative">{{ importe|floatformat:2|intcomma }} €</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <h2 style="font-size:1.05rem;margin:28px 0 4px;">Movimientos por mes</h2>
+    {% for grupo in grupos %}
+    <div class="group-header">
+        <h3>{{ grupo.etiqueta }}</h3>
+        <span class="group-total {% if grupo.neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ grupo.neto|floatformat:2|intcomma }} €</span>
+    </div>
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th><th class="num">Saldo</th></tr>
+            </thead>
+            <tbody>
+                {% for m in grupo.movimientos %}
+                <tr>
+                    <td class="num">{{ m.fecha|date:"d/m/Y" }}</td>
+                    <td>{{ m.concepto }}</td>
+                    <td>
+                        {% if m.categoria %}
+                            <span class="badge badge-success">{{ m.categoria.nombre }}</span>
+                        {% else %}
+                            <span class="badge badge-muted">Sin categorizar</span>
+                        {% endif %}
+                    </td>
+                    <td class="num mov-importe {% if m.importe >= 0 %}positivo{% else %}negativo{% endif %}">{{ m.importe|floatformat:2|intcomma }} €</td>
+                    <td class="num text-muted">{% if m.saldo != None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

@@ -6,8 +6,8 @@
 <div class="dashboard-container">
 
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
-        <h1 style="color: var(--primary-color); text-shadow: 0 0 12px var(--glow); margin: 0;">🤖 Agentes IA</h1>
-        <a href="{% url 'asistente_ia:crear_agente' %}" class="btn btn-primary">➕ Crear agente</a>
+        <h1 style="color: var(--primary-color); text-shadow: none; margin: 0;">Agentes IA</h1>
+        <a href="{% url 'asistente_ia:crear_agente' %}" class="btn btn-primary">Crear agente</a>
     </div>
 
     {% if messages %}
@@ -22,14 +22,14 @@
         {% for agente in agentes %}
         <div style="background-color: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px;">
             <div style="font-weight: 700; color: var(--primary-color); margin-bottom: 4px;">
-                {% if agente.es_predeterminado %}⭐ {% endif %}{{ agente.nombre }}
+                {% if agente.es_predeterminado %}{% endif %}{{ agente.nombre }}
                 {% if not agente.activo %}<span style="color: var(--muted); font-weight: 400; font-size: 0.75rem;"> (inactivo)</span>{% endif %}
             </div>
             <div style="color: var(--muted); font-size: 0.85rem; margin-bottom: 16px;">{{ agente.descripcion }}</div>
             <div style="display: flex; gap: 8px;">
-                <a href="{% url 'asistente_ia:editar_agente' agente.id %}" class="btn btn-secondary">✏️ Editar</a>
+                <a href="{% url 'asistente_ia:editar_agente' agente.id %}" class="btn btn-secondary">Editar</a>
                 {% if not agente.es_predeterminado %}
-                <a href="{% url 'asistente_ia:eliminar_agente' agente.id %}" class="btn btn-danger">🗑️ Eliminar</a>
+                <a href="{% url 'asistente_ia:eliminar_agente' agente.id %}" class="btn btn-danger">Eliminar</a>
                 {% endif %}
             </div>
         </div>
