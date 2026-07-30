@@ -49,8 +49,14 @@ else
 fi
 
 echo "=== [5/6] Reiniciar contenedores ==="
-docker compose -f "$APP_DIR/docker-compose.yml" down
-docker compose -f "$APP_DIR/docker-compose.yml" up -d
+# IMPORTANTE: NO hacemos `docker compose down` a propósito.
+# En QNAP, borrar la red del proyecto (treasure_default) y volver a crearla
+# falla de forma intermitente en Container Station (qnetwork-tool / dnsmasq:
+# "AddNATrule ... dnsmasq add fail"), y deja el sitio caído sin red.
+# Como el código va montado por volumen (no hay imagen que reconstruir),
+# basta con recrear los contenedores REUTILIZANDO la red existente: así
+# recogen el código nuevo y los cambios del docker-compose.yml sin tocar la red.
+docker compose -f "$APP_DIR/docker-compose.yml" up -d --force-recreate --remove-orphans
 
 echo "=== [6/6] Deploy completado ==="
 echo "  Las migraciones se aplican automaticamente al arrancar el contenedor web."
