@@ -10,15 +10,27 @@ INSTRUCCIONES_SIN_AGENTE = (
     "Responde siempre en español."
 )
 
+# Eficiencia: el resumen ya trae cuentas, ingresos, gastos (con importes) y
+# fondos. Responder desde ahí cuando se pueda evita encadenar llamadas al
+# proveedor (cada una es un ida y vuelta lento), así que el chat va más ágil.
+REGLA_EFICIENCIA = (
+    "\n\nEFICIENCIA: el RESUMEN INICIAL DEL HOGAR ya incluye tus cuentas, ingresos y "
+    "gastos con sus importes, y tus fondos. Si la pregunta se puede responder con esa "
+    "información, respóndela DIRECTAMENTE, sin usar herramientas. Recurre a las "
+    "herramientas solo para datos que no estén en el resumen, para la cifra exacta de un "
+    "registro concreto, o para confirmar antes de negar que algo existe. No hagas más "
+    "consultas de las estrictamente necesarias."
+)
+
 # Regla no negociable: el modelo nunca debe poder decir "esto no está en el
 # briefing" como si fuera lo mismo que "esto no existe" — el resumen inicial
 # es solo orientativo y puede estar truncado.
 REGLA_CONSULTAR_ANTES_DE_NEGAR = (
-    "\n\nREGLA IMPORTANTE: el RESUMEN INICIAL DEL HOGAR es solo orientativo y puede "
-    "estar incompleto o truncado. Nunca digas que un dato \"no existe\" o \"no está "
-    "disponible\" basándote solo en ese resumen — antes de negar algo, comprueba con "
-    "search, get_item o query. Si tras consultar sigue sin aparecer, entonces sí puedes "
-    "decir que no existe."
+    "\n\nREGLA IMPORTANTE: el RESUMEN INICIAL DEL HOGAR puede estar incompleto o "
+    "truncado. Nunca digas que un dato \"no existe\" o \"no está disponible\" basándote "
+    "solo en que no aparezca en el resumen — antes de negar algo, comprueba con search, "
+    "get_item o query. Si tras consultar sigue sin aparecer, entonces sí puedes decir "
+    "que no existe."
 )
 
 INSTRUCCIONES_ACCIONES = (
@@ -36,7 +48,9 @@ def construir_system_blocks(agente, briefing_texto):
     directamente a `ProveedorLLM.enviar`. El briefing se marca cacheable
     porque es idéntico turno a turno dentro de una misma conversación."""
     instrucciones = agente.instrucciones if agente else INSTRUCCIONES_SIN_AGENTE
-    instrucciones_completas = instrucciones + INSTRUCCIONES_ACCIONES + REGLA_CONSULTAR_ANTES_DE_NEGAR
+    instrucciones_completas = (
+        instrucciones + INSTRUCCIONES_ACCIONES + REGLA_EFICIENCIA + REGLA_CONSULTAR_ANTES_DE_NEGAR
+    )
     return [
         {'texto': instrucciones_completas, 'cacheable': False},
         {

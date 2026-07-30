@@ -21,4 +21,7 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]
+# --timeout 180: un turno del asistente puede encadenar varias llamadas al
+# proveedor de IA (tool_use) y superar el timeout por defecto de 30 s de
+# gunicorn, que mataría al worker y el chat mostraría "no responde".
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "180"]

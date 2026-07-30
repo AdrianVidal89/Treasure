@@ -68,6 +68,12 @@
     <div class="inv-header">
         <h1>Cartera de Inversiones</h1>
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{% url 'finanzas:informe_hacienda' %}"
+               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
+                      border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 8px;
+                      text-decoration: none; font-weight: 600;">
+                Informe Hacienda
+            </a>
             <a href="{% url 'finanzas:importar_csv' %}"
                style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
                       border: 1px solid #b7791f; color: #b7791f; border-radius: 8px;
