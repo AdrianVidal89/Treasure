@@ -118,10 +118,10 @@
                 </div>
 
                 <div style="display: flex; gap: 6px;">
-                    <a href="{% url 'finanzas:editar_ingreso' item.fuente.id %}" style="color: var(--muted); text-decoration: none; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px;" title="Editar"></a>
+                    <a href="{% url 'finanzas:editar_ingreso' item.fuente.id %}" style="display:inline-flex; align-items:center; color: var(--muted); text-decoration: none; padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 6px;" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
                     <form method="post" action="{% url 'finanzas:eliminar_ingreso' item.fuente.id %}" style="margin: 0;">
                         {% csrf_token %}
-                        <button type="submit" class="btn-inline-danger" title="Eliminar" onclick="return confirm('¿Eliminar {{ item.fuente.nombre }}?')"></button>
+                        <button type="submit" class="btn-inline-danger" title="Eliminar" onclick="return confirm('¿Eliminar {{ item.fuente.nombre }}?')"><svg class="icon"><use href="#i-trash"/></svg></button>
                     </form>
                 </div>
             </div>

@@ -21,6 +21,32 @@
 .resumen-card .crecimiento { font-size: 0.85rem; margin-top: 8px; display: flex; align-items: center; gap: 6px; }
 .pos { color: var(--success); } .neg { color: var(--danger); } .neu { color: var(--muted); }
 
+.resumen-card .objetivo { font-size: 0.85rem; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: flex-start; gap: 7px; line-height: 1.35; }
+.resumen-card .objetivo.oculto { display: none; }
+.resumen-card .objetivo .icon { flex-shrink: 0; margin-top: 1px; }
+
+/* Gráfico esperado vs. real */
+.evo-chart-panel { padding: 22px; margin-bottom: 32px; }
+.evo-chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.evo-chart-head h3 { margin: 0 0 4px; font-size: 1.05rem; color: var(--text-color); }
+.evo-chart-sub { margin: 0; font-size: 0.78rem; color: var(--muted); max-width: 46ch; }
+.evo-chart-toggle { display: flex; gap: 6px; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px; }
+.evo-toggle-btn { border: none; background: transparent; color: var(--muted); font-size: 0.78rem; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer; transition: all var(--ease); }
+.evo-toggle-btn.active { background: var(--primary-color); color: #fff; }
+.evo-chart-body { position: relative; }
+#evo-chart-svg { width: 100%; height: 260px; display: block; overflow: visible; }
+.evo-chart-legend { display: flex; gap: 18px; margin-top: 10px; font-size: 0.76rem; color: var(--muted); }
+.leg-item { display: flex; align-items: center; gap: 6px; }
+.leg-swatch { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+.leg-esperado { background: repeating-linear-gradient(90deg, var(--muted) 0 6px, transparent 6px 10px); }
+.leg-real { background: var(--success); }
+.evo-radar-dot { animation: evo-radar-pulse 2.2s ease-out infinite; }
+@keyframes evo-radar-pulse {
+    0%   { r: 5; opacity: 0.9; }
+    70%  { r: 16; opacity: 0; }
+    100% { r: 16; opacity: 0; }
+}
+
 /* Tabla (se usa solo para la sección de Inmuebles) */
 .evo-table-wrap { overflow-x: auto; border-radius: var(--radius-xl); background: var(--app-bg); border: 1px solid var(--border); }
 .evo-table { border-collapse: collapse; width: 100%; min-width: max-content; font-size: 0.82rem; }
@@ -153,7 +179,15 @@
                 €{{ resumen.crecimiento_liquidez_ytd|floatformat:0 }} YTD
             </div>
 
-            <div class="crecimiento neu">↗ €{{ resumen.ahorro_esperado_acum|floatformat:0 }} esperado (presupuesto)</div>
+            <div class="objetivo js-res-liquidez-objetivo {% if not resumen.comparacion_valida %}oculto{% elif resumen.diff_liquidez >= 0 %}pos{% else %}neg{% endif %}">
+                {% if resumen.comparacion_valida %}
+                <svg class="icon"><use href="{% if resumen.diff_liquidez >= 0 %}#i-check{% else %}#i-alert{% endif %}"/></svg>
+                <span>
+                    {% if resumen.diff_liquidez >= 0 %}Vas por buen camino: €{{ resumen.diff_liquidez|floatformat:0 }} por encima de lo esperado
+                    {% else %}Estás €{{ resumen.diff_liquidez|floatformat:0|slice:"1:" }} por debajo del objetivo{% endif %}
+                </span>
+                {% endif %}
+            </div>
         </div>
         <div class="glass-panel glass-panel--accent resumen-card" style="--accent: var(--primary-color);">
             <div class="stat-tile">
@@ -168,9 +202,39 @@
                 €{{ resumen.crecimiento_patrimonio_ytd|floatformat:0 }} YTD
             </div>
 
-            <div class="crecimiento neu">↗ €{{ resumen.patrimonio_esperado_acum|floatformat:0 }} esperado (presupuesto)</div>
+            <div class="objetivo js-res-patrimonio-objetivo {% if not resumen.comparacion_valida %}oculto{% elif resumen.diff_patrimonio >= 0 %}pos{% else %}neg{% endif %}">
+                {% if resumen.comparacion_valida %}
+                <svg class="icon"><use href="{% if resumen.diff_patrimonio >= 0 %}#i-check{% else %}#i-alert{% endif %}"/></svg>
+                <span>
+                    {% if resumen.diff_patrimonio >= 0 %}Vas por buen camino: €{{ resumen.diff_patrimonio|floatformat:0 }} por encima de lo esperado
+                    {% else %}Estás €{{ resumen.diff_patrimonio|floatformat:0|slice:"1:" }} por debajo del objetivo{% endif %}
+                </span>
+                {% endif %}
+            </div>
         </div>
     </div>
+
+    <!-- GRÁFICO: evolución esperada (presupuesto) vs real -->
+    <div class="glass-panel evo-chart-panel">
+        <div class="evo-chart-head">
+            <div>
+                <h3>Evolución esperada vs. real</h3>
+                <p class="evo-chart-sub">Línea gris discontinua: ahorro previsto según el presupuesto. Línea verde: lo que realmente tienes registrado.</p>
+            </div>
+            <div class="evo-chart-toggle" role="tablist">
+                <button type="button" class="evo-toggle-btn active" data-metrica="liquidez">Liquidez actual</button>
+                <button type="button" class="evo-toggle-btn" data-metrica="patrimonio">Patrimonio financiero</button>
+            </div>
+        </div>
+        <div class="evo-chart-body">
+            <svg id="evo-chart-svg" viewBox="0 0 760 260" preserveAspectRatio="none"></svg>
+            <div class="evo-chart-legend">
+                <span class="leg-item"><span class="leg-swatch leg-esperado"></span>Esperado (presupuesto)</span>
+                <span class="leg-item"><span class="leg-swatch leg-real"></span>Real</span>
+            </div>
+        </div>
+    </div>
+    {{ grafico|json_script:"evo-chart-data" }}
 
     <!-- TARJETAS MENSUALES (acordeón, un fondo/depósito por fila, clic para editar) -->
     <div class="evo-months-list">
@@ -579,6 +643,24 @@ function ponYtd(el, valor, tieneEnero) {
     el.textContent = (positivo ? '▲ ' : '▼ ') + euro0(valor) + ' YTD';
 }
 
+function ponObjetivo(el, diff, valido) {
+    if (!el) return;
+    el.classList.remove('pos', 'neg');
+    if (!valido || diff === null || diff === undefined) {
+        el.classList.add('oculto');
+        el.innerHTML = '';
+        return;
+    }
+    el.classList.remove('oculto');
+    const positivo = diff >= 0;
+    el.classList.add(positivo ? 'pos' : 'neg');
+    const icono = positivo ? '#i-check' : '#i-alert';
+    const texto = positivo
+        ? 'Vas por buen camino: ' + euro0(diff) + ' por encima de lo esperado'
+        : 'Estás ' + euro0(Math.abs(diff)) + ' por debajo del objetivo';
+    el.innerHTML = '<svg class="icon"><use href="' + icono + '"/></svg><span>' + texto + '</span>';
+}
+
 function refrescarEstado(estado) {
     if (!estado) return;
 
@@ -598,6 +680,163 @@ function refrescarEstado(estado) {
     ponValorOVacio(document.querySelector('.js-res-patrimonio'), r.patrimonio_financiero_actual);
     ponYtd(document.querySelector('.js-res-liquidez-ytd'), r.crecimiento_liquidez_ytd, r.tiene_enero);
     ponYtd(document.querySelector('.js-res-patrimonio-ytd'), r.crecimiento_patrimonio_ytd, r.tiene_enero);
+    ponObjetivo(document.querySelector('.js-res-liquidez-objetivo'), r.diff_liquidez, r.comparacion_valida);
+    ponObjetivo(document.querySelector('.js-res-patrimonio-objetivo'), r.diff_patrimonio, r.comparacion_valida);
+
+    if (estado.grafico) {
+        datosGrafico = estado.grafico;
+        renderGrafico();
+    }
 }
+
+/* ============================================================
+   GRÁFICO: ESPERADO (presupuesto) VS. REAL
+   SVG dibujado a mano (sin librerías externas). Dos series de
+   12 puntos (una por mes); huecos (null) se dibujan como cortes
+   en la línea. Un punto "radar" pulsante marca el mes actual.
+   ============================================================ */
+
+let datosGrafico = JSON.parse(document.getElementById('evo-chart-data').textContent);
+let metricaActual = 'liquidez';
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const CHART_W = 760, CHART_H = 260, PAD_L = 54, PAD_R = 14, PAD_T = 14, PAD_B = 28;
+
+function construirPath(valores, x) {
+    let d = '';
+    let trazando = false;
+    valores.forEach((v, i) => {
+        if (v === null || v === undefined) { trazando = false; return; }
+        const cmd = trazando ? 'L' : 'M';
+        d += cmd + x(i).toFixed(1) + ',' + y(v).toFixed(1) + ' ';
+        trazando = true;
+    });
+    return d.trim();
+}
+
+let escalaY = { min: 0, max: 1 };
+function y(v) {
+    const { min, max } = escalaY;
+    const rango = (max - min) || 1;
+    return CHART_H - PAD_B - ((v - min) / rango) * (CHART_H - PAD_T - PAD_B);
+}
+
+function renderGrafico() {
+    const svg = document.getElementById('evo-chart-svg');
+    if (!svg || !datosGrafico) return;
+    svg.innerHTML = '';
+    svg.setAttribute('viewBox', '0 0 ' + CHART_W + ' ' + CHART_H);
+
+    const serie = datosGrafico[metricaActual] || { esperado: [], real: [] };
+    const meses = datosGrafico.meses || [];
+    const x = (i) => PAD_L + (i / 11) * (CHART_W - PAD_L - PAD_R);
+
+    const todos = serie.esperado.concat(serie.real).filter(v => v !== null && v !== undefined);
+    if (!todos.length) {
+        escalaY = { min: 0, max: 1000 };
+    } else {
+        let min = Math.min(0, ...todos), max = Math.max(...todos);
+        if (min === max) { min -= 100; max += 100; }
+        const margen = (max - min) * 0.08;
+        escalaY = { min: min - margen, max: max + margen };
+    }
+
+    // Líneas guía horizontales + etiquetas del eje Y
+    const pasos = 4;
+    for (let i = 0; i <= pasos; i++) {
+        const valor = escalaY.min + (escalaY.max - escalaY.min) * (i / pasos);
+        const ly = y(valor);
+        const linea = document.createElementNS(SVG_NS, 'line');
+        linea.setAttribute('x1', PAD_L); linea.setAttribute('x2', CHART_W - PAD_R);
+        linea.setAttribute('y1', ly); linea.setAttribute('y2', ly);
+        linea.setAttribute('stroke', 'currentColor');
+        linea.setAttribute('stroke-opacity', '0.08');
+        svg.appendChild(linea);
+
+        const label = document.createElementNS(SVG_NS, 'text');
+        label.setAttribute('x', PAD_L - 8); label.setAttribute('y', ly + 4);
+        label.setAttribute('text-anchor', 'end');
+        label.setAttribute('font-size', '10');
+        label.setAttribute('fill', 'currentColor');
+        label.setAttribute('opacity', '0.55');
+        label.textContent = '€' + Math.round(valor).toLocaleString('es-ES');
+        svg.appendChild(label);
+    }
+
+    // Etiquetas de los meses en el eje X
+    meses.forEach((nombre, i) => {
+        const label = document.createElementNS(SVG_NS, 'text');
+        label.setAttribute('x', x(i)); label.setAttribute('y', CHART_H - 8);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('font-size', '10');
+        label.setAttribute('fill', 'currentColor');
+        label.setAttribute('opacity', '0.55');
+        label.textContent = nombre;
+        svg.appendChild(label);
+    });
+
+    // Línea esperada (gris discontinua)
+    const pathEsperado = document.createElementNS(SVG_NS, 'path');
+    pathEsperado.setAttribute('d', construirPath(serie.esperado, x));
+    pathEsperado.setAttribute('fill', 'none');
+    pathEsperado.setAttribute('stroke', 'var(--muted)');
+    pathEsperado.setAttribute('stroke-width', '2');
+    pathEsperado.setAttribute('stroke-dasharray', '6 5');
+    pathEsperado.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(pathEsperado);
+
+    // Línea real (verde)
+    const pathReal = document.createElementNS(SVG_NS, 'path');
+    pathReal.setAttribute('d', construirPath(serie.real, x));
+    pathReal.setAttribute('fill', 'none');
+    pathReal.setAttribute('stroke', 'var(--success)');
+    pathReal.setAttribute('stroke-width', '2.5');
+    pathReal.setAttribute('stroke-linecap', 'round');
+    pathReal.setAttribute('stroke-linejoin', 'round');
+    svg.appendChild(pathReal);
+
+    // Puntos de la línea real
+    serie.real.forEach((v, i) => {
+        if (v === null || v === undefined) return;
+        const c = document.createElementNS(SVG_NS, 'circle');
+        c.setAttribute('cx', x(i)); c.setAttribute('cy', y(v));
+        c.setAttribute('r', 3.5);
+        c.setAttribute('fill', 'var(--success)');
+        svg.appendChild(c);
+    });
+
+    // Punto "radar" pulsante en el último dato real (dónde vamos hoy)
+    const idxRadar = datosGrafico.ultimo_real_idx;
+    if (idxRadar !== null && idxRadar !== undefined && serie.real[idxRadar] !== null && serie.real[idxRadar] !== undefined) {
+        const cx = x(idxRadar), cy = y(serie.real[idxRadar]);
+        const pulso = document.createElementNS(SVG_NS, 'circle');
+        pulso.setAttribute('cx', cx); pulso.setAttribute('cy', cy);
+        pulso.setAttribute('r', 5);
+        pulso.setAttribute('fill', 'none');
+        pulso.setAttribute('stroke', 'var(--success)');
+        pulso.setAttribute('stroke-width', '2');
+        pulso.setAttribute('class', 'evo-radar-dot');
+        svg.appendChild(pulso);
+
+        const nucleo = document.createElementNS(SVG_NS, 'circle');
+        nucleo.setAttribute('cx', cx); nucleo.setAttribute('cy', cy);
+        nucleo.setAttribute('r', 5);
+        nucleo.setAttribute('fill', 'var(--success)');
+        nucleo.setAttribute('stroke', 'var(--app-bg)');
+        nucleo.setAttribute('stroke-width', '2');
+        svg.appendChild(nucleo);
+    }
+}
+
+document.querySelectorAll('.evo-toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.evo-toggle-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        metricaActual = btn.dataset.metrica;
+        renderGrafico();
+    });
+});
+
+renderGrafico();
 </script>
 {% endblock %}

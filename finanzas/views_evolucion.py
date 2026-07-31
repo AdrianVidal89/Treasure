@@ -58,21 +58,35 @@ def _flujos_por_mes(hogar, año):
     return {mes: calcular_flujos(hogar, mes=mes, anio=año) for mes in range(1, 13)}
 
 
+def _liquidez_patrimonio_por_mes(hogar, año):
+    """Devuelve {mes: (liquidez|None, patrimonio|None)} para 1..12 a partir de los
+    saldos reales registrados por el usuario (sin fallback a precio de mercado:
+    ese fallback solo tiene sentido para "hoy", no para meses pasados)."""
+    saldos_qs = SaldoRealFondo.objects.filter(fondo__hogar=hogar, año=año).select_related('fondo')
+    saldos_por_mes = {}
+    for s in saldos_qs:
+        saldos_por_mes.setdefault(s.mes, []).append(s)
+
+    resultado = {}
+    for mes in range(1, 13):
+        saldos_mes = saldos_por_mes.get(mes)
+        if not saldos_mes:
+            resultado[mes] = (None, None)
+        else:
+            liquidez, patrimonio = _saldos_liquidez_patrimonio(saldos_mes)
+            resultado[mes] = (liquidez, patrimonio)
+    return resultado
+
+
 def _calcular_resumen(hogar, año, flujos_por_mes):
     hoy = datetime.date.today()
 
-    # --- Esperado según presupuesto (motor de distribución) ---
-    ahorro_esperado_acum = Decimal('0')
-    inversion_esperada_acum = Decimal('0')
-    for mes in range(1, 13):
-        d = flujos_por_mes[mes]
-        ahorro_esperado_acum += d['total_ahorro']
-        inversion_esperada_acum += d['total_inversion']
+    datos_por_mes = _liquidez_patrimonio_por_mes(hogar, año)
 
     # --- Saldo real último mes con datos ---
     ultimo_mes_con_datos = None
     for mes in range(hoy.month if año == hoy.year else 12, 0, -1):
-        if SaldoRealFondo.objects.filter(fondo__hogar=hogar, año=año, mes=mes).exists():
+        if datos_por_mes[mes][0] is not None or datos_por_mes[mes][1] is not None:
             ultimo_mes_con_datos = mes
             break
 
@@ -83,6 +97,10 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
             fondo__hogar=hogar, año=año, mes=ultimo_mes_con_datos
         ).select_related('fondo')
         liquidez_actual, patrimonio_actual = _saldos_liquidez_patrimonio(saldos_actual, hogar=hogar)
+        # El fallback a precio de mercado (hogar=...) puede diferir del valor
+        # crudo guardado en datos_por_mes; usamos el "actual" enriquecido como
+        # punto real de ese mes para que la tarjeta y el gráfico coincidan.
+        datos_por_mes[ultimo_mes_con_datos] = (liquidez_actual, patrimonio_actual)
 
     # --- Crecimiento YTD: actual − Enero del MISMO año ---
     saldos_enero = SaldoRealFondo.objects.filter(
@@ -94,6 +112,32 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
     crecimiento_liquidez_ytd = (liquidez_actual - liquidez_enero) if tiene_enero else None
     crecimiento_patrimonio_ytd = (patrimonio_actual - patrimonio_enero) if tiene_enero else None
 
+    # --- Trayectoria esperada según presupuesto, anclada al primer mes con
+    #     datos reales (normalmente enero) y proyectada mes a mes sumando el
+    #     ahorro/inversión previstos. Así "esperado" y "actual" son
+    #     comparables (ambos son foto de patrimonio, no un flujo suelto). ---
+    mes_base = next((m for m in range(1, 13) if datos_por_mes[m][0] is not None), None)
+
+    ahorro_esperado_actual = None
+    patrimonio_esperado_actual = None
+    diff_liquidez = None
+    diff_patrimonio = None
+    comparacion_valida = False
+
+    if mes_base and ultimo_mes_con_datos:
+        base_liq, base_pat = datos_por_mes[mes_base]
+        acum_ahorro = Decimal('0')
+        acum_total = Decimal('0')
+        for m in range(mes_base + 1, ultimo_mes_con_datos + 1):
+            acum_ahorro += flujos_por_mes[m]['total_ahorro']
+            acum_total += flujos_por_mes[m]['total_ahorro'] + flujos_por_mes[m]['total_inversion']
+        ahorro_esperado_actual = base_liq + acum_ahorro
+        patrimonio_esperado_actual = base_pat + acum_total
+        diff_liquidez = liquidez_actual - ahorro_esperado_actual
+        diff_patrimonio = patrimonio_actual - patrimonio_esperado_actual
+        # Solo es una comparación significativa si hay más de un mes de histórico.
+        comparacion_valida = ultimo_mes_con_datos > mes_base
+
     return {
         'liquidez_actual': liquidez_actual,
         'patrimonio_financiero_actual': patrimonio_actual,
@@ -102,10 +146,60 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
         'tiene_enero': tiene_enero,
         'crecimiento_liquidez_ytd': crecimiento_liquidez_ytd,
         'crecimiento_patrimonio_ytd': crecimiento_patrimonio_ytd,
-        'ahorro_esperado_acum': ahorro_esperado_acum,
-        'patrimonio_esperado_acum': ahorro_esperado_acum + inversion_esperada_acum,
+        'ahorro_esperado_actual': ahorro_esperado_actual,
+        'patrimonio_esperado_actual': patrimonio_esperado_actual,
+        'diff_liquidez': diff_liquidez,
+        'diff_patrimonio': diff_patrimonio,
+        'comparacion_valida': comparacion_valida,
+        'mes_base': mes_base,
+        'mes_base_nombre': MESES_NOMBRES[mes_base] if mes_base else '',
         'ultimo_mes_con_datos': ultimo_mes_con_datos,
         'ultimo_mes_nombre': MESES_NOMBRES[ultimo_mes_con_datos] if ultimo_mes_con_datos else '',
+    }
+
+
+def _serie_evolucion(hogar, año, flujos_por_mes, resumen):
+    """Construye las series mensuales (1..12) 'esperado' (línea de presupuesto,
+    casi lineal) y 'real' (datos registrados) para liquidez y patrimonio,
+    listas para dibujar en el gráfico de evolución."""
+    datos_por_mes = _liquidez_patrimonio_por_mes(hogar, año)
+    if resumen['ultimo_mes_con_datos']:
+        datos_por_mes[resumen['ultimo_mes_con_datos']] = (
+            resumen['liquidez_actual'], resumen['patrimonio_financiero_actual']
+        )
+
+    mes_base = resumen['mes_base']
+
+    def f(v):
+        return float(v) if v is not None else None
+
+    real_liquidez = [f(datos_por_mes[m][0]) for m in range(1, 13)]
+    real_patrimonio = [f(datos_por_mes[m][1]) for m in range(1, 13)]
+
+    esperado_liquidez = [None] * 12
+    esperado_patrimonio = [None] * 12
+    if mes_base:
+        base_liq, base_pat = datos_por_mes[mes_base]
+        esperado_liquidez[mes_base - 1] = f(base_liq)
+        esperado_patrimonio[mes_base - 1] = f(base_pat)
+        acum_ahorro = Decimal('0')
+        acum_total = Decimal('0')
+        for m in range(mes_base + 1, 13):
+            acum_ahorro += flujos_por_mes[m]['total_ahorro']
+            acum_total += flujos_por_mes[m]['total_ahorro'] + flujos_por_mes[m]['total_inversion']
+            esperado_liquidez[m - 1] = f(base_liq + acum_ahorro)
+            esperado_patrimonio[m - 1] = f(base_pat + acum_total)
+
+    hoy = datetime.date.today()
+    mes_actual_idx = (hoy.month - 1) if año == hoy.year else None
+
+    return {
+        'meses': MESES_NOMBRES[1:],
+        'mes_base_idx': (mes_base - 1) if mes_base else None,
+        'mes_actual_idx': mes_actual_idx,
+        'ultimo_real_idx': (resumen['ultimo_mes_con_datos'] - 1) if resumen['ultimo_mes_con_datos'] else None,
+        'liquidez': {'esperado': esperado_liquidez, 'real': real_liquidez},
+        'patrimonio': {'esperado': esperado_patrimonio, 'real': real_patrimonio},
     }
 
 
@@ -163,7 +257,7 @@ def _construir_tabla(hogar, año, flujos_por_mes):
     return fondos, filas
 
 
-def _estado_json(resumen, filas):
+def _estado_json(resumen, filas, grafico):
     """Serializa el estado recalculado para refrescar la vista sin recargar."""
     def f(valor):
         return float(valor) if valor is not None else None
@@ -175,6 +269,13 @@ def _estado_json(resumen, filas):
             'crecimiento_liquidez_ytd': f(resumen['crecimiento_liquidez_ytd']),
             'crecimiento_patrimonio_ytd': f(resumen['crecimiento_patrimonio_ytd']),
             'tiene_enero': resumen['tiene_enero'],
+            'ahorro_esperado_actual': f(resumen['ahorro_esperado_actual']),
+            'patrimonio_esperado_actual': f(resumen['patrimonio_esperado_actual']),
+            'diff_liquidez': f(resumen['diff_liquidez']),
+            'diff_patrimonio': f(resumen['diff_patrimonio']),
+            'comparacion_valida': resumen['comparacion_valida'],
+            'mes_base_nombre': resumen['mes_base_nombre'],
+            'ultimo_mes_nombre': resumen['ultimo_mes_nombre'],
         },
         'meses': {
             fila['mes']: {
@@ -185,6 +286,7 @@ def _estado_json(resumen, filas):
             }
             for fila in filas
         },
+        'grafico': grafico,
     }
 
 
@@ -192,7 +294,8 @@ def _calcular_estado_json(hogar, año):
     flujos_por_mes = _flujos_por_mes(hogar, año)
     resumen = _calcular_resumen(hogar, año, flujos_por_mes)
     _, filas = _construir_tabla(hogar, año, flujos_por_mes)
-    return _estado_json(resumen, filas)
+    grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen)
+    return _estado_json(resumen, filas, grafico)
 
 
 def _construir_tabla_propiedades(hogar, año):
@@ -251,6 +354,7 @@ def vista_evolucion(request):
     resumen = _calcular_resumen(hogar, año, flujos_por_mes)
     fondos, filas = _construir_tabla(hogar, año, flujos_por_mes)
     propiedades, filas_propiedades = _construir_tabla_propiedades(hogar, año)
+    grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen)
     años_disponibles = [hoy.year - 1, hoy.year, hoy.year + 1]
 
     return render(request, 'finanzas/evolucion/vista.html', {
@@ -261,6 +365,7 @@ def vista_evolucion(request):
         'filas': filas,
         'propiedades': propiedades,
         'filas_propiedades': filas_propiedades,
+        'grafico': grafico,
         'año_actual': año,
         'años': años_disponibles,
     })

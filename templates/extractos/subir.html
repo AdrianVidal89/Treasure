@@ -43,7 +43,7 @@
             <label class="upload-drop" for="archivos">
                 <svg class="icon icon-xl"><use href="#i-upload"/></svg>
                 <div><strong>Haz clic para seleccionar</strong> uno o varios CSV</div>
-                <div class="upload-hint">Se detectan automáticamente la fecha, el concepto, el importe y el saldo.</div>
+                <div class="upload-hint">Se detectan automáticamente la fecha, el concepto, el importe y el saldo. Antes de importar podrás revisar y corregir el resultado.</div>
                 <div class="upload-file-list" id="file-list"></div>
             </label>
             <input type="file" id="archivos" name="archivos" accept=".csv,text/csv" multiple hidden>
@@ -56,7 +56,7 @@
 
         <div class="toolbar">
             <button type="submit" class="btn btn-primary">
-                <svg class="icon"><use href="#i-check"/></svg> Procesar e importar
+                <svg class="icon"><use href="#i-chevron-right"/></svg> Analizar y revisar
             </button>
             <button type="button" class="btn btn-secondary" disabled title="Disponible próximamente">
                 <svg class="icon"><use href="#i-ai"/></svg> Categorizar con IA (próximamente)

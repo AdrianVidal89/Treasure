@@ -1,7 +1,9 @@
 import datetime
+import json
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.http import JsonResponse
 from decimal import Decimal
 
 from .models import (
@@ -343,6 +345,34 @@ def eliminar_regla(request, regla_id):
     regla.delete()
     messages.success(request, f"Regla '{nombre}' eliminada.")
     return redirect('finanzas:vista_distribucion')
+
+
+@login_required
+def reordenar_reglas(request):
+    """Persiste el nuevo orden de aplicación de las reglas de reparto (drag & drop)."""
+    profile, hogar = _get_hogar_o_redirect(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo_no_permitido'}, status=405)
+
+    try:
+        ids = json.loads(request.body).get('ids', [])
+    except (ValueError, TypeError):
+        return JsonResponse({'ok': False, 'error': 'payload_invalido'}, status=400)
+
+    reglas_por_id = {r.id: r for r in ReglaReparto.objects.filter(hogar=hogar, id__in=ids)}
+    if len(reglas_por_id) != len(set(ids)):
+        return JsonResponse({'ok': False, 'error': 'reglas_desconocidas'}, status=400)
+
+    for i, regla_id in enumerate(ids):
+        regla = reglas_por_id[int(regla_id)]
+        if regla.orden != i:
+            regla.orden = i
+            regla.save(update_fields=['orden'])
+
+    return JsonResponse({'ok': True})
 
 
 # ---------------------------------------------------------------------------

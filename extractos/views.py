@@ -11,7 +11,11 @@ from finanzas.parsing import leer_csv
 
 from .categorizacion import categorizar_por_codigo
 from .models import ExtractoBancario, MovimientoBancario
-from .parser import parse_extracto
+from .parser import CAMPO_LABELS, analizar_extracto
+
+SESSION_KEY_PENDIENTES = 'extractos_pendientes'
+SESSION_KEY_META = 'extractos_pendientes_meta'
+CAMPOS_MAPEO = ('fecha', 'concepto', 'importe', 'saldo', 'debe', 'haber')
 
 MESES_ES = [
     '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -72,15 +76,56 @@ def subir(request):
         messages.error(request, "No se subió ningún archivo.")
         return render(request, 'extractos/subir.html', {'cuentas': cuentas})
 
-    nombre_banco = (request.POST.get('nombre_banco') or '').strip()
-    cuenta_id = request.POST.get('cuenta') or None
-    cuenta = None
-    if cuenta_id:
-        cuenta = CuentaBancaria.objects.filter(
-            usuario__userprofile__hogar=hogar, id=cuenta_id,
-        ).first()
+    # No importamos directamente: guardamos el texto crudo en sesión y lo
+    # analizamos en la pantalla de revisión, donde el usuario puede corregir
+    # el mapeo de columnas antes de confirmar. Así un formato de banco no
+    # reconocido no falla en silencio.
+    pendientes = []
+    for archivo in archivos:
+        texto = leer_csv(archivo)
+        pendientes.append({'nombre': archivo.name[:255], 'texto': texto})
 
-    # Categorías del hogar indexadas por nombre para el matcheo "por código".
+    request.session[SESSION_KEY_PENDIENTES] = pendientes
+    request.session[SESSION_KEY_META] = {
+        'nombre_banco': (request.POST.get('nombre_banco') or '').strip(),
+        'cuenta_id': request.POST.get('cuenta') or None,
+    }
+    return redirect('extractos:revisar')
+
+
+def _analizar_pendientes(pendientes, mapeos_manuales=None):
+    """Ejecuta analizar_extracto sobre cada archivo pendiente de la sesión.
+
+    mapeos_manuales: {indice_archivo(str): {campo: valor}} con las
+    correcciones de mapeo enviadas desde el formulario de revisión.
+    """
+    mapeos_manuales = mapeos_manuales or {}
+    analizados = []
+    for i, pend in enumerate(pendientes):
+        mapeo = mapeos_manuales.get(str(i))
+        resultado = analizar_extracto(pend['texto'], mapeo_manual=mapeo)
+        analizados.append({'nombre': pend['nombre'], 'resultado': resultado})
+    return analizados
+
+
+def _leer_mapeos_manuales(POST, num_archivos):
+    """Reconstruye {indice_archivo: {campo: valor}} a partir de los campos
+    'mapeo_<i>_<campo>' enviados por el formulario de revisión."""
+    mapeos = {}
+    for i in range(num_archivos):
+        mapeo_archivo = {}
+        for campo in CAMPOS_MAPEO:
+            clave = f'mapeo_{i}_{campo}'
+            if clave in POST:
+                mapeo_archivo[campo] = POST.get(clave)
+        if mapeo_archivo:
+            mapeos[str(i)] = mapeo_archivo
+    return mapeos
+
+
+def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
+    """Escribe en BD los movimientos ya analizados (y revisados). Devuelve
+    un dict con los totales para mostrar en los mensajes de resultado."""
     categorias_por_nombre = {
         c.nombre: c for c in CategoriaGasto.objects.filter(hogar=hogar, activo=True)
     }
@@ -88,25 +133,21 @@ def subir(request):
     total_creados = 0
     total_duplicados = 0
     total_categorizados = 0
-    total_errores = 0
+    total_omitidos = 0
     extractos_ok = 0
 
-    for archivo in archivos:
-        texto = leer_csv(archivo)
-        movimientos, errores = parse_extracto(texto)
-        total_errores += len(errores)
-
+    for item in analizados:
+        movimientos = item['resultado']['movimientos']
+        total_omitidos += len(item['resultado']['filas_error'])
         if not movimientos:
-            for e in errores[:3]:
-                messages.warning(request, f"{archivo.name}: {e}")
             continue
 
         extracto = ExtractoBancario.objects.create(
             hogar=hogar,
-            usuario=request.user,
+            usuario=usuario,
             nombre_banco=nombre_banco,
             cuenta=cuenta,
-            archivo_nombre=archivo.name[:255],
+            archivo_nombre=item['nombre'],
         )
 
         creados = 0
@@ -156,18 +197,119 @@ def subir(request):
         total_creados += creados
         extractos_ok += 1
 
-    if total_creados:
-        messages.success(
-            request,
-            f"Importados {total_creados} movimientos en {extractos_ok} extracto(s). "
-            f"{total_categorizados} categorizados por código."
-        )
-    if total_duplicados:
-        messages.info(request, f"{total_duplicados} movimientos duplicados ignorados.")
-    if not total_creados and not total_duplicados:
-        messages.error(request, "No se pudo importar ningún movimiento. Revisa el formato del CSV.")
+    return {
+        'total_creados': total_creados,
+        'total_duplicados': total_duplicados,
+        'total_categorizados': total_categorizados,
+        'total_omitidos': total_omitidos,
+        'extractos_ok': extractos_ok,
+    }
 
-    return redirect('extractos:listar')
+
+@login_required
+def revisar(request):
+    """Paso previo de revisión: muestra qué columna se ha detectado para cada
+    dato y una vista previa de los movimientos antes de importar de verdad.
+    Permite corregir el mapeo (p. ej. si el banco usa un formato no
+    reconocido) y volver a analizar sin perder el archivo subido."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+
+    pendientes = request.session.get(SESSION_KEY_PENDIENTES)
+    if not pendientes:
+        messages.info(request, "No hay ningún archivo pendiente de revisión. Sube un CSV primero.")
+        return redirect('extractos:subir')
+
+    meta = request.session.get(SESSION_KEY_META, {})
+    cuentas = CuentaBancaria.objects.filter(
+        usuario__userprofile__hogar=hogar, activa=True,
+    )
+
+    if request.method == 'POST':
+        accion = request.POST.get('accion')
+
+        if accion == 'cancelar':
+            request.session.pop(SESSION_KEY_PENDIENTES, None)
+            request.session.pop(SESSION_KEY_META, None)
+            messages.info(request, "Importación cancelada.")
+            return redirect('extractos:subir')
+
+        mapeos_manuales = _leer_mapeos_manuales(request.POST, len(pendientes))
+        analizados = _analizar_pendientes(pendientes, mapeos_manuales)
+
+        nombre_banco = request.POST.get('nombre_banco', meta.get('nombre_banco', '')).strip()
+        cuenta_id = request.POST.get('cuenta') or meta.get('cuenta_id')
+        cuenta = None
+        if cuenta_id:
+            cuenta = cuentas.filter(id=cuenta_id).first()
+
+        if accion == 'confirmar':
+            totales = _importar_analizados(hogar, request.user, nombre_banco, cuenta, analizados)
+            request.session.pop(SESSION_KEY_PENDIENTES, None)
+            request.session.pop(SESSION_KEY_META, None)
+
+            if totales['total_creados']:
+                messages.success(
+                    request,
+                    f"Importados {totales['total_creados']} movimientos en "
+                    f"{totales['extractos_ok']} extracto(s). "
+                    f"{totales['total_categorizados']} categorizados por código."
+                )
+            if totales['total_duplicados']:
+                messages.info(request, f"{totales['total_duplicados']} movimientos duplicados ignorados.")
+            if totales['total_omitidos']:
+                messages.warning(
+                    request,
+                    f"{totales['total_omitidos']} fila(s) no se pudieron interpretar y se omitieron."
+                )
+            if not totales['total_creados'] and not totales['total_duplicados']:
+                messages.error(request, "No se pudo importar ningún movimiento. Revisa el mapeo de columnas.")
+            return redirect('extractos:listar')
+
+        # accion == 'reanalizar' (o cualquier otra cosa): recalcular la vista
+        # previa con el mapeo corregido y mantenernos en la revisión.
+        request.session[SESSION_KEY_META] = {'nombre_banco': nombre_banco, 'cuenta_id': cuenta_id}
+        meta = request.session[SESSION_KEY_META]
+    else:
+        analizados = _analizar_pendientes(pendientes)
+
+    archivos_ctx = []
+    for i, item in enumerate(analizados):
+        r = item['resultado']
+        campos_ctx = []
+        for campo in CAMPOS_MAPEO:
+            campos_ctx.append({
+                'campo': campo,
+                'label': CAMPO_LABELS[campo],
+                'seleccionado': r['mapa'].get(campo),
+            })
+        archivos_ctx.append({
+            'indice': i,
+            'nombre': item['nombre'],
+            'cabecera': list(enumerate(r['cabecera'])),
+            'campos': campos_ctx,
+            'errores_generales': r['errores_generales'],
+            'total_ok': len(r['movimientos']),
+            'total_error': len(r['filas_error']),
+            'preview': r['movimientos'][:15],
+            'preview_restantes': max(0, len(r['movimientos']) - 15),
+            'filas_error': r['filas_error'][:20],
+            'filas_error_restantes': max(0, len(r['filas_error']) - 20),
+        })
+
+    total_ok = sum(a['total_ok'] for a in archivos_ctx)
+    total_error = sum(a['total_error'] for a in archivos_ctx)
+
+    return render(request, 'extractos/revisar.html', {
+        'archivos': archivos_ctx,
+        'cuentas': cuentas,
+        'nombre_banco': meta.get('nombre_banco', ''),
+        'cuenta_id': meta.get('cuenta_id'),
+        'total_ok': total_ok,
+        'total_error': total_error,
+    })
 
 
 @login_required
