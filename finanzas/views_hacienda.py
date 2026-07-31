@@ -99,6 +99,16 @@ def informe_hacienda_xlsx(request):
     ws['A1'].font = Font(bold=True, size=14, color='1B4332')
     ws.merge_cells('A1:K1')
 
+    if informe.get('hay_sin_cobertura'):
+        aviso = ws.cell(
+            row=2, column=1,
+            value=(f"Aviso: {informe['ventas_sin_cobertura']} venta(s) sin compras "
+                   "suficientes registradas; su ganancia sale sobrestimada. "
+                   "Ver hoja «Detalle FIFO»."),
+        )
+        aviso.font = Font(color='B4442E', bold=True)
+        ws.merge_cells('A2:K2')
+
     columnas = [
         ('Fecha venta', 14), ('Activo', 26), ('Ticker', 12), ('Tipo', 12),
         ('Titular', 14), ('Cantidad', 14), ('Precio venta', 14),
@@ -152,6 +162,35 @@ def informe_hacienda_xlsx(request):
         celda = ws.cell(row=fila, column=8, value=_fmt(valor))
         celda.number_format = euro
         fila += 1
+
+    # Hoja de detalle de adquisición FIFO: de qué compras sale el coste de cada venta.
+    ws3 = wb.create_sheet('Detalle FIFO')
+    cols_det = [('Fecha venta', 14), ('Activo', 24), ('Ticker', 12), ('Fecha compra', 14),
+                ('Cantidad', 14), ('Precio compra', 14), ('Coste (incl. comisión)', 22)]
+    for c, (titulo, ancho) in enumerate(cols_det, start=1):
+        celda = ws3.cell(row=1, column=c, value=titulo)
+        celda.fill = encabezado_fill
+        celda.font = encabezado_font
+        celda.alignment = Alignment(horizontal='center')
+        ws3.column_dimensions[get_column_letter(c)].width = ancho
+    r = 2
+    for v in informe['ventas']:
+        for l in v['lotes']:
+            ws3.cell(row=r, column=1, value=v['fecha'].strftime('%d/%m/%Y'))
+            ws3.cell(row=r, column=2, value=v['inversion'])
+            ws3.cell(row=r, column=3, value=v['ticker'])
+            ws3.cell(row=r, column=4, value=l['fecha'].strftime('%d/%m/%Y'))
+            ws3.cell(row=r, column=5, value=_fmt(l['cantidad']))
+            ws3.cell(row=r, column=6, value=_fmt(l['precio'])).number_format = euro
+            ws3.cell(row=r, column=7, value=_fmt(l['coste'])).number_format = euro
+            r += 1
+        if not v['cubierto']:
+            ws3.cell(row=r, column=1, value=v['fecha'].strftime('%d/%m/%Y'))
+            ws3.cell(row=r, column=2, value=v['inversion'])
+            c4 = ws3.cell(row=r, column=4, value='SIN COMPRA REGISTRADA')
+            c4.font = Font(color='B4442E', bold=True)
+            ws3.cell(row=r, column=5, value=_fmt(v['unidades_sin_coste']))
+            r += 1
 
     # Hoja de cómo declararlo
     ws2 = wb.create_sheet('Cómo declararlo')
@@ -214,6 +253,19 @@ def informe_hacienda_pdf(request):
     def moneda(v):
         return f"{float(v):,.2f} €".replace(',', 'X').replace('.', ',').replace('X', '.')
 
+    def cant(v):
+        return f"{float(v):.4f}".rstrip('0').rstrip('.')
+
+    if informe.get('hay_sin_cobertura'):
+        estilo_aviso = ParagraphStyle('aviso', parent=estilo_normal, textColor=colors.HexColor('#B4442E'))
+        elementos.append(Paragraph(
+            f"Aviso: {informe['ventas_sin_cobertura']} venta(s) sin compras suficientes "
+            "registradas; para esas unidades no consta coste de adquisición, así que su "
+            "ganancia sale sobrestimada. Registra las compras que falten en Inversiones.",
+            estilo_aviso,
+        ))
+        elementos.append(Spacer(1, 4 * mm))
+
     if informe['ventas']:
         cabecera = ['Fecha', 'Activo', 'Ticker', 'Titular', 'Cant.', 'P. venta',
                     'Importe', 'Coste (FIFO)', 'Comisión', 'Ganancia/Pérdida']
@@ -251,6 +303,34 @@ def informe_hacienda_pdf(request):
             estilo_tabla.add('TEXTCOLOR', (-1, i), (-1, i), color)
         tabla.setStyle(estilo_tabla)
         elementos.append(tabla)
+
+        # Detalle de adquisición (FIFO): de qué compras sale el coste de cada venta.
+        elementos.append(Spacer(1, 8 * mm))
+        elementos.append(Paragraph('Detalle de adquisición (FIFO)', estilo_h2))
+        for v in informe['ventas']:
+            elementos.append(Paragraph(
+                f"Venta {v['fecha'].strftime('%d/%m/%Y')} · {v['inversion']} "
+                f"({v['ticker'] or '—'}) — coste de adquisición {moneda(v['coste_adquisicion'])}",
+                estilo_normal,
+            ))
+            det = [['Fecha compra', 'Cantidad', 'Precio compra', 'Coste (incl. comisión)']]
+            for l in v['lotes']:
+                det.append([l['fecha'].strftime('%d/%m/%Y'), cant(l['cantidad']),
+                            moneda(l['precio']), moneda(l['coste'])])
+            if not v['cubierto']:
+                det.append(['sin compra', cant(v['unidades_sin_coste']),
+                            'no registrada', moneda(0)])
+            tabla_det = Table(det, colWidths=[32 * mm, 28 * mm, 34 * mm, 40 * mm])
+            tabla_det.setStyle(TableStyle([
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F0F3F1')),
+                ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+                ('LINEBELOW', (0, 0), (-1, 0), 0.3, colors.HexColor('#CDD5CF')),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ]))
+            elementos.append(tabla_det)
+            elementos.append(Spacer(1, 3 * mm))
     else:
         elementos.append(Paragraph('No hay ventas registradas en este ejercicio.', estilo_normal))
 

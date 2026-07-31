@@ -50,9 +50,17 @@
         </div>
     </div>
 
+    {% if informe.hay_sin_cobertura %}
+    <div class="badge badge-warning" style="display:flex; gap:8px; padding:12px 14px; margin-bottom:14px; align-items:flex-start;">
+        <svg class="icon"><use href="#i-alert"/></svg>
+        <span>Hay <strong>{{ informe.ventas_sin_cobertura }}</strong> venta(s) sin compras suficientes registradas. Para esas unidades no consta coste de adquisición, así que su ganancia —y el impuesto— sale <strong>sobrestimada</strong>. Registra las compras que falten en Inversiones para que el cálculo sea correcto.</span>
+    </div>
+    {% endif %}
+
     {% if informe.ventas %}
+    <p class="text-muted" style="font-size:0.82rem; margin:0 0 8px;">Haz clic en una venta para ver de qué compras (FIFO) sale su coste de adquisición.</p>
     <div class="table-scroll">
-        <table class="table">
+        <table class="table informe-tabla">
             <thead>
                 <tr>
                     <th>Fecha</th>
@@ -69,9 +77,10 @@
             </thead>
             <tbody>
                 {% for v in informe.ventas %}
-                <tr>
-                    <td class="num">{{ v.fecha|date:"d/m/Y" }}</td>
-                    <td>{{ v.inversion }} <span class="text-muted" style="font-size:0.75rem;">· {{ v.tipo_activo }}</span></td>
+                <tr class="venta-row" data-idx="{{ forloop.counter }}" style="cursor:pointer;">
+                    <td class="num"><span class="chev" style="display:inline-block; transition:transform .15s;">▸</span> {{ v.fecha|date:"d/m/Y" }}</td>
+                    <td>{{ v.inversion }} <span class="text-muted" style="font-size:0.75rem;">· {{ v.tipo_activo }}</span>
+                        {% if not v.cubierto %}<span class="badge badge-warning" style="margin-left:6px;">sin cobertura</span>{% endif %}</td>
                     <td>{{ v.ticker|default:"—" }}</td>
                     <td>{{ v.titular }}</td>
                     <td class="num">{{ v.cantidad|floatformat:"-4" }}</td>
@@ -80,6 +89,44 @@
                     <td class="num">{{ v.coste_adquisicion|floatformat:2 }} €</td>
                     <td class="num text-muted">{{ v.comision|floatformat:2 }} €</td>
                     <td class="num {% if v.ganancia >= 0 %}text-positive{% else %}text-negative{% endif %}" style="font-weight:650;">{{ v.ganancia|floatformat:2 }} €</td>
+                </tr>
+                <tr class="detalle-row" id="detalle-{{ forloop.counter }}" hidden>
+                    <td colspan="10" style="background:var(--surface-2); padding:8px 16px;">
+                        <strong style="font-size:0.8rem;">Adquisición (FIFO): de qué compras sale el coste de esta venta</strong>
+                        <table class="table" style="margin-top:6px; background:var(--surface); border:1px solid var(--border); border-radius:8px;">
+                            <thead>
+                                <tr>
+                                    <th>Fecha compra</th>
+                                    <th class="num">Cantidad</th>
+                                    <th class="num">Precio compra</th>
+                                    <th class="num">Coste (incl. comisión compra)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for l in v.lotes %}
+                                <tr>
+                                    <td class="num">{{ l.fecha|date:"d/m/Y" }}</td>
+                                    <td class="num">{{ l.cantidad|floatformat:"-4" }}</td>
+                                    <td class="num">{{ l.precio|floatformat:2 }} €</td>
+                                    <td class="num">{{ l.coste|floatformat:2 }} €</td>
+                                </tr>
+                                {% endfor %}
+                                {% if not v.cubierto %}
+                                <tr>
+                                    <td class="num text-negative">sin compra</td>
+                                    <td class="num text-negative">{{ v.unidades_sin_coste|floatformat:"-4" }}</td>
+                                    <td class="num text-negative" colspan="2">no hay compra registrada → coste 0 (ganancia sobrestimada)</td>
+                                </tr>
+                                {% endif %}
+                                <tr>
+                                    <td class="num" style="font-weight:650;">Total coste</td>
+                                    <td class="num" style="font-weight:650;">{{ v.cantidad|floatformat:"-4" }}</td>
+                                    <td></td>
+                                    <td class="num" style="font-weight:650;">{{ v.coste_adquisicion|floatformat:2 }} €</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -112,4 +159,17 @@
         </ul>
     </div>
 </div>
+
+<script>
+document.querySelectorAll('.venta-row').forEach(function (fila) {
+    fila.addEventListener('click', function () {
+        var detalle = document.getElementById('detalle-' + fila.dataset.idx);
+        if (!detalle) return;
+        var oculto = detalle.hasAttribute('hidden');
+        if (oculto) { detalle.removeAttribute('hidden'); } else { detalle.setAttribute('hidden', ''); }
+        var chev = fila.querySelector('.chev');
+        if (chev) chev.style.transform = oculto ? 'rotate(90deg)' : 'rotate(0deg)';
+    });
+});
+</script>
 {% endblock %}

@@ -64,32 +64,42 @@ def calcular_informe_ventas(hogar, anio):
         movimientos.sort(key=lambda m: (m.fecha, m.id))
 
         # Cola FIFO de lotes de compra pendientes de vender. Cada lote guarda su
-        # precio y la comisión de compra prorrateada por unidad, para incluirla
-        # en el valor de adquisición.
+        # fecha, precio y la comisión de compra prorrateada por unidad, para
+        # incluirla en el valor de adquisición y poder mostrar el desglose.
         lotes = []
         for m in movimientos:
             if m.tipo == 'COMPRA':
                 comision_unit = (m.comision / m.cantidad) if m.cantidad else Decimal('0')
                 lotes.append({
+                    'fecha': m.fecha,
                     'cantidad': m.cantidad,
                     'precio': m.precio_unitario,
                     'comision_unit': comision_unit,
                 })
                 continue
 
-            # VENTA: consume los lotes más antiguos primero (FIFO).
+            # VENTA: consume los lotes más antiguos primero (FIFO) y guarda de
+            # qué compras concretas sale el coste (para el desglose del informe).
             unidades_restantes = m.cantidad
-            coste = Decimal('0')
+            lotes_consumidos = []
             while unidades_restantes > 0 and lotes:
                 lote = lotes[0]
                 consumidas = min(unidades_restantes, lote['cantidad'])
-                coste += consumidas * lote['precio'] + consumidas * lote['comision_unit']
+                coste_lote = round(consumidas * (lote['precio'] + lote['comision_unit']), 2)
+                lotes_consumidos.append({
+                    'fecha': lote['fecha'],
+                    'cantidad': consumidas,
+                    'precio': lote['precio'],
+                    'coste': coste_lote,
+                })
                 lote['cantidad'] -= consumidas
                 unidades_restantes -= consumidas
                 if lote['cantidad'] <= 0:
                     lotes.pop(0)
 
-            coste = round(coste, 2)
+            # El coste total es la suma de los lotes (así el desglose cuadra al céntimo).
+            coste = sum((l['coste'] for l in lotes_consumidos), Decimal('0'))
+            unidades_sin_coste = unidades_restantes  # >0 → faltan compras registradas
             importe_venta = round(m.precio_unitario * m.cantidad, 2)
             # Valor de transmisión = importe − comisión de venta.
             ganancia = round(importe_venta - m.comision - coste, 2)
@@ -108,6 +118,9 @@ def calcular_informe_ventas(hogar, anio):
                     'coste_adquisicion': coste,
                     'comision': m.comision,
                     'ganancia': ganancia,
+                    'lotes': lotes_consumidos,
+                    'cubierto': unidades_sin_coste == 0,
+                    'unidades_sin_coste': unidades_sin_coste,
                 })
 
     ventas.sort(key=lambda v: v['fecha'])
@@ -125,6 +138,8 @@ def calcular_informe_ventas(hogar, anio):
         if ganancia_neta > 0 else Decimal('0')
     )
 
+    ventas_sin_cobertura = [v for v in ventas if not v['cubierto']]
+
     return {
         'anio': anio,
         'ventas': ventas,
@@ -138,4 +153,6 @@ def calcular_informe_ventas(hogar, anio):
         'impuesto_estimado': impuesto_estimado,
         'tipo_efectivo': tipo_efectivo,
         'tramos': TRAMOS_AHORRO_ES,
+        'hay_sin_cobertura': bool(ventas_sin_cobertura),
+        'ventas_sin_cobertura': len(ventas_sin_cobertura),
     }
