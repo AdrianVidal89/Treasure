@@ -11,6 +11,7 @@ venta, tal como establece la normativa del IRPF.
 Es una herramienta de apoyo para declarar sin trampas; aun así, conviene
 contrastar las cifras con un asesor antes de presentar la declaración.
 """
+from collections import defaultdict
 from decimal import Decimal
 
 from .models import Inversion
@@ -46,6 +47,24 @@ def _titular(usuario):
     return usuario.first_name or usuario.username
 
 
+def _clave_valor(inv):
+    """Clave de 'valor homogéneo' para Hacienda: mismo contribuyente + mismo
+    valor, CON INDEPENDENCIA de la cartera/plataforma. Hacienda trata todas las
+    participaciones del mismo valor de una persona como un único pool FIFO,
+    estén donde estén. Se agrupa por ticker; sin ticker, por nombre normalizado
+    (aproximación)."""
+    ticker = (inv.ticker or '').strip().upper()
+    if ticker:
+        return (inv.usuario_id, 'TICKER:' + ticker)
+    return (inv.usuario_id, 'NOMBRE:' + (inv.nombre or '').strip().upper())
+
+
+def _origen(inv):
+    """Etiqueta corta de la cartera/broker de donde procede un lote, para poder
+    rastrear en el desglose de qué cartera salió cada compra."""
+    return inv.plataforma or inv.nombre or ''
+
+
 def calcular_informe_ventas(hogar, anio):
     """Devuelve un dict con las ventas del año y los totales/estimación fiscal."""
     inversiones = (
@@ -55,19 +74,25 @@ def calcular_informe_ventas(hogar, anio):
         .prefetch_related('movimientos')
     )
 
-    ventas = []
+    # Agrupa TODOS los movimientos por (contribuyente, valor) a través de todas
+    # las carteras: un único pool FIFO por valor homogéneo, como exige Hacienda.
+    grupos = defaultdict(list)  # clave -> [(movimiento, inversion), ...]
     for inv in inversiones:
-        movimientos = [
-            m for m in inv.movimientos.all()
-            if m.tipo in ('COMPRA', 'VENTA')
-        ]
-        movimientos.sort(key=lambda m: (m.fecha, m.id))
+        clave = _clave_valor(inv)
+        for m in inv.movimientos.all():
+            if m.tipo in ('COMPRA', 'VENTA'):
+                grupos[clave].append((m, inv))
+
+    ventas = []
+    for movs in grupos.values():
+        # Orden cronológico global del valor, mezclando todas sus carteras.
+        movs.sort(key=lambda mi: (mi[0].fecha, mi[0].id))
 
         # Cola FIFO de lotes de compra pendientes de vender. Cada lote guarda su
-        # fecha, precio y la comisión de compra prorrateada por unidad, para
-        # incluirla en el valor de adquisición y poder mostrar el desglose.
+        # fecha, precio, la comisión de compra prorrateada por unidad y de qué
+        # cartera salió, para el valor de adquisición y el desglose.
         lotes = []
-        for m in movimientos:
+        for m, inv in movs:
             if m.tipo == 'COMPRA':
                 comision_unit = (m.comision / m.cantidad) if m.cantidad else Decimal('0')
                 lotes.append({
@@ -75,11 +100,12 @@ def calcular_informe_ventas(hogar, anio):
                     'cantidad': m.cantidad,
                     'precio': m.precio_unitario,
                     'comision_unit': comision_unit,
+                    'origen': _origen(inv),
                 })
                 continue
 
-            # VENTA: consume los lotes más antiguos primero (FIFO) y guarda de
-            # qué compras concretas sale el coste (para el desglose del informe).
+            # VENTA: consume los lotes más antiguos primero (FIFO) —de cualquier
+            # cartera— y guarda de qué compras concretas sale el coste.
             unidades_restantes = m.cantidad
             lotes_consumidos = []
             while unidades_restantes > 0 and lotes:
@@ -91,6 +117,7 @@ def calcular_informe_ventas(hogar, anio):
                     'cantidad': consumidas,
                     'precio': lote['precio'],
                     'coste': coste_lote,
+                    'origen': lote['origen'],
                 })
                 lote['cantidad'] -= consumidas
                 unidades_restantes -= consumidas

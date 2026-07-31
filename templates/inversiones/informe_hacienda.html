@@ -97,6 +97,7 @@
                             <thead>
                                 <tr>
                                     <th>Fecha compra</th>
+                                    <th>Cartera / origen</th>
                                     <th class="num">Cantidad</th>
                                     <th class="num">Precio compra</th>
                                     <th class="num">Coste (incl. comisión compra)</th>
@@ -106,6 +107,7 @@
                                 {% for l in v.lotes %}
                                 <tr>
                                     <td class="num">{{ l.fecha|date:"d/m/Y" }}</td>
+                                    <td>{{ l.origen|default:"—" }}</td>
                                     <td class="num">{{ l.cantidad|floatformat:"-4" }}</td>
                                     <td class="num">{{ l.precio|floatformat:2 }} €</td>
                                     <td class="num">{{ l.coste|floatformat:2 }} €</td>
@@ -113,13 +115,15 @@
                                 {% endfor %}
                                 {% if not v.cubierto %}
                                 <tr>
-                                    <td class="num text-negative">sin compra</td>
+                                    <td class="text-negative">sin compra</td>
+                                    <td></td>
                                     <td class="num text-negative">{{ v.unidades_sin_coste|floatformat:"-4" }}</td>
                                     <td class="num text-negative" colspan="2">no hay compra registrada → coste 0 (ganancia sobrestimada)</td>
                                 </tr>
                                 {% endif %}
                                 <tr>
                                     <td class="num" style="font-weight:650;">Total coste</td>
+                                    <td></td>
                                     <td class="num" style="font-weight:650;">{{ v.cantidad|floatformat:"-4" }}</td>
                                     <td></td>
                                     <td class="num" style="font-weight:650;">{{ v.coste_adquisicion|floatformat:2 }} €</td>

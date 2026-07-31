@@ -166,7 +166,8 @@ def informe_hacienda_xlsx(request):
     # Hoja de detalle de adquisición FIFO: de qué compras sale el coste de cada venta.
     ws3 = wb.create_sheet('Detalle FIFO')
     cols_det = [('Fecha venta', 14), ('Activo', 24), ('Ticker', 12), ('Fecha compra', 14),
-                ('Cantidad', 14), ('Precio compra', 14), ('Coste (incl. comisión)', 22)]
+                ('Cartera / origen', 22), ('Cantidad', 14), ('Precio compra', 14),
+                ('Coste (incl. comisión)', 22)]
     for c, (titulo, ancho) in enumerate(cols_det, start=1):
         celda = ws3.cell(row=1, column=c, value=titulo)
         celda.fill = encabezado_fill
@@ -180,16 +181,17 @@ def informe_hacienda_xlsx(request):
             ws3.cell(row=r, column=2, value=v['inversion'])
             ws3.cell(row=r, column=3, value=v['ticker'])
             ws3.cell(row=r, column=4, value=l['fecha'].strftime('%d/%m/%Y'))
-            ws3.cell(row=r, column=5, value=_fmt(l['cantidad']))
-            ws3.cell(row=r, column=6, value=_fmt(l['precio'])).number_format = euro
-            ws3.cell(row=r, column=7, value=_fmt(l['coste'])).number_format = euro
+            ws3.cell(row=r, column=5, value=l.get('origen', ''))
+            ws3.cell(row=r, column=6, value=_fmt(l['cantidad']))
+            ws3.cell(row=r, column=7, value=_fmt(l['precio'])).number_format = euro
+            ws3.cell(row=r, column=8, value=_fmt(l['coste'])).number_format = euro
             r += 1
         if not v['cubierto']:
             ws3.cell(row=r, column=1, value=v['fecha'].strftime('%d/%m/%Y'))
             ws3.cell(row=r, column=2, value=v['inversion'])
             c4 = ws3.cell(row=r, column=4, value='SIN COMPRA REGISTRADA')
             c4.font = Font(color='B4442E', bold=True)
-            ws3.cell(row=r, column=5, value=_fmt(v['unidades_sin_coste']))
+            ws3.cell(row=r, column=6, value=_fmt(v['unidades_sin_coste']))
             r += 1
 
     # Hoja de cómo declararlo
@@ -313,18 +315,18 @@ def informe_hacienda_pdf(request):
                 f"({v['ticker'] or '—'}) — coste de adquisición {moneda(v['coste_adquisicion'])}",
                 estilo_normal,
             ))
-            det = [['Fecha compra', 'Cantidad', 'Precio compra', 'Coste (incl. comisión)']]
+            det = [['Fecha compra', 'Cartera / origen', 'Cantidad', 'Precio compra', 'Coste']]
             for l in v['lotes']:
-                det.append([l['fecha'].strftime('%d/%m/%Y'), cant(l['cantidad']),
-                            moneda(l['precio']), moneda(l['coste'])])
+                det.append([l['fecha'].strftime('%d/%m/%Y'), (l.get('origen') or '—')[:26],
+                            cant(l['cantidad']), moneda(l['precio']), moneda(l['coste'])])
             if not v['cubierto']:
-                det.append(['sin compra', cant(v['unidades_sin_coste']),
+                det.append(['sin compra', '—', cant(v['unidades_sin_coste']),
                             'no registrada', moneda(0)])
-            tabla_det = Table(det, colWidths=[32 * mm, 28 * mm, 34 * mm, 40 * mm])
+            tabla_det = Table(det, colWidths=[26 * mm, 42 * mm, 24 * mm, 30 * mm, 32 * mm])
             tabla_det.setStyle(TableStyle([
                 ('FONTSIZE', (0, 0), (-1, -1), 8),
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F0F3F1')),
-                ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
+                ('ALIGN', (2, 0), (-1, -1), 'RIGHT'),
                 ('LINEBELOW', (0, 0), (-1, 0), 0.3, colors.HexColor('#CDD5CF')),
                 ('TOPPADDING', (0, 0), (-1, -1), 2),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
