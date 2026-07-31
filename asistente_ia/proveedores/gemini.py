@@ -77,7 +77,7 @@ class GeminiProvider(ProveedorLLM):
             },
         )
 
-    def enviar(self, mensajes, system_blocks, tools, api_key, modelo, timeout=30):
+    def enviar(self, mensajes, system_blocks, tools, api_key, modelo, timeout=120):
         try:
             cuerpo = {'contents': self._traducir_mensajes(mensajes)}
             system_instruction = self._traducir_system(system_blocks)

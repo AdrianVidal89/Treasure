@@ -91,6 +91,12 @@ def listar_gastos(request):
     total_mensual = total_fijos + total_provision + total_variables
 
     open_cat = request.GET.get('open', '')
+    vista = request.GET.get('vista', 'categoria')
+
+    # --- Agrupación alternativa: por miembro responsable ---
+    # (común = partidas sin responsable). Permite ver qué cubre cada persona
+    # y qué es compartido, además de la vista por categoría.
+    grupos_miembro = _agrupar_por_miembro(hogar, categorias)
 
     return render(request, 'finanzas/gastos/listar.html', {
         'hogar': hogar,
@@ -103,7 +109,50 @@ def listar_gastos(request):
         'total_variables': total_variables,
         'total_mensual': total_mensual,
         'open_cat': open_cat,
+        'vista': vista,
+        'grupos_miembro': grupos_miembro,
     })
+
+
+def _agrupar_por_miembro(hogar, categorias):
+    """Agrupa todas las partidas activas por miembro responsable (y un grupo
+    'común' para las que no tienen responsable). Devuelve una lista ordenada:
+    primero el común, luego cada miembro, cada uno con su total mensual, total
+    anual y sus partidas (con la categoría anotada)."""
+    grupos = {}  # clave: user_id o None → dict
+
+    def _grupo(clave, nombre):
+        if clave not in grupos:
+            grupos[clave] = {
+                'clave': clave, 'nombre': nombre, 'es_comun': clave is None,
+                'partidas': [], 'total_mensual': Decimal('0'), 'total_anual': Decimal('0'),
+            }
+        return grupos[clave]
+
+    # Asegura que cada miembro aparezca aunque no tenga partidas propias.
+    _grupo(None, 'Común del hogar')
+    for m in hogar.miembros.select_related('user').all():
+        nombre = m.user.first_name or m.user.username
+        _grupo(m.user_id, nombre)
+
+    for cat in categorias:
+        for p in cat.partidas.filter(activo=True).select_related('responsable', 'categoria'):
+            clave = p.responsable_id
+            if clave is not None and clave not in grupos:
+                # Responsable que ya no es miembro: agrúpalo por su nombre igualmente.
+                nombre = p.responsable.first_name or p.responsable.username if p.responsable else 'Otros'
+                _grupo(clave, nombre)
+            g = _grupo(clave, grupos.get(clave, {}).get('nombre', 'Común del hogar'))
+            g['partidas'].append(p)
+            g['total_mensual'] += p.importe_mensual
+            g['total_anual'] += p.importe_anual
+
+    # Común primero, luego miembros con gasto, luego los que no tienen nada.
+    ordenados = sorted(
+        grupos.values(),
+        key=lambda g: (not g['es_comun'], -float(g['total_mensual']), g['nombre'].lower()),
+    )
+    return [g for g in ordenados if g['partidas'] or g['es_comun']]
 
 
 @login_required

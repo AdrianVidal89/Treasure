@@ -308,6 +308,82 @@ def _aplicar_crear_agente(payload, hogar, usuario):
     )
 
 
+# ─── Resolutor: categorizar_movimientos (por patrón) ───────────────────────
+
+def _resolver_categorizar_movimientos(datos, hogar):
+    """El modelo propone reglas patrón→categoría (p.ej. 'repsol'→'Gasolina').
+    Cada regla se valida contra las categorías reales del hogar y se calcula a
+    cuántos movimientos SIN CATEGORIZAR (gastos) afectaría, para la vista previa.
+    Al aplicarse: se crea/actualiza una ReglaCategorizacion (para futuras
+    importaciones) y se recategorizan los movimientos actuales que coincidan."""
+    from finanzas.models import CategoriaGasto
+    from extractos.models import MovimientoBancario
+
+    reglas_in = datos.get('reglas')
+    # Permitir también el formato de un único par patron/categoria.
+    if not reglas_in and datos.get('patron') and datos.get('categoria'):
+        reglas_in = [{'patron': datos['patron'], 'categoria': datos['categoria']}]
+    if not isinstance(reglas_in, list) or not reglas_in:
+        return ResultadoResolucion(False, error="Indica una lista 'reglas' con pares {patron, categoria}.")
+
+    cats = {c.nombre.lower(): c for c in CategoriaGasto.objects.filter(hogar=hogar, activo=True)}
+    if not cats:
+        return ResultadoResolucion(False, error="El hogar no tiene categorías de gasto todavía.")
+
+    sin_cat = list(MovimientoBancario.objects.filter(
+        hogar=hogar, categoria__isnull=True, importe__lt=0,
+    ).values('id', 'concepto'))
+
+    reglas_val = []
+    lineas_preview = []
+    total_afectados = 0
+    for r in reglas_in:
+        patron = (str(r.get('patron') or '')).strip()
+        nombre_cat = (str(r.get('categoria') or '')).strip()
+        if not patron or not nombre_cat:
+            return ResultadoResolucion(False, error="Cada regla necesita 'patron' y 'categoria'.")
+        cat = cats.get(nombre_cat.lower())
+        if not cat:
+            return ResultadoResolucion(
+                False,
+                error=f"No existe la categoría '{nombre_cat}'. Disponibles: {', '.join(sorted(c.nombre for c in cats.values()))}",
+            )
+        patron_l = patron.lower()
+        afectados = [m['id'] for m in sin_cat if patron_l in (m['concepto'] or '').lower()]
+        reglas_val.append({'patron': patron, 'categoria_id': cat.id, 'categoria_nombre': cat.nombre})
+        total_afectados += len(afectados)
+        lineas_preview.append(f"«{patron}» → {cat.nombre} ({len(afectados)} mov.)")
+
+    preview = (
+        f"Categorizar {total_afectados} movimiento(s) y recordar {len(reglas_val)} "
+        f"regla(s) para futuras importaciones: " + '; '.join(lineas_preview)
+    )
+    return ResultadoResolucion(True, preview=preview, payload={'reglas': reglas_val})
+
+
+def _aplicar_categorizar_movimientos(payload, hogar, usuario):
+    from extractos.models import MovimientoBancario, ReglaCategorizacion
+
+    for r in payload['reglas']:
+        patron = r['patron']
+        cat_id = r['categoria_id']
+        # 1) Persistir la regla aprendida (idempotente por hogar+patron).
+        ReglaCategorizacion.objects.update_or_create(
+            hogar=hogar, patron=patron,
+            defaults={'categoria_id': cat_id, 'origen': 'ia', 'activo': True},
+        )
+        # 2) Recategorizar los movimientos actuales sin categorizar que coincidan.
+        patron_l = patron.lower()
+        pendientes = MovimientoBancario.objects.filter(
+            hogar=hogar, categoria__isnull=True, importe__lt=0,
+        )
+        ids = [m.id for m in pendientes if patron_l in (m.concepto or '').lower()]
+        if ids:
+            MovimientoBancario.objects.filter(id__in=ids).update(
+                categoria_id=cat_id, estado_categorizacion='por_ia',
+            )
+
+
 # ─── Registro de acciones curadas ─────────────────────────────────────────
 # NOTA: nunca se registra un "delete" — solo create/update, por seguridad.
 
@@ -404,6 +480,37 @@ ACCIONES = {
         },
         resolver=None,
         aplicar=_aplicar_crear_agente,
+    ),
+    'categorizar_movimientos': DefinicionAccion(
+        tipo='categorizar_movimientos',
+        descripcion=(
+            'Propone categorizar movimientos bancarios SIN categorizar mediante reglas '
+            'patrón→categoría (p.ej. patrón "repsol" → categoría "Gasolina"). Al aplicarse '
+            '(tras tu confirmación) categoriza todos los movimientos actuales cuyo concepto '
+            'contenga el patrón Y recuerda la regla para que futuras importaciones se '
+            'categoricen automáticamente igual. Usa la herramienta de lectura para ver '
+            'primero los conceptos sin categorizar y las categorías disponibles.'
+        ),
+        schema={
+            'type': 'object',
+            'properties': {
+                'reglas': {
+                    'type': 'array',
+                    'description': 'Lista de reglas patrón→categoría a aplicar y recordar.',
+                    'items': {
+                        'type': 'object',
+                        'properties': {
+                            'patron': {'type': 'string', 'description': 'Texto que debe contener el concepto (p.ej. "repsol"). Corto y distintivo.'},
+                            'categoria': {'type': 'string', 'description': 'Nombre EXACTO de una categoría de gasto existente en el hogar.'},
+                        },
+                        'required': ['patron', 'categoria'],
+                    },
+                },
+            },
+            'required': ['reglas'],
+        },
+        resolver=lambda datos, hogar: _resolver_categorizar_movimientos(datos, hogar),
+        aplicar=_aplicar_categorizar_movimientos,
     ),
 }
 

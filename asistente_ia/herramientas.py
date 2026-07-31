@@ -152,6 +152,43 @@ def count(hogar, entidad, filtros=None):
     return {'entidad': entidad, 'total': consulta.count()}
 
 
+def movimientos_sin_categorizar(hogar, limite=300):
+    """Resumen de gastos SIN categorizar agrupados por concepto, con las
+    categorías de gasto disponibles. Pensado para que el asistente pueda
+    proponer reglas patrón→categoría en una sola llamada (barato y rápido)."""
+    from collections import defaultdict
+    from extractos.models import MovimientoBancario
+    from finanzas.models import CategoriaGasto
+
+    limite = _clamp_limite(limite, por_defecto=300, tope=1000)
+    movs = MovimientoBancario.objects.filter(
+        hogar=hogar, categoria__isnull=True, importe__lt=0,
+    ).order_by('-fecha')[:limite]
+
+    grupos = defaultdict(lambda: {'concepto': '', 'veces': 0, 'total': 0.0, 'ids': []})
+    for m in movs:
+        clave = (m.concepto or '').strip().lower()
+        g = grupos[clave]
+        g['concepto'] = m.concepto
+        g['veces'] += 1
+        g['total'] += float(m.importe)
+        if len(g['ids']) < 25:
+            g['ids'].append(m.id)
+
+    conceptos = sorted(grupos.values(), key=lambda g: g['veces'], reverse=True)
+    categorias = list(
+        CategoriaGasto.objects.filter(hogar=hogar, activo=True)
+        .order_by('tipo', 'nombre').values_list('nombre', flat=True)
+    )
+    return {
+        'total_sin_categorizar': MovimientoBancario.objects.filter(
+            hogar=hogar, categoria__isnull=True, importe__lt=0,
+        ).count(),
+        'conceptos': conceptos,
+        'categorias_disponibles': categorias,
+    }
+
+
 # ─── Internet ────────────────────────────────────────────────────────────
 
 def _url_segura(url):
@@ -314,6 +351,19 @@ SCHEMA_LECTURA = [
         },
     },
     {
+        'name': 'movimientos_sin_categorizar',
+        'description': (
+            'Resumen de los gastos bancarios SIN categorizar, agrupados por concepto '
+            '(con veces, total e ids) y con la lista de categorías disponibles. Úsala '
+            'antes de proponer categorizaciones (propose_categorizar_movimientos) para '
+            'ver de una vez qué falta por categorizar y a qué categorías asignarlo.'
+        ),
+        'parametros': {
+            'type': 'object',
+            'properties': {'limite': {'type': 'integer'}},
+        },
+    },
+    {
         'name': 'buscar_web',
         'description': (
             'Busca en internet. Útil para cotizaciones, tipos de interés o '
@@ -344,6 +394,7 @@ HERRAMIENTAS = {
     'get_item': lambda hogar, args: get_item(hogar, args.get('entidad'), args.get('id')),
     'query': lambda hogar, args: query(hogar, args.get('entidad'), args.get('filtros'), args.get('orden'), args.get('limite', FILAS_POR_DEFECTO)),
     'count': lambda hogar, args: count(hogar, args.get('entidad'), args.get('filtros')),
+    'movimientos_sin_categorizar': lambda hogar, args: movimientos_sin_categorizar(hogar, args.get('limite', 300)),
     'buscar_web': lambda hogar, args: buscar_web(args.get('consulta'), args.get('max_resultados', 6)),
     'leer_url': lambda hogar, args: leer_url(args.get('url')),
 }
@@ -383,6 +434,8 @@ def resumen_paso(nombre, argumentos):
         return f"Consultando la base de datos: {argumentos.get('entidad', '?')}"
     if nombre == 'count':
         return f"Contando: {argumentos.get('entidad', '?')}"
+    if nombre == 'movimientos_sin_categorizar':
+        return "Revisando movimientos sin categorizar"
     if nombre == 'buscar_web':
         return f"Buscando en internet: {argumentos.get('consulta', '?')}"
     if nombre == 'leer_url':

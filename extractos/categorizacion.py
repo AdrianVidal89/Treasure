@@ -33,11 +33,50 @@ REGLAS = {
 
 
 def categorizar_por_codigo(concepto):
-    """Devuelve el nombre de categoría sugerido o None si no hay coincidencia."""
+    """Devuelve el nombre de categoría sugerido por las reglas ESTÁTICAS
+    (heurística de comercios habituales) o None si no hay coincidencia."""
     if not concepto:
         return None
     texto = f" {concepto.lower()} "
     for categoria, claves in REGLAS.items():
         if any(clave in texto for clave in claves):
             return categoria
+    return None
+
+
+def categorizar(concepto, hogar):
+    """Sugiere una CategoriaGasto para un concepto, priorizando las reglas
+    APRENDIDAS del hogar (creadas al categorizar movimientos manualmente o con
+    la IA) sobre la heurística estática. Devuelve la instancia CategoriaGasto o
+    None. Es lo que debe usar la importación para que los criterios del usuario
+    se apliquen a futuras importaciones.
+    """
+    if not concepto:
+        return None
+    from finanzas.models import CategoriaGasto
+    from .models import ReglaCategorizacion
+
+    texto = concepto.lower()
+    # 1) Reglas aprendidas del hogar (las más específicas/largas primero, para
+    #    que un patrón concreto gane a uno genérico).
+    reglas = ReglaCategorizacion.objects.filter(
+        hogar=hogar, activo=True,
+    ).select_related('categoria')
+    mejor = None
+    mejor_len = -1
+    for r in reglas:
+        patron = (r.patron or '').lower().strip()
+        if patron and patron in texto and len(patron) > mejor_len:
+            mejor = r
+            mejor_len = len(patron)
+    if mejor:
+        ReglaCategorizacion.objects.filter(pk=mejor.pk).update(
+            veces_aplicada=mejor.veces_aplicada + 1,
+        )
+        return mejor.categoria
+
+    # 2) Heurística estática → resolver el nombre a una categoría del hogar.
+    nombre_cat = categorizar_por_codigo(concepto)
+    if nombre_cat:
+        return CategoriaGasto.objects.filter(hogar=hogar, nombre=nombre_cat, activo=True).first()
     return None

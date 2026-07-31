@@ -194,6 +194,11 @@
 }
 .modal-btns { display: flex; gap: 12px; margin-top: 20px; }
 
+.vista-toggle { display: inline-flex; gap: 4px; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px; }
+.vista-toggle-btn { text-decoration: none; font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 7px 14px; border-radius: 7px; transition: all 0.2s; }
+.vista-toggle-btn.active { background: var(--primary-color); color: #fff; }
+.badge-cat { display: inline-block; background: color-mix(in srgb, var(--primary-color) 12%, transparent); color: var(--primary-color); padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600; }
+
 .msg-toast {
     background: var(--surface); border-left: 3px solid var(--primary-color);
     padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;
@@ -241,10 +246,63 @@
     </div>
 
     <!-- BOTONES -->
-    <div style="display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap;">
+    <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
         <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary"> Nuevo gasto</a>
         <button onclick="document.getElementById('modal-categoria').style.display='flex'" class="btn btn-secondary"> Nueva categoria</button>
+        <div class="vista-toggle" style="margin-left:auto;">
+            <a href="?vista=categoria" class="vista-toggle-btn {% if vista != 'miembro' %}active{% endif %}">Por categoría</a>
+            <a href="?vista=miembro" class="vista-toggle-btn {% if vista == 'miembro' %}active{% endif %}">Por miembro</a>
+        </div>
     </div>
+
+    {% if vista == 'miembro' %}
+    <!-- ===== VISTA POR MIEMBRO ===== -->
+    <div class="grid-gastos">
+        {% for g in grupos_miembro %}
+        <div class="gasto-card {% if g.es_comun %}tipo-anual{% else %}tipo-variable{% endif %} {% if forloop.first %}open{% endif %}" onclick="toggleCard(this)">
+            <div class="gasto-card-header">
+                <div>
+                    <div class="gasto-card-nombre">
+                        {% if g.es_comun %}🏠 {{ g.nombre }}{% else %}👤 {{ g.nombre }}{% endif %}
+                    </div>
+                    <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ g.partidas|length }} partida{{ g.partidas|length|pluralize:"s" }}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="gasto-card-monto" style="color: {% if g.es_comun %}#2c5f7a{% else %}var(--primary-color){% endif %};">&euro;{{ g.total_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-sub">/mes{% if g.total_anual %} &middot; &euro;{{ g.total_anual|floatformat:0 }}/a{% endif %}</div>
+                </div>
+            </div>
+            <div class="gasto-card-detail" onclick="event.stopPropagation()">
+                {% for p in g.partidas %}
+                <div class="gasto-partida">
+                    <div class="gasto-partida-left">
+                        <div class="gasto-partida-nombre">{{ p.nombre }}</div>
+                        <div class="gasto-partida-meta">
+                            <span class="badge-cat">{{ p.categoria.nombre }}</span>
+                            {% if p.periodicidad != 'mensual' %} &middot; {{ p.get_periodicidad_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="gasto-partida-right">
+                        <div class="gasto-partida-monto-box">
+                            <div class="gasto-partida-importe" style="color: {% if g.es_comun %}#2c5f7a{% else %}var(--primary-color){% endif %};">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
+                        </div>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
+                            {% csrf_token %}
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')"><svg class="icon"><use href="#i-trash"/></svg></button>
+                        </form>
+                    </div>
+                </div>
+                {% empty %}
+                <p style="color:var(--muted); font-size:0.82rem; padding:10px 2px; font-style:italic;">Sin gastos asignados a {% if g.es_comun %}lo común{% else %}esta persona{% endif %}.</p>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
 
     <!-- GASTOS FIJOS -->
     {% if gastos_fijos %}
@@ -387,6 +445,7 @@
         <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary" style="margin-top: 16px;"> Crear primer gasto</a>
     </div>
     {% endif %}
+    {% endif %}{# fin vista categoria/miembro #}
 
 </div>
 

@@ -65,6 +65,7 @@ ENTIDADES = {
     # Extractos bancarios
     'extractos_bancarios': ('extractos', 'ExtractoBancario', 'hogar'),
     'movimientos_bancarios': ('extractos', 'MovimientoBancario', 'hogar'),
+    'reglas_categorizacion': ('extractos', 'ReglaCategorizacion', 'hogar'),
 
     # Tablas de referencia (sin datos personales)
     'tablas_irpf': ('finanzas', 'TablaIRPF', None),

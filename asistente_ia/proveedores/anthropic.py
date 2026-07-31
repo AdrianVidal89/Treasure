@@ -89,7 +89,7 @@ class AnthropicProvider(ProveedorLLM):
             },
         )
 
-    def enviar(self, mensajes, system_blocks, tools, api_key, modelo, timeout=30):
+    def enviar(self, mensajes, system_blocks, tools, api_key, modelo, timeout=120):
         cuerpo = {
             'model': modelo,
             'max_tokens': MAX_TOKENS_RESPUESTA,
