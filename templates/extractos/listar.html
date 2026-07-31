@@ -8,14 +8,14 @@
     <div class="page-header">
         <div>
             <h1><svg class="icon icon-lg page-title-icon"><use href="#i-statements"/></svg> Extractos bancarios</h1>
-            <div class="page-sub">Importa los CSV de tus bancos y crúzalos con tus datos declarados.</div>
+            <div class="page-sub">Vista global de todos tus movimientos importados. Filtra por año, mes o categoría, y edítalos aquí mismo.</div>
         </div>
         <div class="toolbar">
             <a href="{% url 'extractos:conciliacion' %}" class="btn btn-secondary">
                 <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
             </a>
             <a href="{% url 'extractos:subir' %}" class="btn btn-primary">
-                <svg class="icon"><use href="#i-upload"/></svg> Importar CSV
+                <svg class="icon"><use href="#i-upload"/></svg> Importar CSV / Excel
             </a>
         </div>
     </div>
@@ -26,77 +26,68 @@
         {% endfor %}
     {% endif %}
 
-    <div class="stat-row">
-        <div class="card stat-tile">
-            <span class="stat-tile-label">Extractos</span>
-            <span class="stat-tile-valor num">{{ total_extractos }}</span>
-        </div>
-        <div class="card stat-tile">
-            <span class="stat-tile-label">Movimientos</span>
-            <span class="stat-tile-valor num">{{ total_movimientos }}</span>
-        </div>
-        <div class="card stat-tile">
-            <span class="stat-tile-label">Saldo neto importado</span>
-            <span class="stat-tile-valor num {% if saldo_neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ saldo_neto|floatformat:2|intcomma }} €</span>
-        </div>
-        <div class="card stat-tile">
-            <span class="stat-tile-label">Gastos sin categorizar</span>
-            <span class="stat-tile-valor num">{{ sin_categorizar }}</span>
-        </div>
-    </div>
+    {% if total_movimientos %}
+    {% include "extractos/_panel.html" %}
 
-    {% if extractos %}
-    <div class="table-scroll">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Banco / Archivo</th>
-                    <th>Cuenta</th>
-                    <th>Periodo</th>
-                    <th class="num">Movimientos</th>
-                    <th class="num">Ingresos</th>
-                    <th class="num">Gastos</th>
-                    <th>Importado</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for e in extractos %}
-                <tr>
-                    <td>
-                        <a href="{% url 'extractos:detalle' e.pk %}" class="cuenta-link">
-                            {{ e.nombre_banco|default:"Extracto" }}
-                        </a>
-                        <div class="text-muted" style="font-size:0.78rem;">{{ e.archivo_nombre }}</div>
-                    </td>
-                    <td>{{ e.cuenta.nombre|default:"—" }}</td>
-                    <td class="num">
-                        {% if e.periodo_inicio %}{{ e.periodo_inicio|date:"d/m/Y" }} – {{ e.periodo_fin|date:"d/m/Y" }}{% else %}—{% endif %}
-                    </td>
-                    <td class="num">{{ e.num_movimientos }}</td>
-                    <td class="num text-positive">{{ e.total_ingresos|floatformat:2|intcomma }} €</td>
-                    <td class="num text-negative">{{ e.total_gastos|floatformat:2|intcomma }} €</td>
-                    <td class="num">{{ e.fecha_importacion|date:"d/m/Y H:i" }}</td>
-                    <td>
-                        <form method="post" action="{% url 'extractos:eliminar' e.pk %}" onsubmit="return confirm('¿Eliminar este extracto y sus movimientos?');" style="display:inline;">
-                            {% csrf_token %}
-                            <button type="submit" class="btn-inline-danger" title="Eliminar">
-                                <svg class="icon"><use href="#i-trash"/></svg>
-                            </button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+    <!-- LISTA DE EXTRACTOS IMPORTADOS -->
+    <details class="ext-lotes">
+        <summary>Extractos importados ({{ total_extractos }})</summary>
+        <div class="table-scroll" style="margin-top:12px;">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Banco / Archivo</th>
+                        <th>Cuenta</th>
+                        <th>Periodo</th>
+                        <th class="num">Movimientos</th>
+                        <th class="num">Ingresos</th>
+                        <th class="num">Gastos</th>
+                        <th>Importado</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in extractos %}
+                    <tr>
+                        <td>
+                            <a href="{% url 'extractos:detalle' e.pk %}" class="cuenta-link">{{ e.nombre_banco|default:"Extracto" }}</a>
+                            <div class="text-muted" style="font-size:0.78rem;">{{ e.archivo_nombre }}</div>
+                        </td>
+                        <td>{{ e.cuenta.nombre|default:"—" }}</td>
+                        <td class="num">
+                            {% if e.periodo_inicio %}{{ e.periodo_inicio|date:"d/m/Y" }} – {{ e.periodo_fin|date:"d/m/Y" }}{% else %}—{% endif %}
+                        </td>
+                        <td class="num">{{ e.num_movimientos }}</td>
+                        <td class="num text-positive">{{ e.total_ingresos|floatformat:2|intcomma }} €</td>
+                        <td class="num text-negative">{{ e.total_gastos|floatformat:2|intcomma }} €</td>
+                        <td class="num">{{ e.fecha_importacion|date:"d/m/Y H:i" }}</td>
+                        <td>
+                            <form method="post" action="{% url 'extractos:eliminar' e.pk %}" onsubmit="return confirm('¿Eliminar este extracto y sus movimientos?');" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn-inline-danger" title="Eliminar">
+                                    <svg class="icon"><use href="#i-trash"/></svg>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+    <style>
+    .ext-lotes { margin-top:28px; border-top:1px solid var(--border); padding-top:16px; }
+    .ext-lotes > summary { cursor:pointer; font-weight:600; color:var(--text-color); font-size:0.95rem; }
+    .ext-lotes > summary:hover { color:var(--primary-color); }
+    </style>
+
     {% else %}
     <div class="empty-state">
         <svg class="icon icon-xl empty-icon"><use href="#i-statements"/></svg>
         <h3>Todavía no has importado ningún extracto</h3>
-        <p>Sube el CSV de tu banco para empezar a analizar tus movimientos reales y compararlos con lo que has declarado.</p>
+        <p>Sube el CSV o Excel de tu banco para empezar a analizar tus movimientos reales y compararlos con lo que has declarado.</p>
         <a href="{% url 'extractos:subir' %}" class="btn btn-primary">
-            <svg class="icon"><use href="#i-upload"/></svg> Importar tu primer CSV
+            <svg class="icon"><use href="#i-upload"/></svg> Importar tu primer archivo
         </a>
     </div>
     {% endif %}
