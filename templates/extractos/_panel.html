@@ -1,0 +1,343 @@
+{% load humanize %}
+{% load l10n %}
+{# Panel de análisis de movimientos compartido por el detalle de un extracto
+   y la vista global de todos los extractos. Espera un dict `panel` en contexto. #}
+
+<!-- FILTROS -->
+<form method="get" class="ext-filtros">
+    <div class="ext-filtro">
+        <label>Año</label>
+        <select name="anio" onchange="this.form.submit()">
+            <option value="all" {% if panel.anio_sel == 'all' %}selected{% endif %}>Todos</option>
+            {% for a in panel.anios_disponibles %}
+            <option value="{{ a }}" {% if panel.anio_sel == a|stringformat:'s' %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="ext-filtro">
+        <label>Mes</label>
+        <select name="mes" onchange="this.form.submit()">
+            <option value="all" {% if panel.mes_sel == 'all' %}selected{% endif %}>Todos</option>
+            {% for m in panel.meses_disponibles %}
+            <option value="{{ m.valor }}" {% if panel.mes_sel == m.valor %}selected{% endif %}>{{ m.etiqueta }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="ext-filtro">
+        <label>Categoría</label>
+        <select name="categoria" onchange="this.form.submit()">
+            <option value="all" {% if panel.cat_sel == 'all' %}selected{% endif %}>Todas</option>
+            <option value="sin" {% if panel.cat_sel == 'sin' %}selected{% endif %}>Sin categorizar</option>
+            {% for c in panel.categorias_hogar %}
+            <option value="{{ c.id }}" {% if panel.cat_sel == c.id|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% if panel.hay_filtro %}
+    <a href="{{ request.path }}" class="btn btn-ghost" style="align-self:flex-end;">Limpiar filtros</a>
+    {% endif %}
+</form>
+
+<!-- KPIs -->
+<div class="stat-row">
+    <div class="card stat-tile">
+        <span class="stat-tile-label">Ingresos</span>
+        <span class="stat-tile-valor num text-positive">{{ panel.kpi_ingresos|floatformat:2|intcomma }} €</span>
+    </div>
+    <div class="card stat-tile">
+        <span class="stat-tile-label">Gastos</span>
+        <span class="stat-tile-valor num text-negative">{{ panel.kpi_gastos|floatformat:2|intcomma }} €</span>
+    </div>
+    <div class="card stat-tile">
+        <span class="stat-tile-label">Neto</span>
+        <span class="stat-tile-valor num {% if panel.kpi_neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ panel.kpi_neto|floatformat:2|intcomma }} €</span>
+    </div>
+    <div class="card stat-tile">
+        <span class="stat-tile-label">Movimientos</span>
+        <span class="stat-tile-valor num">{{ panel.kpi_num }}</span>
+    </div>
+    <div class="card stat-tile">
+        <span class="stat-tile-label">Sin categorizar</span>
+        <span class="stat-tile-valor num {% if panel.kpi_sin_categorizar %}text-negative{% endif %}">{{ panel.kpi_sin_categorizar }}</span>
+    </div>
+</div>
+
+<!-- VISUALIZACIONES -->
+<div class="ext-viz">
+    <div class="glass-panel ext-viz-card">
+        <h3>Gasto por categoría</h3>
+        {% if panel.donut %}
+        <div class="ext-donut-wrap">
+            <svg id="ext-donut" viewBox="0 0 200 200" width="180" height="180" aria-label="Distribución de gasto por categoría"></svg>
+            <div class="ext-donut-center">
+                <span class="ext-donut-total">{{ panel.donut_total|floatformat:0|intcomma }} €</span>
+                <span class="ext-donut-sub">gasto total</span>
+            </div>
+        </div>
+        <div class="ext-leyenda">
+            {% for d in panel.donut %}
+            <div class="ext-leyenda-item">
+                <span class="ext-leyenda-dot" style="background:{{ d.color }};"></span>
+                <span class="ext-leyenda-nombre">{{ d.nombre }}</span>
+                <span class="ext-leyenda-val">{{ d.importe|floatformat:0|intcomma }} € · {{ d.pct }}%</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="ext-viz-empty">No hay gastos en la selección actual.</p>
+        {% endif %}
+    </div>
+
+    <div class="glass-panel ext-viz-card">
+        <h3>Ingresos vs. gastos</h3>
+        <div class="ext-barras">
+            <div class="ext-barra-fila">
+                <span class="ext-barra-lbl">Ingresos</span>
+                <div class="ext-barra-track"><div class="ext-barra-fill ing" id="barra-ingresos"></div></div>
+                <span class="ext-barra-val text-positive">{{ panel.kpi_ingresos|floatformat:0|intcomma }} €</span>
+            </div>
+            <div class="ext-barra-fila">
+                <span class="ext-barra-lbl">Gastos</span>
+                <div class="ext-barra-track"><div class="ext-barra-fill gas" id="barra-gastos"></div></div>
+                <span class="ext-barra-val text-negative">{{ panel.kpi_gastos|floatformat:0|intcomma }} €</span>
+            </div>
+        </div>
+        <div class="ext-neto-box {% if panel.kpi_neto < 0 %}neg{% else %}pos{% endif %}">
+            <span>Balance del periodo</span>
+            <strong>{{ panel.kpi_neto|floatformat:2|intcomma }} €</strong>
+        </div>
+    </div>
+</div>
+
+<!-- MOVIMIENTOS -->
+<h2 class="ext-mov-title">Movimientos {% if panel.hay_filtro %}· filtrados{% endif %}</h2>
+{% for grupo in panel.grupos %}
+<div class="group-header">
+    <h3>{{ grupo.etiqueta }}</h3>
+    <span class="group-total {% if grupo.neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ grupo.neto|floatformat:2|intcomma }} €</span>
+</div>
+<div class="table-scroll">
+    <table class="table ext-mov-table">
+        <thead>
+            <tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th><th class="num">Saldo</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for m in grupo.movimientos %}
+            <tr data-mov-id="{{ m.id }}">
+                <td class="num ext-fecha">{{ m.fecha|date:"d/m/Y" }}</td>
+                <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</td>
+                <td class="ext-cat-cell">
+                    <select class="ext-cat-select" data-mov-id="{{ m.id }}">
+                        <option value="" {% if not m.categoria_id %}selected{% endif %}>— Sin categorizar —</option>
+                        {% for c in panel.categorias_hogar %}
+                        <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td class="num ext-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}" data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">{{ m.importe|floatformat:2|intcomma }} €</td>
+                <td class="num text-muted">{% if m.saldo != None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
+                <td class="num">
+                    <button type="button" class="r-btn ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento"><svg class="icon"><use href="#i-trash"/></svg></button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% empty %}
+<div class="ext-viz-empty" style="padding:30px;text-align:center;">No hay movimientos con los filtros seleccionados.</div>
+{% endfor %}
+
+{{ panel.donut|json_script:"ext-donut-data" }}
+<span id="ext-kpi-data" data-ing="{{ panel.kpi_ingresos|unlocalize }}" data-gas="{{ panel.kpi_gastos|unlocalize }}"></span>
+
+<style>
+.ext-filtros { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; align-items:flex-end; }
+.ext-filtro { display:flex; flex-direction:column; gap:4px; }
+.ext-filtro label { font-size:0.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; }
+.ext-filtro select { background:var(--surface); color:var(--text-color); border:1px solid var(--border-strong); border-radius:8px; padding:9px 12px; font-size:0.85rem; min-width:150px; }
+
+.ext-viz { display:grid; grid-template-columns:1.3fr 1fr; gap:16px; margin:22px 0 8px; }
+@media (max-width:760px){ .ext-viz { grid-template-columns:1fr; } }
+.ext-viz-card { padding:20px 22px; }
+.ext-viz-card h3 { margin:0 0 16px; font-size:1rem; color:var(--text-color); }
+.ext-viz-empty { color:var(--muted); font-style:italic; font-size:0.85rem; }
+
+.ext-donut-wrap { position:relative; width:180px; height:180px; margin:0 auto 16px; }
+.ext-donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
+.ext-donut-total { font-size:1.15rem; font-weight:800; color:var(--text-color); }
+.ext-donut-sub { font-size:0.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+#ext-donut path { transition:opacity .15s; cursor:default; }
+#ext-donut path:hover { opacity:0.8; }
+
+.ext-leyenda { display:flex; flex-direction:column; gap:8px; }
+.ext-leyenda-item { display:flex; align-items:center; gap:8px; font-size:0.8rem; }
+.ext-leyenda-dot { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
+.ext-leyenda-nombre { color:var(--text-color); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ext-leyenda-val { color:var(--muted); font-variant-numeric:tabular-nums; flex-shrink:0; }
+
+.ext-barras { display:flex; flex-direction:column; gap:16px; margin-bottom:18px; }
+.ext-barra-fila { display:grid; grid-template-columns:70px 1fr auto; align-items:center; gap:10px; }
+.ext-barra-lbl { font-size:0.8rem; color:var(--muted); }
+.ext-barra-track { height:14px; background:var(--app-bg); border-radius:8px; overflow:hidden; border:1px solid var(--surface-2); }
+.ext-barra-fill { height:100%; width:0; border-radius:8px; transition:width .8s cubic-bezier(.16,1,.3,1); }
+.ext-barra-fill.ing { background:linear-gradient(90deg,#2d6a4f,#3DCD58); }
+.ext-barra-fill.gas { background:linear-gradient(90deg,#b4442e,#e07a5f); }
+.ext-barra-val { font-size:0.85rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.ext-neto-box { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-radius:10px; font-size:0.85rem; }
+.ext-neto-box.pos { background:rgba(45,106,79,0.1); color:#2d6a4f; }
+.ext-neto-box.neg { background:rgba(180,68,46,0.1); color:#b4442e; }
+.ext-neto-box strong { font-size:1.05rem; }
+
+.ext-mov-title { font-size:1.05rem; margin:28px 0 4px; }
+.ext-cat-select { background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:5px 8px; font-size:0.78rem; max-width:180px; }
+.ext-cat-select:focus { border-color:var(--primary-color); outline:none; }
+.ext-concepto, .ext-importe { cursor:pointer; border-radius:6px; }
+.ext-concepto:hover, .ext-importe:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); }
+.ext-cell-input { width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid var(--primary-color); border-radius:6px; background:var(--app-bg); color:var(--text-color); font-size:0.82rem; }
+tr.ext-guardada td { animation: ext-flash 0.9s ease; }
+@keyframes ext-flash { 0%{ background:color-mix(in srgb, var(--success) 22%, transparent);} 100%{ background:transparent; } }
+.ext-mov-table td { vertical-align:middle; }
+</style>
+
+<script>
+(function () {
+    function getCsrf() {
+        var m = document.cookie.match(/csrftoken=([^;]+)/);
+        return m ? m[1] : '';
+    }
+    function euro(v) {
+        return Number(v).toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+    }
+
+    /* ---- Donut de categorías ---- */
+    var donutData = JSON.parse(document.getElementById('ext-donut-data').textContent);
+    var svg = document.getElementById('ext-donut');
+    if (svg && donutData.length) {
+        var NS = 'http://www.w3.org/2000/svg';
+        var cx = 100, cy = 100, r = 74, grosor = 26;
+        var ang = -Math.PI / 2;
+        var total = donutData.reduce(function(s, d){ return s + d.pct; }, 0) || 100;
+        donutData.forEach(function(d) {
+            var frac = d.pct / total;
+            var a2 = ang + frac * Math.PI * 2;
+            var a2c = (frac >= 0.9999) ? ang + Math.PI * 1.9999 : a2;
+            var x1 = cx + r * Math.cos(ang), y1 = cy + r * Math.sin(ang);
+            var x2 = cx + r * Math.cos(a2c), y2 = cy + r * Math.sin(a2c);
+            var large = (a2c - ang) > Math.PI ? 1 : 0;
+            var path = document.createElementNS(NS, 'path');
+            path.setAttribute('d', 'M' + x1.toFixed(2) + ',' + y1.toFixed(2) +
+                ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x2.toFixed(2) + ',' + y2.toFixed(2));
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', d.color);
+            path.setAttribute('stroke-width', grosor);
+            path.setAttribute('stroke-linecap', 'butt');
+            var t = document.createElementNS(NS, 'title');
+            t.textContent = d.nombre + ': ' + Math.round(d.importe).toLocaleString('es-ES') + ' € (' + d.pct + '%)';
+            path.appendChild(t);
+            svg.appendChild(path);
+            ang = a2;
+        });
+    }
+
+    /* ---- Barras ingresos vs gastos ---- */
+    var kpiEl = document.getElementById('ext-kpi-data');
+    var ing = Math.abs(parseFloat(kpiEl ? kpiEl.dataset.ing : '0') || 0);
+    var gas = Math.abs(parseFloat(kpiEl ? kpiEl.dataset.gas : '0') || 0);
+    var maxIG = Math.max(ing, gas, 1);
+    var bIng = document.getElementById('barra-ingresos');
+    var bGas = document.getElementById('barra-gastos');
+    if (bIng) setTimeout(function(){ bIng.style.width = (ing / maxIG * 100) + '%'; }, 60);
+    if (bGas) setTimeout(function(){ bGas.style.width = (gas / maxIG * 100) + '%'; }, 60);
+
+    /* ---- Edición ---- */
+    var URL_ACT = "/extractos/movimiento/__ID__/actualizar/";
+    var URL_DEL = "/extractos/movimiento/__ID__/eliminar/";
+
+    function guardar(movId, campo, valor, onOk) {
+        var body = new URLSearchParams();
+        body.set(campo, valor);
+        fetch(URL_ACT.replace('__ID__', movId), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (data.ok) {
+                var fila = document.querySelector('tr[data-mov-id="' + movId + '"]');
+                if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
+                if (onOk) onOk(data);
+            }
+        }).catch(function(){});
+    }
+
+    document.querySelectorAll('.ext-cat-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            guardar(sel.dataset.movId, 'categoria_id', sel.value);
+        });
+    });
+
+    function editarCelda(td) {
+        if (td.querySelector('.ext-cell-input')) return;
+        var fila = td.closest('tr');
+        var movId = fila.dataset.movId;
+        var campo = td.dataset.campo;
+        var valorOriginal = campo === 'importe' ? (td.dataset.valor || '') : td.textContent.trim();
+        var textoOriginal = td.innerHTML;
+
+        var input = document.createElement('input');
+        input.className = 'ext-cell-input';
+        input.type = campo === 'importe' ? 'number' : 'text';
+        if (campo === 'importe') input.step = '0.01';
+        input.value = valorOriginal;
+        td.innerHTML = '';
+        td.appendChild(input);
+        input.focus();
+        input.select();
+
+        var hecho = false;
+        function fin(guardarCambio) {
+            if (hecho) return; hecho = true;
+            var nuevo = input.value.trim();
+            if (!guardarCambio || nuevo === '' || nuevo === valorOriginal) {
+                td.innerHTML = textoOriginal;
+                return;
+            }
+            guardar(movId, campo, nuevo, function(data) {
+                if (campo === 'importe') {
+                    td.dataset.valor = data.importe;
+                    td.textContent = euro(data.importe);
+                    td.classList.remove('text-positive', 'text-negative');
+                    td.classList.add(data.importe >= 0 ? 'text-positive' : 'text-negative');
+                } else {
+                    td.textContent = data.concepto;
+                }
+            });
+        }
+        input.addEventListener('keydown', function(e){
+            if (e.key === 'Enter') { e.preventDefault(); fin(true); }
+            if (e.key === 'Escape') { e.preventDefault(); fin(false); }
+        });
+        input.addEventListener('blur', function(){ fin(true); });
+    }
+
+    document.querySelectorAll('.ext-concepto, .ext-importe').forEach(function(td) {
+        td.addEventListener('click', function(){ editarCelda(td); });
+    });
+
+    document.querySelectorAll('.ext-del').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (!confirm('¿Eliminar este movimiento?')) return;
+            var movId = btn.dataset.movId;
+            fetch(URL_DEL.replace('__ID__', movId), {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest'}
+            }).then(function(r){ return r.json(); }).then(function(data){
+                if (data.ok) {
+                    var fila = document.querySelector('tr[data-mov-id="' + movId + '"]');
+                    if (fila) { fila.style.transition = 'opacity .3s'; fila.style.opacity = '0'; setTimeout(function(){ fila.remove(); }, 300); }
+                }
+            }).catch(function(){});
+        });
+    });
+})();
+</script>

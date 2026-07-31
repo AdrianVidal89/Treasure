@@ -85,3 +85,48 @@ def leer_csv(archivo):
         return datos.decode('utf-8-sig')
     except UnicodeDecodeError:
         return datos.decode('latin-1', errors='replace')
+
+
+def _celda_a_texto(valor):
+    """Serializa una celda de Excel a texto para el CSV intermedio."""
+    import datetime as _dt
+    if valor is None:
+        return ''
+    if isinstance(valor, (_dt.datetime, _dt.date)):
+        return valor.isoformat()
+    if isinstance(valor, float) and valor.is_integer():
+        return str(int(valor))
+    return str(valor)
+
+
+def _excel_a_csv(archivo):
+    """Convierte la primera hoja de un .xlsx/.xlsm a texto CSV, para que el
+    resto del pipeline de importación (detección de cabecera, mapeo de
+    columnas, revisión) funcione igual que con un CSV."""
+    import csv
+    import io
+    import openpyxl
+
+    datos = archivo.read() if hasattr(archivo, 'read') else archivo
+    wb = openpyxl.load_workbook(io.BytesIO(datos), read_only=True, data_only=True)
+    ws = wb.active
+    salida = io.StringIO()
+    escritor = csv.writer(salida)
+    for fila in ws.iter_rows(values_only=True):
+        escritor.writerow([_celda_a_texto(c) for c in fila])
+    wb.close()
+    return salida.getvalue()
+
+
+def es_excel(nombre):
+    return (nombre or '').lower().endswith(('.xlsx', '.xlsm'))
+
+
+def leer_tabla(archivo):
+    """Lee un fichero subido y devuelve texto CSV, aceptando tanto CSV como
+    Excel (.xlsx/.xlsm). Punto de entrada único para la importación de
+    extractos: el resto del código sigue trabajando con texto CSV."""
+    nombre = getattr(archivo, 'name', '') or ''
+    if es_excel(nombre):
+        return _excel_a_csv(archivo)
+    return leer_csv(archivo)

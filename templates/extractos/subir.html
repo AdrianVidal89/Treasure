@@ -7,7 +7,7 @@
     <div class="page-header">
         <div>
             <h1><svg class="icon icon-lg page-title-icon"><use href="#i-upload"/></svg> Importar extracto</h1>
-            <div class="page-sub">Sube uno o varios CSV. El sistema los leerá, agrupará y categorizará por código.</div>
+            <div class="page-sub">Sube uno o varios archivos CSV o Excel (.xlsx). El sistema los leerá, agrupará y categorizará por código.</div>
         </div>
         <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
     </div>
@@ -39,14 +39,14 @@
         {% endif %}
 
         <div class="form-group">
-            <label>Archivos CSV</label>
+            <label>Archivos CSV o Excel</label>
             <label class="upload-drop" for="archivos">
                 <svg class="icon icon-xl"><use href="#i-upload"/></svg>
-                <div><strong>Haz clic para seleccionar</strong> uno o varios CSV</div>
+                <div><strong>Haz clic para seleccionar</strong> uno o varios archivos CSV o Excel (.xlsx)</div>
                 <div class="upload-hint">Se detectan automáticamente la fecha, el concepto, el importe y el saldo. Antes de importar podrás revisar y corregir el resultado.</div>
                 <div class="upload-file-list" id="file-list"></div>
             </label>
-            <input type="file" id="archivos" name="archivos" accept=".csv,text/csv" multiple hidden>
+            <input type="file" id="archivos" name="archivos" accept=".csv,text/csv,.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple hidden>
         </div>
 
         <div class="badge badge-info" style="display:flex;gap:8px;padding:12px 14px;margin-bottom:16px;align-items:flex-start;">

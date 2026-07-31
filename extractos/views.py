@@ -3,12 +3,11 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Sum
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
-from finanzas.parsing import leer_csv
+from finanzas.parsing import leer_tabla
 
 from .categorizacion import categorizar
 from .models import ExtractoBancario, MovimientoBancario
@@ -40,20 +39,19 @@ def listar(request):
 
     extractos = ExtractoBancario.objects.filter(hogar=hogar).select_related('cuenta')
 
-    resumen = MovimientoBancario.objects.filter(hogar=hogar).aggregate(
-        total=Sum('importe'),
+    # Vista GLOBAL: el mismo panel de análisis del detalle, pero sobre TODOS
+    # los movimientos del hogar (todos los extractos juntos).
+    todos = list(
+        MovimientoBancario.objects.filter(hogar=hogar)
+        .select_related('categoria').order_by('-fecha')
     )
-    total_movimientos = MovimientoBancario.objects.filter(hogar=hogar).count()
-    sin_categorizar = MovimientoBancario.objects.filter(
-        hogar=hogar, estado_categorizacion='sin_categorizar', importe__lt=0,
-    ).count()
+    panel = _panel_context(hogar, todos, request)
 
     return render(request, 'extractos/listar.html', {
+        'panel': panel,
         'extractos': extractos,
         'total_extractos': extractos.count(),
-        'total_movimientos': total_movimientos,
-        'saldo_neto': resumen['total'] or Decimal('0'),
-        'sin_categorizar': sin_categorizar,
+        'total_movimientos': len(todos),
     })
 
 
@@ -83,8 +81,15 @@ def subir(request):
     # reconocido no falla en silencio.
     pendientes = []
     for archivo in archivos:
-        texto = leer_csv(archivo)
+        try:
+            texto = leer_tabla(archivo)
+        except Exception:
+            messages.warning(request, f"No se pudo leer «{archivo.name}». ¿Es un CSV o Excel válido?")
+            continue
         pendientes.append({'nombre': archivo.name[:255], 'texto': texto})
+
+    if not pendientes:
+        return render(request, 'extractos/subir.html', {'cuentas': cuentas})
 
     request.session[SESSION_KEY_PENDIENTES] = pendientes
     request.session[SESSION_KEY_META] = {
@@ -317,31 +322,27 @@ _PALETA = [
 ]
 
 
-@login_required
-def detalle(request, pk):
-    profile, hogar = _get_hogar(request)
-    if not hogar:
-        messages.error(request, "Necesitas pertenecer a un hogar.")
-        return redirect('dashboard')
+def _panel_context(hogar, todos, request):
+    """Construye el panel de análisis de movimientos (KPIs, donut, ingresos vs
+    gastos, filtros año/mes/categoría y listado agrupado por mes) que comparten
+    el detalle de un extracto y la vista global de todos los extractos.
 
-    extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
-    todos = list(extracto.movimientos.select_related('categoria').all())
-
-    # --- Meses disponibles (para el filtro) ---
-    meses_set = sorted({(m.fecha.year, m.fecha.month) for m in todos}, reverse=True)
-    meses_disponibles = [
-        {'valor': f"{a}-{mm:02d}", 'etiqueta': f"{MESES_ES[mm]} {a}"}
-        for (a, mm) in meses_set
-    ]
+    `todos`: lista de MovimientoBancario (ya acotada al hogar y al ámbito que
+    corresponda — un extracto o todos)."""
+    # --- Filtros disponibles ---
+    anios_disponibles = sorted({m.fecha.year for m in todos}, reverse=True)
+    meses_disponibles = [{'valor': str(n), 'etiqueta': MESES_ES[n]} for n in range(1, 13)]
 
     # --- Filtros activos ---
+    anio_sel = request.GET.get('anio', 'all')
     mes_sel = request.GET.get('mes', 'all')
     cat_sel = request.GET.get('categoria', 'all')
 
     def pasa_filtro(m):
-        if mes_sel != 'all':
-            if f"{m.fecha.year}-{m.fecha.month:02d}" != mes_sel:
-                return False
+        if anio_sel != 'all' and str(m.fecha.year) != anio_sel:
+            return False
+        if mes_sel != 'all' and str(m.fecha.month) != mes_sel:
+            return False
         if cat_sel != 'all':
             if cat_sel == 'sin':
                 if m.categoria_id is not None:
@@ -398,8 +399,7 @@ def detalle(request, pk):
 
     categorias_hogar = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
 
-    return render(request, 'extractos/detalle.html', {
-        'extracto': extracto,
+    return {
         'grupos': grupos,
         'donut': donut,
         'donut_total': float(total_gasto_abs),
@@ -408,11 +408,27 @@ def detalle(request, pk):
         'kpi_neto': ingresos + gastos,
         'kpi_num': len(movimientos),
         'kpi_sin_categorizar': sin_categorizar,
+        'anios_disponibles': anios_disponibles,
         'meses_disponibles': meses_disponibles,
+        'anio_sel': anio_sel,
         'mes_sel': mes_sel,
         'cat_sel': cat_sel,
         'categorias_hogar': categorias_hogar,
-    })
+        'hay_filtro': anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all',
+    }
+
+
+@login_required
+def detalle(request, pk):
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+
+    extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
+    todos = list(extracto.movimientos.select_related('categoria').all())
+    panel = _panel_context(hogar, todos, request)
+    return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
 
 
 @login_required
