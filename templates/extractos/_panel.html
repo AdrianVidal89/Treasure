@@ -1,7 +1,9 @@
 {% load humanize %}
 {% load l10n %}
-{# Panel de análisis de movimientos compartido por el detalle de un extracto
-   y la vista global de todos los extractos. Espera un dict `panel` en contexto. #}
+{% comment %}
+Panel de análisis de movimientos compartido por el detalle de un extracto
+y la vista global de todos los extractos. Espera un dict `panel` en contexto.
+{% endcomment %}
 
 <!-- FILTROS -->
 <form method="get" class="ext-filtros">
@@ -110,40 +112,52 @@
 </div>
 
 <!-- MOVIMIENTOS -->
-<h2 class="ext-mov-title">Movimientos {% if panel.hay_filtro %}· filtrados{% endif %}</h2>
+<div class="ext-mov-head">
+    <h2 class="ext-mov-title">Movimientos {% if panel.hay_filtro %}· filtrados{% endif %}</h2>
+    {% if panel.grupos %}
+    <div class="ext-mov-acciones">
+        <button type="button" class="ext-mini-btn" id="ext-expandir-todo">Desplegar todo</button>
+        <button type="button" class="ext-mini-btn" id="ext-plegar-todo">Plegar todo</button>
+    </div>
+    {% endif %}
+</div>
 {% for grupo in panel.grupos %}
-<div class="group-header">
-    <h3>{{ grupo.etiqueta }}</h3>
-    <span class="group-total {% if grupo.neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ grupo.neto|floatformat:2|intcomma }} €</span>
-</div>
-<div class="table-scroll">
-    <table class="table ext-mov-table">
-        <thead>
-            <tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th><th class="num">Saldo</th><th></th></tr>
-        </thead>
-        <tbody>
-            {% for m in grupo.movimientos %}
-            <tr data-mov-id="{{ m.id }}">
-                <td class="num ext-fecha">{{ m.fecha|date:"d/m/Y" }}</td>
-                <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</td>
-                <td class="ext-cat-cell">
-                    <select class="ext-cat-select" data-mov-id="{{ m.id }}">
-                        <option value="" {% if not m.categoria_id %}selected{% endif %}>— Sin categorizar —</option>
-                        {% for c in panel.categorias_hogar %}
-                        <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
-                        {% endfor %}
-                    </select>
-                </td>
-                <td class="num ext-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}" data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">{{ m.importe|floatformat:2|intcomma }} €</td>
-                <td class="num text-muted">{% if m.saldo != None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
-                <td class="num">
-                    <button type="button" class="r-btn ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento"><svg class="icon"><use href="#i-trash"/></svg></button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+<details class="ext-mes-grupo"{% if panel.hay_filtro and forloop.first %} open{% endif %}>
+    <summary class="ext-mes-summary">
+        <span class="ext-mes-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+        <span class="ext-mes-nombre">{{ grupo.etiqueta }}</span>
+        <span class="ext-mes-count">{{ grupo.movimientos|length }} mov.</span>
+        <span class="ext-mes-neto group-total {% if grupo.neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ grupo.neto|floatformat:2|intcomma }} €</span>
+    </summary>
+    <div class="table-scroll">
+        <table class="table ext-mov-table">
+            <thead>
+                <tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th><th class="num">Saldo</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for m in grupo.movimientos %}
+                <tr data-mov-id="{{ m.id }}">
+                    <td class="num ext-fecha">{{ m.fecha|date:"d/m/Y" }}</td>
+                    <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</td>
+                    <td class="ext-cat-cell">
+                        <select class="ext-cat-select" data-mov-id="{{ m.id }}">
+                            <option value="" {% if not m.categoria_id %}selected{% endif %}>— Sin categorizar —</option>
+                            {% for c in panel.categorias_hogar %}
+                            <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="num ext-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}" data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">{{ m.importe|floatformat:2|intcomma }} €</td>
+                    <td class="num text-muted">{% if m.saldo != None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
+                    <td class="num">
+                        <button type="button" class="r-btn ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento"><svg class="icon"><use href="#i-trash"/></svg></button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</details>
 {% empty %}
 <div class="ext-viz-empty" style="padding:30px;text-align:center;">No hay movimientos con los filtros seleccionados.</div>
 {% endfor %}
@@ -189,7 +203,22 @@
 .ext-neto-box.neg { background:rgba(180,68,46,0.1); color:#b4442e; }
 .ext-neto-box strong { font-size:1.05rem; }
 
-.ext-mov-title { font-size:1.05rem; margin:28px 0 4px; }
+.ext-mov-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:28px 0 10px; }
+.ext-mov-title { font-size:1.05rem; margin:0; }
+.ext-mov-acciones { display:flex; gap:6px; }
+.ext-mini-btn { background:var(--app-bg); border:1px solid var(--border-strong); color:var(--muted); font-size:0.72rem; font-weight:600; padding:6px 12px; border-radius:8px; cursor:pointer; transition:all .2s; }
+.ext-mini-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
+
+.ext-mes-grupo { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; background:var(--surface); }
+.ext-mes-summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:14px 18px; transition:background .15s; }
+.ext-mes-summary::-webkit-details-marker { display:none; }
+.ext-mes-summary:hover { background:color-mix(in srgb, var(--primary-color) 4%, transparent); }
+.ext-mes-chevron { display:flex; align-items:center; color:var(--muted); transition:transform .2s; flex-shrink:0; }
+.ext-mes-grupo[open] .ext-mes-chevron { transform:rotate(90deg); }
+.ext-mes-nombre { font-weight:700; color:var(--text-color); font-size:0.95rem; }
+.ext-mes-count { font-size:0.72rem; color:var(--muted); background:var(--app-bg); padding:2px 9px; border-radius:999px; }
+.ext-mes-neto { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
+.ext-mes-grupo .table-scroll { border-top:1px solid var(--border); }
 .ext-cat-select { background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:5px 8px; font-size:0.78rem; max-width:180px; }
 .ext-cat-select:focus { border-color:var(--primary-color); outline:none; }
 .ext-concepto, .ext-importe { cursor:pointer; border-radius:6px; }
@@ -322,6 +351,16 @@ tr.ext-guardada td { animation: ext-flash 0.9s ease; }
 
     document.querySelectorAll('.ext-concepto, .ext-importe').forEach(function(td) {
         td.addEventListener('click', function(){ editarCelda(td); });
+    });
+
+    /* ---- Plegar / desplegar todos los meses ---- */
+    var btnExpandir = document.getElementById('ext-expandir-todo');
+    var btnPlegar = document.getElementById('ext-plegar-todo');
+    if (btnExpandir) btnExpandir.addEventListener('click', function() {
+        document.querySelectorAll('.ext-mes-grupo').forEach(function(d){ d.open = true; });
+    });
+    if (btnPlegar) btnPlegar.addEventListener('click', function() {
+        document.querySelectorAll('.ext-mes-grupo').forEach(function(d){ d.open = false; });
     });
 
     document.querySelectorAll('.ext-del').forEach(function(btn) {
