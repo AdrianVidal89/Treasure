@@ -21,7 +21,10 @@ COPY . .
 
 EXPOSE 8000
 
-# --timeout 180: un turno del asistente puede encadenar varias llamadas al
-# proveedor de IA (tool_use) y superar el timeout por defecto de 30 s de
-# gunicorn, que mataría al worker y el chat mostraría "no responde".
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "180"]
+# --timeout 300: un turno del asistente puede encadenar varias llamadas al
+# proveedor de IA (tool_use) con Opus/Sonnet, que son lentos. El loop del
+# agente acota su trabajo a ~230 s (PRESUPUESTO_TURNO_SEG), así que 300 s deja
+# margen para responder siempre antes de que gunicorn reinicie el worker (que
+# es lo que provocaba el "No se pudo contactar con el asistente"). Se usan
+# hilos para que una petición larga no bloquee el health del worker.
+CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2", "--threads", "4", "--timeout", "300"]

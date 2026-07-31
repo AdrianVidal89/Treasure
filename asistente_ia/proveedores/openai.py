@@ -89,7 +89,7 @@ class OpenAIProvider(ProveedorLLM):
             },
         )
 
-    def enviar(self, mensajes, system_blocks, tools, api_key, modelo, timeout=30):
+    def enviar(self, mensajes, system_blocks, tools, api_key, modelo, timeout=120):
         cuerpo = {
             'model': modelo,
             'messages': self._traducir_system(system_blocks) + self._traducir_mensajes(mensajes),

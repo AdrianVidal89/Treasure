@@ -516,19 +516,34 @@
             renderMensaje("user", texto);
             var indicador = renderThinking();
 
+            // El agente puede encadenar varias consultas con Opus/Sonnet, que
+            // son lentos. Damos margen amplio (el servidor acota el turno a
+            // ~230 s) y solo abortamos si se supera claramente ese margen.
+            var controlador = ("AbortController" in window) ? new AbortController() : null;
+            var temporizador = setTimeout(function () {
+                if (controlador) controlador.abort();
+            }, 290000);
+
             fetch("/asistente-ia/api/conversaciones/" + convId + "/mensajes/", {
                 method: "POST",
                 headers: {"X-CSRFToken": getCsrf(), "Content-Type": "application/json"},
-                body: JSON.stringify({mensaje: texto})
+                body: JSON.stringify({mensaje: texto}),
+                signal: controlador ? controlador.signal : undefined
             }).then(function (r) { return r.json(); }).then(function (data) {
+                clearTimeout(temporizador);
                 indicador.remove();
                 (data.pasos || []).forEach(renderPaso);
                 if (data.error) { renderMensaje("error", data.error); return; }
                 renderMensaje("assistant", data.respuesta);
                 if (data.accion_propuesta) renderPropuesta(data.accion_propuesta);
-            }).catch(function () {
+            }).catch(function (err) {
+                clearTimeout(temporizador);
                 indicador.remove();
-                renderMensaje("error", "No se pudo contactar con el asistente.");
+                if (err && err.name === "AbortError") {
+                    renderMensaje("error", "El asistente ha tardado demasiado. Prueba con Haiku o con una pregunta más concreta.");
+                } else {
+                    renderMensaje("error", "No se pudo contactar con el asistente. Reinténtalo en unos segundos.");
+                }
             });
         }
 

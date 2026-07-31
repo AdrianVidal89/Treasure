@@ -15,7 +15,12 @@ from dataclasses import dataclass, field
 
 import requests
 
-TIMEOUT_POR_DEFECTO = 30
+# Generoso a propósito: Opus/Sonnet, generando hasta 4096 tokens con un system
+# prompt grande y varias tools, tardan a menudo más de 30 s en un solo turno.
+# Con 30 s solo "cabía" Haiku; el loop del agente además acota el tiempo total
+# con su propio presupuesto de reloj (ver loop.py) para no superar el timeout
+# de gunicorn.
+TIMEOUT_POR_DEFECTO = 120
 
 
 class ErrorProveedorIA(Exception):

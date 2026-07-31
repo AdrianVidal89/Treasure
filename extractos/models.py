@@ -52,6 +52,44 @@ class ExtractoBancario(models.Model):
         return self.total_ingresos + self.total_gastos
 
 
+class ReglaCategorizacion(models.Model):
+    """Regla aprendida: si el concepto de un movimiento contiene `patron`,
+    se asigna `categoria`. Se crea cuando el usuario (o la IA bajo su
+    aprobación) categoriza movimientos, de modo que futuras importaciones
+    apliquen automáticamente el mismo criterio.
+
+    El origen indica quién la creó, solo a efectos informativos/auditoría."""
+
+    ORIGEN_CHOICES = [
+        ('manual', 'Manual'),
+        ('ia', 'Asistente IA'),
+    ]
+
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='reglas_categorizacion')
+    patron = models.CharField(
+        max_length=200,
+        help_text='Texto que debe contener el concepto (se compara en minúsculas, sin distinguir acentos de mayúsculas).',
+    )
+    categoria = models.ForeignKey(
+        'finanzas.CategoriaGasto', on_delete=models.CASCADE, related_name='reglas_categorizacion',
+    )
+    origen = models.CharField(max_length=10, choices=ORIGEN_CHOICES, default='manual')
+    veces_aplicada = models.PositiveIntegerField(default=0)
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-creado_en']
+        constraints = [
+            models.UniqueConstraint(fields=['hogar', 'patron'], name='uniq_regla_cat_hogar_patron'),
+        ]
+        verbose_name = 'Regla de categorización'
+        verbose_name_plural = 'Reglas de categorización'
+
+    def __str__(self):
+        return f"«{self.patron}» → {self.categoria.nombre}"
+
+
 class MovimientoBancario(models.Model):
     """Un apunte observado en el extracto. Se cruza con los datos declarados."""
 

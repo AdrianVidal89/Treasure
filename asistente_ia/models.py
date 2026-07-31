@@ -189,6 +189,7 @@ class AccionPropuestaIA(models.Model):
         ('crear_agente', 'Crear agente IA'),
         ('crear_ingreso', 'Crear fuente de ingreso'),
         ('editar_ingreso', 'Editar fuente de ingreso'),
+        ('categorizar_movimientos', 'Categorizar movimientos bancarios'),
     ]
     ESTADO_CHOICES = [
         ('pendiente', 'Pendiente'),

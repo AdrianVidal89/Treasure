@@ -14,6 +14,7 @@ Contrato:
     (texto de usuario/asistente) se persiste en `MensajeIA` para poder
     recuperar la conversación entre sesiones.
 """
+import time
 from dataclasses import dataclass, field
 
 from . import acciones, herramientas
@@ -24,6 +25,22 @@ from .proveedores import bloques
 
 MAX_ITERACIONES = 7
 HIST_SESSION_KEY = 'ia_historial'
+
+# Presupuesto de reloj para un turno completo del agente. Debe quedar
+# holgadamente por debajo del --timeout de gunicorn (300 s) para que el turno
+# termine SIEMPRE con una respuesta en prosa antes de que el worker sea
+# reiniciado (lo que dejaba al chat con "No se pudo contactar con el asistente").
+PRESUPUESTO_TURNO_SEG = 230
+# Techo por llamada individual al proveedor (Opus/Sonnet pueden tardar).
+TIMEOUT_LLAMADA_MAX = 120
+# Margen mínimo que reservamos para la llamada final sin tools.
+TIMEOUT_FINAL_MIN = 25
+
+
+def _timeout_restante(inicio, tope=TIMEOUT_LLAMADA_MAX):
+    """Segundos que quedan del presupuesto del turno, acotados a [0, tope]."""
+    restante = PRESUPUESTO_TURNO_SEG - (time.monotonic() - inicio)
+    return max(0, min(int(restante), tope))
 
 
 @dataclass
@@ -88,11 +105,24 @@ def _ejecutar_turno(request, conversacion, texto_usuario):
     accion_propuesta = None
     texto_final = ''
     turno_cortado = False
+    inicio = time.monotonic()
+    sin_tiempo = False
 
     for _ in range(MAX_ITERACIONES):
+        timeout_llamada = _timeout_restante(inicio)
+        # Si apenas queda presupuesto, no arrancamos otra ronda con tools:
+        # salimos del bucle y forzamos la respuesta final en prosa.
+        if timeout_llamada < TIMEOUT_FINAL_MIN:
+            sin_tiempo = True
+            break
         historial_mensajes = bloques.aplanar_turnos(turnos) + turno_actual
-        respuesta = proveedor.enviar(historial_mensajes, system_blocks, tools, api_key, modelo)
+        respuesta = proveedor.enviar(historial_mensajes, system_blocks, tools, api_key, modelo, timeout=timeout_llamada)
         if respuesta.error:
+            # Si ya teníamos pasos hechos, intentamos rematar con una respuesta
+            # en prosa en vez de devolver solo el error.
+            if pasos:
+                sin_tiempo = True
+                break
             return ResultadoTurno(error=respuesta.error, pasos=pasos)
 
         tool_uses = respuesta.tool_uses
@@ -136,16 +166,30 @@ def _ejecutar_turno(request, conversacion, texto_usuario):
         if turno_cortado:
             texto_final = respuesta.texto or 'He preparado una propuesta; confírmala para aplicarla.'
             break
-    else:
-        # Tope de iteraciones agotado sin respuesta final ni escritura
-        # propuesta: forzamos una última llamada SIN tools para garantizar
-        # una respuesta en prosa. Nunca dejamos al usuario en silencio.
+
+    if not texto_final and not turno_cortado:
+        # Tope de iteraciones o de tiempo agotado sin respuesta final ni
+        # escritura propuesta: forzamos una última llamada SIN tools para
+        # garantizar una respuesta en prosa. Nunca dejamos al usuario en
+        # silencio ni con el "No se pudo contactar" del front.
+        timeout_final = max(_timeout_restante(inicio), TIMEOUT_FINAL_MIN)
         historial_mensajes = bloques.aplanar_turnos(turnos) + turno_actual
-        respuesta_final = proveedor.enviar(historial_mensajes, system_blocks, None, api_key, modelo)
-        texto_final = respuesta_final.texto if (not respuesta_final.error and respuesta_final.texto) else (
-            'He hecho varias consultas pero no he podido completar la respuesta. '
-            'Prueba a preguntarme algo más concreto.'
+        respuesta_final = proveedor.enviar(
+            historial_mensajes, system_blocks, None, api_key, modelo, timeout=timeout_final,
         )
+        if not respuesta_final.error and respuesta_final.texto:
+            texto_final = respuesta_final.texto
+        elif sin_tiempo:
+            texto_final = (
+                'He estado investigando pero la consulta está tardando más de lo '
+                'que puedo procesar de una vez. Cuéntame algo más concreto o pídeme '
+                'el análisis por partes y lo resuelvo.'
+            )
+        else:
+            texto_final = (
+                'He hecho varias consultas pero no he podido completar la respuesta. '
+                'Prueba a preguntarme algo más concreto.'
+            )
 
     turno_actual.append(bloques.mensaje('assistant', [bloques.bloque_texto(texto_final)]))
 

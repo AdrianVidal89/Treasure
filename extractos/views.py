@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
 from finanzas.parsing import leer_csv
 
-from .categorizacion import categorizar_por_codigo
+from .categorizacion import categorizar
 from .models import ExtractoBancario, MovimientoBancario
 from .parser import CAMPO_LABELS, analizar_extracto
 
@@ -127,10 +127,6 @@ def _leer_mapeos_manuales(POST, num_archivos):
 def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
     """Escribe en BD los movimientos ya analizados (y revisados). Devuelve
     un dict con los totales para mostrar en los mensajes de resultado."""
-    categorias_por_nombre = {
-        c.nombre: c for c in CategoriaGasto.objects.filter(hogar=hogar, activo=True)
-    }
-
     total_creados = 0
     total_duplicados = 0
     total_categorizados = 0
@@ -164,10 +160,11 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
             categoria = None
             estado = 'sin_categorizar'
             # Solo se categoriza automáticamente el gasto (importe negativo).
+            # `categorizar` prioriza las reglas APRENDIDAS del hogar (creadas al
+            # categorizar antes, manualmente o con la IA) sobre la heurística.
             if mov['importe'] < 0:
-                nombre_cat = categorizar_por_codigo(mov['concepto'])
-                if nombre_cat and nombre_cat in categorias_por_nombre:
-                    categoria = categorias_por_nombre[nombre_cat]
+                categoria = categorizar(mov['concepto'], hogar)
+                if categoria:
                     estado = 'por_codigo'
                     total_categorizados += 1
 
