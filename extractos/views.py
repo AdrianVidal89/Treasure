@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Sum
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
@@ -312,6 +313,13 @@ def revisar(request):
     })
 
 
+# Paleta para el donut de categorías (verdes/tierra coherentes con la marca).
+_PALETA = [
+    '#2d6a4f', '#3DCD58', '#2c5f7a', '#b7791f', '#b4442e', '#1b4332',
+    '#40916c', '#5f8fb0', '#d4a017', '#9d4edd', '#e07a5f', '#81b29a',
+]
+
+
 @login_required
 def detalle(request, pk):
     profile, hogar = _get_hogar(request)
@@ -320,13 +328,61 @@ def detalle(request, pk):
         return redirect('dashboard')
 
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
-    movimientos = extracto.movimientos.select_related('categoria').all()
+    todos = list(extracto.movimientos.select_related('categoria').all())
 
-    # Agrupación por mes (año-mes) preservando orden descendente.
+    # --- Meses disponibles (para el filtro) ---
+    meses_set = sorted({(m.fecha.year, m.fecha.month) for m in todos}, reverse=True)
+    meses_disponibles = [
+        {'valor': f"{a}-{mm:02d}", 'etiqueta': f"{MESES_ES[mm]} {a}"}
+        for (a, mm) in meses_set
+    ]
+
+    # --- Filtros activos ---
+    mes_sel = request.GET.get('mes', 'all')
+    cat_sel = request.GET.get('categoria', 'all')
+
+    def pasa_filtro(m):
+        if mes_sel != 'all':
+            if f"{m.fecha.year}-{m.fecha.month:02d}" != mes_sel:
+                return False
+        if cat_sel != 'all':
+            if cat_sel == 'sin':
+                if m.categoria_id is not None:
+                    return False
+            elif str(m.categoria_id) != cat_sel:
+                return False
+        return True
+
+    movimientos = [m for m in todos if pasa_filtro(m)]
+
+    # --- KPIs sobre el conjunto filtrado ---
+    ingresos = sum((m.importe for m in movimientos if m.importe >= 0), Decimal('0'))
+    gastos = sum((m.importe for m in movimientos if m.importe < 0), Decimal('0'))
+    sin_categorizar = sum(1 for m in movimientos if m.importe < 0 and not m.categoria_id)
+
+    # --- Donut: gasto por categoría (valores absolutos) ---
+    por_categoria = defaultdict(lambda: Decimal('0'))
+    for m in movimientos:
+        if m.importe < 0:
+            nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
+            por_categoria[nombre] += -m.importe
+    cat_ordenadas = sorted(por_categoria.items(), key=lambda kv: kv[1], reverse=True)
+    total_gasto_abs = sum((v for _, v in cat_ordenadas), Decimal('0'))
+
+    donut = []
+    for i, (nombre, importe) in enumerate(cat_ordenadas):
+        pct = float(importe / total_gasto_abs * 100) if total_gasto_abs else 0
+        donut.append({
+            'nombre': nombre,
+            'importe': float(importe),
+            'pct': round(pct, 1),
+            'color': '#9aa5a0' if nombre == 'Sin categorizar' else _PALETA[i % len(_PALETA)],
+        })
+
+    # --- Agrupación por mes (para el listado) ---
     grupos_mes = defaultdict(lambda: {'movimientos': [], 'ingresos': Decimal('0'), 'gastos': Decimal('0')})
     for m in movimientos:
-        clave = (m.fecha.year, m.fecha.month)
-        g = grupos_mes[clave]
+        g = grupos_mes[(m.fecha.year, m.fecha.month)]
         g['movimientos'].append(m)
         if m.importe >= 0:
             g['ingresos'] += m.importe
@@ -343,19 +399,87 @@ def detalle(request, pk):
             'movimientos': datos['movimientos'],
         })
 
-    # Agrupación por categoría (solo gastos).
-    por_categoria = defaultdict(lambda: Decimal('0'))
-    for m in movimientos:
-        if m.importe < 0:
-            nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
-            por_categoria[nombre] += m.importe
-    categorias = sorted(por_categoria.items(), key=lambda kv: kv[1])
+    categorias_hogar = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
 
     return render(request, 'extractos/detalle.html', {
         'extracto': extracto,
         'grupos': grupos,
-        'categorias': categorias,
+        'donut': donut,
+        'donut_total': float(total_gasto_abs),
+        'kpi_ingresos': ingresos,
+        'kpi_gastos': gastos,
+        'kpi_neto': ingresos + gastos,
+        'kpi_num': len(movimientos),
+        'kpi_sin_categorizar': sin_categorizar,
+        'meses_disponibles': meses_disponibles,
+        'mes_sel': mes_sel,
+        'cat_sel': cat_sel,
+        'categorias_hogar': categorias_hogar,
     })
+
+
+@login_required
+def actualizar_movimiento(request, pk):
+    """Edita en línea un movimiento: categoría, concepto y/o importe."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+
+    if 'categoria_id' in request.POST:
+        cat_raw = request.POST.get('categoria_id') or ''
+        if cat_raw == '':
+            mov.categoria = None
+            mov.estado_categorizacion = 'sin_categorizar'
+        else:
+            cat = CategoriaGasto.objects.filter(hogar=hogar, id=cat_raw).first()
+            if not cat:
+                return JsonResponse({'ok': False, 'error': 'categoria_invalida'}, status=400)
+            mov.categoria = cat
+            mov.estado_categorizacion = 'manual'
+
+    if 'concepto' in request.POST:
+        concepto = (request.POST.get('concepto') or '').strip()
+        if concepto:
+            mov.concepto = concepto[:300]
+
+    if 'importe' in request.POST:
+        from decimal import InvalidOperation
+        try:
+            mov.importe = Decimal((request.POST.get('importe') or '').replace(',', '.'))
+        except InvalidOperation:
+            return JsonResponse({'ok': False, 'error': 'importe_invalido'}, status=400)
+
+    mov.save()
+    return JsonResponse({
+        'ok': True,
+        'categoria': mov.categoria.nombre if mov.categoria else None,
+        'categoria_id': mov.categoria_id,
+        'concepto': mov.concepto,
+        'importe': float(mov.importe),
+        'estado': mov.estado_categorizacion,
+    })
+
+
+@login_required
+def eliminar_movimiento(request, pk):
+    """Elimina un único movimiento del extracto."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+    extracto = mov.extracto
+    mov.delete()
+    # Recontar movimientos del extracto.
+    extracto.num_movimientos = extracto.movimientos.count()
+    extracto.save(update_fields=['num_movimientos'])
+    return JsonResponse({'ok': True})
 
 
 @login_required
