@@ -82,6 +82,7 @@ urlpatterns = [
     path('distribucion/regla/crear/', views_distribucion.crear_regla, name='crear_regla'),
     path('distribucion/regla/<int:regla_id>/editar/', views_distribucion.editar_regla, name='editar_regla'),
     path('distribucion/regla/<int:regla_id>/eliminar/', views_distribucion.eliminar_regla, name='eliminar_regla'),
+    path('distribucion/regla/reordenar/', views_distribucion.reordenar_reglas, name='reordenar_reglas'),
 
     # ── Evolución ──────────────────────────────────────────────────────────
     path('evolucion/', views_evolucion.vista_evolucion, name='vista_evolucion'),

@@ -52,14 +52,22 @@ def parse_decimal(s):
 
 
 def parse_fecha(s):
-    """Parseo tolerante de fechas en los formatos habituales de bancos y hojas de cálculo."""
+    """Parseo tolerante de fechas en los formatos habituales de bancos y hojas de cálculo.
+
+    Muchos exportadores (Revolut, N26, Wise...) incluyen la hora junto a la
+    fecha, ej. "2026-07-01 05:32:21" o "2026-07-01T05:32:21Z". Nos quedamos
+    solo con la parte de fecha antes de probar los formatos conocidos.
+    """
     if s is None:
         return None
     s = str(s).strip()
+    if not s:
+        return None
+    parte_fecha = s.split('T')[0].split(' ')[0]
     for fmt in ('%d/%m/%Y', '%m/%d/%Y', '%Y-%m-%d', '%d-%m-%Y',
                 '%d/%m/%y', '%d.%m.%Y', '%Y/%m/%d'):
         try:
-            return datetime.datetime.strptime(s, fmt).date()
+            return datetime.datetime.strptime(parte_fecha, fmt).date()
         except ValueError:
             continue
     return None

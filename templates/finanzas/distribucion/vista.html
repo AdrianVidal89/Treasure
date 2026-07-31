@@ -76,19 +76,19 @@
 <!-- ===== HUB DE GESTIÓN (todo lo editable, agrupado y a un clic) ===== -->
 <div class="hub-grid">
     <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--primary-color); --accent:var(--primary-color);" onclick="abrir('modal-reglas')">
-        <span class="hub-icon"></span>
+        <span class="hub-icon"><svg class="icon"><use href="#i-distribution"/></svg></span>
         <span class="hub-num">{{ reglas|length }}</span>
         <span class="hub-title">Reglas de reparto</span>
         <span class="hub-go">Gestionar →</span>
     </button>
     <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--success); --accent:var(--success);" onclick="abrir('modal-fondos')">
-        <span class="hub-icon"></span>
+        <span class="hub-icon"><svg class="icon"><use href="#i-file"/></svg></span>
         <span class="hub-num">{{ d.fondos_aportaciones|length }}</span>
         <span class="hub-title">Fondos</span>
         <span class="hub-go">Gestionar →</span>
     </button>
     <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--info); --accent:var(--info);" onclick="abrir('modal-transferencias')">
-        <span class="hub-icon"></span>
+        <span class="hub-icon"><svg class="icon"><use href="#i-refresh"/></svg></span>
         <span class="hub-num">{{ d.transferencias|length }}</span>
         <span class="hub-title">Transferencias</span>
         <span class="hub-go">Ver detalle →</span>
@@ -185,12 +185,17 @@
             <h2>Reglas de reparto</h2>
             <div class="modal-list-actions">
                 <button onclick="abrirModalRegla()" class="btn btn-primary" style="font-size:0.8rem;padding:8px 14px;">＋ Nueva regla</button>
-                <button onclick="cerrar('modal-reglas')" class="modal-close" aria-label="Cerrar"></button>
+                <button onclick="cerrar('modal-reglas')" class="modal-close" aria-label="Cerrar"><svg class="icon"><use href="#i-close"/></svg></button>
             </div>
         </div>
         <div class="modal-list-body">
+            {% if reglas %}
+            <p class="reglas-orden-hint">Arrastra <svg class="icon icon-dots"><use href="#i-grip"/></svg> para cambiar el orden de aplicación. Las reglas se aplican de arriba a abajo sobre el dinero libre restante.</p>
+            {% endif %}
+            <div id="reglas-lista" data-reordenar-url="{% url 'finanzas:reordenar_reglas' %}">
             {% for regla in reglas %}
-            <div class="regla-pill" style="border-left-color: {{ regla.color }};">
+            <div class="regla-pill" draggable="true" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
+                <span class="regla-drag-handle" title="Arrastrar para reordenar"><svg class="icon icon-dots"><use href="#i-grip"/></svg></span>
                 <div class="regla-pill-info">
                     <div class="regla-pill-nombre">{{ regla.nombre }}</div>
                     <div class="regla-pill-sub">
@@ -201,13 +206,14 @@
                     </div>
                 </div>
                 <div style="display:flex; gap:6px;">
-                    <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn"></button>
-                    <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar?')"></button></form>
+                    <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
+                    <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
                 </div>
             </div>
             {% empty %}
             <p class="empty-msg">Sin reglas definidas. Crea la primera con “＋ Nueva regla”.</p>
             {% endfor %}
+            </div>
         </div>
     </div>
 </div>
@@ -222,7 +228,7 @@
             <h2>Fondos</h2>
             <div class="modal-list-actions">
                 <button onclick="abrirModalFondo()" class="btn btn-primary" style="font-size:0.8rem;padding:8px 14px;">＋ Nuevo fondo</button>
-                <button onclick="cerrar('modal-fondos')" class="modal-close" aria-label="Cerrar"></button>
+                <button onclick="cerrar('modal-fondos')" class="modal-close" aria-label="Cerrar"><svg class="icon"><use href="#i-close"/></svg></button>
             </div>
         </div>
         <div class="modal-list-body">
@@ -249,12 +255,12 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
-                        <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}')" class="r-btn"></button>
+                        <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
                         {% if fa.fondo.tipo_fondo == 'comun' %}
-                        <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos"></button>
+                        <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos"><svg class="icon"><use href="#i-check"/></svg></button>
                         {% endif %}
-                        <button onclick="abrirModalSubsobre({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn">＋</button>
-                        <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" onclick="return confirm('¿Eliminar fondo?')"></button></form>
+                        <button onclick="abrirModalSubsobre({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Añadir subsobre"><svg class="icon"><use href="#i-plus"/></svg></button>
+                        <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar fondo" onclick="return confirm('¿Eliminar fondo?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
                     </div>
                 </div>
 
@@ -267,7 +273,7 @@
                         <span>{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
                         <form method="post" action="{% url 'finanzas:desasignar_gasto_fondo' g.id %}" style="margin:0;">
                             {% csrf_token %}
-                            <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" onclick="return confirm('¿Desasignar {{ g.nombre }}?')"></button>
+                            <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" title="Desasignar" onclick="return confirm('¿Desasignar {{ g.nombre }}?')"><svg class="icon" style="width:0.85em;height:0.85em;"><use href="#i-close"/></svg></button>
                         </form>
                     </div>
                     {% endfor %}
@@ -290,7 +296,7 @@
                     </span>
                     <div style="display:flex; align-items:center; gap:10px;">
                         <span style="color:#b7791f; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
-                        <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')"></button></form>
+                        <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon" style="width:0.85em;height:0.85em;"><use href="#i-trash"/></svg></button></form>
                     </div>
                 </div>
                 {% endfor %}
@@ -353,7 +359,7 @@
         <div class="modal-list-head">
             <h2>Transferencias del mes</h2>
             <div class="modal-list-actions">
-                <button onclick="cerrar('modal-transferencias')" class="modal-close" aria-label="Cerrar"></button>
+                <button onclick="cerrar('modal-transferencias')" class="modal-close" aria-label="Cerrar"><svg class="icon"><use href="#i-close"/></svg></button>
             </div>
         </div>
         <div class="modal-list-body">
@@ -541,7 +547,8 @@
     column-gap:14px; row-gap:2px; align-items:center;
     font-family:inherit;
 }
-.hub-icon { grid-row:1 / span 2; font-size:1.7rem; }
+.hub-icon { grid-row:1 / span 2; display:flex; align-items:center; justify-content:center; color:var(--hc); }
+.hub-icon .icon { width:1.7rem; height:1.7rem; }
 .hub-num { font-size:1.5rem; font-weight:800; color:var(--hc); line-height:1; }
 .hub-title { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .hub-go { grid-column:2; font-size:0.72rem; color:var(--muted); margin-top:4px; }
@@ -579,7 +586,16 @@
 
 /* ── Listas dentro de modales ── */
 .regla-pill { background:var(--dark-bg); border-left:3px solid; border-radius:var(--radius); padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.regla-pill[draggable="true"] { cursor:grab; transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease; }
+.regla-pill.dragging { opacity:0.4; cursor:grabbing; }
+.regla-pill.drag-over-top { box-shadow: inset 0 3px 0 0 var(--primary-color); }
+.regla-pill.drag-over-bottom { box-shadow: inset 0 -3px 0 0 var(--primary-color); }
+.regla-drag-handle { display:flex; align-items:center; color:var(--muted); flex-shrink:0; cursor:grab; touch-action:none; }
+.icon-dots { fill:currentColor; stroke:none; width:1.1em; height:1.1em; }
+.reglas-orden-hint { display:flex; align-items:center; gap:4px; font-size:0.76rem; color:var(--muted); margin:0 0 12px; }
+.reglas-orden-hint .icon-dots { color:var(--muted); }
 .fondo-pill { display:block; padding:14px 16px; }
+.regla-pill-info { flex:1; min-width:0; }
 .regla-pill-nombre { font-size:0.9rem; font-weight:600; color:var(--text-color); }
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
 .tag-tipo { font-size:0.62rem; padding:2px 8px; border-radius:6px; font-weight:600; display:inline-block; }
@@ -721,8 +737,75 @@ function abrirAsignarGastos(fondoId,fondoNombre){
     document.getElementById('modal-gastos').style.display='flex';
 }
 
+function getCsrf(){
+    var m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? m[1] : '';
+}
+
+function initReordenarReglas(){
+    var lista = document.getElementById('reglas-lista');
+    if(!lista) return;
+    var url = lista.dataset.reordenarUrl;
+    var dragged = null;
+
+    function limpiarIndicadores(){
+        lista.querySelectorAll('.regla-pill').forEach(function(p){
+            p.classList.remove('drag-over-top','drag-over-bottom');
+        });
+    }
+
+    function guardarOrden(){
+        var ids = Array.prototype.map.call(lista.querySelectorAll('.regla-pill'), function(p){
+            return parseInt(p.dataset.reglaId, 10);
+        });
+        fetch(url, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/json'},
+            body: JSON.stringify({ids: ids})
+        }).catch(function(){});
+    }
+
+    lista.addEventListener('dragstart', function(e){
+        var pill = e.target.closest('.regla-pill');
+        if(!pill) return;
+        dragged = pill;
+        pill.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', pill.dataset.reglaId); } catch(err){}
+    });
+
+    lista.addEventListener('dragend', function(){
+        if(dragged) dragged.classList.remove('dragging');
+        dragged = null;
+        limpiarIndicadores();
+    });
+
+    lista.addEventListener('dragover', function(e){
+        var pill = e.target.closest('.regla-pill');
+        if(!pill || !dragged || pill === dragged) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        limpiarIndicadores();
+        var rect = pill.getBoundingClientRect();
+        var antes = (e.clientY - rect.top) < rect.height / 2;
+        pill.classList.add(antes ? 'drag-over-top' : 'drag-over-bottom');
+    });
+
+    lista.addEventListener('drop', function(e){
+        var pill = e.target.closest('.regla-pill');
+        if(!pill || !dragged || pill === dragged) return;
+        e.preventDefault();
+        var rect = pill.getBoundingClientRect();
+        var antes = (e.clientY - rect.top) < rect.height / 2;
+        lista.insertBefore(dragged, antes ? pill : pill.nextSibling);
+        limpiarIndicadores();
+        guardarOrden();
+    });
+}
+
 document.addEventListener('DOMContentLoaded',function(){
     document.querySelectorAll('.msg-toast').forEach(function(el){ setTimeout(function(){el.remove();},4000); });
+    initReordenarReglas();
 
     // Cerrar al hacer clic en el fondo del overlay (fuera de la caja)
     document.querySelectorAll('.modal-overlay').forEach(function(ov){

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Revisar importación · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-file"/></svg> Revisar antes de importar</h1>
+            <div class="page-sub">
+                Comprueba cómo se han interpretado tus archivos. Si una columna no se ha detectado bien, corrígela
+                abajo y pulsa «Volver a analizar» antes de confirmar.
+            </div>
+        </div>
+    </div>
+
+    <div class="stat-row" style="margin-bottom:20px;">
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Movimientos listos</span>
+            <span class="stat-tile-valor num text-positive">{{ total_ok }}</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Filas con error</span>
+            <span class="stat-tile-valor num {% if total_error %}text-negative{% endif %}">{{ total_error }}</span>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" style="display:block;padding:10px 14px;margin-bottom:8px;">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" id="form-revisar">
+        {% csrf_token %}
+
+        <div class="revisar-meta">
+            <div class="form-group">
+                <label for="nombre_banco">Banco (opcional)</label>
+                <input type="text" id="nombre_banco" name="nombre_banco" value="{{ nombre_banco }}" placeholder="Ej. BBVA, Santander, N26…">
+            </div>
+            {% if cuentas %}
+            <div class="form-group">
+                <label for="cuenta">Cuenta asociada (opcional)</label>
+                <select id="cuenta" name="cuenta">
+                    <option value="">— Sin asignar —</option>
+                    {% for c in cuentas %}
+                    <option value="{{ c.id }}" {% if cuenta_id|stringformat:"s" == c.id|stringformat:"s" %}selected{% endif %}>{{ c.nombre }} ({{ c.moneda }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+        </div>
+
+        {% for archivo in archivos %}
+        <div class="glass-panel revisar-archivo">
+            <div class="revisar-archivo-head">
+                <h3><svg class="icon"><use href="#i-file"/></svg> {{ archivo.nombre }}</h3>
+                <div class="revisar-archivo-totales">
+                    <span class="badge badge-success">{{ archivo.total_ok }} listos</span>
+                    {% if archivo.total_error %}<span class="badge badge-danger">{{ archivo.total_error }} con error</span>{% endif %}
+                </div>
+            </div>
+
+            {% for err in archivo.errores_generales %}
+            <div class="badge badge-danger" style="display:block;padding:10px 14px;margin-bottom:10px;">{{ err }}</div>
+            {% endfor %}
+
+            <div class="revisar-mapeo">
+                <div class="revisar-mapeo-label">¿Qué columna es cada dato?</div>
+                <div class="revisar-mapeo-grid">
+                    {% for c in archivo.campos %}
+                    <div class="form-group">
+                        <label for="mapeo_{{ archivo.indice }}_{{ c.campo }}">{{ c.label }}</label>
+                        <select id="mapeo_{{ archivo.indice }}_{{ c.campo }}" name="mapeo_{{ archivo.indice }}_{{ c.campo }}">
+                            <option value="">— No usar —</option>
+                            {% for idx, nombre_col in archivo.cabecera %}
+                            <option value="{{ idx }}" {% if c.seleccionado == idx %}selected{% endif %}>{{ nombre_col|default:"(sin nombre)" }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if archivo.preview %}
+            <div class="table-scroll">
+                <table class="table">
+                    <thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Importe</th><th class="num">Saldo</th></tr></thead>
+                    <tbody>
+                        {% for m in archivo.preview %}
+                        <tr>
+                            <td class="num">{{ m.fecha|date:"d/m/Y" }}</td>
+                            <td>{{ m.concepto }}</td>
+                            <td class="num {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}">{{ m.importe|floatformat:2|intcomma }} €</td>
+                            <td class="num">{% if m.saldo is not None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if archivo.preview_restantes %}
+            <div class="revisar-mas">… y {{ archivo.preview_restantes }} movimiento(s) más.</div>
+            {% endif %}
+            {% endif %}
+
+            {% if archivo.filas_error %}
+            <details class="revisar-errores">
+                <summary>Ver {{ archivo.total_error }} fila(s) con error</summary>
+                <ul>
+                    {% for e in archivo.filas_error %}
+                    <li><strong>Fila {{ e.fila }}:</strong> {{ e.motivo }} <span class="revisar-valores">{{ e.valores|join:" | " }}</span></li>
+                    {% endfor %}
+                </ul>
+                {% if archivo.filas_error_restantes %}
+                <div class="revisar-mas">… y {{ archivo.filas_error_restantes }} fila(s) más con error.</div>
+                {% endif %}
+            </details>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <div class="toolbar" style="margin-top:10px;">
+            <button type="submit" name="accion" value="confirmar" class="btn btn-primary" {% if not total_ok %}disabled title="No hay movimientos listos para importar"{% endif %}>
+                <svg class="icon"><use href="#i-check"/></svg> Confirmar importación ({{ total_ok }})
+            </button>
+            <button type="submit" name="accion" value="reanalizar" class="btn btn-secondary">
+                <svg class="icon"><use href="#i-refresh"/></svg> Volver a analizar
+            </button>
+            <button type="submit" name="accion" value="cancelar" class="btn btn-ghost">
+                <svg class="icon"><use href="#i-close"/></svg> Cancelar
+            </button>
+        </div>
+    </form>
+</div>
+
+<style>
+.revisar-meta { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:18px; max-width:640px; }
+.revisar-meta .form-group { flex:1; min-width:220px; }
+.revisar-archivo { padding:20px 22px; margin-bottom:20px; }
+.revisar-archivo-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px; }
+.revisar-archivo-head h3 { margin:0; font-size:1rem; display:flex; align-items:center; gap:8px; }
+.revisar-archivo-totales { display:flex; gap:8px; }
+.revisar-mapeo { background:var(--app-bg); border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:16px; }
+.revisar-mapeo-label { font-size:0.78rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:10px; }
+.revisar-mapeo-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
+.revisar-mapeo-grid .form-group { margin:0; }
+.revisar-mas { font-size:0.78rem; color:var(--muted); padding:8px 2px; font-style:italic; }
+.revisar-errores { margin-top:14px; font-size:0.85rem; }
+.revisar-errores summary { cursor:pointer; color:var(--danger); font-weight:600; }
+.revisar-errores ul { margin:10px 0 0; padding-left:18px; }
+.revisar-errores li { margin-bottom:6px; color:var(--text-color); }
+.revisar-valores { color:var(--muted); font-size:0.76rem; }
+</style>
+{% endblock %}

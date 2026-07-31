@@ -50,8 +50,8 @@
                     <div style="font-size: 0.8rem; color: var(--muted); margin-top: 4px;">{{ hogar.moneda_principal }} · Creado por {{ hogar.creado_por.username }}</div>
                 </div>
                 <div style="display: flex; gap: 6px;">
-                    <a href="{% url 'editar_hogar' hogar.id %}" style="font-size: 1.1rem; color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-strong);" title="Editar hogar"></a>
-                    <a href="{% url 'eliminar_hogar' hogar.id %}" style="font-size: 1.1rem; color: #b4442e; text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid #b4442e;" title="Eliminar hogar"></a>
+                    <a href="{% url 'editar_hogar' hogar.id %}" style="display:inline-flex; align-items:center; color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-strong);" title="Editar hogar"><svg class="icon"><use href="#i-edit"/></svg></a>
+                    <a href="{% url 'eliminar_hogar' hogar.id %}" style="display:inline-flex; align-items:center; color: #b4442e; text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid #b4442e;" title="Eliminar hogar"><svg class="icon"><use href="#i-trash"/></svg></a>
                 </div>
             
             </div>
@@ -71,7 +71,7 @@
                     </div>
                     <form method="post" action="{% url 'eliminar_miembro' miembro.id %}" style="margin: 0;">
                         {% csrf_token %}
-                        <button type="submit" class="btn-inline-danger" title="Quitar del hogar" onclick="return confirm('¿Quitar a {{ miembro.user.username }} del hogar?')"></button>
+                        <button type="submit" class="btn-inline-danger" title="Quitar del hogar" onclick="return confirm('¿Quitar a {{ miembro.user.username }} del hogar?')"><svg class="icon"><use href="#i-trash"/></svg></button>
                     </form>
                 </div>
                 {% empty %}
