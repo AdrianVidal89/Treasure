@@ -78,6 +78,24 @@ def _liquidez_patrimonio_por_mes(hogar, año):
     return resultado
 
 
+def _delta_esperado_mes(d):
+    """Incremento esperado de liquidez y patrimonio en un mes, a partir del
+    presupuesto (motor de distribución):
+
+      ahorrado = ingresos del mes − TODOS los gastos del mes (fijos, variables,
+                 anuales/prorrateados...). Es cuánto NO se gasta ese mes.
+
+      · Patrimonio crece por todo lo ahorrado: lo que va a inversión sigue
+        siendo patrimonio, solo cambia de forma.
+      · Liquidez crece por lo ahorrado que se queda líquido, es decir
+        ahorrado − lo que sale hacia fondos de inversión.
+    """
+    ahorrado = d['ingreso_base_hogar'] - d['total_gastos_all']
+    delta_patrimonio = ahorrado
+    delta_liquidez = ahorrado - d['total_inversion']
+    return delta_liquidez, delta_patrimonio
+
+
 def _calcular_resumen(hogar, año, flujos_por_mes):
     hoy = datetime.date.today()
 
@@ -126,13 +144,14 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
 
     if mes_base and ultimo_mes_con_datos:
         base_liq, base_pat = datos_por_mes[mes_base]
-        acum_ahorro = Decimal('0')
-        acum_total = Decimal('0')
+        acum_liq = Decimal('0')
+        acum_pat = Decimal('0')
         for m in range(mes_base + 1, ultimo_mes_con_datos + 1):
-            acum_ahorro += flujos_por_mes[m]['total_ahorro']
-            acum_total += flujos_por_mes[m]['total_ahorro'] + flujos_por_mes[m]['total_inversion']
-        ahorro_esperado_actual = base_liq + acum_ahorro
-        patrimonio_esperado_actual = base_pat + acum_total
+            dl, dp = _delta_esperado_mes(flujos_por_mes[m])
+            acum_liq += dl
+            acum_pat += dp
+        ahorro_esperado_actual = base_liq + acum_liq
+        patrimonio_esperado_actual = base_pat + acum_pat
         diff_liquidez = liquidez_actual - ahorro_esperado_actual
         diff_patrimonio = patrimonio_actual - patrimonio_esperado_actual
         # Solo es una comparación significativa si hay más de un mes de histórico.
@@ -159,9 +178,17 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
 
 
 def _serie_evolucion(hogar, año, flujos_por_mes, resumen):
-    """Construye las series mensuales (1..12) 'esperado' (línea de presupuesto,
-    casi lineal) y 'real' (datos registrados) para liquidez y patrimonio,
-    listas para dibujar en el gráfico de evolución."""
+    """Construye las series para el gráfico en términos de AHORRO ACUMULADO
+    desde el mes base (normalmente enero), no de patrimonio absoluto.
+
+    Motivo: sobre valores absolutos (p. ej. 130k–170k) la diferencia entre lo
+    esperado y lo real (unos pocos miles) es invisible. Midiendo el ahorro
+    acumulado desde el inicio del año, ambas líneas arrancan en 0 y el eje Y va
+    de 0 a lo que se espera ahorrar en todo el año, con lo que la desviación se
+    ve con claridad.
+
+    Cada serie incluye además el valor absoluto correspondiente (para tooltips)
+    y `esperado_anual`, el ahorro previsto para el año completo (tope del eje)."""
     datos_por_mes = _liquidez_patrimonio_por_mes(hogar, año)
     if resumen['ultimo_mes_con_datos']:
         datos_por_mes[resumen['ultimo_mes_con_datos']] = (
@@ -173,22 +200,48 @@ def _serie_evolucion(hogar, año, flujos_por_mes, resumen):
     def f(v):
         return float(v) if v is not None else None
 
-    real_liquidez = [f(datos_por_mes[m][0]) for m in range(1, 13)]
-    real_patrimonio = [f(datos_por_mes[m][1]) for m in range(1, 13)]
+    # Ahorro esperado acumulado (relativo al mes base) para cada mes 1..12.
+    esperado_rel_liq = [None] * 12
+    esperado_rel_pat = [None] * 12
+    esperado_abs_liq = [None] * 12
+    esperado_abs_pat = [None] * 12
+    esperado_anual_liq = 0.0
+    esperado_anual_pat = 0.0
 
-    esperado_liquidez = [None] * 12
-    esperado_patrimonio = [None] * 12
+    real_rel_liq = [None] * 12
+    real_rel_pat = [None] * 12
+    real_abs_liq = [f(datos_por_mes[m][0]) for m in range(1, 13)]
+    real_abs_pat = [f(datos_por_mes[m][1]) for m in range(1, 13)]
+
     if mes_base:
         base_liq, base_pat = datos_por_mes[mes_base]
-        esperado_liquidez[mes_base - 1] = f(base_liq)
-        esperado_patrimonio[mes_base - 1] = f(base_pat)
-        acum_ahorro = Decimal('0')
-        acum_total = Decimal('0')
+        base_liq = base_liq or Decimal('0')
+        base_pat = base_pat or Decimal('0')
+
+        esperado_rel_liq[mes_base - 1] = 0.0
+        esperado_rel_pat[mes_base - 1] = 0.0
+        esperado_abs_liq[mes_base - 1] = f(base_liq)
+        esperado_abs_pat[mes_base - 1] = f(base_pat)
+
+        acum_liq = Decimal('0')
+        acum_pat = Decimal('0')
         for m in range(mes_base + 1, 13):
-            acum_ahorro += flujos_por_mes[m]['total_ahorro']
-            acum_total += flujos_por_mes[m]['total_ahorro'] + flujos_por_mes[m]['total_inversion']
-            esperado_liquidez[m - 1] = f(base_liq + acum_ahorro)
-            esperado_patrimonio[m - 1] = f(base_pat + acum_total)
+            dl, dp = _delta_esperado_mes(flujos_por_mes[m])
+            acum_liq += dl
+            acum_pat += dp
+            esperado_rel_liq[m - 1] = f(acum_liq)
+            esperado_rel_pat[m - 1] = f(acum_pat)
+            esperado_abs_liq[m - 1] = f(base_liq + acum_liq)
+            esperado_abs_pat[m - 1] = f(base_pat + acum_pat)
+        esperado_anual_liq = f(acum_liq) or 0.0
+        esperado_anual_pat = f(acum_pat) or 0.0
+
+        # Real relativo = valor real − base (solo donde hay dato real).
+        for i in range(12):
+            if real_abs_liq[i] is not None:
+                real_rel_liq[i] = real_abs_liq[i] - f(base_liq)
+            if real_abs_pat[i] is not None:
+                real_rel_pat[i] = real_abs_pat[i] - f(base_pat)
 
     hoy = datetime.date.today()
     mes_actual_idx = (hoy.month - 1) if año == hoy.year else None
@@ -198,8 +251,16 @@ def _serie_evolucion(hogar, año, flujos_por_mes, resumen):
         'mes_base_idx': (mes_base - 1) if mes_base else None,
         'mes_actual_idx': mes_actual_idx,
         'ultimo_real_idx': (resumen['ultimo_mes_con_datos'] - 1) if resumen['ultimo_mes_con_datos'] else None,
-        'liquidez': {'esperado': esperado_liquidez, 'real': real_liquidez},
-        'patrimonio': {'esperado': esperado_patrimonio, 'real': real_patrimonio},
+        'liquidez': {
+            'esperado': esperado_rel_liq, 'real': real_rel_liq,
+            'esperado_abs': esperado_abs_liq, 'real_abs': real_abs_liq,
+            'esperado_anual': esperado_anual_liq,
+        },
+        'patrimonio': {
+            'esperado': esperado_rel_pat, 'real': real_rel_pat,
+            'esperado_abs': esperado_abs_pat, 'real_abs': real_abs_pat,
+            'esperado_anual': esperado_anual_pat,
+        },
     }
 
 

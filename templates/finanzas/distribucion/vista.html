@@ -194,7 +194,7 @@
             {% endif %}
             <div id="reglas-lista" data-reordenar-url="{% url 'finanzas:reordenar_reglas' %}">
             {% for regla in reglas %}
-            <div class="regla-pill" draggable="true" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
+            <div class="regla-pill" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
                 <span class="regla-drag-handle" title="Arrastrar para reordenar"><svg class="icon icon-dots"><use href="#i-grip"/></svg></span>
                 <div class="regla-pill-info">
                     <div class="regla-pill-nombre">{{ regla.nombre }}</div>
@@ -585,12 +585,13 @@
 .ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(183, 121, 31,0.06); border:1px solid #b7791f22; border-radius:10px; margin-top:10px; }
 
 /* ── Listas dentro de modales ── */
-.regla-pill { background:var(--dark-bg); border-left:3px solid; border-radius:var(--radius); padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; }
-.regla-pill[draggable="true"] { cursor:grab; transition:transform .15s ease, box-shadow .15s ease, opacity .15s ease; }
-.regla-pill.dragging { opacity:0.4; cursor:grabbing; }
-.regla-pill.drag-over-top { box-shadow: inset 0 3px 0 0 var(--primary-color); }
-.regla-pill.drag-over-bottom { box-shadow: inset 0 -3px 0 0 var(--primary-color); }
-.regla-drag-handle { display:flex; align-items:center; color:var(--muted); flex-shrink:0; cursor:grab; touch-action:none; }
+.regla-pill { background:var(--dark-bg); border-left:3px solid; border-radius:var(--radius); padding:12px 16px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; transition:transform .18s ease, box-shadow .18s ease, opacity .18s ease; }
+#reglas-lista.reordenando { position:relative; }
+.regla-pill.arrastrando { opacity:0.92; cursor:grabbing; box-shadow:0 12px 28px rgba(28,35,33,.22); transform:scale(1.02); z-index:30; position:relative; }
+.regla-pill.hueco { opacity:0.35; }
+.regla-drag-handle { display:flex; align-items:center; color:var(--muted); flex-shrink:0; cursor:grab; touch-action:none; padding:2px; border-radius:6px; transition:background .15s, color .15s; }
+.regla-drag-handle:hover { color:var(--primary-color); background:color-mix(in srgb, var(--primary-color) 10%, transparent); }
+.regla-drag-handle:active { cursor:grabbing; }
 .icon-dots { fill:currentColor; stroke:none; width:1.1em; height:1.1em; }
 .reglas-orden-hint { display:flex; align-items:center; gap:4px; font-size:0.76rem; color:var(--muted); margin:0 0 12px; }
 .reglas-orden-hint .icon-dots { color:var(--muted); }
@@ -742,17 +743,20 @@ function getCsrf(){
     return m ? m[1] : '';
 }
 
+/* Reordenación por punteros (funciona con ratón Y con pantalla táctil, a
+   diferencia del drag&drop nativo HTML5 que no dispara en táctil). Se arrastra
+   desde el asa (icono de puntos). El elemento arrastrado sigue al puntero y las
+   demás reglas se recolocan en vivo; al soltar se persiste el nuevo orden. */
 function initReordenarReglas(){
     var lista = document.getElementById('reglas-lista');
     if(!lista) return;
     var url = lista.dataset.reordenarUrl;
-    var dragged = null;
 
-    function limpiarIndicadores(){
-        lista.querySelectorAll('.regla-pill').forEach(function(p){
-            p.classList.remove('drag-over-top','drag-over-bottom');
-        });
-    }
+    var arrastrando = null;   // pill que se mueve
+    var placeholderY = 0;
+    var offsetY = 0;
+    var startY = 0;
+    var activo = false;
 
     function guardarOrden(){
         var ids = Array.prototype.map.call(lista.querySelectorAll('.regla-pill'), function(p){
@@ -765,42 +769,98 @@ function initReordenarReglas(){
         }).catch(function(){});
     }
 
-    lista.addEventListener('dragstart', function(e){
-        var pill = e.target.closest('.regla-pill');
+    function otrasPills(){
+        return Array.prototype.filter.call(
+            lista.querySelectorAll('.regla-pill'),
+            function(p){ return p !== arrastrando; }
+        );
+    }
+
+    function onPointerDown(e){
+        var asa = e.target.closest('.regla-drag-handle');
+        if(!asa) return;
+        var pill = asa.closest('.regla-pill');
         if(!pill) return;
-        dragged = pill;
-        pill.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        try { e.dataTransfer.setData('text/plain', pill.dataset.reglaId); } catch(err){}
-    });
-
-    lista.addEventListener('dragend', function(){
-        if(dragged) dragged.classList.remove('dragging');
-        dragged = null;
-        limpiarIndicadores();
-    });
-
-    lista.addEventListener('dragover', function(e){
-        var pill = e.target.closest('.regla-pill');
-        if(!pill || !dragged || pill === dragged) return;
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        limpiarIndicadores();
-        var rect = pill.getBoundingClientRect();
-        var antes = (e.clientY - rect.top) < rect.height / 2;
-        pill.classList.add(antes ? 'drag-over-top' : 'drag-over-bottom');
-    });
 
-    lista.addEventListener('drop', function(e){
-        var pill = e.target.closest('.regla-pill');
-        if(!pill || !dragged || pill === dragged) return;
-        e.preventDefault();
+        arrastrando = pill;
+        activo = true;
         var rect = pill.getBoundingClientRect();
-        var antes = (e.clientY - rect.top) < rect.height / 2;
-        lista.insertBefore(dragged, antes ? pill : pill.nextSibling);
-        limpiarIndicadores();
+        startY = e.clientY;
+        offsetY = e.clientY - rect.top;
+
+        // Fija la altura del hueco para que la lista no colapse.
+        pill.style.width = rect.width + 'px';
+        pill.style.position = 'fixed';
+        pill.style.left = rect.left + 'px';
+        pill.style.top = rect.top + 'px';
+        pill.style.zIndex = '1000';
+        pill.style.pointerEvents = 'none';
+        pill.classList.add('arrastrando');
+
+        // Placeholder que ocupa el sitio.
+        var ph = document.createElement('div');
+        ph.className = 'regla-placeholder';
+        ph.style.height = rect.height + 'px';
+        ph.style.marginBottom = '10px';
+        ph.style.borderRadius = 'var(--radius)';
+        ph.style.border = '2px dashed var(--border-strong)';
+        ph.style.background = 'color-mix(in srgb, var(--primary-color) 5%, transparent)';
+        pill.parentNode.insertBefore(ph, pill.nextSibling);
+        lista._ph = ph;
+
+        try { asa.setPointerCapture(e.pointerId); } catch(err){}
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+    }
+
+    function onPointerMove(e){
+        if(!activo || !arrastrando) return;
+        e.preventDefault();
+        arrastrando.style.top = (e.clientY - offsetY) + 'px';
+
+        var ph = lista._ph;
+        var centro = e.clientY;
+        var insertadoAntesDe = null;
+        otrasPills().forEach(function(p){
+            var r = p.getBoundingClientRect();
+            if(centro < r.top + r.height / 2 && insertadoAntesDe === null){
+                insertadoAntesDe = p;
+            }
+        });
+        if(insertadoAntesDe){
+            lista.insertBefore(ph, insertadoAntesDe);
+        } else {
+            lista.appendChild(ph);
+        }
+    }
+
+    function onPointerUp(e){
+        if(!activo || !arrastrando) return;
+        activo = false;
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+
+        var ph = lista._ph;
+        var pill = arrastrando;
+        // Restaura estilos y coloca la pill donde estaba el placeholder.
+        pill.classList.remove('arrastrando');
+        pill.style.width = '';
+        pill.style.position = '';
+        pill.style.left = '';
+        pill.style.top = '';
+        pill.style.zIndex = '';
+        pill.style.pointerEvents = '';
+        if(ph){
+            lista.insertBefore(pill, ph);
+            ph.remove();
+            lista._ph = null;
+        }
+        arrastrando = null;
         guardarOrden();
-    });
+    }
+
+    lista.addEventListener('pointerdown', onPointerDown);
 }
 
 document.addEventListener('DOMContentLoaded',function(){
