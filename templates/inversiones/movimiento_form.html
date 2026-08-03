@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load l10n %}
 {% block title %}Nuevo movimiento - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -29,7 +30,7 @@
             <div style="margin-bottom: 20px;">
                 <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">Fecha</label>
                 <input type="date" name="fecha"
-                       value="{{ form.fecha.value|default:'' }}"
+                       value="{{ form.fecha.value|date:'Y-m-d' }}"
                        style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
                               background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
                 {% if form.fecha.errors %}<div style="color:#b4442e;font-size:0.78rem;margin-top:4px;">{{ form.fecha.errors.0 }}</div>{% endif %}
@@ -81,7 +82,7 @@
                 <div>
                     <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">Cantidad</label>
                     <input type="number" name="cantidad" step="0.00000001" min="0"
-                           value="{{ form.cantidad.value|default:'' }}"
+                           value="{{ form.cantidad.value|default:''|unlocalize }}"
                            placeholder="0.00000000"
                            style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
                                   background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
@@ -90,7 +91,7 @@
                 <div>
                     <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">Precio unitario (€)</label>
                     <input type="number" name="precio_unitario" step="0.00000001" min="0"
-                           value="{{ form.precio_unitario.value|default:'' }}"
+                           value="{{ form.precio_unitario.value|default:''|unlocalize }}"
                            placeholder="0.00"
                            style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
                                   background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
@@ -120,7 +121,7 @@
                 <div>
                     <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">Comisión (€)</label>
                     <input type="number" name="comision" step="0.01" min="0"
-                           value="{{ form.comision.value|default:'0' }}"
+                           value="{{ form.comision.value|default:'0'|unlocalize }}"
                            placeholder="0.00"
                            id="id_comision"
                            style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;

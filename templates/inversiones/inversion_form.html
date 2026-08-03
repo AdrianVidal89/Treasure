@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load l10n %}
 {% block title %}{% if form.instance.pk %}Editar inversión{% else %}Nueva inversión{% endif %} - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -172,7 +173,7 @@
             <div id="valor-manual-wrap" class="fg" style="display: none;">
                 <label>Valor unitario manual (€)</label>
                 <input type="number" name="valor_unitario_manual" step="0.00000001"
-                       value="{% if form.valor_unitario_manual.value %}{{ form.valor_unitario_manual.value }}{% endif %}"
+                       value="{% if form.valor_unitario_manual.value %}{{ form.valor_unitario_manual.value|unlocalize }}{% endif %}"
                        placeholder="Precio actual por unidad">
                 <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
                     Solo si no marcas la actualización automática.
