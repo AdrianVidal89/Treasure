@@ -17,9 +17,11 @@ def _crear_inversion(usuario, nombre, tipo, compra_cantidad, compra_precio, valo
     inv = Inversion.objects.create(
         usuario=usuario, nombre=nombre, tipo=tipo, plataforma='Revolut', grupo=grupo,
     )
+    # La cartera es a nivel de compra: la compra hereda el grupo por defecto del activo.
     MovimientoInversion.objects.create(
         inversion=inv, fecha=datetime.date(2026, 1, 15), tipo='COMPRA',
         cantidad=Decimal(str(compra_cantidad)), precio_unitario=Decimal(str(compra_precio)),
+        grupo=grupo,
     )
     ValorActualInversion.objects.create(
         inversion=inv, valor_unitario=Decimal(str(valor_unitario)), fuente='Test',
@@ -48,6 +50,26 @@ class GrupoInversionRentabilidadTests(TestCase):
         cartera = GrupoInversion.objects.create(usuario=self.user, nombre='Vacía')
         self.assertIsNone(cartera.rentabilidad)
         self.assertEqual(cartera.num_activos, 0)
+
+    def test_carteras_por_compra_en_el_mismo_activo(self):
+        """Dos compras del MISMO activo pueden ir a carteras distintas."""
+        c1 = GrupoInversion.objects.create(usuario=self.user, nombre='C1')
+        c2 = GrupoInversion.objects.create(usuario=self.user, nombre='C2')
+        inv = Inversion.objects.create(usuario=self.user, nombre='VWCE', tipo='ETF', plataforma='Revolut')
+        ValorActualInversion.objects.create(inversion=inv, valor_unitario=Decimal('12'), fuente='t')
+        # Compra 1 -> C1: aporta 100 (10x10), vale 120 (10x12) -> +20%
+        MovimientoInversion.objects.create(inversion=inv, fecha=datetime.date(2026, 1, 5),
+            tipo='COMPRA', cantidad=Decimal('10'), precio_unitario=Decimal('10'), grupo=c1)
+        # Compra 2 -> C2: aporta 100 (10x10), vale 120 -> +20%
+        MovimientoInversion.objects.create(inversion=inv, fecha=datetime.date(2026, 3, 5),
+            tipo='COMPRA', cantidad=Decimal('10'), precio_unitario=Decimal('10'), grupo=c2)
+
+        self.assertEqual(c1.total_aportado, Decimal('100'))
+        self.assertEqual(c1.valor_cartera, Decimal('120'))
+        self.assertEqual(c1.rentabilidad, 20.0)
+        self.assertEqual(c1.num_compras, 1)
+        self.assertEqual(c2.rentabilidad, 20.0)
+        self.assertEqual(c2.num_activos, 1)
 
 
 class AccionMasivaTests(TestCase):
@@ -80,8 +102,15 @@ class AccionMasivaTests(TestCase):
         })
         self.inv1.refresh_from_db()
         self.inv2.refresh_from_db()
+        # Cartera por defecto del activo
         self.assertEqual(self.inv1.grupo_id, cartera.id)
         self.assertEqual(self.inv2.grupo_id, cartera.id)
+        # Y cascada a las compras (nivel autoritativo)
+        compras = MovimientoInversion.objects.filter(
+            inversion__in=[self.inv1, self.inv2], tipo='COMPRA'
+        )
+        self.assertTrue(all(m.grupo_id == cartera.id for m in compras))
+        self.assertEqual(cartera.num_compras, 2)
 
     def test_no_afecta_inversiones_de_otro_usuario(self):
         self.client.post(reverse('finanzas:inversiones_accion_masiva'), {

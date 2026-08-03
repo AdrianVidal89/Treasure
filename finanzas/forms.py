@@ -81,23 +81,30 @@ class InversionForm(forms.ModelForm):
 
     def __init__(self, *args, hogar=None, usuario=None, **kwargs):
         super().__init__(*args, **kwargs)
+        instance = kwargs.get('instance')
+
         if hogar:
-            self.fields['fondo'].queryset = FondoFamiliar.objects.filter(
-                hogar=hogar, tipo_fondo='inversion', activo=True
-            )
+            fondo_qs = FondoFamiliar.objects.filter(hogar=hogar, tipo_fondo='inversion', activo=True)
         else:
-            self.fields['fondo'].queryset = FondoFamiliar.objects.none()
+            fondo_qs = FondoFamiliar.objects.none()
+        # Asegura que el fondo actualmente asignado siempre aparezca (aunque hoy
+        # esté inactivo o filtrado), para que la edición recupere el valor.
+        if instance and instance.fondo_id:
+            fondo_qs = (fondo_qs | FondoFamiliar.objects.filter(id=instance.fondo_id)).distinct()
+        self.fields['fondo'].queryset = fondo_qs
         self.fields['fondo'].required = False
         self.fields['fondo'].empty_label = '— Sin fondo asignado —'
 
         if usuario is not None:
-            self.fields['grupo'].queryset = GrupoInversion.objects.filter(usuario=usuario)
+            grupo_qs = GrupoInversion.objects.filter(usuario=usuario)
         else:
-            self.fields['grupo'].queryset = GrupoInversion.objects.none()
+            grupo_qs = GrupoInversion.objects.none()
+        if instance and instance.grupo_id:
+            grupo_qs = (grupo_qs | GrupoInversion.objects.filter(id=instance.grupo_id)).distinct()
+        self.fields['grupo'].queryset = grupo_qs
         self.fields['grupo'].required = False
         self.fields['grupo'].empty_label = '— Sin cartera asignada —'
 
-        instance = kwargs.get('instance')
         if instance and not instance.actualizable:
             try:
                 self.fields['valor_unitario_manual'].initial = instance.valor_actual.valor_unitario
@@ -109,7 +116,7 @@ class InversionForm(forms.ModelForm):
 class MovimientoInversionForm(forms.ModelForm):
     class Meta:
         model = MovimientoInversion
-        fields = ['fecha', 'tipo', 'cantidad', 'precio_unitario', 'comision']
+        fields = ['fecha', 'tipo', 'cantidad', 'precio_unitario', 'comision', 'grupo']
         widgets = {
             'fecha': forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
             'tipo': forms.Select(attrs={'class': 'form-control'}),
@@ -117,3 +124,12 @@ class MovimientoInversionForm(forms.ModelForm):
             'precio_unitario': forms.NumberInput(attrs={'step': '0.0001', 'class': 'form-control'}),
             'comision': forms.NumberInput(attrs={'step': '0.01', 'class': 'form-control'}),
         }
+
+    def __init__(self, *args, usuario=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if usuario is not None:
+            self.fields['grupo'].queryset = GrupoInversion.objects.filter(usuario=usuario)
+        else:
+            self.fields['grupo'].queryset = GrupoInversion.objects.none()
+        self.fields['grupo'].required = False
+        self.fields['grupo'].empty_label = '— Sin cartera asignada —'

@@ -64,13 +64,22 @@ def _datos_financieros(hogar):
             base, _ = _neto_fuente_base(fuente)
             ingresos_netos += base
 
-    # Gastos fijos mensuales
-    gastos_fijos = sum(
-        p.importe_mensual
-        for p in PartidaGasto.objects.filter(hogar=hogar, activo=True)
-    )
+    # Gastos mensuales (prorrateados) desglosados por tipo de categoría:
+    # fijo / variable / anual (provisión). Reutiliza PartidaGasto.importe_mensual.
+    gastos_fijos = Decimal('0')
+    gastos_variables = Decimal('0')
+    gastos_anuales = Decimal('0')
+    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
+        tipo_cat = getattr(p.categoria, 'tipo', 'fijo')
+        if tipo_cat == 'variable':
+            gastos_variables += p.importe_mensual
+        elif tipo_cat == 'anual':
+            gastos_anuales += p.importe_mensual
+        else:
+            gastos_fijos += p.importe_mensual
 
-    libre = max(Decimal('0'), ingresos_netos - gastos_fijos)
+    gastos_totales = gastos_fijos + gastos_variables + gastos_anuales
+    libre = max(Decimal('0'), ingresos_netos - gastos_totales)
 
     # ── Ahorro mensual para la proyección a futuro ──────────────────────────
     # (a) Estimado / presupuestado: incremento de liquidez previsto por el motor
@@ -102,7 +111,12 @@ def _datos_financieros(hogar):
         'capital_liquidez': round(float(capital_liquidez), 2),
         'capital_inversiones': round(float(capital_inversiones), 2),
         'ingresos_netos_mensuales': round(float(ingresos_netos), 2),
-        'gastos_fijos_mensuales': round(float(gastos_fijos), 2),
+        # gastos_fijos_mensuales = TOTAL de gastos (retrocompat: se usa para el colchón)
+        'gastos_fijos_mensuales': round(float(gastos_totales), 2),
+        'gastos_desg_fijos': round(float(gastos_fijos), 2),
+        'gastos_desg_variables': round(float(gastos_variables), 2),
+        'gastos_desg_anuales': round(float(gastos_anuales), 2),
+        'gastos_totales_mensuales': round(float(gastos_totales), 2),
         'libre_mensual': round(float(libre), 2),
         'ahorro_mensual_estimado': round(float(ahorro_mensual_estimado), 2),
         'ahorro_mensual_real': (round(float(ahorro_mensual_real), 2)
@@ -113,7 +127,7 @@ def _datos_financieros(hogar):
         'capital_liquidez': capital_liquidez,
         'capital_inversiones': capital_inversiones,
         'ingresos_netos_mensuales': ingresos_netos,
-        'gastos_fijos_mensuales': gastos_fijos,
+        'gastos_fijos_mensuales': gastos_totales,
         'libre_mensual': libre,
         'sim_data': sim_data,
         'desglose_fondos': desglose_fondos,
