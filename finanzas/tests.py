@@ -112,6 +112,20 @@ class AccionMasivaTests(TestCase):
         self.assertTrue(all(m.grupo_id == cartera.id for m in compras))
         self.assertEqual(cartera.num_compras, 2)
 
+    def test_filtro_cartera_incluye_activos_por_compra(self):
+        """Al abrir una cartera, deben aparecer los activos cuya COMPRA está
+        asignada a ella aunque el activo no tenga 'cartera por defecto'."""
+        cartera = GrupoInversion.objects.create(usuario=self.user, nombre='wesop')
+        inv = Inversion.objects.create(usuario=self.user, nombre='Apple', tipo='ACCION', plataforma='Uptevia')
+        ValorActualInversion.objects.create(inversion=inv, valor_unitario=Decimal('200'), fuente='t')
+        MovimientoInversion.objects.create(inversion=inv, fecha=datetime.date(2026, 2, 1),
+            tipo='COMPRA', cantidad=Decimal('2'), precio_unitario=Decimal('150'), grupo=cartera)
+        self.assertIsNone(inv.grupo_id)  # sin cartera por defecto
+
+        resp = self.client.get(reverse('finanzas:listar') + f'?cartera={cartera.id}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Apple')
+
     def test_no_afecta_inversiones_de_otro_usuario(self):
         self.client.post(reverse('finanzas:inversiones_accion_masiva'), {
             'inversion_ids': [self.ajena.id],

@@ -258,11 +258,11 @@
                     <td>
                         <span class="chevron-ico">▶</span>
                         <strong style="color: var(--text-color);">{{ item.inv.nombre }}</strong>
-                        {% if item.inv.grupo %}
-                        <span class="badge-cartera" style="background: {{ item.inv.grupo.color }};">
-                            {{ item.inv.grupo.nombre }}
+                        {% for c in item.carteras %}
+                        <span class="badge-cartera" style="background: {{ c.color }};">
+                            {{ c.nombre }}
                         </span>
-                        {% endif %}
+                        {% endfor %}
                         {% if not item.es_propio %}
                         <span style="font-size: 0.62rem; padding: 1px 6px; border-radius: 10px;
                                      background: rgba(45, 106, 79,0.12); color: #1b4332;
