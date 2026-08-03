@@ -5,7 +5,8 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 
 from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad
-from .distribucion import _neto_fuente_base
+from .distribucion import _neto_fuente_base, calcular_flujos
+from .views_evolucion import _delta_esperado_mes, _liquidez_patrimonio_por_mes
 
 
 def _get_hogar(request):
@@ -71,6 +72,31 @@ def _datos_financieros(hogar):
 
     libre = max(Decimal('0'), ingresos_netos - gastos_fijos)
 
+    # ── Ahorro mensual para la proyección a futuro ──────────────────────────
+    # (a) Estimado / presupuestado: incremento de liquidez previsto por el motor
+    #     de distribución para el mes actual (mismo criterio que la Evolución).
+    ahorro_mensual_estimado = Decimal('0')
+    try:
+        flujos_mes = calcular_flujos(hogar, mes=hoy.month, anio=hoy.year)
+        delta_liq_est, _ = _delta_esperado_mes(flujos_mes)
+        ahorro_mensual_estimado = delta_liq_est
+    except Exception:
+        ahorro_mensual_estimado = libre  # fallback prudente
+
+    # (b) Real: media mensual de la liquidez ahorrada desde el primer mes con
+    #     datos hasta el último (lo ahorrado de enero a hoy entre los meses
+    #     transcurridos), según los saldos reales registrados en Evolución.
+    ahorro_mensual_real = None
+    datos_liq = _liquidez_patrimonio_por_mes(hogar, hoy.year)
+    meses_con_dato = [m for m in range(1, 13) if datos_liq[m][0] is not None]
+    if len(meses_con_dato) >= 2:
+        primer_mes = meses_con_dato[0]
+        ultimo_mes_liq = meses_con_dato[-1]
+        intervalos = ultimo_mes_liq - primer_mes
+        if intervalos > 0:
+            crecimiento = datos_liq[ultimo_mes_liq][0] - datos_liq[primer_mes][0]
+            ahorro_mensual_real = crecimiento / intervalos
+
     # Pasar como dict Python: json_script lo serializa de forma segura (sin problemas de locale)
     sim_data = {
         'capital_liquidez': round(float(capital_liquidez), 2),
@@ -78,6 +104,9 @@ def _datos_financieros(hogar):
         'ingresos_netos_mensuales': round(float(ingresos_netos), 2),
         'gastos_fijos_mensuales': round(float(gastos_fijos), 2),
         'libre_mensual': round(float(libre), 2),
+        'ahorro_mensual_estimado': round(float(ahorro_mensual_estimado), 2),
+        'ahorro_mensual_real': (round(float(ahorro_mensual_real), 2)
+                                if ahorro_mensual_real is not None else None),
     }
 
     return {

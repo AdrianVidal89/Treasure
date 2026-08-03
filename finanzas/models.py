@@ -127,6 +127,53 @@ TIPOS_INVERSION = [
     ('OTRO', 'Otro'),
 ]
 
+
+class GrupoInversion(models.Model):
+    """Cartera de inversión: agrupación lógica de activos definida por el usuario,
+    independiente del fondo del hogar y de la plataforma de compra (Revolut, Uptevia...).
+    Permite ver la rentabilidad agregada de una selección de activos como una cartera."""
+    usuario = models.ForeignKey(User, on_delete=models.CASCADE, related_name='carteras')
+    nombre = models.CharField(max_length=100)
+    color = models.CharField(max_length=7, default='#2d6a4f')
+    orden = models.IntegerField(default=0)
+    fecha_creacion = models.DateField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['orden', 'nombre']
+        unique_together = ('usuario', 'nombre')
+
+    def __str__(self):
+        return self.nombre
+
+    # --- Rentabilidad agregada (mismo patrón que FondoFamiliar.rentabilidad_cartera) ---
+
+    @property
+    def valor_cartera(self):
+        return sum(
+            (inv.valor_total_actual or Decimal('0'))
+            for inv in self.inversiones.select_related('valor_actual').all()
+        )
+
+    @property
+    def total_aportado(self):
+        return sum(
+            (inv.valor_aportado or Decimal('0'))
+            for inv in self.inversiones.all()
+        )
+
+    @property
+    def rentabilidad(self):
+        aportado = self.total_aportado
+        if not aportado or aportado <= 0:
+            return None
+        valor = self.valor_cartera or Decimal('0')
+        return round(float((Decimal(str(valor)) - Decimal(str(aportado))) / Decimal(str(aportado)) * 100), 2)
+
+    @property
+    def num_activos(self):
+        return self.inversiones.count()
+
+
 class Inversion(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
     nombre = models.CharField(max_length=100)
@@ -146,6 +193,11 @@ class Inversion(models.Model):
         'FondoFamiliar', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='inversiones',
         help_text="Fondo de inversión al que pertenece este activo.",
+    )
+    grupo = models.ForeignKey(
+        'GrupoInversion', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='inversiones',
+        help_text="Cartera de inversión a la que pertenece este activo.",
     )
     fecha_creacion = models.DateField(auto_now_add=True)
 

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Carteras de Inversión - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<style>
+.cart-wrap { padding: 24px; max-width: 900px; margin: 0 auto; }
+.cart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+.cart-header h1 { color: var(--primary-color); text-shadow: none; margin: 0; font-size: 1.6rem; }
+
+.cart-new { background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px; margin-bottom: 24px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.cart-new .fg { display: flex; flex-direction: column; gap: 6px; }
+.cart-new label { font-size: 0.72rem; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.cart-new input[type="text"] { padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 8px;
+    background: var(--app-bg); color: var(--text-color); font-size: 0.9rem; }
+.cart-new input[type="color"] { width: 44px; height: 40px; border: 1px solid var(--border-strong);
+    border-radius: 8px; background: var(--app-bg); padding: 2px; cursor: pointer; }
+
+.cart-card { background: var(--app-bg); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 20px; margin-bottom: 14px; }
+.cart-card-top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cart-dot { width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto; }
+.cart-name { font-size: 1.05rem; font-weight: 700; color: var(--text-color); }
+.cart-metrics { display: flex; gap: 26px; margin-left: auto; flex-wrap: wrap; }
+.cart-metric { display: flex; flex-direction: column; }
+.cart-metric .l { font-size: 0.62rem; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.cart-metric .v { font-size: 1rem; font-weight: 700; }
+.cart-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.cart-actions a, .cart-actions button { font-size: 0.78rem; padding: 7px 12px; border-radius: 8px; font-weight: 600;
+    text-decoration: none; cursor: pointer; border: 1px solid var(--border-strong); background: transparent; color: var(--muted); }
+.cart-edit-form { display: none; margin-top: 14px; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.cart-edit-form.open { display: flex; }
+.cart-edit-form input[type="text"] { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px;
+    background: var(--surface); color: var(--text-color); font-size: 0.85rem; }
+.cart-edit-form input[type="color"] { width: 40px; height: 36px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); padding: 2px; }
+.btn-p { border-color: var(--primary-color) !important; background: var(--primary-color) !important; color: #fff !important; }
+.btn-danger { border-color: #b4442e !important; color: #b4442e !important; }
+.cart-empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+.pos { color: #2d6a4f; } .neg { color: #b4442e; }
+</style>
+
+<div class="cart-wrap">
+    <div class="cart-header">
+        <h1>Carteras de Inversión</h1>
+        <a href="{% url 'finanzas:listar' %}"
+           style="font-size: 0.85rem; padding: 10px 18px; border: 1px solid var(--primary-color);
+                  color: var(--primary-color); border-radius: 8px; text-decoration: none; font-weight: 600;">
+            ← Volver a inversiones
+        </a>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color);
+                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
+                    font-size: 0.85rem; color: var(--text-color);">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 20px;">
+        Una cartera agrupa activos de distintas plataformas (Revolut, Uptevia…) para ver su
+        rentabilidad conjunta, con independencia del vehículo de compra.
+    </p>
+
+    <!-- Crear cartera -->
+    <form class="cart-new" method="post" action="{% url 'finanzas:carteras' %}">
+        {% csrf_token %}
+        <input type="hidden" name="accion" value="crear">
+        <div class="fg" style="flex:1; min-width: 200px;">
+            <label>Nombre de la cartera</label>
+            <input type="text" name="nombre" placeholder="Ej: Cartera Dividendos, Growth…" required>
+        </div>
+        <div class="fg">
+            <label>Color</label>
+            <input type="color" name="color" value="#2d6a4f">
+        </div>
+        <button type="submit" class="btn btn-primary" style="padding: 10px 18px;">Crear cartera</button>
+    </form>
+
+    <!-- Listado -->
+    {% if carteras_data %}
+        {% for c in carteras_data %}
+        <div class="cart-card">
+            <div class="cart-card-top">
+                <span class="cart-dot" style="background: {{ c.obj.color }};"></span>
+                <span class="cart-name">{{ c.obj.nombre }}</span>
+                <div class="cart-metrics">
+                    <div class="cart-metric">
+                        <span class="l">Valor</span>
+                        <span class="v">€{{ c.valor|floatformat:2 }}</span>
+                    </div>
+                    <div class="cart-metric">
+                        <span class="l">Invertido</span>
+                        <span class="v">€{{ c.aportado|floatformat:2 }}</span>
+                    </div>
+                    <div class="cart-metric">
+                        <span class="l">Rentabilidad</span>
+                        <span class="v {% if c.rentabilidad and c.rentabilidad >= 0 %}pos{% elif c.rentabilidad %}neg{% endif %}">
+                            {% if c.rentabilidad is not None %}{% if c.rentabilidad >= 0 %}+{% endif %}{{ c.rentabilidad|floatformat:2 }}%{% else %}—{% endif %}
+                        </span>
+                    </div>
+                    <div class="cart-metric">
+                        <span class="l">Activos</span>
+                        <span class="v">{{ c.num_activos }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cart-actions">
+                <a href="{% url 'finanzas:listar' %}?cartera={{ c.obj.id }}">Ver activos</a>
+                <button type="button" onclick="toggleEdit({{ c.obj.id }})">Renombrar</button>
+                <form method="post" action="{% url 'finanzas:carteras' %}"
+                      onsubmit="return confirm('¿Eliminar la cartera «{{ c.obj.nombre|escapejs }}»? Los activos no se borran, solo quedan sin cartera.');"
+                      style="display:inline;">
+                    {% csrf_token %}
+                    <input type="hidden" name="accion" value="borrar">
+                    <input type="hidden" name="cartera_id" value="{{ c.obj.id }}">
+                    <button type="submit" class="btn-danger">Eliminar</button>
+                </form>
+            </div>
+
+            <form class="cart-edit-form" id="edit-{{ c.obj.id }}" method="post" action="{% url 'finanzas:carteras' %}">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="editar">
+                <input type="hidden" name="cartera_id" value="{{ c.obj.id }}">
+                <input type="text" name="nombre" value="{{ c.obj.nombre }}" required>
+                <input type="color" name="color" value="{{ c.obj.color }}">
+                <button type="submit" class="btn-p">Guardar</button>
+            </form>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="cart-empty">
+            <p>Todavía no has creado ninguna cartera.</p>
+            <p style="font-size: 0.85rem;">Crea una arriba y luego asigna activos desde el listado de inversiones.</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function toggleEdit(id) {
+    const f = document.getElementById('edit-' + id);
+    if (f) f.classList.toggle('open');
+}
+</script>
+{% endblock %}

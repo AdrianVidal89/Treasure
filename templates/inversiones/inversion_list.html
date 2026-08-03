@@ -60,6 +60,42 @@
 
 .pos { color: #2d6a4f; }
 .neg { color: #b4442e; }
+
+/* Filtro y gestión de carteras */
+.cartera-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+.cartera-bar select { padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 8px;
+    background: var(--app-bg); color: var(--text-color); font-size: 0.85rem; }
+.cartera-bar label { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+.cartera-manage { font-size: 0.82rem; color: var(--primary-color); text-decoration: none; font-weight: 600; margin-left: auto; }
+
+/* Panel KPIs de la cartera seleccionada */
+.cartera-panel { border: 1px solid; border-radius: 14px; padding: 18px 20px; margin-bottom: 24px;
+    display: flex; gap: 28px; align-items: center; flex-wrap: wrap; background: var(--surface); }
+.cartera-panel .cp-name { font-size: 1.1rem; font-weight: 700; }
+.cartera-panel .cp-metric { display: flex; flex-direction: column; }
+.cartera-panel .cp-metric .l { font-size: 0.65rem; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.cartera-panel .cp-metric .v { font-size: 1.15rem; font-weight: 700; }
+
+/* Badge de cartera por fila */
+.badge-cartera { font-size: 0.62rem; padding: 1px 8px; border-radius: 10px; font-weight: 600;
+    display: inline-block; margin-left: 6px; color: #fff; }
+
+/* Casilla de selección */
+.inv-check { width: 16px; height: 16px; accent-color: var(--primary-color); cursor: pointer; }
+
+/* Barra de acción masiva (flotante inferior) */
+.bulk-bar { position: sticky; bottom: 0; z-index: 40; margin-top: 18px;
+    background: var(--surface); border: 1px solid var(--primary-color); border-radius: 12px;
+    padding: 12px 16px; display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+    box-shadow: 0 -2px 12px rgba(0,0,0,.12); }
+.bulk-bar.active { display: flex; }
+.bulk-bar select { padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 8px;
+    background: var(--app-bg); color: var(--text-color); font-size: 0.85rem; }
+.bulk-bar .bulk-count { font-weight: 700; color: var(--primary-color); }
+.bulk-bar button { font-size: 0.82rem; padding: 8px 14px; border-radius: 8px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--primary-color); background: var(--primary-color); color: #fff; }
+.bulk-bar button.ghost { background: transparent; color: var(--primary-color); }
+.bulk-sep { width: 1px; align-self: stretch; background: var(--border-strong); }
 </style>
 
 <div class="inv-wrap">
@@ -89,6 +125,12 @@
                     Actualizar precios
                 </button>
             </form>
+            <a href="{% url 'finanzas:carteras' %}"
+               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
+                      border: 1px solid #2d6a4f; color: #2d6a4f; border-radius: 8px;
+                      text-decoration: none; font-weight: 600;">
+                Carteras
+            </a>
             <a href="{% url 'finanzas:crear' %}" class="btn btn-primary"
                style="font-size: 0.85rem; padding: 10px 18px;">
                 Nueva inversión
@@ -136,12 +178,62 @@
         </div>
     </div>
 
+    <!-- FILTRO POR CARTERA (grupo de inversión) -->
+    <div class="cartera-bar">
+        <form method="get" style="display:flex; align-items:center; gap:10px;">
+            <label for="cartera-select">Ver cartera:</label>
+            <select id="cartera-select" name="cartera" onchange="this.form.submit()">
+                <option value="">Todas mis inversiones</option>
+                {% for c in carteras %}
+                <option value="{{ c.id }}" {% if cartera_sel_id == c.id|stringformat:'s' %}selected{% endif %}>
+                    {{ c.nombre }}
+                </option>
+                {% endfor %}
+            </select>
+        </form>
+        <a class="cartera-manage" href="{% url 'finanzas:carteras' %}">Gestionar carteras →</a>
+    </div>
+
+    {% if cartera_kpis %}
+    <div class="cartera-panel" style="border-color: {{ cartera_kpis.color }}55;">
+        <div class="cp-name" style="color: {{ cartera_kpis.color }};">{{ cartera_kpis.nombre }}</div>
+        <div class="cp-metric">
+            <span class="l">Valor de mercado</span>
+            <span class="v">€{{ cartera_kpis.valor|floatformat:2 }}</span>
+        </div>
+        <div class="cp-metric">
+            <span class="l">Capital invertido</span>
+            <span class="v">€{{ cartera_kpis.aportado|floatformat:2 }}</span>
+        </div>
+        <div class="cp-metric">
+            <span class="l">Ganancia/pérdida</span>
+            <span class="v {% if cartera_kpis.ganancia >= 0 %}pos{% else %}neg{% endif %}">
+                {% if cartera_kpis.ganancia >= 0 %}+{% endif %}€{{ cartera_kpis.ganancia|floatformat:2 }}
+            </span>
+        </div>
+        <div class="cp-metric">
+            <span class="l">Rentabilidad</span>
+            <span class="v {% if cartera_kpis.rentabilidad and cartera_kpis.rentabilidad >= 0 %}pos{% elif cartera_kpis.rentabilidad %}neg{% endif %}">
+                {% if cartera_kpis.rentabilidad is not None %}{% if cartera_kpis.rentabilidad >= 0 %}+{% endif %}{{ cartera_kpis.rentabilidad|floatformat:2 }}%{% else %}—{% endif %}
+            </span>
+        </div>
+        <div class="cp-metric">
+            <span class="l">Activos</span>
+            <span class="v">{{ cartera_kpis.num_activos }}</span>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- TABLA -->
     {% if inv_data %}
+    <form method="post" action="{% url 'finanzas:inversiones_accion_masiva' %}" id="bulk-form">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
     <div class="inv-table-wrap">
         <table class="inv-table">
             <thead>
                 <tr>
+                    <th style="width:34px;"><input type="checkbox" class="inv-check" id="check-all" onclick="toggleAll(this)" title="Seleccionar todo"></th>
                     <th>Activo</th>
                     <th>Ticker</th>
                     <th>Tipo</th>
@@ -157,9 +249,20 @@
                 <!-- Fila principal del activo -->
                 <tr class="activo-row" onclick="toggleHistorico({{ forloop.counter }})"
                     id="fila-{{ forloop.counter }}">
+                    <td onclick="event.stopPropagation()" style="text-align:center;">
+                        {% if item.es_propio %}
+                        <input type="checkbox" class="inv-check row-check" name="inversion_ids"
+                               value="{{ item.inv.id }}" onchange="updateBulkBar()">
+                        {% endif %}
+                    </td>
                     <td>
                         <span class="chevron-ico">▶</span>
                         <strong style="color: var(--text-color);">{{ item.inv.nombre }}</strong>
+                        {% if item.inv.grupo %}
+                        <span class="badge-cartera" style="background: {{ item.inv.grupo.color }};">
+                            {{ item.inv.grupo.nombre }}
+                        </span>
+                        {% endif %}
                         {% if not item.es_propio %}
                         <span style="font-size: 0.62rem; padding: 1px 6px; border-radius: 10px;
                                      background: rgba(45, 106, 79,0.12); color: #1b4332;
@@ -225,7 +328,7 @@
 
                 <!-- Fila expandible — histórico de movimientos -->
                 <tr class="historico-row" id="historico-{{ forloop.counter }}">
-                    <td colspan="8" class="historico-cell">
+                    <td colspan="9" class="historico-cell">
                         <div class="historico-inner">
                             <h4>Historial de movimientos — {{ item.inv.nombre }}
                                 {% if item.inv.plataforma %}
@@ -350,10 +453,37 @@
         </table>
     </div>
 
+    <!-- BARRA DE ACCIÓN MASIVA -->
+    <div class="bulk-bar" id="bulk-bar">
+        <span><span class="bulk-count" id="bulk-count">0</span> seleccionadas</span>
+        <div class="bulk-sep"></div>
+        <select name="valor_tipo" aria-label="Nuevo tipo de producto">
+            {% for val, label in tipos_inversion %}
+            <option value="{{ val }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" name="accion_masiva" value="set_tipo">Cambiar tipo</button>
+        <div class="bulk-sep"></div>
+        <select name="valor_grupo" aria-label="Cartera de destino">
+            <option value="">— Sin cartera —</option>
+            {% for c in carteras %}
+            <option value="{{ c.id }}">{{ c.nombre }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" name="accion_masiva" value="set_grupo" class="ghost">Asignar cartera</button>
+    </div>
+    </form>
+
     {% else %}
     <div class="inv-empty">
+        {% if cartera_sel_id %}
+        <p>Esta cartera todavía no tiene activos asignados.</p>
+        <p style="font-size:0.85rem;">Selecciona activos en el listado y usa «Asignar cartera».</p>
+        <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary">Ver todas mis inversiones</a>
+        {% else %}
         <p>No tienes inversiones registradas todavía.</p>
         <a href="{% url 'finanzas:crear' %}" class="btn btn-primary">Añadir primera inversión</a>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -379,5 +509,25 @@ function toggleHistorico(n) {
         hist.classList.add('open');
     }
 }
+
+// === Selección masiva ===
+function rowChecks() {
+    return Array.prototype.slice.call(document.querySelectorAll('.row-check'));
+}
+function updateBulkBar() {
+    const checked = rowChecks().filter(c => c.checked);
+    const bar = document.getElementById('bulk-bar');
+    const count = document.getElementById('bulk-count');
+    if (count) count.textContent = checked.length;
+    if (bar) bar.classList.toggle('active', checked.length > 0);
+    const all = document.getElementById('check-all');
+    const total = rowChecks().length;
+    if (all) all.checked = total > 0 && checked.length === total;
+}
+function toggleAll(master) {
+    rowChecks().forEach(c => { c.checked = master.checked; });
+    updateBulkBar();
+}
+document.addEventListener('DOMContentLoaded', updateBulkBar);
 </script>
 {% endblock %}
