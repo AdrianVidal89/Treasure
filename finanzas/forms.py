@@ -3,7 +3,7 @@ import datetime
 from .models import TarjetaCredito
 from .models import SaldoMensualTarjeta
 from django import forms
-from .models import Inversion, MovimientoInversion, FondoFamiliar
+from .models import Inversion, MovimientoInversion, FondoFamiliar, GrupoInversion
 
 
 ### Modulo principal ###
@@ -79,7 +79,7 @@ class InversionForm(forms.ModelForm):
         # AHORA: también excluir cantidad_actual
         exclude = ['usuario', 'fecha_creacion', 'cantidad_actual']
 
-    def __init__(self, *args, hogar=None, **kwargs):
+    def __init__(self, *args, hogar=None, usuario=None, **kwargs):
         super().__init__(*args, **kwargs)
         if hogar:
             self.fields['fondo'].queryset = FondoFamiliar.objects.filter(
@@ -89,6 +89,13 @@ class InversionForm(forms.ModelForm):
             self.fields['fondo'].queryset = FondoFamiliar.objects.none()
         self.fields['fondo'].required = False
         self.fields['fondo'].empty_label = '— Sin fondo asignado —'
+
+        if usuario is not None:
+            self.fields['grupo'].queryset = GrupoInversion.objects.filter(usuario=usuario)
+        else:
+            self.fields['grupo'].queryset = GrupoInversion.objects.none()
+        self.fields['grupo'].required = False
+        self.fields['grupo'].empty_label = '— Sin cartera asignada —'
 
         instance = kwargs.get('instance')
         if instance and not instance.actualizable:

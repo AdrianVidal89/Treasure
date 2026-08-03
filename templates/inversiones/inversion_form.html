@@ -141,6 +141,22 @@
                 </select>
             </div>
 
+            <!-- Cartera (grupo de inversión) -->
+            <div class="fg">
+                <label>Cartera de inversión</label>
+                <select name="grupo">
+                    <option value="">— Sin cartera asignada —</option>
+                    {% for c in form.grupo.field.queryset %}
+                    <option value="{{ c.id }}" {% if form.instance.grupo_id == c.id %}selected{% endif %}>
+                        {{ c.nombre }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                    Agrupa activos de distintas plataformas para ver su rentabilidad conjunta.
+                </div>
+            </div>
+
             <!-- Actualización automática -->
             <div class="fg" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
                 <input type="checkbox" name="actualizable" id="id_actualizable"

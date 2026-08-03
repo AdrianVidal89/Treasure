@@ -46,6 +46,10 @@ urlpatterns = [
     path('inversiones/informe-hacienda/pdf/', views_hacienda.informe_hacienda_pdf, name='informe_hacienda_pdf'),
     path('inversiones/informe-hacienda/xlsx/', views_hacienda.informe_hacienda_xlsx, name='informe_hacienda_xlsx'),
 
+    # Carteras (grupos de inversión) y acción masiva
+    path('inversiones/carteras/', views.carteras_inversion, name='carteras'),
+    path('inversiones/accion-masiva/', views.inversiones_accion_masiva, name='inversiones_accion_masiva'),
+
 
     # ── Ingresos ───────────────────────────────────────────────────────────
     path('ingresos/', views_ingresos.listar_ingresos, name='listar_ingresos'),

@@ -5,6 +5,8 @@ __pycache__/
 *.pyd
 db.sqlite3
 db.sqlite3.backup_*
+dev.sqlite3
+*.sqlite3
 postgres_data/
 staticfiles/
 media/

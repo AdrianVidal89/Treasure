@@ -267,6 +267,38 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
             </div>
         </div>
     </div>
+
+    <!-- PROYECCIÓN A 5 AÑOS -->
+    <div class="card glass-panel" style="margin-top:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <h2 style="margin:0;">Proyección de capacidad de compra (5 años)</h2>
+            <div class="proy-toggle" role="tablist" style="display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+                <button id="btn-proy-estimado" class="proy-toggle-btn active" onclick="setProy('estimado')"
+                        style="padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;background:rgba(45,106,79,.15);color:#2d6a4f;">
+                    Presupuestado
+                </button>
+                <button id="btn-proy-real" class="proy-toggle-btn" onclick="setProy('real')"
+                        style="padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;background:var(--app-bg);color:var(--muted);">
+                    Real
+                </button>
+            </div>
+        </div>
+        <p style="color:var(--muted);font-size:0.85rem;margin:8px 0 4px;">
+            Cómo crecería tu <strong>precio máximo recomendado</strong> si mantienes el ritmo de ahorro,
+            año a año. Reacciona a los parámetros de la izquierda.
+        </p>
+        <div id="proy-ahorro-info" style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;"></div>
+
+        <div style="overflow-x:auto;">
+            <svg id="proy-chart" viewBox="0 0 720 320" preserveAspectRatio="xMidYMid meet"
+                 style="width:100%;min-width:480px;height:auto;"></svg>
+        </div>
+
+        <div id="proy-nodata" style="display:none;margin-top:10px;background:rgba(183,121,31,0.1);border:1px solid #b7791f55;border-radius:10px;padding:12px 16px;font-size:0.85rem;color:#b7791f;">
+            No hay suficientes saldos reales registrados este año para extrapolar el ahorro real.
+            Registra saldos en <strong>Evolución</strong> o usa la proyección «Presupuestado».
+        </div>
+    </div>
 </div>
 
 <script>
@@ -276,7 +308,12 @@ const LIQUIDEZ  = D.capital_liquidez;
 const INGRESOS  = D.ingresos_netos_mensuales;
 const LIBRE     = D.libre_mensual;
 const GASTOS    = D.gastos_fijos_mensuales;
+const AHORRO_EST  = (D.ahorro_mensual_estimado != null) ? D.ahorro_mensual_estimado : Math.max(0, LIBRE);
+const AHORRO_REAL = D.ahorro_mensual_real; // puede ser null si no hay datos
 const PROPIEDADES = JSON.parse(document.getElementById('propiedades-data').textContent);
+
+const PROY_ANIOS = 5;         // horizonte de proyección
+let proyMode = 'estimado';    // 'estimado' | 'real'
 
 // Capital extra por venta de propiedades seleccionadas
 function capitalVentas() {
@@ -452,6 +489,137 @@ function actualizar() {
         semTitle.textContent = 'Asequible';
         semSub.textContent   = 'La cuota (' + pctBase.toFixed(0) + '% del ' + baseLabel + ') está dentro de lo recomendado.';
     }
+
+    // Actualizar también la proyección a futuro
+    renderProyeccion();
+}
+
+// ── Proyección de capacidad de compra a futuro ──────────────────────────
+// Precio máximo recomendado para un capital disponible dado, con los mismos
+// parámetros (tipo, plazo, gastos, base y % máximo) que el simulador principal.
+function precioMaxParaCapital(capitalDisp) {
+    const tipo      = parseFloat(document.getElementById('sl-tipo').value);
+    const plazo     = parseInt(document.getElementById('sl-plazo').value);
+    const gastosPct = parseFloat(document.getElementById('sl-gastos-pct').value);
+    const maxIngPct = parseFloat(document.getElementById('sl-max-pct').value);
+    const base      = baseMode === 'libre' ? Math.max(LIBRE, 1) : INGRESOS;
+
+    const maxCuota        = base * maxIngPct / 100;
+    const hipMax          = hipMaxima(maxCuota, tipo, plazo);
+    const precioMaxOptimo = (capitalDisp + hipMax) / (1 + gastosPct / 100);
+    const entOptima       = precioMaxOptimo > 0 ? (1 - hipMax / precioMaxOptimo) * 100 : 0;
+    const MIN_ENT         = 10;
+    const precioMax       = entOptima >= MIN_ENT ? precioMaxOptimo : hipMax / (1 - MIN_ENT / 100);
+    return Math.max(0, precioMax);
+}
+
+function setProy(mode) {
+    if (mode === 'real' && (AHORRO_REAL === null || AHORRO_REAL === undefined)) {
+        document.getElementById('proy-nodata').style.display = 'block';
+        // permitimos seleccionar, pero se proyecta plano (ahorro 0)
+    }
+    proyMode = mode;
+    const on  = 'padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;';
+    document.getElementById('btn-proy-estimado').style.cssText = on + (mode==='estimado' ? 'background:rgba(45,106,79,.15);color:#2d6a4f;' : 'background:var(--app-bg);color:var(--muted);');
+    document.getElementById('btn-proy-real').style.cssText     = on + (mode==='real'     ? 'background:rgba(44,95,122,.15);color:#2c5f7a;' : 'background:var(--app-bg);color:var(--muted);');
+    renderProyeccion();
+}
+
+function renderProyeccion() {
+    const mesesColchon = parseInt(document.getElementById('sl-colchon').value);
+    const capitalBase  = Math.max(0, LIQUIDEZ - GASTOS * mesesColchon) + capitalVentas();
+
+    const ahorroReal = (AHORRO_REAL === null || AHORRO_REAL === undefined) ? 0 : AHORRO_REAL;
+    const ahorroMensual = proyMode === 'real' ? ahorroReal : AHORRO_EST;
+
+    // Info de ahorro usado
+    const info = document.getElementById('proy-ahorro-info');
+    if (proyMode === 'real' && (AHORRO_REAL === null || AHORRO_REAL === undefined)) {
+        info.innerHTML = 'Ahorro mensual real: <strong>sin datos suficientes</strong> (proyección plana).';
+    } else {
+        const etiqueta = proyMode === 'real' ? 'real medio (Evolución)' : 'presupuestado (mes actual)';
+        info.innerHTML = 'Ahorro mensual ' + etiqueta + ': <strong>' + fmt(ahorroMensual) +
+                         '/mes</strong> · ' + fmt(ahorroMensual * 12) + '/año.';
+    }
+    document.getElementById('proy-nodata').style.display =
+        (proyMode === 'real' && (AHORRO_REAL === null || AHORRO_REAL === undefined)) ? 'block' : 'none';
+
+    // Serie año a año (año 0 = hoy)
+    const valores = [];
+    for (let y = 0; y <= PROY_ANIOS; y++) {
+        const capitalDisp = capitalBase + ahorroMensual * 12 * y;
+        valores.push({ anio: y, capital: capitalDisp, precioMax: precioMaxParaCapital(capitalDisp) });
+    }
+
+    dibujarBarras(valores);
+}
+
+const SVGNS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) {
+    const el = document.createElementNS(SVGNS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    return el;
+}
+
+function dibujarBarras(valores) {
+    const svg = document.getElementById('proy-chart');
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    const W = 720, H = 320;
+    const padL = 20, padR = 20, padT = 30, padB = 46;
+    const plotW = W - padL - padR;
+    const plotH = H - padT - padB;
+
+    const maxV = Math.max.apply(null, valores.map(v => v.precioMax)) || 1;
+    const n = valores.length;
+    const slot = plotW / n;
+    const barW = Math.min(70, slot * 0.6);
+
+    // Eje base
+    svg.appendChild(svgEl('line', {
+        x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH,
+        stroke: 'var(--border-strong)', 'stroke-width': 1
+    }));
+
+    const hoyYear = new Date().getFullYear();
+
+    valores.forEach((v, i) => {
+        const cx = padL + slot * i + slot / 2;
+        const h  = maxV > 0 ? (v.precioMax / maxV) * plotH : 0;
+        const y  = padT + plotH - h;
+        const esHoy = v.anio === 0;
+
+        const rect = svgEl('rect', {
+            x: cx - barW / 2, y: y, width: barW, height: Math.max(1, h),
+            rx: 6, ry: 6,
+            fill: esHoy ? '#2c5f7a' : '#2d6a4f',
+            opacity: esHoy ? 0.95 : (0.55 + 0.09 * i)
+        });
+        svg.appendChild(rect);
+
+        // Valor encima
+        const lblVal = svgEl('text', {
+            x: cx, y: y - 8, 'text-anchor': 'middle',
+            'font-size': 13, 'font-weight': 700, fill: 'var(--text-color)'
+        });
+        lblVal.textContent = fmt(v.precioMax);
+        svg.appendChild(lblVal);
+
+        // Etiqueta eje X
+        const lblX = svgEl('text', {
+            x: cx, y: padT + plotH + 20, 'text-anchor': 'middle',
+            'font-size': 12, fill: 'var(--muted)'
+        });
+        lblX.textContent = esHoy ? 'Hoy' : ('+' + v.anio + ' año' + (v.anio > 1 ? 's' : ''));
+        svg.appendChild(lblX);
+
+        const lblYear = svgEl('text', {
+            x: cx, y: padT + plotH + 36, 'text-anchor': 'middle',
+            'font-size': 10.5, fill: 'var(--border-strong)'
+        });
+        lblYear.textContent = (hoyYear + v.anio);
+        svg.appendChild(lblYear);
+    });
 }
 
 ['sl-precio','sl-entrada-pct','sl-tipo','sl-plazo','sl-colchon','sl-gastos-pct','sl-max-pct'].forEach(function(id) {

@@ -360,7 +360,7 @@ def buscar_ticker(request):
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
-from .models import Inversion, MovimientoInversion, ValorActualInversion
+from .models import Inversion, MovimientoInversion, ValorActualInversion, GrupoInversion, TIPOS_INVERSION
 from .forms import InversionForm, MovimientoInversionForm
 from .models import ResumenInversionesMensual
 
@@ -389,6 +389,7 @@ class InversionCreateView(LoginRequiredMixin, CreateView):
         kwargs = super().get_form_kwargs()
         profile = getattr(self.request.user, 'userprofile', None)
         kwargs['hogar'] = profile.hogar if profile else None
+        kwargs['usuario'] = self.request.user
         return kwargs
 
     def form_valid(self, form):
@@ -419,6 +420,7 @@ class InversionUpdateView(LoginRequiredMixin, UpdateView):
         kwargs = super().get_form_kwargs()
         profile = getattr(self.request.user, 'userprofile', None)
         kwargs['hogar'] = profile.hogar if profile else None
+        kwargs['usuario'] = self.request.user
         return kwargs
 
     def form_valid(self, form):
@@ -727,8 +729,14 @@ class InversionListView(LoginRequiredMixin, ListView):
         profile = UserProfile.objects.filter(user=self.request.user).select_related('hogar').first()
         if profile and profile.hogar:
             miembros_ids = profile.hogar.miembros.values_list('user_id', flat=True)
-            return Inversion.objects.filter(usuario_id__in=miembros_ids)
-        return Inversion.objects.filter(usuario=self.request.user)
+            qs = Inversion.objects.filter(usuario_id__in=miembros_ids)
+        else:
+            qs = Inversion.objects.filter(usuario=self.request.user)
+        # Filtro por cartera (grupo de inversión): las carteras son del propio usuario
+        cartera_id = self.request.GET.get('cartera')
+        if cartera_id:
+            qs = qs.filter(grupo_id=cartera_id, usuario=self.request.user)
+        return qs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -781,6 +789,28 @@ class InversionListView(LoginRequiredMixin, ListView):
         if total_coste_base > 0:
             rentabilidad_total = float((total_valor_actual - total_coste_base) / total_coste_base * 100)
 
+        # ─── Carteras (grupos de inversión) del usuario ─────────────────────
+        carteras = list(GrupoInversion.objects.filter(usuario=self.request.user))
+        cartera_sel = None
+        cartera_sel_id = self.request.GET.get('cartera') or ''
+        if cartera_sel_id:
+            cartera_sel = next(
+                (c for c in carteras if str(c.id) == str(cartera_sel_id)), None
+            )
+        cartera_kpis = None
+        if cartera_sel is not None:
+            valor = cartera_sel.valor_cartera or 0
+            aportado = cartera_sel.total_aportado or 0
+            cartera_kpis = {
+                'nombre': cartera_sel.nombre,
+                'color': cartera_sel.color,
+                'valor': valor,
+                'aportado': aportado,
+                'ganancia': float(valor) - float(aportado),
+                'rentabilidad': cartera_sel.rentabilidad,
+                'num_activos': cartera_sel.num_activos,
+            }
+
         context.update({
             'inv_data': inv_data,
             'total_valor_actual': total_valor_actual,
@@ -788,6 +818,10 @@ class InversionListView(LoginRequiredMixin, ListView):
             'total_aportado': total_aportado,
             'total_ganancia_realizada': total_ganancia_realizada,
             'rentabilidad_total': rentabilidad_total,
+            'carteras': carteras,
+            'cartera_sel_id': cartera_sel_id,
+            'cartera_kpis': cartera_kpis,
+            'tipos_inversion': TIPOS_INVERSION,
         })
         return context
 
@@ -811,3 +845,94 @@ class MovimientoUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_success_url(self):
         return reverse_lazy('finanzas:listar')
+
+# ──────────────────────────────────────────────────────────────────────
+# Carteras de inversión (GrupoInversion) + acción masiva sobre inversiones
+# ──────────────────────────────────────────────────────────────────────
+@login_required
+def carteras_inversion(request):
+    """Listado y gestión (crear / renombrar / borrar) de las carteras del usuario,
+    con la rentabilidad agregada de cada una."""
+    if request.method == 'POST':
+        accion = request.POST.get('accion')
+        if accion == 'crear':
+            nombre = (request.POST.get('nombre') or '').strip()
+            color = (request.POST.get('color') or '#2d6a4f').strip()
+            if nombre:
+                if GrupoInversion.objects.filter(usuario=request.user, nombre=nombre).exists():
+                    messages.error(request, f'Ya tienes una cartera llamada «{nombre}».')
+                else:
+                    GrupoInversion.objects.create(usuario=request.user, nombre=nombre, color=color)
+                    messages.success(request, f'Cartera «{nombre}» creada.')
+            else:
+                messages.error(request, 'El nombre de la cartera no puede estar vacío.')
+        elif accion == 'editar':
+            cartera = get_object_or_404(GrupoInversion, id=request.POST.get('cartera_id'), usuario=request.user)
+            nombre = (request.POST.get('nombre') or '').strip()
+            color = (request.POST.get('color') or cartera.color).strip()
+            if nombre:
+                dup = GrupoInversion.objects.filter(usuario=request.user, nombre=nombre).exclude(id=cartera.id)
+                if dup.exists():
+                    messages.error(request, f'Ya tienes una cartera llamada «{nombre}».')
+                else:
+                    cartera.nombre = nombre
+                    cartera.color = color
+                    cartera.save(update_fields=['nombre', 'color'])
+                    messages.success(request, 'Cartera actualizada.')
+        elif accion == 'borrar':
+            cartera = get_object_or_404(GrupoInversion, id=request.POST.get('cartera_id'), usuario=request.user)
+            nombre = cartera.nombre
+            cartera.delete()  # Inversion.grupo -> SET_NULL, los activos no se borran
+            messages.success(request, f'Cartera «{nombre}» eliminada.')
+        return redirect('finanzas:carteras')
+
+    carteras = GrupoInversion.objects.filter(usuario=request.user)
+    carteras_data = [{
+        'obj': c,
+        'valor': c.valor_cartera or 0,
+        'aportado': c.total_aportado or 0,
+        'rentabilidad': c.rentabilidad,
+        'num_activos': c.num_activos,
+    } for c in carteras]
+    return render(request, 'inversiones/carteras.html', {
+        'carteras_data': carteras_data,
+    })
+
+
+@login_required
+@require_POST
+def inversiones_accion_masiva(request):
+    """Aplica una acción en bloque a las inversiones seleccionadas:
+    cambiar el tipo de producto (set_tipo) o asignarlas a una cartera (set_grupo)."""
+    ids = request.POST.getlist('inversion_ids')
+    accion = request.POST.get('accion_masiva')
+    # Solo inversiones del propio usuario (aunque el listado muestre las del hogar)
+    qs = Inversion.objects.filter(usuario=request.user, id__in=ids)
+    total = qs.count()
+
+    if not ids:
+        messages.error(request, 'No has seleccionado ninguna inversión.')
+    elif total == 0:
+        messages.error(request, 'No se han encontrado inversiones propias en la selección.')
+    elif accion == 'set_tipo':
+        tipo = request.POST.get('valor_tipo')
+        tipos_validos = {t[0] for t in TIPOS_INVERSION}
+        if tipo in tipos_validos:
+            qs.update(tipo=tipo)
+            messages.success(request, f'Tipo actualizado en {total} inversión(es).')
+        else:
+            messages.error(request, 'Tipo de producto no válido.')
+    elif accion == 'set_grupo':
+        grupo_id = request.POST.get('valor_grupo')
+        if grupo_id:
+            grupo = get_object_or_404(GrupoInversion, id=grupo_id, usuario=request.user)
+            qs.update(grupo=grupo)
+            messages.success(request, f'{total} inversión(es) asignadas a «{grupo.nombre}».')
+        else:
+            qs.update(grupo=None)
+            messages.success(request, f'Cartera retirada de {total} inversión(es).')
+    else:
+        messages.error(request, 'Acción no reconocida.')
+
+    destino = request.POST.get('next') or str(reverse_lazy('finanzas:listar'))
+    return redirect(destino)
