@@ -744,10 +744,16 @@ class InversionListView(LoginRequiredMixin, ListView):
             qs = Inversion.objects.filter(usuario_id__in=miembros_ids)
         else:
             qs = Inversion.objects.filter(usuario=self.request.user)
-        # Filtro por cartera (grupo de inversión): las carteras son del propio usuario
+        # Filtro por cartera (grupo de inversión): las carteras son del propio usuario.
+        # La cartera es a nivel de COMPRA, así que incluimos los activos que tengan
+        # al menos una compra asignada a esa cartera (no solo la "cartera por defecto").
         cartera_id = self.request.GET.get('cartera')
         if cartera_id:
-            qs = qs.filter(grupo_id=cartera_id, usuario=self.request.user)
+            qs = qs.filter(
+                usuario=self.request.user,
+                movimientos__grupo_id=cartera_id,
+                movimientos__tipo=MovimientoInversion.COMPRA,
+            ).distinct()
         return qs
 
     def get_context_data(self, **kwargs):
@@ -767,6 +773,26 @@ class InversionListView(LoginRequiredMixin, ListView):
             rentabilidad = inv.rentabilidad_latente_pct
             ganancia_real = inv.ganancia_realizada
 
+            movs = []
+            carteras_activo = []
+            carteras_vistas = set()
+            for m in inv.movimientos.select_related('grupo').order_by('-fecha'):
+                movs.append({
+                    'id': m.id,
+                    'fecha': m.fecha,
+                    'tipo': m.tipo,
+                    'cantidad': m.cantidad,
+                    'precio_unitario': m.precio_unitario,
+                    'comision': m.comision,
+                    'coste_total': (m.cantidad * m.precio_unitario) + m.comision,
+                    'grupo_nombre': m.grupo.nombre if m.grupo_id else None,
+                    'grupo_color': m.grupo.color if m.grupo_id else None,
+                })
+                # Carteras presentes en las COMPRA de este activo (para el badge de fila)
+                if m.tipo == MovimientoInversion.COMPRA and m.grupo_id and m.grupo_id not in carteras_vistas:
+                    carteras_vistas.add(m.grupo_id)
+                    carteras_activo.append({'nombre': m.grupo.nombre, 'color': m.grupo.color})
+
             inv_data.append({
                 'inv': inv,
                 'owner': inv.usuario.first_name or inv.usuario.username,
@@ -777,20 +803,8 @@ class InversionListView(LoginRequiredMixin, ListView):
                 'coste_base': coste_base,
                 'rentabilidad': rentabilidad,
                 'ganancia_realizada': ganancia_real,
-                'movimientos': [
-                    {
-                        'id': m.id,
-                        'fecha': m.fecha,
-                        'tipo': m.tipo,
-                        'cantidad': m.cantidad,
-                        'precio_unitario': m.precio_unitario,
-                        'comision': m.comision,
-                        'coste_total': (m.cantidad * m.precio_unitario) + m.comision,
-                        'grupo_nombre': m.grupo.nombre if m.grupo_id else None,
-                        'grupo_color': m.grupo.color if m.grupo_id else None,
-                    }
-                    for m in inv.movimientos.select_related('grupo').order_by('-fecha')
-                ],
+                'carteras': carteras_activo,
+                'movimientos': movs,
             })
 
         # ─── Totales cartera ────────────────────────────────────────────────
