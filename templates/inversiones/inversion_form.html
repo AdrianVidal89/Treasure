@@ -141,9 +141,9 @@
                 </select>
             </div>
 
-            <!-- Cartera (grupo de inversión) -->
+            <!-- Cartera por defecto del activo -->
             <div class="fg">
-                <label>Cartera de inversión</label>
+                <label>Cartera por defecto</label>
                 <select name="grupo">
                     <option value="">— Sin cartera asignada —</option>
                     {% for c in form.grupo.field.queryset %}
@@ -153,7 +153,8 @@
                     {% endfor %}
                 </select>
                 <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
-                    Agrupa activos de distintas plataformas para ver su rentabilidad conjunta.
+                    Se usará para prellenar la cartera de cada nueva compra de este activo. La cartera
+                    real se asigna en cada compra (movimiento), con independencia de la plataforma.
                 </div>
             </div>
 

@@ -145,21 +145,36 @@ class GrupoInversion(models.Model):
     def __str__(self):
         return self.nombre
 
-    # --- Rentabilidad agregada (mismo patrón que FondoFamiliar.rentabilidad_cartera) ---
+    # --- Rentabilidad agregada a NIVEL DE COMPRA ---
+    # La cartera agrupa compras concretas (MovimientoInversion tipo COMPRA), con
+    # independencia de la plataforma. Se valora sobre las unidades compradas al
+    # precio actual del activo. No descuenta ventas (es una agrupación de compras).
 
-    @property
-    def valor_cartera(self):
-        return sum(
-            (inv.valor_total_actual or Decimal('0'))
-            for inv in self.inversiones.select_related('valor_actual').all()
+    def _compras(self):
+        return (
+            MovimientoInversion.objects
+            .filter(grupo=self, tipo=MovimientoInversion.COMPRA)
+            .select_related('inversion', 'inversion__valor_actual')
         )
 
     @property
     def total_aportado(self):
-        return sum(
-            (inv.valor_aportado or Decimal('0'))
-            for inv in self.inversiones.all()
-        )
+        total = Decimal('0')
+        for m in self._compras():
+            total += (m.cantidad * m.precio_unitario) + (m.comision or Decimal('0'))
+        return total
+
+    @property
+    def valor_cartera(self):
+        total = Decimal('0')
+        for m in self._compras():
+            try:
+                precio = m.inversion.valor_actual.valor_unitario
+            except AttributeError:
+                precio = None
+            if precio is not None:
+                total += m.cantidad * precio
+        return total
 
     @property
     def rentabilidad(self):
@@ -171,7 +186,11 @@ class GrupoInversion(models.Model):
 
     @property
     def num_activos(self):
-        return self.inversiones.count()
+        return self._compras().values('inversion_id').distinct().count()
+
+    @property
+    def num_compras(self):
+        return self._compras().count()
 
 
 class Inversion(models.Model):
@@ -319,6 +338,11 @@ class MovimientoInversion(models.Model):
     cantidad = models.DecimalField(max_digits=20, decimal_places=8)
     precio_unitario = models.DecimalField(max_digits=20, decimal_places=8)
     comision = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    grupo = models.ForeignKey(
+        'GrupoInversion', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='movimientos_compra',
+        help_text="Cartera de inversión a la que pertenece esta compra.",
+    )
 
     def valor_total(self):
         return (self.cantidad * self.precio_unitario) + self.comision

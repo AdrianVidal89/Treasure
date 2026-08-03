@@ -98,6 +98,23 @@
                 </div>
             </div>
 
+            <!-- Cartera de inversión (para compras) -->
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">
+                    Cartera de inversión <span style="color: var(--border-strong);">(para compras, indiferente de la plataforma)</span>
+                </label>
+                <select name="grupo"
+                        style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+                               background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
+                    <option value="">— Sin cartera asignada —</option>
+                    {% for c in form.grupo.field.queryset %}
+                    <option value="{{ c.id }}" {% if form.grupo.value|stringformat:'s' == c.id|stringformat:'s' %}selected{% endif %}>
+                        {{ c.nombre }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
             <!-- Comisión + Total calculado -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
                 <div>

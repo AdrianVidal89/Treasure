@@ -321,8 +321,9 @@
                     <td>
                         <a href="{% url 'finanzas:editar' item.inv.id %}"
                            onclick="event.stopPropagation()"
-                           style="font-size: 0.75rem; color: var(--muted); text-decoration: none;
-                                  padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 6px;"></a>
+                           title="Editar activo"
+                           style="font-size: 0.75rem; color: var(--muted); text-decoration: none; white-space: nowrap;
+                                  padding: 4px 10px; border: 1px solid var(--border-strong); border-radius: 6px;">✏️ Editar</a>
                     </td>
                 </tr>
 
@@ -344,6 +345,7 @@
                                     <tr>
                                         <th>Fecha</th>
                                         <th>Tipo</th>
+                                        <th>Cartera</th>
                                         <th class="right">Nº unidades</th>
                                         <th class="right">Precio/ud.</th>
                                         <th class="right">Comisión</th>
@@ -382,6 +384,15 @@
                                                 </span>
                                             {% endif %}
                                         </td>
+                                        <td>
+                                            {% if m.grupo_nombre %}
+                                            <span class="badge-cartera" style="margin-left:0; background: {{ m.grupo_color }};">
+                                                {{ m.grupo_nombre }}
+                                            </span>
+                                            {% else %}
+                                            <span style="color: var(--border-strong); font-size:0.75rem;">—</span>
+                                            {% endif %}
+                                        </td>
                                         <td class="right" style="color: var(--text-color);">
                                             {{ m.cantidad|floatformat:4 }}
                                         </td>
@@ -401,9 +412,10 @@
                                         <td>
                                             <a href="{% url 'finanzas:editar_movimiento' m.id %}"
                                                onclick="event.stopPropagation()"
-                                               style="font-size:0.72rem; color:var(--muted);
-                                                      text-decoration:none; padding:3px 8px;
-                                                      border:1px solid var(--border-strong); border-radius:6px;"></a>
+                                               title="Editar movimiento / asignar cartera"
+                                               style="font-size:0.72rem; color:var(--muted); white-space:nowrap;
+                                                      text-decoration:none; padding:3px 10px;
+                                                      border:1px solid var(--border-strong); border-radius:6px;">✏️ Editar</a>
                                         </td>
                                     </tr>
                                     {% endfor %}

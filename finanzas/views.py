@@ -447,6 +447,18 @@ class MovimientoCreateView(LoginRequiredMixin, CreateView):
         self.inversion = get_object_or_404(Inversion, id=self.kwargs['pk'], usuario=request.user)
         return super().dispatch(request, *args, **kwargs)
 
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['usuario'] = self.request.user
+        return kwargs
+
+    def get_initial(self):
+        initial = super().get_initial()
+        # Cartera por defecto del activo (prellenar la compra)
+        if getattr(self, 'inversion', None) and self.inversion.grupo_id:
+            initial['grupo'] = self.inversion.grupo_id
+        return initial
+
     def form_valid(self, form):
         form.instance.inversion = self.inversion
         return super().form_valid(form)
@@ -774,8 +786,10 @@ class InversionListView(LoginRequiredMixin, ListView):
                         'precio_unitario': m.precio_unitario,
                         'comision': m.comision,
                         'coste_total': (m.cantidad * m.precio_unitario) + m.comision,
+                        'grupo_nombre': m.grupo.nombre if m.grupo_id else None,
+                        'grupo_color': m.grupo.color if m.grupo_id else None,
                     }
-                    for m in inv.movimientos.order_by('-fecha')
+                    for m in inv.movimientos.select_related('grupo').order_by('-fecha')
                 ],
             })
 
@@ -835,6 +849,11 @@ class MovimientoUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_queryset(self):
         return MovimientoInversion.objects.filter(inversion__usuario=self.request.user)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['usuario'] = self.request.user
+        return kwargs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -924,13 +943,18 @@ def inversiones_accion_masiva(request):
             messages.error(request, 'Tipo de producto no válido.')
     elif accion == 'set_grupo':
         grupo_id = request.POST.get('valor_grupo')
+        # La cartera es a nivel de compra: fijamos la cartera por defecto del activo
+        # (Inversion.grupo) y la propagamos a todas sus COMPRA.
+        compras = MovimientoInversion.objects.filter(inversion__in=qs, tipo=MovimientoInversion.COMPRA)
         if grupo_id:
             grupo = get_object_or_404(GrupoInversion, id=grupo_id, usuario=request.user)
             qs.update(grupo=grupo)
-            messages.success(request, f'{total} inversión(es) asignadas a «{grupo.nombre}».')
+            compras.update(grupo=grupo)
+            messages.success(request, f'{total} activo(s) y sus compras asignados a «{grupo.nombre}».')
         else:
             qs.update(grupo=None)
-            messages.success(request, f'Cartera retirada de {total} inversión(es).')
+            compras.update(grupo=None)
+            messages.success(request, f'Cartera retirada de {total} activo(s) y sus compras.')
     else:
         messages.error(request, 'Acción no reconocida.')
 
