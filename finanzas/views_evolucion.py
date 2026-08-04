@@ -22,13 +22,30 @@ def _get_hogar(request):
     return profile, profile.hogar
 
 
-def _saldos_liquidez_patrimonio(saldos_qs, hogar=None):
+def valor_depositos_hogar(hogar, hasta):
+    """Suma del valor de los depósitos del hogar a la fecha `hasta`. Un depósito
+    es capital: su valor cuenta en el patrimonio de Evolución automáticamente,
+    sin que el usuario tenga que registrar su saldo mes a mes."""
+    from .models import Inversion
+    total = Decimal('0')
+    depositos = (
+        Inversion.objects
+        .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
+        .prefetch_related('movimientos')
+    )
+    for inv in depositos:
+        total += inv.deposito_estado(hasta=hasta)['valor']
+    return total
+
+
+def _saldos_liquidez_patrimonio(saldos_qs, hogar=None, fecha_depositos=None, incluir_mercado=True):
     """
     Devuelve (liquidez, patrimonio).
     - Liquidez : fondos comun + ahorro (saldos manuales).
-    - Patrimonio: liquidez + fondos inversion.
+    - Patrimonio: liquidez + fondos inversion + valor de los depósitos.
         · Saldo manual registrado tiene prioridad.
-        · Si no hay saldo manual → valor_cartera (precio mercado real).
+        · Si `incluir_mercado` y no hay saldo manual → valor_cartera (precio mercado real).
+        · Si `fecha_depositos`, se suma el valor de los depósitos a esa fecha.
     """
     liquidez = Decimal('0')
     patrimonio = Decimal('0')
@@ -42,12 +59,16 @@ def _saldos_liquidez_patrimonio(saldos_qs, hogar=None):
             patrimonio += s.saldo
             inversion_con_saldo.add(s.fondo_id)
 
-    if hogar:
+    if hogar and incluir_mercado:
         for f in FondoFamiliar.objects.filter(
             hogar=hogar, tipo_fondo='inversion', activo=True
         ).exclude(id__in=inversion_con_saldo):
             if f.valor_cartera:
                 patrimonio += Decimal(str(f.valor_cartera))
+
+    # Depósitos: capital que suma al patrimonio automáticamente (histórico incluido).
+    if hogar and fecha_depositos is not None:
+        patrimonio += valor_depositos_hogar(hogar, fecha_depositos)
 
     return liquidez, patrimonio
 
@@ -61,7 +82,10 @@ def _flujos_por_mes(hogar, año):
 def _liquidez_patrimonio_por_mes(hogar, año):
     """Devuelve {mes: (liquidez|None, patrimonio|None)} para 1..12 a partir de los
     saldos reales registrados por el usuario (sin fallback a precio de mercado:
-    ese fallback solo tiene sentido para "hoy", no para meses pasados)."""
+    ese fallback solo tiene sentido para "hoy", no para meses pasados). El valor
+    de los depósitos SÍ se añade al patrimonio de cada mes (está bien definido a
+    cualquier fecha por su interés)."""
+    import calendar
     saldos_qs = SaldoRealFondo.objects.filter(fondo__hogar=hogar, año=año).select_related('fondo')
     saldos_por_mes = {}
     for s in saldos_qs:
@@ -73,7 +97,9 @@ def _liquidez_patrimonio_por_mes(hogar, año):
         if not saldos_mes:
             resultado[mes] = (None, None)
         else:
-            liquidez, patrimonio = _saldos_liquidez_patrimonio(saldos_mes)
+            mes_fin = datetime.date(año, mes, calendar.monthrange(año, mes)[1])
+            liquidez, patrimonio = _saldos_liquidez_patrimonio(
+                saldos_mes, hogar=hogar, fecha_depositos=mes_fin, incluir_mercado=False)
             resultado[mes] = (liquidez, patrimonio)
     return resultado
 
@@ -111,10 +137,14 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
     liquidez_actual = Decimal('0')
     patrimonio_actual = Decimal('0')
     if ultimo_mes_con_datos:
+        import calendar
         saldos_actual = SaldoRealFondo.objects.filter(
             fondo__hogar=hogar, año=año, mes=ultimo_mes_con_datos
         ).select_related('fondo')
-        liquidez_actual, patrimonio_actual = _saldos_liquidez_patrimonio(saldos_actual, hogar=hogar)
+        mes_fin_actual = datetime.date(
+            año, ultimo_mes_con_datos, calendar.monthrange(año, ultimo_mes_con_datos)[1])
+        liquidez_actual, patrimonio_actual = _saldos_liquidez_patrimonio(
+            saldos_actual, hogar=hogar, fecha_depositos=mes_fin_actual)
         # El fallback a precio de mercado (hogar=...) puede diferir del valor
         # crudo guardado en datos_por_mes; usamos el "actual" enriquecido como
         # punto real de ese mes para que la tarjeta y el gráfico coincidan.

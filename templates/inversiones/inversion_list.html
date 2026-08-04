@@ -520,11 +520,11 @@
     <div class="deposit-section">
         <h2>Depósitos</h2>
         <p class="sub">
-            No suman en los totales de arriba ni en el patrimonio de los simuladores — ya los
-            cuentas en otra parte de la app. Aquí solo llevas su seguimiento y lo que le
-            corresponde pagar a Hacienda al liquidarlos.
+            Los depósitos no forman parte de tu cartera de mercado, pero su valor cuenta como
+            capital y aparece automáticamente en Evolución.
             Aportado: <strong style="color: var(--text-color);">€{{ deposit_total_aportado|floatformat:2 }}</strong>
             {% if deposit_total_valor %}· Valor actual: <strong style="color: var(--text-color);">€{{ deposit_total_valor|floatformat:2 }}</strong>{% endif %}
+            {% if deposit_total_interes %}· Interés: <strong class="{% if deposit_total_interes >= 0 %}pos{% else %}neg{% endif %}">{% if deposit_total_interes >= 0 %}+{% endif %}€{{ deposit_total_interes|floatformat:2 }}</strong>{% endif %}
         </p>
         {% for item in deposit_data %}
         <div class="deposit-card">

@@ -130,49 +130,35 @@
                 </div>
             </div>
 
-            <!-- Fondo de inversión -->
-            <div class="fg">
-                <label>Fondo de inversión asociado</label>
-                <select name="fondo">
-                    <option value="">— Sin fondo asignado —</option>
-                    {% for f in form.fondo.field.queryset %}
-                    <option value="{{ f.id }}" {% if form.instance.fondo_id == f.id %}selected{% endif %}>
-                        {{ f.nombre }}{% if f.cuenta_asociada %} · {{ f.cuenta_asociada }}{% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Cartera por defecto del activo -->
-            <div class="fg">
-                <label>Cartera por defecto</label>
-                <select name="grupo">
-                    <option value="">— Sin cartera asignada —</option>
-                    {% for c in form.grupo.field.queryset %}
-                    <option value="{{ c.id }}" {% if form.instance.grupo_id == c.id %}selected{% endif %}>
-                        {{ c.nombre }}
-                    </option>
-                    {% endfor %}
-                </select>
-                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
-                    Se usará para prellenar la cartera de cada nueva compra de este activo. La cartera
-                    real se asigna en cada compra (movimiento), con independencia de la plataforma.
+            <!-- Fondo + Cartera (no aplican a depósitos) -->
+            <div id="cartera-fondo-fields">
+                <div class="fg">
+                    <label>Fondo de inversión asociado</label>
+                    <select name="fondo">
+                        <option value="">— Sin fondo asignado —</option>
+                        {% for f in form.fondo.field.queryset %}
+                        <option value="{{ f.id }}" {% if form.instance.fondo_id == f.id %}selected{% endif %}>
+                            {{ f.nombre }}{% if f.cuenta_asociada %} · {{ f.cuenta_asociada }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
                 </div>
-            </div>
 
-            <!-- Excluir de patrimonio (depósitos u otros que no quieres mezclar) -->
-            <div class="fg" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
-                <input type="checkbox" name="excluir_de_patrimonio" id="id_excluir_de_patrimonio"
-                       {% if form.instance.excluir_de_patrimonio %}checked{% endif %}
-                       style="width: 18px; height: 18px; accent-color: var(--primary-color);">
-                <label for="id_excluir_de_patrimonio" style="margin: 0; cursor: pointer;">
-                    No sumar en los totales de cartera ni en el patrimonio
-                </label>
-            </div>
-            <div style="font-size: 0.75rem; color: var(--muted); margin: -14px 0 20px;">
-                Útil para depósitos u otras posiciones que ya cuentas en otra parte de la app:
-                seguirá apareciendo aquí, con su historial y en el Informe Hacienda, pero sin
-                mezclarse con el resto de tu cartera de mercado.
+                <div class="fg">
+                    <label>Cartera por defecto</label>
+                    <select name="grupo">
+                        <option value="">— Sin cartera asignada —</option>
+                        {% for c in form.grupo.field.queryset %}
+                        <option value="{{ c.id }}" {% if form.instance.grupo_id == c.id %}selected{% endif %}>
+                            {{ c.nombre }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                        Se usará para prellenar la cartera de cada nueva compra de este activo. La cartera
+                        real se asigna en cada compra (movimiento), con independencia de la plataforma.
+                    </div>
+                </div>
             </div>
 
             <!-- Parámetros de depósito (solo visibles si el tipo es Depósito) -->
@@ -206,8 +192,8 @@
                 </div>
             </div>
 
-            <!-- Actualización automática -->
-            <div class="fg" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
+            <!-- Actualización automática (no aplica a depósitos) -->
+            <div id="actualizable-wrap" class="fg" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
                 <input type="checkbox" name="actualizable" id="id_actualizable"
                        {% if form.instance.actualizable or not form.instance.pk %}checked{% endif %}
                        style="width: 18px; height: 18px; accent-color: var(--primary-color);">
@@ -344,10 +330,19 @@ document.addEventListener('DOMContentLoaded', function() {
     chk.addEventListener('change', toggleManual);
     toggleManual();
 
-    // Mostrar los parámetros de depósito solo si el tipo es "Depósito"
+    // Campos según el tipo: un depósito no usa cartera/fondo ni API de precio,
+    // y sí muestra sus parámetros de interés.
     const depoParams = document.getElementById('deposito-params');
+    const carteraFondo = document.getElementById('cartera-fondo-fields');
+    const actualizableWrap = document.getElementById('actualizable-wrap');
+    const valorManualWrap = document.getElementById('valor-manual-wrap');
     function toggleDeposito() {
-        depoParams.style.display = (tipoActivo.value === 'DEPOSITO') ? 'block' : 'none';
+        const esDeposito = (tipoActivo.value === 'DEPOSITO');
+        depoParams.style.display = esDeposito ? 'block' : 'none';
+        carteraFondo.style.display = esDeposito ? 'none' : 'block';
+        actualizableWrap.style.display = esDeposito ? 'none' : 'flex';
+        if (esDeposito) valorManualWrap.style.display = 'none';
+        else toggleManual();
     }
     tipoActivo.addEventListener('change', toggleDeposito);
     toggleDeposito();

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load l10n %}
 {% block title %}{{ inversion.nombre }} - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -42,7 +43,28 @@
 .aport-form input[type="checkbox"] { width: 16px; height: 16px; }
 .aport-form-fg { display: flex; flex-direction: column; gap: 5px; }
 .aport-form-fg label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; font-weight: 600; }
-.aport-form-fg input, .aport-form-fg select { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--app-bg); color: var(--text-color); font-size: 0.85rem; }
+.aport-form-fg input, .aport-form-fg select { width: 100%; padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--app-bg); color: var(--text-color); font-size: 0.9rem; box-sizing: border-box; }
+
+/* Depósito: KPIs y bloques */
+.dep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 18px; margin-bottom: 12px; }
+.dep-kpi { display: flex; flex-direction: column; gap: 2px; }
+.dep-kpi .l { font-size: 0.66rem; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.dep-kpi .v { font-size: 1.1rem; font-weight: 700; color: var(--text-color); }
+.dep-params { margin: 0 0 6px; color: var(--muted); font-size: 0.85rem; }
+.dep-params strong { color: var(--text-color); }
+.dep-block { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.dep-block-title { font-size: 0.72rem; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+.dep-block-help { font-size: 0.78rem; color: var(--muted); margin: 0 0 10px; }
+/* Formularios de depósito: grid uniforme (campos del mismo tamaño) */
+.dep-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) auto; gap: 12px; align-items: end; }
+.dep-form button { align-self: end; height: 38px; }
+.btn-dep { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--primary-color); background: var(--primary-color); color: #fff; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.btn-dep-ghost { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-strong); background: transparent; color: var(--muted); font-weight: 600; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
+.btn-ico { display: inline-flex; align-items: center; gap: 6px; }
+.btn-ico .icon { width: 15px; height: 15px; }
+.mov-table .icon { width: 15px; height: 15px; }
+.act-btn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border-strong); background: transparent; cursor: pointer; color: var(--muted); }
+.act-btn.danger { color: #b4442e; border-color: #b4442e55; }
 </style>
 
 <div class="det-wrap">
@@ -51,19 +73,18 @@
         <div>
             <h1>{{ inversion.nombre }}
                 <span class="badge-tipo badge-{{ inversion.tipo }}">{{ inversion.get_tipo_display }}</span>
-                {% if inversion.excluir_de_patrimonio %}
-                <span class="badge-tipo" style="background: rgba(183,121,31,0.12); color:#b7791f; border:1px solid #b7791f44;">Excluido del patrimonio</span>
-                {% endif %}
             </h1>
             <div class="meta">
                 {{ inversion.ticker|default:"—" }} · {{ inversion.plataforma|default:"Sin plataforma" }}
-                {% if inversion.grupo %}· <span style="color: {{ inversion.grupo.color }};">{{ inversion.grupo.nombre }}</span>{% endif %}
+                {% if deposito %}· <span style="color:#2c5f7a;">cuenta como capital en Evolución</span>{% elif inversion.grupo %}· <span style="color: {{ inversion.grupo.color }};">{{ inversion.grupo.nombre }}</span>{% endif %}
             </div>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary" style="font-size:0.85rem; padding:9px 16px;">← Inversiones</a>
-            <a href="{% url 'finanzas:editar' inversion.id %}" class="btn btn-secondary" style="font-size:0.85rem; padding:9px 16px;">✏️ Editar</a>
-            <a href="{% url 'finanzas:nuevo_movimiento' inversion.id %}" class="btn btn-primary" style="font-size:0.85rem; padding:9px 16px;">+ Movimiento</a>
+            <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary btn-ico" style="font-size:0.85rem; padding:9px 16px;"><svg class="icon"><use href="#i-investments"/></svg> Inversiones</a>
+            <a href="{% url 'finanzas:editar' inversion.id %}" class="btn btn-secondary btn-ico" style="font-size:0.85rem; padding:9px 16px;"><svg class="icon"><use href="#i-edit"/></svg> Editar</a>
+            {% if not deposito %}
+            <a href="{% url 'finanzas:nuevo_movimiento' inversion.id %}" class="btn btn-primary btn-ico" style="font-size:0.85rem; padding:9px 16px;"><svg class="icon"><use href="#i-plus"/></svg> Movimiento</a>
+            {% endif %}
         </div>
     </div>
 
@@ -77,50 +98,82 @@
     {% endif %}
 
     {% if deposito %}
-    <!-- Resumen del depósito con interés -->
+    <!-- Resumen del depósito -->
     <div class="det-card" style="border-color: #2c5f7a44;">
         <h2>Depósito</h2>
-        <div style="display:flex; gap:28px; flex-wrap:wrap; align-items:flex-end; margin-bottom: 10px;">
-            <div>
-                <div style="font-size:0.68rem; text-transform:uppercase; color:var(--muted); font-weight:600;">Valor actual{% if deposito.liquidado %} (liquidado){% endif %}</div>
-                <div style="font-size:1.6rem; font-weight:800; color:#2c5f7a;">€{{ deposito.valor|floatformat:2 }}</div>
+
+        <div class="dep-grid">
+            <div class="dep-kpi">
+                <span class="l">Valor actual{% if deposito.saldo_manual != None %} (saldo real){% elif deposito.liquidado %} (liquidado){% endif %}</span>
+                <span class="v" style="color:#2c5f7a; font-size:1.6rem;">€{{ deposito.valor|floatformat:2 }}</span>
             </div>
-            <div>
-                <div style="font-size:0.68rem; text-transform:uppercase; color:var(--muted); font-weight:600;">Aportado neto</div>
-                <div style="font-size:1.1rem; font-weight:700;">€{{ deposito.aportado|floatformat:2 }}</div>
+            <div class="dep-kpi">
+                <span class="l">Aportado</span>
+                <span class="v">€{{ deposito.aportado|floatformat:2 }}</span>
             </div>
-            <div>
-                <div style="font-size:0.68rem; text-transform:uppercase; color:var(--muted); font-weight:600;">Interés generado</div>
-                <div style="font-size:1.1rem; font-weight:700;" class="{% if deposito.interes >= 0 %}pos{% else %}neg{% endif %}">
+            {% if deposito.retirado %}
+            <div class="dep-kpi">
+                <span class="l">Retirado</span>
+                <span class="v">€{{ deposito.retirado|floatformat:2 }}</span>
+            </div>
+            {% endif %}
+            <div class="dep-kpi">
+                <span class="l">Interés generado</span>
+                <span class="v {% if deposito.interes >= 0 %}pos{% else %}neg{% endif %}">
                     {% if deposito.interes >= 0 %}+{% endif %}€{{ deposito.interes|floatformat:2 }}{% if deposito.interes_pct != None %} ({{ deposito.interes_pct }}%){% endif %}
-                </div>
+                </span>
             </div>
         </div>
-        <p style="margin:0; color: var(--muted); font-size:0.85rem;">
-            {% if deposito.apertura %}Apertura: <strong style="color:var(--text-color);">{{ deposito.apertura|date:"d/m/Y" }}</strong> · {% endif %}
-            Interés: <strong style="color:var(--text-color);">{{ inversion.deposito_tipo_interes|default:"0"|floatformat:"-3" }}% anual</strong>
+
+        <p class="dep-params">
+            {% if deposito.apertura %}Apertura: <strong>{{ deposito.apertura|date:"d/m/Y" }}</strong> · {% endif %}
+            Interés: <strong>{{ inversion.deposito_tipo_interes|default:"0"|floatformat:"-3" }}% anual</strong>
             (capitaliza {{ inversion.get_deposito_frecuencia_display|lower }})
-            {% if deposito.liquidado %}· liquidado el <strong style="color:var(--text-color);">{{ deposito.liquidado|date:"d/m/Y" }}</strong>{% endif %}
+            {% if deposito.liquidado %}· liquidado el <strong>{{ deposito.liquidado|date:"d/m/Y" }}</strong>{% endif %}
             · <a href="{% url 'finanzas:editar' inversion.id %}" style="color: var(--primary-color);">editar parámetros</a>
         </p>
 
-        <!-- Alta de aportación / retirada -->
-        <form method="post" action="{% url 'finanzas:aportacion_deposito' inversion.id %}"
-              style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
-            {% csrf_token %}
-            <div class="aport-form-fg"><label>Fecha</label><input type="date" name="fecha" required></div>
-            <div class="aport-form-fg"><label>Tipo</label>
-                <select name="tipo">
-                    <option value="COMPRA">Aportación</option>
-                    <option value="VENTA">Retirada</option>
-                </select>
-            </div>
-            <div class="aport-form-fg"><label>Importe €</label><input type="number" step="0.01" min="0" name="importe" placeholder="0.00" required></div>
-            <button type="submit" class="btn-generar" style="padding:8px 14px; border-radius:8px; border:1px solid var(--primary-color); background:var(--primary-color); color:#fff; font-weight:600; cursor:pointer;">Registrar</button>
-        </form>
-        <div style="font-size:0.75rem; color:var(--muted); margin-top:8px;">
-            La primera aportación es la apertura del depósito. Registra aquí cada aportación o
-            retirada con su fecha; el valor de arriba se recalcula con el interés.
+        <!-- Saldo real (campo dedicado, no se mezcla con params ni movimientos) -->
+        <div class="dep-block">
+            <div class="dep-block-title">Saldo real de hoy (opcional)</div>
+            <p class="dep-block-help">
+                El interés real puede variar por días. Si indicas aquí el saldo exacto que dice el
+                banco, el valor y el interés de arriba se calculan sobre ese saldo.
+            </p>
+            <form method="post" action="{% url 'finanzas:deposito_saldo_manual' inversion.id %}" class="dep-form">
+                {% csrf_token %}
+                <div class="aport-form-fg"><label>Saldo real €</label>
+                    <input type="number" step="0.01" min="0" name="saldo"
+                           value="{% if deposito.saldo_manual != None %}{{ deposito.saldo_manual|unlocalize }}{% endif %}"
+                           placeholder="Lo que dice el banco hoy"></div>
+                <div class="aport-form-fg"><label>A fecha</label>
+                    <input type="date" name="fecha" value="{{ deposito.saldo_fecha|date:'Y-m-d' }}"></div>
+                <button type="submit" class="btn-dep">Guardar saldo</button>
+                {% if deposito.saldo_manual != None %}
+                <button type="submit" name="saldo" value="" class="btn-dep-ghost">Quitar (volver al calculado)</button>
+                {% endif %}
+            </form>
+        </div>
+
+        <!-- Aportación / retirada (movimientos de capital) -->
+        <div class="dep-block">
+            <div class="dep-block-title">Aportaciones y retiradas</div>
+            <p class="dep-block-help">
+                La primera aportación es la apertura. Registra cada aportación o retirada con su
+                fecha; el interés se recalcula automáticamente.
+            </p>
+            <form method="post" action="{% url 'finanzas:aportacion_deposito' inversion.id %}" class="dep-form">
+                {% csrf_token %}
+                <div class="aport-form-fg"><label>Fecha</label><input type="date" name="fecha" required></div>
+                <div class="aport-form-fg"><label>Tipo</label>
+                    <select name="tipo">
+                        <option value="COMPRA">Aportación</option>
+                        <option value="VENTA">Retirada</option>
+                    </select>
+                </div>
+                <div class="aport-form-fg"><label>Importe €</label><input type="number" step="0.01" min="0" name="importe" placeholder="0.00" required></div>
+                <button type="submit" class="btn-dep">Registrar</button>
+            </form>
         </div>
     </div>
     {% elif inversion.valor_actual %}
@@ -205,25 +258,30 @@
         <table class="mov-table">
             <thead>
                 <tr>
-                    <th>Fecha</th><th>Tipo</th><th>Cartera</th>
-                    <th class="right">Cantidad</th><th class="right">Precio</th><th class="right">Comisión</th><th></th>
+                    <th>Fecha</th><th>Tipo</th>
+                    {% if not deposito %}<th>Cartera</th>{% endif %}
+                    <th class="right">{% if deposito %}Importe €{% else %}Cantidad{% endif %}</th>
+                    {% if not deposito %}<th class="right">Precio</th><th class="right">Comisión</th>{% endif %}
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for m in movimientos %}
                 <tr>
                     <td>{{ m.fecha }}</td>
-                    <td>{{ m.get_tipo_display }}{% if m.origen_recurrente_id %} <span style="color: var(--muted); font-size:0.72rem;">(recurrente)</span>{% endif %}</td>
-                    <td>{% if m.grupo %}<span class="badge-cartera" style="background: {{ m.grupo.color }};">{{ m.grupo.nombre }}</span>{% else %}—{% endif %}</td>
-                    <td class="right">{{ m.cantidad|floatformat:4 }}</td>
-                    <td class="right">{{ m.precio_unitario|floatformat:4 }}</td>
-                    <td class="right">{{ m.comision|floatformat:2 }}</td>
-                    <td style="white-space:nowrap;">
-                        <a href="{% url 'finanzas:editar_movimiento' m.id %}" style="font-size:0.75rem; color:var(--muted); text-decoration:none; padding:3px 8px; border:1px solid var(--border-strong); border-radius:6px;">✏️</a>
+                    <td>
+                        {% if deposito %}{% if m.tipo == 'COMPRA' %}Aportación{% elif m.tipo == 'VENTA' %}Retirada{% else %}{{ m.get_tipo_display }}{% endif %}{% else %}{{ m.get_tipo_display }}{% endif %}
+                        {% if m.origen_recurrente_id %} <span style="color: var(--muted); font-size:0.72rem;">(recurrente)</span>{% endif %}
+                    </td>
+                    {% if not deposito %}<td>{% if m.grupo %}<span class="badge-cartera" style="background: {{ m.grupo.color }};">{{ m.grupo.nombre }}</span>{% else %}—{% endif %}</td>{% endif %}
+                    <td class="right">{% if deposito %}€{{ m.cantidad|floatformat:2 }}{% else %}{{ m.cantidad|floatformat:4 }}{% endif %}</td>
+                    {% if not deposito %}<td class="right">{{ m.precio_unitario|floatformat:4 }}</td><td class="right">{{ m.comision|floatformat:2 }}</td>{% endif %}
+                    <td style="white-space:nowrap; display:flex; gap:6px;">
+                        <a href="{% url 'finanzas:editar_movimiento' m.id %}" class="act-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
                         <form method="post" action="{% url 'finanzas:eliminar_movimiento' m.id %}" style="display:inline;"
                               onsubmit="return confirm('¿Eliminar este movimiento?');">
                             {% csrf_token %}
-                            <button type="submit" style="font-size:0.75rem; color:#b4442e; background:transparent; border:1px solid #b4442e55; border-radius:6px; padding:3px 8px; cursor:pointer;">🗑</button>
+                            <button type="submit" class="act-btn danger" title="Eliminar"><svg class="icon"><use href="#i-trash"/></svg></button>
                         </form>
                     </td>
                 </tr>

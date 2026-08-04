@@ -389,16 +389,20 @@ class InversionDetailView(LoginRequiredMixin, DetailView):
         context['aportaciones_recurrentes'] = reglas
         context['form_aportacion'] = AportacionRecurrenteForm()
 
-        # Datos calculados del depósito (valor con interés a fecha de hoy/liquidación)
+        # Datos calculados del depósito (valor con interés / saldo real indicado)
         if self.object.tipo == 'DEPOSITO':
-            valor, aportado = self.object.deposito_valor_y_aportado()
+            estado = self.object.deposito_estado()
+            aportado = estado['aportado']
             context['deposito'] = {
-                'valor': valor,
+                'valor': estado['valor'],
                 'aportado': aportado,
-                'interes': round(valor - aportado, 2),
+                'retirado': estado['retirado'],
+                'interes': estado['interes'],
                 'apertura': self.object.deposito_fecha_apertura,
                 'liquidado': self.object.deposito_fecha_liquidacion,
-                'interes_pct': (round(float((valor - aportado) / aportado * 100), 2)
+                'saldo_manual': self.object.deposito_saldo_manual,
+                'saldo_fecha': self.object.deposito_saldo_fecha,
+                'interes_pct': (round(float(estado['interes'] / aportado * 100), 2)
                                 if aportado and aportado > 0 else None),
             }
             context['form_deposito'] = MovimientoDepositoForm(initial={'tipo': 'COMPRA'})
@@ -833,19 +837,21 @@ class InversionListView(LoginRequiredMixin, ListView):
                 'movimientos': movs,
             })
 
-        # ─── Separar depósitos (excluir_de_patrimonio) del resto de la cartera ──
-        # No se mezclan en los totales/rentabilidad de mercado: tienen su propia
-        # sección y sus propios subtotales.
-        deposit_data = [d for d in inv_data if d['inv'].excluir_de_patrimonio]
-        inv_data = [d for d in inv_data if not d['inv'].excluir_de_patrimonio]
+        # ─── Separar depósitos del resto de la cartera de mercado ─────────────
+        # Un depósito nunca es parte de la cartera de acciones/ETF: tiene su
+        # propia sección y sus propios subtotales (su valor es capital, no
+        # cotización de mercado).
+        deposit_data = [d for d in inv_data if d['inv'].tipo == 'DEPOSITO']
+        inv_data = [d for d in inv_data if d['inv'].tipo != 'DEPOSITO']
 
-        # Para los depósitos, el valor "real" es el capital compuesto al interés.
+        # Para los depósitos, el valor "real" es el capital compuesto al interés
+        # (o el saldo real indicado).
         for d in deposit_data:
-            if d['inv'].tipo == 'DEPOSITO':
-                valor_dep, aportado_dep = d['inv'].deposito_valor_y_aportado()
-                d['dep_valor'] = valor_dep
-                d['dep_aportado'] = aportado_dep
-                d['dep_interes'] = round(valor_dep - aportado_dep, 2)
+            estado = d['inv'].deposito_estado()
+            d['dep_valor'] = estado['valor']
+            d['dep_aportado'] = estado['aportado']
+            d['dep_retirado'] = estado['retirado']
+            d['dep_interes'] = estado['interes']
 
         # ─── Totales cartera (sin depósitos) ─────────────────────────────────
         total_valor_actual = sum(d['valor_total'] for d in inv_data)
@@ -857,15 +863,10 @@ class InversionListView(LoginRequiredMixin, ListView):
         if total_coste_base > 0:
             rentabilidad_total = float((total_valor_actual - total_coste_base) / total_coste_base * 100)
 
-        # ─── Subtotales de depósitos (valor con interés cuando es un depósito) ─
-        deposit_total_aportado = sum(
-            (d.get('dep_aportado') if d.get('dep_aportado') is not None else d['inv'].valor_aportado)
-            for d in deposit_data
-        )
-        deposit_total_valor = sum(
-            (d.get('dep_valor') if d.get('dep_valor') is not None else d['valor_total'])
-            for d in deposit_data
-        )
+        # ─── Subtotales de depósitos ─────────────────────────────────────────
+        deposit_total_aportado = sum(d['dep_aportado'] for d in deposit_data)
+        deposit_total_valor = sum(d['dep_valor'] for d in deposit_data)
+        deposit_total_interes = sum(d['dep_interes'] for d in deposit_data)
 
         # ─── Carteras (grupos de inversión) del usuario ─────────────────────
         carteras = list(GrupoInversion.objects.filter(usuario=self.request.user))
@@ -899,6 +900,7 @@ class InversionListView(LoginRequiredMixin, ListView):
             'deposit_data': deposit_data,
             'deposit_total_aportado': deposit_total_aportado,
             'deposit_total_valor': deposit_total_valor,
+            'deposit_total_interes': deposit_total_interes,
             'carteras': carteras,
             'cartera_sel_id': cartera_sel_id,
             'cartera_kpis': cartera_kpis,
@@ -1141,3 +1143,29 @@ def eliminar_movimiento(request, pk):
     mov.delete()
     messages.success(request, 'Movimiento eliminado.')
     return redirect('finanzas:detalle', pk=inv_id)
+
+
+@login_required
+@require_POST
+def deposito_saldo_manual(request, pk):
+    """Fija (o borra) el saldo REAL de hoy de un depósito. Cuando está fijado,
+    el valor actual y el interés se calculan a partir de ese saldo, para cuadrar
+    con lo que dice el banco (el interés real puede variar por días)."""
+    inv = get_object_or_404(Inversion, id=pk, usuario=request.user, tipo='DEPOSITO')
+    saldo_raw = (request.POST.get('saldo') or '').strip()
+    fecha_raw = (request.POST.get('fecha') or '').strip()
+    if saldo_raw == '':
+        inv.deposito_saldo_manual = None
+        inv.deposito_saldo_fecha = None
+        inv.save(update_fields=['deposito_saldo_manual', 'deposito_saldo_fecha'])
+        messages.success(request, 'Saldo real eliminado: se vuelve al interés calculado.')
+        return redirect('finanzas:detalle', pk=inv.id)
+    try:
+        inv.deposito_saldo_manual = Decimal(saldo_raw.replace(',', '.'))
+    except (InvalidOperation, ValueError):
+        messages.error(request, 'Saldo no válido.')
+        return redirect('finanzas:detalle', pk=inv.id)
+    inv.deposito_saldo_fecha = parse_fecha(fecha_raw) or datetime.date.today()
+    inv.save(update_fields=['deposito_saldo_manual', 'deposito_saldo_fecha'])
+    messages.success(request, 'Saldo real actualizado. El interés se recalcula sobre este saldo.')
+    return redirect('finanzas:detalle', pk=inv.id)
