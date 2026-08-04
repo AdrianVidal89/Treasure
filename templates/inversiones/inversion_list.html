@@ -33,7 +33,21 @@
 .badge-ETF     { background: rgba(44, 95, 122,0.12); color: #2c5f7a; border: 1px solid #2c5f7a44; }
 .badge-FONDO   { background: rgba(183, 121, 31,0.12); color: #b7791f; border: 1px solid #b7791f44; }
 .badge-CRIPTO  { background: rgba(45, 106, 79,0.12); color: #1b4332; border: 1px solid #1b433244; }
+.badge-DEPOSITO { background: rgba(44, 95, 122,0.12); color: #2c5f7a; border: 1px solid #2c5f7a44; }
 .badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid var(--border-strong); }
+
+/* Sección de Depósitos (separada de la cartera de mercado) */
+.deposit-section { margin-top: 32px; }
+.deposit-section h2 { color: var(--text-color); font-size: 1.15rem; margin: 0 0 4px; }
+.deposit-section .sub { color: var(--muted); font-size: 0.82rem; margin: 0 0 16px; }
+.deposit-card { background: var(--app-bg); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 20px; margin-bottom: 12px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.deposit-card .dep-name { font-weight: 700; color: var(--text-color); }
+.deposit-card .dep-meta { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+.deposit-card .dep-metrics { display: flex; gap: 22px; margin-left: auto; flex-wrap: wrap; }
+.deposit-card .dep-metric { display: flex; flex-direction: column; text-align: right; }
+.deposit-card .dep-metric .l { font-size: 0.62rem; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.deposit-card .dep-metric .v { font-size: 0.95rem; font-weight: 700; }
 
 /* Fila expandible — histórico de movimientos */
 .historico-row { display: none; }
@@ -492,10 +506,65 @@
         <p>Esta cartera todavía no tiene activos asignados.</p>
         <p style="font-size:0.85rem;">Selecciona activos en el listado y usa «Asignar cartera».</p>
         <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary">Ver todas mis inversiones</a>
-        {% else %}
+        {% elif not deposit_data %}
         <p>No tienes inversiones registradas todavía.</p>
         <a href="{% url 'finanzas:crear' %}" class="btn btn-primary">Añadir primera inversión</a>
+        {% else %}
+        <p>No tienes inversiones de mercado registradas. Tus depósitos aparecen abajo.</p>
         {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- DEPÓSITOS (excluidos del patrimonio/cartera de mercado) -->
+    {% if deposit_data %}
+    <div class="deposit-section">
+        <h2>Depósitos</h2>
+        <p class="sub">
+            No suman en los totales de arriba ni en el patrimonio de los simuladores — ya los
+            cuentas en otra parte de la app. Aquí solo llevas su seguimiento y lo que le
+            corresponde pagar a Hacienda al liquidarlos.
+            Aportado: <strong style="color: var(--text-color);">€{{ deposit_total_aportado|floatformat:2 }}</strong>
+            {% if deposit_total_valor %}· Valor actual: <strong style="color: var(--text-color);">€{{ deposit_total_valor|floatformat:2 }}</strong>{% endif %}
+        </p>
+        {% for item in deposit_data %}
+        <div class="deposit-card">
+            <div>
+                <div class="dep-name">
+                    <a href="{% url 'finanzas:detalle' item.inv.id %}" style="color: inherit; text-decoration: none;">
+                        {{ item.inv.nombre }}
+                    </a>
+                    <span class="badge-tipo badge-DEPOSITO" style="margin-left: 6px;">{{ item.inv.get_tipo_display }}</span>
+                </div>
+                <div class="dep-meta">
+                    {{ item.inv.plataforma|default:"—" }}
+                    {% for c in item.carteras %}· <span style="color: {{ c.color }};">{{ c.nombre }}</span>{% endfor %}
+                </div>
+            </div>
+            <div class="dep-metrics">
+                <div class="dep-metric">
+                    <span class="l">Aportado</span>
+                    <span class="v">€{{ item.inv.valor_aportado|floatformat:2 }}</span>
+                </div>
+                {% if item.ganancia_realizada %}
+                <div class="dep-metric">
+                    <span class="l">Interés liquidado</span>
+                    <span class="v {% if item.ganancia_realizada >= 0 %}pos{% else %}neg{% endif %}">
+                        {% if item.ganancia_realizada >= 0 %}+{% endif %}€{{ item.ganancia_realizada|floatformat:2 }}
+                    </span>
+                </div>
+                {% endif %}
+                <div class="dep-metric">
+                    <span class="l">Movimientos</span>
+                    <span class="v">{{ item.movimientos|length }}</span>
+                </div>
+            </div>
+            <a href="{% url 'finanzas:detalle' item.inv.id %}"
+               style="font-size: 0.78rem; color: var(--muted); text-decoration: none;
+                      padding: 6px 12px; border: 1px solid var(--border-strong); border-radius: 8px;">
+                Ver / aportaciones
+            </a>
+        </div>
+        {% endfor %}
     </div>
     {% endif %}
 

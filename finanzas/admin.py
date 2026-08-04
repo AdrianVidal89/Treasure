@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import CuentaBancaria, SaldoMensualCuenta, RegistroMensual, TarjetaCredito
-from .models import Inversion, MovimientoInversion, ValorActualInversion, ResumenInversionesMensual, HistorialValorInversion, GrupoInversion
+from .models import Inversion, MovimientoInversion, ValorActualInversion, ResumenInversionesMensual, HistorialValorInversion, GrupoInversion, AportacionRecurrente
 from .models import TablaIRPF, CotizacionSS, DestinoIngreso, FuenteIngreso
 from .models import CategoriaGasto, PartidaGasto, FondoFamiliar, ReglaReparto
 
@@ -36,6 +36,11 @@ class HistorialAdmin(admin.ModelAdmin):
 class GrupoInversionAdmin(admin.ModelAdmin):
     list_display = ('nombre', 'usuario', 'num_activos', 'orden', 'color')
     search_fields = ('nombre',)
+
+@admin.register(AportacionRecurrente)
+class AportacionRecurrenteAdmin(admin.ModelAdmin):
+    list_display = ('inversion', 'importe', 'dia_mes', 'fecha_inicio', 'fecha_fin', 'activa')
+    list_filter = ('activa',)
 
 @admin.register(TablaIRPF)
 class TablaIRPFAdmin(admin.ModelAdmin):

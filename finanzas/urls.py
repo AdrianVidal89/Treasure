@@ -50,6 +50,12 @@ urlpatterns = [
     path('inversiones/carteras/', views.carteras_inversion, name='carteras'),
     path('inversiones/accion-masiva/', views.inversiones_accion_masiva, name='inversiones_accion_masiva'),
 
+    # Aportación recurrente (depósitos y activos con aportaciones periódicas)
+    path('inversiones/<int:pk>/aportacion-recurrente/crear/', views.aportacion_recurrente_crear, name='aportacion_recurrente_crear'),
+    path('inversiones/<int:pk>/aportacion-recurrente/<int:regla_id>/editar/', views.aportacion_recurrente_editar, name='aportacion_recurrente_editar'),
+    path('inversiones/<int:pk>/aportacion-recurrente/<int:regla_id>/eliminar/', views.aportacion_recurrente_eliminar, name='aportacion_recurrente_eliminar'),
+    path('inversiones/<int:pk>/aportacion-recurrente/<int:regla_id>/generar/', views.aportacion_recurrente_generar, name='aportacion_recurrente_generar'),
+
 
     # ── Ingresos ───────────────────────────────────────────────────────────
     path('ingresos/', views_ingresos.listar_ingresos, name='listar_ingresos'),

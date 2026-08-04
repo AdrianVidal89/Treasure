@@ -1,7 +1,9 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator, MaxValueValidator
 from decimal import Decimal
+from datetime import date
 ### Modulo general de finanzas ###
 
 class RegistroMensual(models.Model):
@@ -124,6 +126,7 @@ TIPOS_INVERSION = [
     ('CRIPTO', 'Criptomoneda'),
     ('FONDO', 'Fondo'),
     ('ETF', 'ETF'),
+    ('DEPOSITO', 'Depósito'),
     ('OTRO', 'Otro'),
 ]
 
@@ -217,6 +220,13 @@ class Inversion(models.Model):
         'GrupoInversion', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='inversiones',
         help_text="Cartera de inversión a la que pertenece este activo.",
+    )
+    excluir_de_patrimonio = models.BooleanField(
+        default=False,
+        help_text="No sumar en los totales de cartera ni en el patrimonio de los "
+                   "simuladores (p. ej. depósitos que ya cuentas en otra parte de la "
+                   "app). Sigue apareciendo en Inversiones, en su propia sección, y en "
+                   "el Informe Hacienda.",
     )
     fecha_creacion = models.DateField(auto_now_add=True)
 
@@ -322,6 +332,58 @@ class Inversion(models.Model):
         return round(ganancia, 2)
 
 
+class AportacionRecurrente(models.Model):
+    """Regla de aportación periódica (p. ej. mensual) a un activo — pensada
+    sobre todo para depósitos/planes con aportaciones regulares. No crea nada
+    automáticamente: calcula qué meses están pendientes de registrar y el
+    usuario decide cuándo generarlos (control total, sin tareas en segundo
+    plano)."""
+    inversion = models.ForeignKey(
+        Inversion, on_delete=models.CASCADE, related_name='aportaciones_recurrentes',
+    )
+    importe = models.DecimalField(max_digits=12, decimal_places=2)
+    dia_mes = models.IntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(28)],
+        help_text="Día del mes de la aportación (1-28, para que exista en todos los meses).",
+    )
+    fecha_inicio = models.DateField(help_text="Mes de la primera aportación.")
+    fecha_fin = models.DateField(
+        null=True, blank=True,
+        help_text="Último mes de aportación. Vacío = sigue indefinidamente (hasta hoy).",
+    )
+    activa = models.BooleanField(default=True)
+    fecha_creacion = models.DateField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-activa', '-fecha_inicio']
+
+    def __str__(self):
+        return f"{self.importe}€/mes ({self.dia_mes}) — {self.inversion.nombre}"
+
+    def meses_pendientes(self, hasta=None):
+        """Lista de (año, mes) entre fecha_inicio y el límite (fecha_fin u hoy)
+        que todavía no tienen un movimiento generado por esta regla."""
+        hasta = hasta or date.today()
+        limite = min(self.fecha_fin, hasta) if self.fecha_fin else hasta
+        if (self.fecha_inicio.year, self.fecha_inicio.month) > (limite.year, limite.month):
+            return []
+
+        generados = set(
+            self.movimientos_generados.values_list('fecha__year', 'fecha__month')
+        )
+        pendientes = []
+        anio, mes = self.fecha_inicio.year, self.fecha_inicio.month
+        while (anio, mes) <= (limite.year, limite.month):
+            if (anio, mes) not in generados:
+                pendientes.append((anio, mes))
+            mes += 1
+            if mes > 12:
+                mes = 1
+                anio += 1
+        return pendientes
+
+
 class MovimientoInversion(models.Model):
     COMPRA = 'COMPRA'
     VENTA = 'VENTA'
@@ -342,6 +404,11 @@ class MovimientoInversion(models.Model):
         'GrupoInversion', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='movimientos_compra',
         help_text="Cartera de inversión a la que pertenece esta compra.",
+    )
+    origen_recurrente = models.ForeignKey(
+        'AportacionRecurrente', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='movimientos_generados',
+        help_text="Regla de aportación recurrente que generó este movimiento (si aplica).",
     )
 
     def valor_total(self):
@@ -693,7 +760,7 @@ class FondoFamiliar(models.Model):
             return None
         return sum(
             (inv.valor_total_actual or Decimal('0'))
-            for inv in self.inversiones.select_related('valor_actual').all()
+            for inv in self.inversiones.filter(excluir_de_patrimonio=False).select_related('valor_actual').all()
         )
 
     @property
@@ -702,7 +769,7 @@ class FondoFamiliar(models.Model):
             return None
         return sum(
             (inv.valor_aportado or Decimal('0'))
-            for inv in self.inversiones.all()
+            for inv in self.inversiones.filter(excluir_de_patrimonio=False).all()
         )
 
     @property

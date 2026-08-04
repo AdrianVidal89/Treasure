@@ -110,6 +110,7 @@
                         <option value="ETF" {% if form.instance.tipo == 'ETF' %}selected{% endif %}>ETF</option>
                         <option value="FONDO" {% if form.instance.tipo == 'FONDO' %}selected{% endif %}>Fondo</option>
                         <option value="CRIPTO" {% if form.instance.tipo == 'CRIPTO' %}selected{% endif %}>Criptomoneda</option>
+                        <option value="DEPOSITO" {% if form.instance.tipo == 'DEPOSITO' %}selected{% endif %}>Depósito</option>
                         <option value="OTRO" {% if form.instance.tipo == 'OTRO' %}selected{% endif %}>Otro</option>
                     </select>
                 </div>
@@ -157,6 +158,21 @@
                     Se usará para prellenar la cartera de cada nueva compra de este activo. La cartera
                     real se asigna en cada compra (movimiento), con independencia de la plataforma.
                 </div>
+            </div>
+
+            <!-- Excluir de patrimonio (depósitos u otros que no quieres mezclar) -->
+            <div class="fg" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
+                <input type="checkbox" name="excluir_de_patrimonio" id="id_excluir_de_patrimonio"
+                       {% if form.instance.excluir_de_patrimonio %}checked{% endif %}
+                       style="width: 18px; height: 18px; accent-color: var(--primary-color);">
+                <label for="id_excluir_de_patrimonio" style="margin: 0; cursor: pointer;">
+                    No sumar en los totales de cartera ni en el patrimonio
+                </label>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--muted); margin: -14px 0 20px;">
+                Útil para depósitos u otras posiciones que ya cuentas en otra parte de la app:
+                seguirá apareciendo aquí, con su historial y en el Informe Hacienda, pero sin
+                mezclarse con el resto de tu cartera de mercado.
             </div>
 
             <!-- Actualización automática -->
