@@ -453,8 +453,11 @@ class Inversion(models.Model):
     def deposito_interes_anio(self, anio):
         """Interés generado (devengado) durante el ejercicio `anio`: variación
         del patrimonio realizado (valor + retirado acumulado) descontando las
-        aportaciones del año. Base orientativa del rendimiento a declarar."""
-        fin = date(anio, 12, 31)
+        aportaciones del año. Base orientativa del rendimiento a declarar.
+
+        Para el ejercicio en curso se corta a HOY: se declara lo devengado
+        hasta la fecha, no una proyección a 31 de diciembre."""
+        fin = min(date(anio, 12, 31), date.today())
         ini_prev = date(anio - 1, 12, 31)
         e_fin = self.deposito_estado(hasta=fin)
         e_ini = self.deposito_estado(hasta=ini_prev)

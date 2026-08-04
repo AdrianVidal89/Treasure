@@ -665,3 +665,45 @@ class DepositoSaldoRealYRetiradasTests(TestCase):
         self.assertGreater(e['interes'], Decimal('0'))
         self.assertIsNotNone(e['interes_pct'])
         self.assertEqual(e['interes_pct'], round(e['interes'] / e['aportado'] * 100, 2))
+
+
+class EvolucionUsaSaldoRealTests(TestCase):
+    """Evolución registra lo REAL: el mes en curso se valora a día de hoy, no
+    proyectando el interés hasta fin de mes."""
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar
+        self.user = User.objects.create_user('inversor', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.hoy = datetime.date.today()
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Depo Revolut', tipo_fondo='ahorro')
+
+    def test_mes_en_curso_muestra_el_saldo_real_no_el_proyectado(self):
+        from .views_evolucion import _construir_tabla, _flujos_por_mes
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depo', tipo='DEPOSITO', fondo=self.fondo,
+            deposito_tipo_interes=Decimal('2.07'), deposito_frecuencia='diaria',
+            deposito_saldo_manual=Decimal('6066'), deposito_saldo_fecha=self.hoy)
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=self.hoy - datetime.timedelta(days=200),
+            tipo='COMPRA', cantidad=Decimal('6000'), precio_unitario=Decimal('1'))
+
+        _, filas = _construir_tabla(self.hogar, self.hoy.year,
+                                    _flujos_por_mes(self.hogar, self.hoy.year))
+        actual = next(f for f in filas if f['mes'] == self.hoy.month)
+        celda = next(c for c in actual['celdas'] if c['fondo'].id == self.fondo.id)
+        # Exactamente el saldo real indicado, sin interés proyectado a fin de mes
+        self.assertEqual(celda['saldo_valor'], Decimal('6066.00'))
+        self.assertEqual(actual['liquidez'], Decimal('6066.00'))
+
+    def test_fecha_corte_no_va_al_futuro(self):
+        from .views_evolucion import _fecha_corte_mes
+        # Mes en curso → hoy
+        self.assertEqual(_fecha_corte_mes(self.hoy.year, self.hoy.month), self.hoy)
+        # Mes pasado → su último día (histórico real)
+        if self.hoy.month > 1:
+            self.assertEqual(_fecha_corte_mes(self.hoy.year, 1), datetime.date(self.hoy.year, 1, 31))

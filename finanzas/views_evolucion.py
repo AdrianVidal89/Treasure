@@ -40,6 +40,18 @@ def valor_depositos_hogar(hogar, hasta, solo_sin_fondo=False):
     return sum((inv.deposito_estado(hasta=hasta)['valor'] for inv in qs), Decimal('0'))
 
 
+
+def _fecha_corte_mes(año, mes):
+    """Fecha a la que valorar un mes: su último día, pero nunca en el futuro.
+    Evolución registra lo REAL, así que el mes en curso se valora a día de hoy
+    (si no, el depósito mostraría interés proyectado por encima del saldo real
+    que has indicado)."""
+    import calendar
+    fin = datetime.date(año, mes, calendar.monthrange(año, mes)[1])
+    hoy = datetime.date.today()
+    return min(fin, hoy)
+
+
 def _saldos_liquidez_patrimonio(saldos_qs, hogar=None, fecha_depositos=None, incluir_mercado=True):
     """
     Devuelve (liquidez, patrimonio).
@@ -116,9 +128,9 @@ def _liquidez_patrimonio_por_mes(hogar, año):
         if not saldos_mes:
             resultado[mes] = (None, None)
         else:
-            mes_fin = datetime.date(año, mes, calendar.monthrange(año, mes)[1])
             liquidez, patrimonio = _saldos_liquidez_patrimonio(
-                saldos_mes, hogar=hogar, fecha_depositos=mes_fin, incluir_mercado=False)
+                saldos_mes, hogar=hogar, fecha_depositos=_fecha_corte_mes(año, mes),
+                incluir_mercado=False)
             resultado[mes] = (liquidez, patrimonio)
     return resultado
 
@@ -160,10 +172,9 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
         saldos_actual = SaldoRealFondo.objects.filter(
             fondo__hogar=hogar, año=año, mes=ultimo_mes_con_datos
         ).select_related('fondo')
-        mes_fin_actual = datetime.date(
-            año, ultimo_mes_con_datos, calendar.monthrange(año, ultimo_mes_con_datos)[1])
         liquidez_actual, patrimonio_actual = _saldos_liquidez_patrimonio(
-            saldos_actual, hogar=hogar, fecha_depositos=mes_fin_actual)
+            saldos_actual, hogar=hogar,
+            fecha_depositos=_fecha_corte_mes(año, ultimo_mes_con_datos))
         # El fallback a precio de mercado (hogar=...) puede diferir del valor
         # crudo guardado en datos_por_mes; usamos el "actual" enriquecido como
         # punto real de ese mes para que la tarjeta y el gráfico coincidan.
@@ -347,7 +358,7 @@ def _construir_tabla(hogar, año, flujos_por_mes):
     filas = []
     prev_liquidez = None
     for mes in meses_mostrados:
-        mes_fin = datetime.date(año, mes, calendar.monthrange(año, mes)[1])
+        mes_fin = _fecha_corte_mes(año, mes)
         celdas_fondos = []
         liquidez_mes = Decimal('0')
         patrimonio_mes = Decimal('0')
