@@ -300,19 +300,25 @@
                 <!-- Saldo por fondo/depósito -->
                 <div class="evo-dep-grid">
                     {% for celda in fila.celdas %}
-                    <div class="evo-dep-row celda-editable"
+                    <div class="evo-dep-row {% if celda.auto_deposito %}evo-dep-auto{% else %}celda-editable{% endif %}"
+                         {% if not celda.auto_deposito %}
                          data-tipo="saldo"
                          data-fondo-id="{{ celda.fondo.id }}"
                          data-mes="{{ fila.mes }}"
                          data-anio="{{ año_actual }}"
                          data-valor="{% if celda.saldo_valor is not None %}{{ celda.saldo_valor|unlocalize }}{% endif %}"
                          data-color="{{ celda.fondo.color }}"
-                         title="Click para editar">
+                         title="Click para editar"
+                         {% else %}
+                         title="Saldo automático desde el depósito vinculado"
+                         {% endif %}>
                         <span class="dep-row-label">
                             <span class="fondo-dot" style="background: {{ celda.fondo.color }};"></span>
                             <span>
                                 {{ celda.fondo.nombre }}
-                                {% if celda.fondo.cuenta_asociada %}<span class="dep-row-sub">{{ celda.fondo.cuenta_asociada }}</span>{% endif %}
+                                {% if celda.auto_deposito %}
+                                <span class="dep-row-sub">{% for d in celda.depositos %}{{ d.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %} · auto</span>
+                                {% elif celda.fondo.cuenta_asociada %}<span class="dep-row-sub">{{ celda.fondo.cuenta_asociada }}</span>{% endif %}
                             </span>
                         </span>
                         <span class="cell-display">

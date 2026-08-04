@@ -459,10 +459,9 @@ class DepositoEnTablaEvolucionTests(TestCase):
         # El depósito aparece como celda propia con su valor
         self.assertEqual(len(fila_enero['celdas_depositos']), 1)
         self.assertEqual(fila_enero['celdas_depositos'][0]['valor'], Decimal('6000.00'))
-        # Y suma al patrimonio del mes (10.000 del fondo + 6.000 del depósito)
+        # Un depósito es dinero disponible: suma en LIQUIDEZ (y por tanto en patrimonio)
+        self.assertEqual(fila_enero['liquidez'], Decimal('16000.00'))
         self.assertEqual(fila_enero['patrimonio'], Decimal('16000.00'))
-        # La liquidez NO lo incluye (un depósito no es dinero disponible)
-        self.assertEqual(fila_enero['liquidez'], Decimal('10000'))
 
     def test_deposito_aparece_en_distribucion(self):
         dep = Inversion.objects.create(
@@ -476,3 +475,54 @@ class DepositoEnTablaEvolucionTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'DepoDistrib')
         self.assertEqual(resp.context['depositos_total'], Decimal('3000.00'))
+
+
+class DepositoVinculadoAFondoTests(TestCase):
+    """Un depósito vinculado a un fondo aporta su valor a través de ese fondo
+    (para heredar sus reglas/transferencias) sin contarse dos veces."""
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        self.user = User.objects.create_user('inversor', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.year = datetime.date.today().year
+
+    def test_deposito_vinculado_no_duplica_y_manda_sobre_el_saldo_manual(self):
+        from .models import FondoFamiliar, SaldoRealFondo
+        from .views_evolucion import _construir_tabla, _flujos_por_mes
+
+        fondo = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Depósito Revolut', tipo_fondo='ahorro')
+        # Saldo manual antiguo que debe quedar ignorado
+        SaldoRealFondo.objects.create(fondo=fondo, año=self.year, mes=1, saldo=Decimal('999'))
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depo', tipo='DEPOSITO', fondo=fondo,
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(self.year, 1, 5), tipo='COMPRA',
+            cantidad=Decimal('6000'), precio_unitario=Decimal('1'))
+
+        _, filas = _construir_tabla(self.hogar, self.year, _flujos_por_mes(self.hogar, self.year))
+        enero = next(f for f in filas if f['mes'] == 1)
+        celda = next(c for c in enero['celdas'] if c['fondo'].id == fondo.id)
+        self.assertTrue(celda['auto_deposito'])
+        self.assertEqual(celda['saldo_valor'], Decimal('6000.00'))
+        # No hay tarjeta suelta para este depósito (ya va dentro del fondo)
+        self.assertEqual(len(enero['celdas_depositos']), 0)
+        # Liquidez = solo el depósito (6000), no 6999
+        self.assertEqual(enero['liquidez'], Decimal('6000.00'))
+
+    def test_deposito_sin_fondo_suma_en_liquidez_como_tarjeta(self):
+        from .views_evolucion import _construir_tabla, _flujos_por_mes
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Suelto', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(self.year, 1, 5), tipo='COMPRA',
+            cantidad=Decimal('2000'), precio_unitario=Decimal('1'))
+
+        _, filas = _construir_tabla(self.hogar, self.year, _flujos_por_mes(self.hogar, self.year))
+        enero = next(f for f in filas if f['mes'] == 1)
+        self.assertEqual(len(enero['celdas_depositos']), 1)
+        self.assertEqual(enero['liquidez'], Decimal('2000.00'))

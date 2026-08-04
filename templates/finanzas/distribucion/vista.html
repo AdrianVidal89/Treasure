@@ -349,9 +349,9 @@
 
             {% if depositos_data %}
             <!-- Depósitos: capital con valor automático (no son fondos ni cartera) -->
-            <div class="section-title" style="margin-top:24px;">Depósitos · capital</div>
+            <div class="section-title" style="margin-top:24px;">Depósitos · liquidez</div>
             <p style="font-size:0.78rem; color:var(--muted); margin:-6px 0 10px;">
-                Su valor se calcula solo (interés + aportaciones/retiradas) y cuenta como patrimonio
+                Su valor se calcula solo (interés + aportaciones/retiradas) y cuenta como liquidez
                 en Evolución. Total: <strong style="color:var(--text-color);">€{{ depositos_total|floatformat:2 }}</strong>
                 {% if depositos_interes %}· interés <strong style="color:#2d6a4f;">+€{{ depositos_interes|floatformat:2 }}</strong>{% endif %}
             </p>
@@ -370,6 +370,19 @@
                     · aportado €{{ dep.aportado|floatformat:2 }}
                     {% if dep.retirado %}· retirado €{{ dep.retirado|floatformat:2 }}{% endif %}
                     · interés <span style="color:{% if dep.interes >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">{% if dep.interes >= 0 %}+{% endif %}€{{ dep.interes|floatformat:2 }}</span>
+                </div>
+                <div style="font-size:0.75rem; margin-top:6px;">
+                    {% if dep.obj.fondo %}
+                    <span style="color:var(--muted);">Recibe reparto vía fondo:</span>
+                    <strong style="color:{{ dep.obj.fondo.color }};">{{ dep.obj.fondo.nombre }}</strong>
+                    <span style="color:var(--muted);">— asígnale reglas o transferencias eligiendo ese fondo.</span>
+                    {% else %}
+                    <span style="color:#b7791f;">
+                        Sin fondo vinculado: para poder asignarle una regla de reparto o una
+                        transferencia,
+                        <a href="{% url 'finanzas:editar' dep.obj.id %}" style="color:var(--primary-color); font-weight:600;">vincúlalo a un fondo</a>.
+                    </span>
+                    {% endif %}
                 </div>
             </div>
             {% endfor %}
