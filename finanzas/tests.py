@@ -594,3 +594,74 @@ class FondoPropietarioTests(TestCase):
         })
         fondo.refresh_from_db()
         self.assertIsNone(fondo.propietario_id)
+
+
+class DepositoSaldoRealYRetiradasTests(TestCase):
+    """El saldo real es una FOTO en su fecha, no un valor fijo: las retiradas y
+    aportaciones posteriores se aplican sobre él, y el rendimiento se mantiene."""
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+        self.hoy = datetime.date.today()
+
+    def _dep(self, saldo=None, dias_apertura=200):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='D', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('2.07'), deposito_frecuencia='diaria',
+            deposito_saldo_manual=saldo,
+            deposito_saldo_fecha=self.hoy if saldo is not None else None)
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=self.hoy - datetime.timedelta(days=dias_apertura),
+            tipo='COMPRA', cantidad=Decimal('6000'), precio_unitario=Decimal('1'))
+        return dep
+
+    def _mov(self, dep, tipo, importe, fecha=None):
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=fecha or self.hoy, tipo=tipo,
+            cantidad=Decimal(str(importe)), precio_unitario=Decimal('1'))
+
+    def test_saldo_real_sin_retiradas(self):
+        e = self._dep(Decimal('6066')).deposito_estado()
+        self.assertEqual(e['valor'], Decimal('6066.00'))
+        self.assertEqual(e['interes'], Decimal('66.00'))
+        self.assertEqual(e['interes_pct'], Decimal('1.10'))
+
+    def test_retirada_total_deja_saldo_cero_y_conserva_rendimiento(self):
+        dep = self._dep(Decimal('6066'))
+        self._mov(dep, 'VENTA', '6066')
+        e = dep.deposito_estado()
+        self.assertEqual(e['valor'], Decimal('0'))          # no queda nada
+        self.assertEqual(e['retirado'], Decimal('6066.00'))
+        self.assertEqual(e['interes'], Decimal('66.00'))    # el rendimiento se mantiene
+        self.assertEqual(e['interes_pct'], Decimal('1.10'))
+
+    def test_retirada_parcial_resta_del_saldo(self):
+        dep = self._dep(Decimal('6066'))
+        self._mov(dep, 'VENTA', '1000')
+        e = dep.deposito_estado()
+        self.assertEqual(e['valor'], Decimal('5066.00'))    # 6066 − 1000
+        self.assertEqual(e['interes'], Decimal('66.00'))
+
+    def test_aportacion_posterior_al_saldo_real_suma(self):
+        dep = self._dep(Decimal('6066'))
+        self._mov(dep, 'COMPRA', '500')
+        e = dep.deposito_estado()
+        self.assertEqual(e['valor'], Decimal('6566.00'))    # 6066 + 500
+        self.assertEqual(e['aportado'], Decimal('6500.00'))
+        self.assertEqual(e['interes'], Decimal('66.00'))
+
+    def test_saldo_real_el_dia_de_apertura_no_duplica(self):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='F', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual',
+            deposito_saldo_manual=Decimal('6000'), deposito_saldo_fecha=self.hoy)
+        self._mov(dep, 'COMPRA', '6000')
+        e = dep.deposito_estado()
+        self.assertEqual(e['valor'], Decimal('6000.00'))
+        self.assertEqual(e['interes'], Decimal('0.00'))
+
+    def test_rendimiento_en_pct_sin_saldo_real(self):
+        dep = self._dep()  # interés teórico
+        e = dep.deposito_estado()
+        self.assertGreater(e['interes'], Decimal('0'))
+        self.assertIsNotNone(e['interes_pct'])
+        self.assertEqual(e['interes_pct'], round(e['interes'] / e['aportado'] * 100, 2))

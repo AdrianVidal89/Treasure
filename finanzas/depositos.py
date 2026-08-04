@@ -45,26 +45,52 @@ def factor_interes(r_anual, periodos_ano, dias):
     return (Decimal('1') + r_anual / m) ** exponente
 
 
-def valor_a_fecha(flujos, r_anual, periodos_ano, hasta):
+def valor_a_fecha(flujos, r_anual, periodos_ano, hasta, anclaje=None):
     """Devuelve (valor, aportado_neto) del depósito a la fecha `hasta`.
 
     - `flujos`: iterable de (fecha, importe_neto) con importe positivo para
       aportaciones y negativo para retiradas. No hace falta que venga ordenado.
+    - `anclaje`: (fecha, saldo) opcional. Es el saldo REAL conocido en esa fecha
+      (p. ej. el que dice el banco). Se toma como punto de partida —los flujos
+      anteriores ya están contenidos en él— y a partir de ahí se siguen
+      aplicando los flujos posteriores y el interés. NO es un valor fijo: si
+      después retiras dinero, el saldo baja.
     - `valor`: saldo con intereses a `hasta`.
     - `aportado_neto`: suma de los flujos de capital hasta `hasta` (sin interés).
     """
     flujos = sorted(((f, Decimal(str(i))) for (f, i) in flujos), key=lambda x: x[0])
-    flujos = [(f, i) for (f, i) in flujos if f <= hasta]
-    if not flujos:
+    flujos_hasta = [(f, i) for (f, i) in flujos if f <= hasta]
+    aportado = sum((i for _, i in flujos_hasta), Decimal('0'))
+
+    # El anclaje solo tiene sentido si el depósito ya existía en esa fecha; si
+    # es anterior o igual a la apertura, no hay saldo previo que anclar.
+    if anclaje is not None and flujos and anclaje[0] <= flujos[0][0]:
+        anclaje = None
+
+    if anclaje is not None:
+        ancla_fecha, ancla_saldo = anclaje[0], Decimal(str(anclaje[1]))
+        # El saldo real es la foto ANTES de los movimientos de ese día: se
+        # aplican los flujos de esa fecha en adelante (así, si hoy indicas
+        # 6.066 y retiras 6.066, el saldo queda en 0).
+        posteriores = [(f, i) for (f, i) in flujos_hasta if f >= ancla_fecha]
+        balance = ancla_saldo
+        fecha_ant = ancla_fecha
+        for fecha, importe in posteriores:
+            balance = balance * factor_interes(r_anual, periodos_ano, (fecha - fecha_ant).days)
+            balance += importe
+            fecha_ant = fecha
+        balance = balance * factor_interes(r_anual, periodos_ano, (hasta - fecha_ant).days)
+        return balance, aportado
+
+    if not flujos_hasta:
         return Decimal('0'), Decimal('0')
 
     balance = Decimal('0')
-    fecha_ant = flujos[0][0]
-    for fecha, importe in flujos:
+    fecha_ant = flujos_hasta[0][0]
+    for fecha, importe in flujos_hasta:
         balance = balance * factor_interes(r_anual, periodos_ano, (fecha - fecha_ant).days)
         balance += importe
         fecha_ant = fecha
     balance = balance * factor_interes(r_anual, periodos_ano, (hasta - fecha_ant).days)
 
-    aportado = sum((i for _, i in flujos), Decimal('0'))
     return balance, aportado

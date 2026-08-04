@@ -543,17 +543,24 @@
             <div class="dep-metrics">
                 {% if item.dep_valor != None %}
                 <div class="dep-metric">
-                    <span class="l">Valor actual</span>
+                    <span class="l">Saldo restante</span>
                     <span class="v" style="color:#2c5f7a;">€{{ item.dep_valor|floatformat:2 }}</span>
                 </div>
                 <div class="dep-metric">
                     <span class="l">Aportado</span>
                     <span class="v">€{{ item.dep_aportado|floatformat:2 }}</span>
                 </div>
+                {% if item.dep_retirado %}
                 <div class="dep-metric">
-                    <span class="l">Interés</span>
+                    <span class="l">Retirado</span>
+                    <span class="v">€{{ item.dep_retirado|floatformat:2 }}</span>
+                </div>
+                {% endif %}
+                <div class="dep-metric">
+                    <span class="l">Rendimiento</span>
                     <span class="v {% if item.dep_interes >= 0 %}pos{% else %}neg{% endif %}">
-                        {% if item.dep_interes >= 0 %}+{% endif %}€{{ item.dep_interes|floatformat:2 }}
+                        {% if item.dep_interes >= 0 %}+{% endif %}€{{ item.dep_interes|floatformat:2 }}{% if item.dep_interes_pct != None %}
+                        <span style="font-size:0.75rem;">({% if item.dep_interes_pct >= 0 %}+{% endif %}{{ item.dep_interes_pct }}%)</span>{% endif %}
                     </span>
                 </div>
                 {% else %}
