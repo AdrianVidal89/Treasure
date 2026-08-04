@@ -428,3 +428,51 @@ class DepositoEnEvolucionTests(TestCase):
             tipo='COMPRA', cantidad=Decimal('5000'), precio_unitario=Decimal('1'))
         total = valor_depositos_hogar(self.hogar, datetime.date.today())
         self.assertEqual(total, Decimal('5000.00'))
+
+
+class DepositoEnTablaEvolucionTests(TestCase):
+    """El depósito debe aparecer como celda propia en la tabla de Evolución y
+    sumar al patrimonio del mes, sin que el usuario registre su saldo."""
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, SaldoRealFondo
+        self.user = User.objects.create_user('inversor', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.year = datetime.date.today().year
+        fondo = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        SaldoRealFondo.objects.create(fondo=fondo, año=self.year, mes=1, saldo=Decimal('10000'))
+
+    def test_celda_de_deposito_y_patrimonio(self):
+        from .views_evolucion import _construir_tabla, _flujos_por_mes
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depo', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(self.year, 1, 10), tipo='COMPRA',
+            cantidad=Decimal('6000'), precio_unitario=Decimal('1'))
+
+        _, filas = _construir_tabla(self.hogar, self.year, _flujos_por_mes(self.hogar, self.year))
+        fila_enero = next(f for f in filas if f['mes'] == 1)
+        # El depósito aparece como celda propia con su valor
+        self.assertEqual(len(fila_enero['celdas_depositos']), 1)
+        self.assertEqual(fila_enero['celdas_depositos'][0]['valor'], Decimal('6000.00'))
+        # Y suma al patrimonio del mes (10.000 del fondo + 6.000 del depósito)
+        self.assertEqual(fila_enero['patrimonio'], Decimal('16000.00'))
+        # La liquidez NO lo incluye (un depósito no es dinero disponible)
+        self.assertEqual(fila_enero['liquidez'], Decimal('10000'))
+
+    def test_deposito_aparece_en_distribucion(self):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='DepoDistrib', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(self.year, 1, 10), tipo='COMPRA',
+            cantidad=Decimal('3000'), precio_unitario=Decimal('1'))
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:vista_distribucion'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'DepoDistrib')
+        self.assertEqual(resp.context['depositos_total'], Decimal('3000.00'))

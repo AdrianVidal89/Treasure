@@ -116,6 +116,8 @@
 }
 .dep-row-label { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-color); min-width: 0; }
 .dep-row-sub { font-size: 0.68rem; color: var(--muted); display: block; }
+/* Depósitos: valor automático (no editable), se distinguen con borde punteado */
+.evo-dep-auto { border-style: dashed; border-color: color-mix(in srgb, #2c5f7a 45%, var(--border)); }
 .evo-month-totals { display: flex; gap: 28px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 
 /* Edición en línea */
@@ -316,6 +318,27 @@
                         <span class="cell-display">
                             {% if celda.saldo_valor is not None %}
                                 <span class="cell-valor" style="color: {{ celda.fondo.color }};">€{{ celda.saldo_valor|floatformat:0 }}</span>
+                            {% else %}
+                                <span class="cell-vacio">—</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+
+                    {% for celda in fila.celdas_depositos %}
+                    <div class="evo-dep-row evo-dep-auto" title="Depósito — valor calculado automáticamente">
+                        <span class="dep-row-label">
+                            <span class="fondo-dot" style="background: #2c5f7a;"></span>
+                            <span>
+                                <a href="{% url 'finanzas:detalle' celda.deposito.id %}" style="color:inherit; text-decoration:none;">{{ celda.deposito.nombre }}</a>
+                                <span class="dep-row-sub">
+                                    {{ celda.deposito.plataforma|default:"Depósito" }} · auto
+                                </span>
+                            </span>
+                        </span>
+                        <span class="cell-display">
+                            {% if celda.valor is not None %}
+                                <span class="cell-valor" style="color: #2c5f7a;">€{{ celda.valor|floatformat:0 }}</span>
                             {% else %}
                                 <span class="cell-vacio">—</span>
                             {% endif %}

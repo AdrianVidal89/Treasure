@@ -346,6 +346,34 @@
             {% empty %}
             <p class="empty-msg">Sin fondos definidos. Crea el primero con “＋ Nuevo fondo”.</p>
             {% endfor %}
+
+            {% if depositos_data %}
+            <!-- Depósitos: capital con valor automático (no son fondos ni cartera) -->
+            <div class="section-title" style="margin-top:24px;">Depósitos · capital</div>
+            <p style="font-size:0.78rem; color:var(--muted); margin:-6px 0 10px;">
+                Su valor se calcula solo (interés + aportaciones/retiradas) y cuenta como patrimonio
+                en Evolución. Total: <strong style="color:var(--text-color);">€{{ depositos_total|floatformat:2 }}</strong>
+                {% if depositos_interes %}· interés <strong style="color:#2d6a4f;">+€{{ depositos_interes|floatformat:2 }}</strong>{% endif %}
+            </p>
+            {% for dep in depositos_data %}
+            <div class="fondo-card" style="border-left:3px solid #2c5f7a;">
+                <div class="fondo-head">
+                    <div class="fondo-title">
+                        <a href="{% url 'finanzas:detalle' dep.obj.id %}" style="color:inherit; text-decoration:none;">{{ dep.obj.nombre }}</a>
+                        <span style="color:#2c5f7a; font-weight:700; margin-left:8px;">€{{ dep.valor|floatformat:2 }}</span>
+                    </div>
+                </div>
+                <div style="font-size:0.75rem; color:var(--muted); margin-top:4px;">
+                    <span class="tag tag-ahorro">Depósito</span>
+                    {% if dep.obj.plataforma %}· {{ dep.obj.plataforma }}{% endif %}
+                    · {{ dep.obj.deposito_tipo_interes|default:"0"|floatformat:"-3" }}% anual
+                    · aportado €{{ dep.aportado|floatformat:2 }}
+                    {% if dep.retirado %}· retirado €{{ dep.retirado|floatformat:2 }}{% endif %}
+                    · interés <span style="color:{% if dep.interes >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">{% if dep.interes >= 0 %}+{% endif %}€{{ dep.interes|floatformat:2 }}</span>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
         </div>
     </div>
 </div>
