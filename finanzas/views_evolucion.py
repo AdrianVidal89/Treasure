@@ -295,6 +295,9 @@ def _serie_evolucion(hogar, año, flujos_por_mes, resumen):
 
 
 def _construir_tabla(hogar, año, flujos_por_mes):
+    import calendar
+    from .models import Inversion
+
     fondos = list(FondoFamiliar.objects.filter(hogar=hogar, activo=True).order_by('orden', 'nombre'))
     hoy = datetime.date.today()
     meses_mostrados = list(range(1, min(hoy.month + 1, 13))) if año == hoy.year else list(range(1, 13))
@@ -303,6 +306,14 @@ def _construir_tabla(hogar, año, flujos_por_mes):
         fondo__hogar=hogar, año=año
     ).select_related('fondo')
     saldos_map = {(s.fondo_id, s.mes): s for s in saldos_qs}
+
+    # Depósitos del hogar: su valor se calcula solo (no se introduce a mano) y
+    # cuenta como capital en el patrimonio de cada mes.
+    depositos = list(
+        Inversion.objects
+        .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
+        .prefetch_related('movimientos')
+    )
 
     filas = []
     prev_liquidez = None
@@ -322,6 +333,19 @@ def _construir_tabla(hogar, año, flujos_por_mes):
                     liquidez_mes += sr.saldo
                 patrimonio_mes += sr.saldo
 
+        # Celdas de depósito (automáticas, a fin de mes)
+        mes_fin = datetime.date(año, mes, calendar.monthrange(año, mes)[1])
+        celdas_depositos = []
+        for dep in depositos:
+            estado = dep.deposito_estado(hasta=mes_fin)
+            valor_dep = estado['valor']
+            celdas_depositos.append({
+                'deposito': dep,
+                'valor': valor_dep if valor_dep > 0 else None,
+                'interes': estado['interes'],
+            })
+            patrimonio_mes += valor_dep
+
         # El ingreso del mes se DERIVA de Distribución (suma de ingresos reales
         # del mes, con los ajustes aplicados allí), no se introduce a mano.
         ingreso_mes = flujos_por_mes[mes]['ingreso_base_hogar']
@@ -338,6 +362,7 @@ def _construir_tabla(hogar, año, flujos_por_mes):
             'mes': mes,
             'mes_nombre': MESES_NOMBRES[mes],
             'celdas': celdas_fondos,
+            'celdas_depositos': celdas_depositos,
             'ingreso_mes': ingreso_mes if ingreso_mes and ingreso_mes > 0 else None,
             'liquidez': liquidez_mes if liquidez_mes > 0 else None,
             'patrimonio': patrimonio_mes if patrimonio_mes > 0 else None,

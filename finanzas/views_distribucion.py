@@ -59,6 +59,20 @@ def vista_distribucion(request):
 
     anios = [anio - 1, anio, anio + 1]
 
+    # Depósitos del hogar: capital con valor calculado automáticamente.
+    from .models import Inversion
+    depositos_data = []
+    depositos_total = Decimal('0')
+    depositos_interes = Decimal('0')
+    for dep in (Inversion.objects
+                .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
+                .prefetch_related('movimientos')
+                .order_by('nombre')):
+        estado = dep.deposito_estado()
+        depositos_data.append({'obj': dep, **estado})
+        depositos_total += estado['valor']
+        depositos_interes += estado['interes']
+
     return render(request, 'finanzas/distribucion/vista.html', {
         'hogar': hogar,
         'd': datos,
@@ -71,6 +85,9 @@ def vista_distribucion(request):
         'mes_actual': mes,
         'anio_actual': anio,
         'anios': anios,
+        'depositos_data': depositos_data,
+        'depositos_total': depositos_total,
+        'depositos_interes': depositos_interes,
     })
 
 

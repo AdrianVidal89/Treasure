@@ -11,15 +11,26 @@
 }
 .inv-form .fg { margin-bottom: 20px; }
 .inv-form label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
-.inv-form select, .inv-form input[type="text"], .inv-form input[type="number"] {
-    width: 100%; padding: 14px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
+/* Todos los controles con el MISMO tamaño (incluye date, que antes quedaba diminuto) */
+.inv-form select,
+.inv-form input[type="text"],
+.inv-form input[type="number"],
+.inv-form input[type="date"] {
+    width: 100%; height: 52px; padding: 0 16px; border: 1px solid var(--border-strong); border-radius: 10px;
     background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;
+    font-family: inherit; line-height: normal; -webkit-appearance: none; appearance: none;
 }
+.inv-form select { -webkit-appearance: auto; appearance: auto; }
+.inv-form input[type="date"] { -webkit-appearance: none; min-width: 0; }
 .inv-form select:focus, .inv-form input:focus {
     outline: none; border-color: var(--primary-color); box-shadow: 0 1px 2px rgba(28,35,33,.06);
 }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+/* Rejillas: los inputs se alinean abajo, así una etiqueta de 2 líneas no descuadra la fila */
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: end; }
+.form-row-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; align-items: end; }
+.form-row .fg, .form-row-3 .fg { margin-bottom: 0; min-width: 0; }
+.form-row { margin-bottom: 20px; }
+.form-row-3 label, .form-row label { min-height: 2.4em; display: flex; align-items: flex-end; }
 
 /* Ticker search */
 .ticker-search-wrap { position: relative; }
