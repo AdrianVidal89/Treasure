@@ -385,13 +385,20 @@ class Inversion(models.Model):
         """Estado del depósito a la fecha `hasta` (por defecto: liquidación u hoy).
 
         Devuelve dict con:
-          - valor:    saldo con interés (o el saldo REAL indicado, si existe).
+          - valor:    saldo que queda en el depósito (con intereses).
           - aportado: dinero total ingresado (aportaciones).
           - retirado: dinero total retirado.
           - interes:  rendimiento generado = valor + retirado − aportado.
-                      (Robusto ante retiradas totales: si retiras 6.066 de un
-                      depósito de 6.000, el interés sigue siendo +66, no −66.)
+                      Es lo que has ganado, con independencia de que lo hayas
+                      sacado o siga dentro: si metes 6.000, genera 66 y lo
+                      retiras todo, el saldo queda en 0 y el interés en +66.
+          - interes_pct: ese rendimiento en % sobre lo aportado.
+
+        Si hay un saldo REAL indicado, se usa como foto en su fecha (anclaje) y
+        a partir de ahí se siguen aplicando retiradas/aportaciones e intereses.
         """
+        from .depositos import valor_a_fecha, PERIODOS_ANO
+
         hoy_ref = self.deposito_fecha_liquidacion or date.today()
         if hasta is None:
             hasta = hoy_ref
@@ -400,20 +407,25 @@ class Inversion(models.Model):
 
         aportado, retirado = self._sumas_deposito(hasta)
 
-        # Saldo real indicado por el usuario: manda a partir de su fecha.
+        r = (self.deposito_tipo_interes or Decimal('0')) / Decimal('100')
+        m = PERIODOS_ANO.get(self.deposito_frecuencia or 'anual', 1)
+
+        # El saldo real solo ancla el cálculo a partir de SU fecha.
+        anclaje = None
         saldo_fecha = self.deposito_saldo_fecha or hoy_ref
         if self.deposito_saldo_manual is not None and hasta >= saldo_fecha:
-            valor = round(self.deposito_saldo_manual, 2)
-        else:
-            from .depositos import valor_a_fecha, PERIODOS_ANO
-            r = (self.deposito_tipo_interes or Decimal('0')) / Decimal('100')
-            m = PERIODOS_ANO.get(self.deposito_frecuencia or 'anual', 1)
-            valor_calc, _ = valor_a_fecha(self._flujos_deposito(), r, m, hasta)
-            valor = round(valor_calc, 2)
+            anclaje = (saldo_fecha, self.deposito_saldo_manual)
+
+        valor_calc, _ = valor_a_fecha(self._flujos_deposito(), r, m, hasta, anclaje=anclaje)
+        # Un depósito no puede quedar en negativo por redondeos de la retirada.
+        valor = max(Decimal('0'), round(valor_calc, 2))
 
         interes = round(valor + retirado - aportado, 2)
+        interes_pct = (round(interes / aportado * 100, 2)
+                       if aportado and aportado > 0 else None)
         return {'valor': valor, 'aportado': round(aportado, 2),
-                'retirado': round(retirado, 2), 'interes': interes, 'hasta': hasta}
+                'retirado': round(retirado, 2), 'interes': interes,
+                'interes_pct': interes_pct, 'hasta': hasta}
 
     # Compat: (valor, aportado) — aportado = neto (aportado − retirado) para el
     # "dinero que queda ingresado". El desglose completo está en deposito_estado.

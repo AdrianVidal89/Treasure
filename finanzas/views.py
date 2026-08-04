@@ -392,18 +392,14 @@ class InversionDetailView(LoginRequiredMixin, DetailView):
         # Datos calculados del depósito (valor con interés / saldo real indicado)
         if self.object.tipo == 'DEPOSITO':
             estado = self.object.deposito_estado()
-            aportado = estado['aportado']
             context['deposito'] = {
-                'valor': estado['valor'],
-                'aportado': aportado,
-                'retirado': estado['retirado'],
-                'interes': estado['interes'],
+                **estado,
                 'apertura': self.object.deposito_fecha_apertura,
                 'liquidado': self.object.deposito_fecha_liquidacion,
                 'saldo_manual': self.object.deposito_saldo_manual,
                 'saldo_fecha': self.object.deposito_saldo_fecha,
-                'interes_pct': (round(float(estado['interes'] / aportado * 100), 2)
-                                if aportado and aportado > 0 else None),
+                # Total recuperado + lo que queda, para ver el cierre de un vistazo
+                'total_recuperado': round(estado['valor'] + estado['retirado'], 2),
             }
             context['form_deposito'] = MovimientoDepositoForm(initial={'tipo': 'COMPRA'})
         return context
@@ -852,6 +848,7 @@ class InversionListView(LoginRequiredMixin, ListView):
             d['dep_aportado'] = estado['aportado']
             d['dep_retirado'] = estado['retirado']
             d['dep_interes'] = estado['interes']
+            d['dep_interes_pct'] = estado['interes_pct']
 
         # ─── Totales cartera (sin depósitos) ─────────────────────────────────
         total_valor_actual = sum(d['valor_total'] for d in inv_data)

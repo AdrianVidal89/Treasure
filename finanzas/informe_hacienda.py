@@ -226,8 +226,8 @@ def calcular_informe_depositos(hogar, anio):
     filas = []
     for inv in depositos:
         interes_anio = inv.deposito_interes_anio(anio)
-        valor, aportado = inv.deposito_valor_y_aportado()
-        interes_total = round(valor - aportado, 2)
+        estado = inv.deposito_estado()
+        interes_total = estado['interes']
         liquidado_en_anio = bool(
             inv.deposito_fecha_liquidacion and inv.deposito_fecha_liquidacion.year == anio
         )
@@ -244,6 +244,10 @@ def calcular_informe_depositos(hogar, anio):
             'frecuencia': inv.get_deposito_frecuencia_display(),
             'interes_anio': interes_anio,
             'interes_total': interes_total,
+            'interes_pct': estado['interes_pct'],
+            'saldo': estado['valor'],
+            'aportado': estado['aportado'],
+            'retirado': estado['retirado'],
             'liquidado': inv.deposito_fecha_liquidacion,
             'liquidado_en_anio': liquidado_en_anio,
         })

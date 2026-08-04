@@ -204,7 +204,7 @@ def informe_hacienda_xlsx(request):
     if informe['depositos']:
         wsd = wb.create_sheet('Depósitos')
         cols_dep = [('Depósito', 26), ('Titular', 14), ('Fondo', 20), ('Apertura', 14), ('Tipo interés', 14),
-                    ('Frecuencia', 14), (f'Interés {anio}', 16), ('Interés total', 16), ('Liquidado', 14)]
+                    ('Frecuencia', 14), (f'Interés {anio}', 16), ('Rendimiento total', 18), ('Liquidado', 14), ('Rend. %', 12)]
         for c, (titulo, ancho) in enumerate(cols_dep, start=1):
             celda = wsd.cell(row=1, column=c, value=titulo)
             celda.fill = encabezado_fill
@@ -221,6 +221,7 @@ def informe_hacienda_xlsx(request):
             wsd.cell(row=rd, column=6, value=d['frecuencia'])
             wsd.cell(row=rd, column=7, value=_fmt(d['interes_anio'])).number_format = euro
             wsd.cell(row=rd, column=8, value=_fmt(d['interes_total'])).number_format = euro
+            wsd.cell(row=rd, column=10, value=(float(d['interes_pct']) / 100 if d.get('interes_pct') is not None else None)).number_format = '0.00%'
             wsd.cell(row=rd, column=9, value=d['liquidado'].strftime('%d/%m/%Y') if d['liquidado'] else '—')
             rd += 1
         wsd.cell(row=rd + 1, column=6, value='Total rendimientos').font = negrita
@@ -380,7 +381,8 @@ def informe_hacienda_pdf(request):
                 d['nombre'][:24], d['titular'][:14], (d.get('fondo') or '—')[:18],
                 d['apertura'].strftime('%d/%m/%Y') if d['apertura'] else '—',
                 (f"{float(d['tipo_interes']):.3f}%" if d['tipo_interes'] else '0%'),
-                moneda(d['interes_anio']), moneda(d['interes_total']),
+                moneda(d['interes_anio']),
+                moneda(d['interes_total']) + (f" ({d['interes_pct']:+.2f}%)" if d.get('interes_pct') is not None else ''),
             ])
         dep_filas.append(['', '', '', '', '', 'TOTAL', moneda(informe['interes_depositos'])])
         tabla_dep = Table(dep_filas, repeatRows=1)

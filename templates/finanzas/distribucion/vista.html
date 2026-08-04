@@ -370,7 +370,7 @@
                     · {{ dep.obj.deposito_tipo_interes|default:"0"|floatformat:"-3" }}% anual
                     · aportado €{{ dep.aportado|floatformat:2 }}
                     {% if dep.retirado %}· retirado €{{ dep.retirado|floatformat:2 }}{% endif %}
-                    · interés <span style="color:{% if dep.interes >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">{% if dep.interes >= 0 %}+{% endif %}€{{ dep.interes|floatformat:2 }}</span>
+                    · rendimiento <span style="color:{% if dep.interes >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">{% if dep.interes >= 0 %}+{% endif %}€{{ dep.interes|floatformat:2 }}{% if dep.interes_pct != None %} ({% if dep.interes_pct >= 0 %}+{% endif %}{{ dep.interes_pct }}%){% endif %}</span>
                 </div>
                 <div style="font-size:0.75rem; margin-top:6px;">
                     {% if dep.obj.fondo %}

@@ -67,7 +67,7 @@
             <thead>
                 <tr>
                     <th>Depósito</th><th>Titular</th><th>Fondo</th><th>Apertura</th><th class="num">Tipo</th>
-                    <th class="num">Interés {{ anio_actual }}</th><th class="num">Interés total</th>
+                    <th class="num">Interés {{ anio_actual }}</th><th class="num">Rendimiento total</th><th class="num">Saldo</th>
                 </tr>
             </thead>
             <tbody>
@@ -79,13 +79,14 @@
                     <td>{{ d.apertura|date:"d/m/Y"|default:"—" }}</td>
                     <td class="num">{{ d.tipo_interes|default:"0"|floatformat:"-3" }}% {{ d.frecuencia|lower }}</td>
                     <td class="num text-positive">{{ d.interes_anio|floatformat:2 }} €</td>
-                    <td class="num text-muted">{{ d.interes_total|floatformat:2 }} €</td>
+                    <td class="num text-muted">{{ d.interes_total|floatformat:2 }} €{% if d.interes_pct != None %} <span style="font-size:0.72rem;">({% if d.interes_pct >= 0 %}+{% endif %}{{ d.interes_pct }}%)</span>{% endif %}</td>
+                    <td class="num text-muted">{{ d.saldo|floatformat:2 }} €</td>
                 </tr>
                 {% endfor %}
                 <tr>
                     <td colspan="5" class="num" style="font-weight:700;">Total rendimientos {{ anio_actual }}</td>
                     <td class="num text-positive" style="font-weight:700;">{{ informe.interes_depositos|floatformat:2 }} €</td>
-                    <td></td>
+                    <td colspan="2"></td>
                 </tr>
             </tbody>
         </table>

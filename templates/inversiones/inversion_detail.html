@@ -104,25 +104,34 @@
 
         <div class="dep-grid">
             <div class="dep-kpi">
-                <span class="l">Valor actual{% if deposito.saldo_manual != None %} (saldo real){% elif deposito.liquidado %} (liquidado){% endif %}</span>
+                <span class="l">Saldo restante{% if deposito.saldo_manual != None %} (saldo real){% elif deposito.liquidado %} (liquidado){% endif %}</span>
                 <span class="v" style="color:#2c5f7a; font-size:1.6rem;">€{{ deposito.valor|floatformat:2 }}</span>
             </div>
             <div class="dep-kpi">
                 <span class="l">Aportado</span>
                 <span class="v">€{{ deposito.aportado|floatformat:2 }}</span>
             </div>
-            {% if deposito.retirado %}
             <div class="dep-kpi">
                 <span class="l">Retirado</span>
                 <span class="v">€{{ deposito.retirado|floatformat:2 }}</span>
             </div>
-            {% endif %}
             <div class="dep-kpi">
-                <span class="l">Interés generado</span>
+                <span class="l">Rendimiento</span>
                 <span class="v {% if deposito.interes >= 0 %}pos{% else %}neg{% endif %}">
-                    {% if deposito.interes >= 0 %}+{% endif %}€{{ deposito.interes|floatformat:2 }}{% if deposito.interes_pct != None %} ({{ deposito.interes_pct }}%){% endif %}
+                    {% if deposito.interes >= 0 %}+{% endif %}€{{ deposito.interes|floatformat:2 }}
                 </span>
+                {% if deposito.interes_pct != None %}
+                <span class="l {% if deposito.interes >= 0 %}pos{% else %}neg{% endif %}" style="font-weight:700;">
+                    {% if deposito.interes_pct >= 0 %}+{% endif %}{{ deposito.interes_pct }}% sobre lo aportado
+                </span>
+                {% endif %}
             </div>
+        </div>
+        <div style="font-size:0.8rem; color:var(--muted); margin:-4px 0 8px;">
+            Aportado €{{ deposito.aportado|floatformat:2 }}
+            → retirado €{{ deposito.retirado|floatformat:2 }} + queda €{{ deposito.valor|floatformat:2 }}
+            = <strong style="color:var(--text-color);">€{{ deposito.total_recuperado|floatformat:2 }}</strong>
+            ({% if deposito.interes >= 0 %}+{% endif %}€{{ deposito.interes|floatformat:2 }} de rendimiento)
         </div>
 
         <p class="dep-params">
