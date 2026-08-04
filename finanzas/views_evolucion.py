@@ -22,36 +22,53 @@ def _get_hogar(request):
     return profile, profile.hogar
 
 
-def valor_depositos_hogar(hogar, hasta):
+def valor_depositos_hogar(hogar, hasta, solo_sin_fondo=False):
     """Suma del valor de los depósitos del hogar a la fecha `hasta`. Un depósito
-    es capital: su valor cuenta en el patrimonio de Evolución automáticamente,
-    sin que el usuario tenga que registrar su saldo mes a mes."""
+    es dinero disponible: cuenta como LIQUIDEZ, y su valor se calcula solo (sin
+    que el usuario registre su saldo mes a mes).
+
+    `solo_sin_fondo`: excluye los depósitos vinculados a un fondo, cuyo valor ya
+    entra a través del saldo de ese fondo (evita contarlos dos veces)."""
     from .models import Inversion
-    total = Decimal('0')
-    depositos = (
+    qs = (
         Inversion.objects
         .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
         .prefetch_related('movimientos')
     )
-    for inv in depositos:
-        total += inv.deposito_estado(hasta=hasta)['valor']
-    return total
+    if solo_sin_fondo:
+        qs = qs.filter(fondo__isnull=True)
+    return sum((inv.deposito_estado(hasta=hasta)['valor'] for inv in qs), Decimal('0'))
 
 
 def _saldos_liquidez_patrimonio(saldos_qs, hogar=None, fecha_depositos=None, incluir_mercado=True):
     """
     Devuelve (liquidez, patrimonio).
-    - Liquidez : fondos comun + ahorro (saldos manuales).
-    - Patrimonio: liquidez + fondos inversion + valor de los depósitos.
+    - Liquidez : fondos comun + ahorro (saldos manuales) + depósitos.
+    - Patrimonio: liquidez + fondos inversion.
         · Saldo manual registrado tiene prioridad.
         · Si `incluir_mercado` y no hay saldo manual → valor_cartera (precio mercado real).
         · Si `fecha_depositos`, se suma el valor de los depósitos a esa fecha.
+          Un depósito vinculado a un fondo aporta su valor a través del saldo de
+          ese fondo, así que aquí solo se suman los que no tienen fondo.
     """
     liquidez = Decimal('0')
     patrimonio = Decimal('0')
     inversion_con_saldo = set()
+    fondos_con_deposito = set()
+
+    if hogar and fecha_depositos is not None:
+        from .models import Inversion
+        fondos_con_deposito = set(
+            Inversion.objects
+            .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO', fondo__isnull=False)
+            .values_list('fondo_id', flat=True)
+        )
 
     for s in saldos_qs:
+        # Si el fondo lo alimenta un depósito, su valor real lo aporta el
+        # depósito (abajo): ignoramos el saldo manual para no duplicar.
+        if s.fondo_id in fondos_con_deposito:
+            continue
         if s.fondo.tipo_fondo in ('comun', 'ahorro'):
             liquidez += s.saldo
             patrimonio += s.saldo
@@ -62,13 +79,15 @@ def _saldos_liquidez_patrimonio(saldos_qs, hogar=None, fecha_depositos=None, inc
     if hogar and incluir_mercado:
         for f in FondoFamiliar.objects.filter(
             hogar=hogar, tipo_fondo='inversion', activo=True
-        ).exclude(id__in=inversion_con_saldo):
+        ).exclude(id__in=inversion_con_saldo).exclude(id__in=fondos_con_deposito):
             if f.valor_cartera:
                 patrimonio += Decimal(str(f.valor_cartera))
 
-    # Depósitos: capital que suma al patrimonio automáticamente (histórico incluido).
+    # Depósitos: dinero disponible → suman en LIQUIDEZ (y por tanto en patrimonio).
     if hogar and fecha_depositos is not None:
-        patrimonio += valor_depositos_hogar(hogar, fecha_depositos)
+        total_dep = valor_depositos_hogar(hogar, fecha_depositos)
+        liquidez += total_dep
+        patrimonio += total_dep
 
     return liquidez, patrimonio
 
@@ -308,35 +327,59 @@ def _construir_tabla(hogar, año, flujos_por_mes):
     saldos_map = {(s.fondo_id, s.mes): s for s in saldos_qs}
 
     # Depósitos del hogar: su valor se calcula solo (no se introduce a mano) y
-    # cuenta como capital en el patrimonio de cada mes.
+    # es dinero disponible → cuenta como LIQUIDEZ.
+    # Si el depósito está vinculado a un fondo, su valor RELLENA el saldo de ese
+    # fondo (así hereda sus reglas/transferencias en Distribución y no se cuenta
+    # dos veces); si no lo está, aparece como tarjeta propia.
     depositos = list(
         Inversion.objects
         .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
         .prefetch_related('movimientos')
     )
+    depositos_por_fondo = {}
+    depositos_sueltos = []
+    for dep in depositos:
+        if dep.fondo_id:
+            depositos_por_fondo.setdefault(dep.fondo_id, []).append(dep)
+        else:
+            depositos_sueltos.append(dep)
 
     filas = []
     prev_liquidez = None
     for mes in meses_mostrados:
+        mes_fin = datetime.date(año, mes, calendar.monthrange(año, mes)[1])
         celdas_fondos = []
         liquidez_mes = Decimal('0')
         patrimonio_mes = Decimal('0')
         for f in fondos:
             sr = saldos_map.get((f.id, mes))
-            celdas_fondos.append({
-                'fondo': f,
-                'saldo_real': sr,
-                'saldo_valor': sr.saldo if sr else None,
-            })
-            if sr:
+            deps_fondo = depositos_por_fondo.get(f.id) or []
+            if deps_fondo:
+                # El valor lo aportan los depósitos vinculados (automático).
+                valor = sum((d.deposito_estado(hasta=mes_fin)['valor'] for d in deps_fondo), Decimal('0'))
+                celdas_fondos.append({
+                    'fondo': f,
+                    'saldo_real': sr,
+                    'saldo_valor': valor if valor > 0 else None,
+                    'auto_deposito': True,
+                    'depositos': deps_fondo,
+                })
+            else:
+                valor = sr.saldo if sr else None
+                celdas_fondos.append({
+                    'fondo': f,
+                    'saldo_real': sr,
+                    'saldo_valor': valor,
+                    'auto_deposito': False,
+                })
+            if valor:
                 if f.tipo_fondo in ('comun', 'ahorro'):
-                    liquidez_mes += sr.saldo
-                patrimonio_mes += sr.saldo
+                    liquidez_mes += valor
+                patrimonio_mes += valor
 
-        # Celdas de depósito (automáticas, a fin de mes)
-        mes_fin = datetime.date(año, mes, calendar.monthrange(año, mes)[1])
+        # Depósitos sin fondo vinculado: tarjeta propia, cuentan como liquidez.
         celdas_depositos = []
-        for dep in depositos:
+        for dep in depositos_sueltos:
             estado = dep.deposito_estado(hasta=mes_fin)
             valor_dep = estado['valor']
             celdas_depositos.append({
@@ -344,6 +387,7 @@ def _construir_tabla(hogar, año, flujos_por_mes):
                 'valor': valor_dep if valor_dep > 0 else None,
                 'interes': estado['interes'],
             })
+            liquidez_mes += valor_dep
             patrimonio_mes += valor_dep
 
         # El ingreso del mes se DERIVA de Distribución (suma de ingresos reales

@@ -141,20 +141,30 @@
                 </div>
             </div>
 
-            <!-- Fondo + Cartera (no aplican a depósitos) -->
-            <div id="cartera-fondo-fields">
-                <div class="fg">
-                    <label>Fondo de inversión asociado</label>
-                    <select name="fondo">
-                        <option value="">— Sin fondo asignado —</option>
-                        {% for f in form.fondo.field.queryset %}
-                        <option value="{{ f.id }}" {% if form.instance.fondo_id == f.id %}selected{% endif %}>
-                            {{ f.nombre }}{% if f.cuenta_asociada %} · {{ f.cuenta_asociada }}{% endif %}
-                        </option>
-                        {% endfor %}
-                    </select>
+            <!-- Fondo asociado (para depósitos: le da entrada en Distribución) -->
+            <div class="fg">
+                <label>
+                    <span id="lbl-fondo-normal">Fondo de inversión asociado</span>
+                    <span id="lbl-fondo-deposito" style="display:none;">Fondo asociado (Distribución y Evolución)</span>
+                </label>
+                <select name="fondo">
+                    <option value="">— Sin fondo asignado —</option>
+                    {% for f in form.fondo.field.queryset %}
+                    <option value="{{ f.id }}" data-tipo="{{ f.tipo_fondo }}"
+                            {% if form.instance.fondo_id == f.id %}selected{% endif %}>
+                        {{ f.nombre }} ({{ f.get_tipo_fondo_display }}){% if f.cuenta_asociada %} · {{ f.cuenta_asociada }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <div id="ayuda-fondo-deposito" style="display:none; font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                    Vincula el depósito a un fondo (de ahorro o común) para poder asignarle
+                    <strong>reglas de reparto y transferencias</strong> en Distribución. En Evolución, el
+                    saldo de ese fondo se rellenará solo con el valor real del depósito.
                 </div>
+            </div>
 
+            <!-- Cartera de mercado (no aplica a depósitos) -->
+            <div id="cartera-fondo-fields">
                 <div class="fg">
                     <label>Cartera por defecto</label>
                     <select name="grupo">
@@ -347,11 +357,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const carteraFondo = document.getElementById('cartera-fondo-fields');
     const actualizableWrap = document.getElementById('actualizable-wrap');
     const valorManualWrap = document.getElementById('valor-manual-wrap');
+    const lblFondoNormal = document.getElementById('lbl-fondo-normal');
+    const lblFondoDep = document.getElementById('lbl-fondo-deposito');
+    const ayudaFondoDep = document.getElementById('ayuda-fondo-deposito');
     function toggleDeposito() {
         const esDeposito = (tipoActivo.value === 'DEPOSITO');
         depoParams.style.display = esDeposito ? 'block' : 'none';
         carteraFondo.style.display = esDeposito ? 'none' : 'block';
         actualizableWrap.style.display = esDeposito ? 'none' : 'flex';
+        lblFondoNormal.style.display = esDeposito ? 'none' : 'inline';
+        lblFondoDep.style.display = esDeposito ? 'inline' : 'none';
+        ayudaFondoDep.style.display = esDeposito ? 'block' : 'none';
         if (esDeposito) valorManualWrap.style.display = 'none';
         else toggleManual();
     }

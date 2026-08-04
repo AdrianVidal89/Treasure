@@ -83,8 +83,11 @@ class InversionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         instance = kwargs.get('instance')
 
+        # Todos los fondos activos del hogar: los de inversión sirven para la
+        # cartera de mercado y los de ahorro/común para vincular un depósito
+        # (así el depósito hereda las reglas/transferencias de ese fondo).
         if hogar:
-            fondo_qs = FondoFamiliar.objects.filter(hogar=hogar, tipo_fondo='inversion', activo=True)
+            fondo_qs = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
         else:
             fondo_qs = FondoFamiliar.objects.none()
         # Asegura que el fondo actualmente asignado siempre aparezca (aunque hoy

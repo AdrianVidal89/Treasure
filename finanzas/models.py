@@ -866,6 +866,11 @@ class FondoFamiliar(models.Model):
     color = models.CharField(max_length=7, default='#a259ff')
     cuenta_asociada = models.CharField(max_length=150, blank=True, default='',
         help_text="Nombre o descripcion de la cuenta bancaria asociada a este fondo.")
+    propietario = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='fondos_propios',
+        help_text="Titular del fondo. Determina quién declara sus rendimientos en el "
+                   "Informe Hacienda. Vacío = compartido del hogar.",
+    )
     orden = models.IntegerField(default=0)
     activo = models.BooleanField(default=True)
 
@@ -875,6 +880,13 @@ class FondoFamiliar(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.get_tipo_fondo_display()})"
+
+    @property
+    def titular_nombre(self):
+        """Nombre del titular del fondo; 'Compartido' si no tiene propietario."""
+        if not self.propietario_id:
+            return 'Compartido'
+        return self.propietario.first_name or self.propietario.username
 
     # --- Integración con módulo de inversiones ---
 

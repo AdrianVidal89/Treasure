@@ -47,6 +47,16 @@ def _titular(usuario):
     return usuario.first_name or usuario.username
 
 
+def _titular_deposito(inv):
+    """Titular de un depósito de cara a Hacienda. Manda el propietario del fondo
+    vinculado (es quien declara sus rendimientos); si el fondo es compartido o
+    no hay fondo, se usa el usuario que registró el depósito."""
+    fondo = inv.fondo
+    if fondo is not None and fondo.propietario_id:
+        return _titular(fondo.propietario)
+    return _titular(inv.usuario)
+
+
 def _clave_valor(inv):
     """Clave de 'valor homogéneo' para Hacienda: mismo contribuyente + mismo
     valor, CON INDEPENDENCIA de la cartera/plataforma. Hacienda trata todas las
@@ -209,7 +219,7 @@ def calcular_informe_depositos(hogar, anio):
     depositos = (
         Inversion.objects
         .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
-        .select_related('usuario')
+        .select_related('usuario', 'fondo', 'fondo__propietario')
         .prefetch_related('movimientos')
     )
 
@@ -226,7 +236,9 @@ def calcular_informe_depositos(hogar, anio):
             continue
         filas.append({
             'nombre': inv.nombre,
-            'titular': _titular(inv.usuario),
+            'titular': _titular_deposito(inv),
+            'fondo': inv.fondo.nombre if inv.fondo_id else '',
+            'titular_compartido': bool(inv.fondo_id and not inv.fondo.propietario_id),
             'apertura': inv.deposito_fecha_apertura,
             'tipo_interes': inv.deposito_tipo_interes,
             'frecuencia': inv.get_deposito_frecuencia_display(),

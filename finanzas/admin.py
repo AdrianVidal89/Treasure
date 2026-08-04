@@ -72,8 +72,8 @@ class PartidaGastoAdmin(admin.ModelAdmin):
 
 @admin.register(FondoFamiliar)
 class FondoFamiliarAdmin(admin.ModelAdmin):
-    list_display = ('nombre', 'hogar', 'modo_aportacion', 'cuenta_asociada', 'color', 'activo')
-    list_filter = ('hogar', 'modo_aportacion')
+    list_display = ('nombre', 'hogar', 'propietario', 'tipo_fondo', 'modo_aportacion', 'cuenta_asociada', 'activo')
+    list_filter = ('hogar', 'tipo_fondo', 'modo_aportacion')
 
 @admin.register(ReglaReparto)
 class ReglaRepartoAdmin(admin.ModelAdmin):
