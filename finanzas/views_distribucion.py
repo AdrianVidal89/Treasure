@@ -169,6 +169,19 @@ def ajustar_ingreso_mes(request):
 # CRUD fondos
 # ---------------------------------------------------------------------------
 
+
+def _propietario_de_post(request, hogar):
+    """Devuelve el User propietario indicado en el POST, validando que sea
+    miembro del hogar. Vacío = fondo compartido (None)."""
+    pid = (request.POST.get('propietario_id') or '').strip()
+    if not pid:
+        return None
+    return next(
+        (m.user for m in hogar.miembros.select_related('user').all() if str(m.user_id) == pid),
+        None,
+    )
+
+
 @login_required
 def crear_fondo(request):
     profile, hogar = _get_hogar_o_redirect(request)
@@ -180,6 +193,7 @@ def crear_fondo(request):
         tipo_fondo = request.POST.get('tipo_fondo', 'comun')
         color = request.POST.get('color', '#00ff88')
         cuenta = request.POST.get('cuenta_asociada', '').strip()
+        propietario = _propietario_de_post(request, hogar)
 
         if not nombre:
             messages.error(request, "El nombre es obligatorio.")
@@ -191,6 +205,7 @@ def crear_fondo(request):
                     'tipo_fondo': tipo_fondo,
                     'color': color,
                     'cuenta_asociada': cuenta,
+                    'propietario': propietario,
                     'orden': max_orden,
                 }
             )
@@ -220,6 +235,7 @@ def editar_fondo(request, fondo_id):
             fondo.tipo_fondo = tipo_fondo
             fondo.color = color
             fondo.cuenta_asociada = cuenta
+            fondo.propietario = _propietario_de_post(request, hogar)
             fondo.save()
             messages.success(request, f"Fondo '{nombre}' actualizado.")
 

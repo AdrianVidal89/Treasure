@@ -250,12 +250,13 @@
                         </div>
                         <div class="regla-pill-sub">
                             <span class="tag-tipo tag-{{ fa.fondo.tipo_fondo }}">{{ fa.fondo.get_tipo_fondo_display }}</span>
+                            · <span title="Titular del fondo (Informe Hacienda)">{{ fa.fondo.titular_nombre }}</span>
                             {% if fa.fondo.cuenta_asociada %} · {{ fa.fondo.cuenta_asociada }}{% endif %}
                             {% for ap in fa.aportantes %} · {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} €{{ ap.importe_base|floatformat:0 }}{% endfor %}
                         </div>
                     </div>
                     <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
-                        <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
+                        <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}','{{ fa.fondo.propietario_id|default_if_none:"" }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
                         {% if fa.fondo.tipo_fondo == 'comun' %}
                         <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos"><svg class="icon"><use href="#i-check"/></svg></button>
                         {% endif %}
@@ -437,6 +438,18 @@
                     <option value="ahorro">Ahorro</option>
                     <option value="inversion">Inversión</option>
                 </select>
+            </div>
+            <div class="fg">
+                <label>Propietario</label>
+                <select name="propietario_id" id="fondo-propietario">
+                    <option value="">Compartido (hogar)</option>
+                    {% for m in miembros %}
+                    <option value="{{ m.user.id }}">{{ m.user.first_name|default:m.user.username }}</option>
+                    {% endfor %}
+                </select>
+                <div style="font-size:0.75rem; color:var(--muted); margin-top:4px;">
+                    Titular del fondo: determina quién declara sus rendimientos en el Informe Hacienda.
+                </div>
             </div>
             <div class="fg">
                 <label>Color</label>
@@ -712,16 +725,18 @@ function abrirModalFondo(){
     document.getElementById('fondo-nombre').value='';
     document.getElementById('fondo-cuenta').value='';
     document.getElementById('fondo-tipo').value='comun';
+    document.getElementById('fondo-propietario').value='';
     selCByVal('fondo','#2d6a4f');
     document.getElementById('modal-fondo').style.display='flex';
 }
-function editarFondo(id,nombre,tipo,color,cuenta){
+function editarFondo(id,nombre,tipo,color,cuenta,propietarioId){
     document.getElementById('modal-fondo-titulo').textContent='Editar fondo';
     document.getElementById('btn-fondo-submit').textContent='Guardar';
     document.getElementById('form-fondo').action='/finanzas/distribucion/fondo/'+id+'/editar/';
     document.getElementById('fondo-nombre').value=nombre;
     document.getElementById('fondo-cuenta').value=cuenta;
     document.getElementById('fondo-tipo').value=tipo;
+    document.getElementById('fondo-propietario').value=propietarioId||'';
     selCByVal('fondo',color);
     document.getElementById('modal-fondo').style.display='flex';
 }

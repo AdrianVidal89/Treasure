@@ -526,3 +526,71 @@ class DepositoVinculadoAFondoTests(TestCase):
         enero = next(f for f in filas if f['mes'] == 1)
         self.assertEqual(len(enero['celdas_depositos']), 1)
         self.assertEqual(enero['liquidez'], Decimal('2000.00'))
+
+
+class FondoPropietarioTests(TestCase):
+    """El fondo tiene titular, y de él sale quién declara los rendimientos del
+    depósito vinculado en el Informe Hacienda."""
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        self.user = User.objects.create_user('adrian', password='x', first_name='Adrián')
+        self.irene = User.objects.create_user('irene', password='x', first_name='Irene')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        for u in (self.user, self.irene):
+            perfil, _ = UserProfile.objects.get_or_create(user=u)
+            perfil.hogar = self.hogar
+            perfil.save()
+        self.year = datetime.date.today().year
+        self.client.force_login(self.user)
+
+    def _deposito(self, fondo=None):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depo', tipo='DEPOSITO', fondo=fondo,
+            deposito_tipo_interes=Decimal('4'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(self.year - 1, 1, 1), tipo='COMPRA',
+            cantidad=Decimal('10000'), precio_unitario=Decimal('1'))
+        return dep
+
+    def test_titular_nombre_por_defecto_es_compartido(self):
+        from .models import FondoFamiliar
+        fondo = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Conjunta', tipo_fondo='comun')
+        self.assertEqual(fondo.titular_nombre, 'Compartido')
+        fondo.propietario = self.irene
+        fondo.save()
+        self.assertEqual(fondo.titular_nombre, 'Irene')
+
+    def test_informe_usa_el_propietario_del_fondo_como_titular(self):
+        from .models import FondoFamiliar
+        from .informe_hacienda import calcular_informe_depositos
+        fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Depósito Irene', tipo_fondo='ahorro', propietario=self.irene)
+        self._deposito(fondo=fondo)
+        informe = calcular_informe_depositos(self.hogar, self.year)
+        self.assertEqual(len(informe['depositos']), 1)
+        # El depósito lo registró Adrián, pero el fondo es de Irene → declara Irene
+        self.assertEqual(informe['depositos'][0]['titular'], 'Irene')
+        self.assertEqual(informe['depositos'][0]['fondo'], 'Depósito Irene')
+
+    def test_sin_propietario_declara_quien_registro_el_deposito(self):
+        from .informe_hacienda import calcular_informe_depositos
+        self._deposito(fondo=None)
+        informe = calcular_informe_depositos(self.hogar, self.year)
+        self.assertEqual(informe['depositos'][0]['titular'], 'Adrián')
+
+    def test_guardar_propietario_desde_la_vista(self):
+        from .models import FondoFamiliar
+        self.client.post(reverse('finanzas:crear_fondo'), {
+            'nombre': 'Ahorro Irene', 'tipo_fondo': 'ahorro',
+            'color': '#2d6a4f', 'cuenta_asociada': '', 'propietario_id': str(self.irene.id),
+        })
+        fondo = FondoFamiliar.objects.get(hogar=self.hogar, nombre='Ahorro Irene')
+        self.assertEqual(fondo.propietario_id, self.irene.id)
+
+        # Y se puede volver a dejar compartido
+        self.client.post(reverse('finanzas:editar_fondo', args=[fondo.id]), {
+            'nombre': 'Ahorro Irene', 'tipo_fondo': 'ahorro',
+            'color': '#2d6a4f', 'cuenta_asociada': '', 'propietario_id': '',
+        })
+        fondo.refresh_from_db()
+        self.assertIsNone(fondo.propietario_id)

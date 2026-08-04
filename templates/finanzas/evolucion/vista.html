@@ -317,8 +317,8 @@
                             <span>
                                 {{ celda.fondo.nombre }}
                                 {% if celda.auto_deposito %}
-                                <span class="dep-row-sub">{% for d in celda.depositos %}{{ d.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %} · auto</span>
-                                {% elif celda.fondo.cuenta_asociada %}<span class="dep-row-sub">{{ celda.fondo.cuenta_asociada }}</span>{% endif %}
+                                <span class="dep-row-sub">{% for d in celda.depositos %}{{ d.nombre }}{% if not forloop.last %}, {% endif %}{% endfor %} · auto · {{ celda.fondo.titular_nombre }}</span>
+                                {% else %}<span class="dep-row-sub">{% if celda.fondo.cuenta_asociada %}{{ celda.fondo.cuenta_asociada }} · {% endif %}{{ celda.fondo.titular_nombre }}</span>{% endif %}
                             </span>
                         </span>
                         <span class="cell-display">
