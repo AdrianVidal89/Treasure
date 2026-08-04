@@ -13,6 +13,7 @@ import json
 import csv
 import io
 from decimal import Decimal, InvalidOperation
+import calendar
 import datetime
 from django.views.generic import UpdateView
 
@@ -360,9 +361,14 @@ def buscar_ticker(request):
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
-from .models import Inversion, MovimientoInversion, ValorActualInversion, GrupoInversion, TIPOS_INVERSION
-from .forms import InversionForm, MovimientoInversionForm
+from .models import Inversion, MovimientoInversion, ValorActualInversion, GrupoInversion, TIPOS_INVERSION, AportacionRecurrente
+from .forms import InversionForm, MovimientoInversionForm, AportacionRecurrenteForm
 from .models import ResumenInversionesMensual
+
+MESES_ES_LARGO = [
+    '', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+]
 
 
 class InversionDetailView(LoginRequiredMixin, DetailView):
@@ -376,6 +382,12 @@ class InversionDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context['movimientos'] = MovimientoInversion.objects.filter(inversion=self.object).order_by('-fecha')
+        reglas = list(self.object.aportaciones_recurrentes.all())
+        for regla in reglas:
+            regla.pendientes = regla.meses_pendientes()
+            regla.pendientes_fmt = [f'{MESES_ES_LARGO[m]} {a}' for a, m in regla.pendientes]
+        context['aportaciones_recurrentes'] = reglas
+        context['form_aportacion'] = AportacionRecurrenteForm()
         return context
 
 
@@ -807,15 +819,25 @@ class InversionListView(LoginRequiredMixin, ListView):
                 'movimientos': movs,
             })
 
-        # ─── Totales cartera ────────────────────────────────────────────────
+        # ─── Separar depósitos (excluir_de_patrimonio) del resto de la cartera ──
+        # No se mezclan en los totales/rentabilidad de mercado: tienen su propia
+        # sección y sus propios subtotales.
+        deposit_data = [d for d in inv_data if d['inv'].excluir_de_patrimonio]
+        inv_data = [d for d in inv_data if not d['inv'].excluir_de_patrimonio]
+
+        # ─── Totales cartera (sin depósitos) ─────────────────────────────────
         total_valor_actual = sum(d['valor_total'] for d in inv_data)
         total_coste_base = sum(d['coste_base'] for d in inv_data)
-        total_aportado = sum(inv.valor_aportado for inv in inversiones)
+        total_aportado = sum(d['inv'].valor_aportado for d in inv_data)
         total_ganancia_realizada = sum(d['ganancia_realizada'] for d in inv_data)
 
         rentabilidad_total = 0
         if total_coste_base > 0:
             rentabilidad_total = float((total_valor_actual - total_coste_base) / total_coste_base * 100)
+
+        # ─── Subtotales de depósitos ──────────────────────────────────────────
+        deposit_total_aportado = sum(d['inv'].valor_aportado for d in deposit_data)
+        deposit_total_valor = sum(d['valor_total'] for d in deposit_data)
 
         # ─── Carteras (grupos de inversión) del usuario ─────────────────────
         carteras = list(GrupoInversion.objects.filter(usuario=self.request.user))
@@ -846,6 +868,9 @@ class InversionListView(LoginRequiredMixin, ListView):
             'total_aportado': total_aportado,
             'total_ganancia_realizada': total_ganancia_realizada,
             'rentabilidad_total': rentabilidad_total,
+            'deposit_data': deposit_data,
+            'deposit_total_aportado': deposit_total_aportado,
+            'deposit_total_valor': deposit_total_valor,
             'carteras': carteras,
             'cartera_sel_id': cartera_sel_id,
             'cartera_kpis': cartera_kpis,
@@ -974,3 +999,77 @@ def inversiones_accion_masiva(request):
 
     destino = request.POST.get('next') or str(reverse_lazy('finanzas:listar'))
     return redirect(destino)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Aportación recurrente (para depósitos y activos con aportaciones periódicas)
+# ──────────────────────────────────────────────────────────────────────
+@login_required
+def aportacion_recurrente_crear(request, pk):
+    inv = get_object_or_404(Inversion, id=pk, usuario=request.user)
+    if request.method == 'POST':
+        form = AportacionRecurrenteForm(request.POST)
+        if form.is_valid():
+            regla = form.save(commit=False)
+            regla.inversion = inv
+            regla.save()
+            messages.success(request, 'Aportación recurrente creada.')
+        else:
+            messages.error(request, 'Revisa los datos de la aportación recurrente.')
+    return redirect('finanzas:detalle', pk=inv.id)
+
+
+@login_required
+def aportacion_recurrente_editar(request, pk, regla_id):
+    inv = get_object_or_404(Inversion, id=pk, usuario=request.user)
+    regla = get_object_or_404(AportacionRecurrente, id=regla_id, inversion=inv)
+    if request.method == 'POST':
+        form = AportacionRecurrenteForm(request.POST, instance=regla)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Aportación recurrente actualizada.')
+        else:
+            messages.error(request, 'Revisa los datos de la aportación recurrente.')
+    return redirect('finanzas:detalle', pk=inv.id)
+
+
+@login_required
+@require_POST
+def aportacion_recurrente_eliminar(request, pk, regla_id):
+    inv = get_object_or_404(Inversion, id=pk, usuario=request.user)
+    regla = get_object_or_404(AportacionRecurrente, id=regla_id, inversion=inv)
+    regla.delete()
+    messages.success(request, 'Aportación recurrente eliminada. Los movimientos ya generados no se borran.')
+    return redirect('finanzas:detalle', pk=inv.id)
+
+
+@login_required
+@require_POST
+def aportacion_recurrente_generar(request, pk, regla_id):
+    """Genera los movimientos de COMPRA pendientes de la regla, hasta hoy (o
+    hasta su fecha_fin). No hace nada automáticamente en segundo plano: solo
+    actúa cuando el usuario pulsa el botón, y cada movimiento generado queda
+    como un movimiento normal, editable o borrable desde el listado."""
+    inv = get_object_or_404(Inversion, id=pk, usuario=request.user)
+    regla = get_object_or_404(AportacionRecurrente, id=regla_id, inversion=inv)
+
+    pendientes = regla.meses_pendientes()
+    creados = 0
+    for anio, mes in pendientes:
+        dia = min(regla.dia_mes, calendar.monthrange(anio, mes)[1])
+        MovimientoInversion.objects.create(
+            inversion=inv,
+            fecha=datetime.date(anio, mes, dia),
+            tipo=MovimientoInversion.COMPRA,
+            cantidad=regla.importe,
+            precio_unitario=Decimal('1'),
+            grupo=inv.grupo,
+            origen_recurrente=regla,
+        )
+        creados += 1
+
+    if creados:
+        messages.success(request, f'Se han generado {creados} aportación(es) pendiente(s).')
+    else:
+        messages.info(request, 'No había aportaciones pendientes que generar.')
+    return redirect('finanzas:detalle', pk=inv.id)

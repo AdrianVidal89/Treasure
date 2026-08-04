@@ -3,7 +3,7 @@ import datetime
 from .models import TarjetaCredito
 from .models import SaldoMensualTarjeta
 from django import forms
-from .models import Inversion, MovimientoInversion, FondoFamiliar, GrupoInversion
+from .models import Inversion, MovimientoInversion, FondoFamiliar, GrupoInversion, AportacionRecurrente
 
 
 ### Modulo principal ###
@@ -133,3 +133,15 @@ class MovimientoInversionForm(forms.ModelForm):
             self.fields['grupo'].queryset = GrupoInversion.objects.none()
         self.fields['grupo'].required = False
         self.fields['grupo'].empty_label = '— Sin cartera asignada —'
+
+
+class AportacionRecurrenteForm(forms.ModelForm):
+    class Meta:
+        model = AportacionRecurrente
+        fields = ['importe', 'dia_mes', 'fecha_inicio', 'fecha_fin', 'activa']
+        widgets = {
+            'importe': forms.NumberInput(attrs={'step': '0.01', 'min': '0'}),
+            'dia_mes': forms.NumberInput(attrs={'min': '1', 'max': '28'}),
+            'fecha_inicio': forms.DateInput(attrs={'type': 'date'}),
+            'fecha_fin': forms.DateInput(attrs={'type': 'date'}),
+        }

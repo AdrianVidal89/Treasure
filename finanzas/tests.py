@@ -10,6 +10,7 @@ from .models import (
     MovimientoInversion,
     ValorActualInversion,
     GrupoInversion,
+    AportacionRecurrente,
 )
 
 
@@ -161,3 +162,127 @@ class CarterasCrudTests(TestCase):
         self.assertFalse(GrupoInversion.objects.filter(id=cartera.id).exists())
         inv.refresh_from_db()
         self.assertIsNone(inv.grupo_id)
+
+
+class AportacionRecurrenteTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+        self.inv = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito Irene', tipo='DEPOSITO',
+            plataforma='Banco', excluir_de_patrimonio=True,
+        )
+
+    def test_meses_pendientes_calcula_rango_completo(self):
+        regla = AportacionRecurrente.objects.create(
+            inversion=self.inv, importe=Decimal('100'), dia_mes=5,
+            fecha_inicio=datetime.date(2026, 1, 1),
+        )
+        pendientes = regla.meses_pendientes(hasta=datetime.date(2026, 4, 15))
+        self.assertEqual(pendientes, [(2026, 1), (2026, 2), (2026, 3), (2026, 4)])
+
+    def test_meses_pendientes_excluye_ya_generados(self):
+        regla = AportacionRecurrente.objects.create(
+            inversion=self.inv, importe=Decimal('100'), dia_mes=5,
+            fecha_inicio=datetime.date(2026, 1, 1),
+        )
+        MovimientoInversion.objects.create(
+            inversion=self.inv, fecha=datetime.date(2026, 2, 5), tipo='COMPRA',
+            cantidad=Decimal('100'), precio_unitario=Decimal('1'), origen_recurrente=regla,
+        )
+        pendientes = regla.meses_pendientes(hasta=datetime.date(2026, 3, 15))
+        self.assertEqual(pendientes, [(2026, 1), (2026, 3)])
+
+    def test_meses_pendientes_respeta_fecha_fin(self):
+        regla = AportacionRecurrente.objects.create(
+            inversion=self.inv, importe=Decimal('100'), dia_mes=5,
+            fecha_inicio=datetime.date(2026, 1, 1), fecha_fin=datetime.date(2026, 2, 1),
+        )
+        pendientes = regla.meses_pendientes(hasta=datetime.date(2026, 12, 31))
+        self.assertEqual(pendientes, [(2026, 1), (2026, 2)])
+
+
+class AportacionRecurrenteGenerarViewTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+        self.client.force_login(self.user)
+        self.inv = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito Irene', tipo='DEPOSITO',
+            plataforma='Banco', excluir_de_patrimonio=True,
+        )
+        # Regla que arrancó hace 3 meses (incluido el actual) para no depender de "hoy" fijo.
+        hoy = datetime.date.today()
+        inicio_mes = hoy.replace(day=1)
+        hace_2_meses = (inicio_mes - datetime.timedelta(days=1)).replace(day=1)
+        hace_2_meses = (hace_2_meses - datetime.timedelta(days=1)).replace(day=1)
+        self.regla = AportacionRecurrente.objects.create(
+            inversion=self.inv, importe=Decimal('150'), dia_mes=5,
+            fecha_inicio=hace_2_meses,
+        )
+
+    def test_generar_crea_movimientos_pendientes(self):
+        pendientes_antes = self.regla.meses_pendientes()
+        self.assertEqual(len(pendientes_antes), 3)  # hace 2 meses, el mes pasado y el actual
+
+        resp = self.client.post(reverse('finanzas:aportacion_recurrente_generar', args=[self.inv.id, self.regla.id]))
+        self.assertEqual(resp.status_code, 302)
+
+        movs = MovimientoInversion.objects.filter(inversion=self.inv, origen_recurrente=self.regla)
+        self.assertEqual(movs.count(), 3)
+        self.assertTrue(all(m.tipo == 'COMPRA' and m.cantidad == Decimal('150') for m in movs))
+
+    def test_generar_es_idempotente(self):
+        self.client.post(reverse('finanzas:aportacion_recurrente_generar', args=[self.inv.id, self.regla.id]))
+        primera_cuenta = MovimientoInversion.objects.filter(origen_recurrente=self.regla).count()
+
+        # Segunda llamada no debe duplicar nada: ya no quedan meses pendientes.
+        self.client.post(reverse('finanzas:aportacion_recurrente_generar', args=[self.inv.id, self.regla.id]))
+        segunda_cuenta = MovimientoInversion.objects.filter(origen_recurrente=self.regla).count()
+        self.assertEqual(primera_cuenta, segunda_cuenta)
+
+
+class DepositoExcluidoDePatrimonioTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+        self.client.force_login(self.user)
+
+    def test_deposito_no_suma_en_totales_del_listado(self):
+        # Activo de mercado normal: aporta 100, vale 120.
+        _crear_inversion(self.user, 'ETF A', 'ETF', 10, 10, 12)
+        # Depósito excluido: aporta 500, no debe sumar en los totales.
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito', tipo='DEPOSITO',
+            plataforma='Banco', excluir_de_patrimonio=True,
+        )
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(2026, 1, 1), tipo='COMPRA',
+            cantidad=Decimal('500'), precio_unitario=Decimal('1'),
+        )
+
+        resp = self.client.get(reverse('finanzas:listar'))
+        self.assertEqual(resp.status_code, 200)
+        # El total de aportado del bloque de mercado no debe incluir el depósito.
+        self.assertEqual(resp.context['total_aportado'], Decimal('100'))
+        self.assertEqual(resp.context['deposit_total_aportado'], Decimal('500'))
+        self.assertEqual(len(resp.context['deposit_data']), 1)
+        self.assertEqual(len(resp.context['inv_data']), 1)
+
+    def test_fondo_familiar_excluye_deposito(self):
+        from core.models import Hogar
+        from .models import FondoFamiliar
+
+        hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        fondo = FondoFamiliar.objects.create(hogar=hogar, nombre='Cartera', tipo_fondo='inversion')
+        inv = _crear_inversion(self.user, 'ETF A', 'ETF', 10, 10, 12)
+        inv.fondo = fondo
+        inv.save()
+
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito', tipo='DEPOSITO', fondo=fondo,
+            excluir_de_patrimonio=True,
+        )
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(2026, 1, 1), tipo='COMPRA',
+            cantidad=Decimal('500'), precio_unitario=Decimal('1'),
+        )
+
+        self.assertEqual(fondo.total_aportado_cartera, Decimal('100'))

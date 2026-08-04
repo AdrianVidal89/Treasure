@@ -1,36 +1,198 @@
 {% extends "base.html" %}
+{% block title %}{{ inversion.nombre }} - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
 {% block content %}
-<div class="panel">
-  <h2 class="titulo">{{ inversion.nombre }} ({{ inversion.ticker }})</h2>
-  <p><strong>Tipo:</strong> {{ inversion.tipo }} | <strong>Plataforma:</strong> {{ inversion.plataforma }}</p>
+<style>
+.det-wrap { padding: 24px; max-width: 900px; margin: 0 auto; }
+.det-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 12px; }
+.det-header h1 { color: var(--primary-color); text-shadow: none; margin: 0 0 4px; font-size: 1.5rem; }
+.det-header .meta { color: var(--muted); font-size: 0.88rem; }
+.badge-tipo { font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-block; margin-left: 6px; }
+.badge-ACCION  { background: rgba(45, 106, 79,0.12); color: #2d6a4f; border: 1px solid #2d6a4f44; }
+.badge-ETF     { background: rgba(44, 95, 122,0.12); color: #2c5f7a; border: 1px solid #2c5f7a44; }
+.badge-FONDO   { background: rgba(183, 121, 31,0.12); color: #b7791f; border: 1px solid #b7791f44; }
+.badge-CRIPTO  { background: rgba(45, 106, 79,0.12); color: #1b4332; border: 1px solid #1b433244; }
+.badge-DEPOSITO { background: rgba(44, 95, 122,0.12); color: #2c5f7a; border: 1px solid #2c5f7a44; }
+.badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid var(--border-strong); }
 
-  {% if inversion.valor_actual %}
-    <p>Valor actual unitario: {{ inversion.valor_actual.valor_unitario }} {{ inversion.moneda }}</p>
-  {% endif %}
+.det-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 20px; }
+.det-card h2 { font-size: 1rem; margin: 0 0 12px; color: var(--text-color); }
 
-  <a href="{% url 'finanzas:editar' inversion.id %}" class="btn-glow-primary">Editar inversión</a>
-  <a href="{% url 'finanzas:nuevo_movimiento' inversion.id %}" class="btn-glow-secundario">+ Añadir movimiento</a>
+.mov-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+.mov-table th { text-align: left; color: var(--muted); font-size: 0.68rem; font-weight: 600; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.mov-table th.right, .mov-table td.right { text-align: right; }
+.mov-table td { padding: 9px 10px; border-bottom: 1px solid var(--app-bg); }
+.badge-cartera { font-size: 0.62rem; padding: 1px 8px; border-radius: 10px; font-weight: 600; color: #fff; display: inline-block; }
+.pos { color: #2d6a4f; } .neg { color: #b4442e; }
 
-  <h3 class="subtitulo">Movimientos</h3>
-  {% if movimientos %}
-    <table class="tabla-oscura">
-      <thead>
-        <tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Precio</th><th>Comisión</th></tr>
-      </thead>
-      <tbody>
-        {% for m in movimientos %}
-          <tr>
-            <td>{{ m.fecha }}</td>
-            <td>{{ m.get_tipo_display }}</td>
-            <td>{{ m.cantidad }}</td>
-            <td>{{ m.precio_unitario }}</td>
-            <td>{{ m.comision }}</td>
-          </tr>
+.regla-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; background: var(--app-bg); }
+.regla-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.regla-pend { font-size: 0.8rem; color: #b7791f; margin-top: 6px; }
+.regla-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.regla-actions button, .regla-actions a { font-size: 0.78rem; padding: 6px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; }
+.btn-generar { border: 1px solid var(--primary-color); background: var(--primary-color); color: #fff; }
+.btn-ghost { border: 1px solid var(--border-strong); background: transparent; color: var(--muted); }
+
+.aport-form { display: none; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px; }
+.aport-form.open { display: flex; }
+.aport-form .fg { display: flex; flex-direction: column; gap: 5px; }
+.aport-form label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+.aport-form input { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text-color); font-size: 0.85rem; }
+.aport-form input[type="checkbox"] { width: 16px; height: 16px; }
+</style>
+
+<div class="det-wrap">
+
+    <div class="det-header">
+        <div>
+            <h1>{{ inversion.nombre }}
+                <span class="badge-tipo badge-{{ inversion.tipo }}">{{ inversion.get_tipo_display }}</span>
+                {% if inversion.excluir_de_patrimonio %}
+                <span class="badge-tipo" style="background: rgba(183,121,31,0.12); color:#b7791f; border:1px solid #b7791f44;">Excluido del patrimonio</span>
+                {% endif %}
+            </h1>
+            <div class="meta">
+                {{ inversion.ticker|default:"—" }} · {{ inversion.plataforma|default:"Sin plataforma" }}
+                {% if inversion.grupo %}· <span style="color: {{ inversion.grupo.color }};">{{ inversion.grupo.nombre }}</span>{% endif %}
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a href="{% url 'finanzas:listar' %}" class="btn btn-secondary" style="font-size:0.85rem; padding:9px 16px;">← Inversiones</a>
+            <a href="{% url 'finanzas:editar' inversion.id %}" class="btn btn-secondary" style="font-size:0.85rem; padding:9px 16px;">✏️ Editar</a>
+            <a href="{% url 'finanzas:nuevo_movimiento' inversion.id %}" class="btn btn-primary" style="font-size:0.85rem; padding:9px 16px;">+ Movimiento</a>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div style="background: var(--surface); border-left: 3px solid var(--primary-color);
+                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem;">
+            {{ message }}
+        </div>
         {% endfor %}
-      </tbody>
-    </table>
-  {% else %}
-    <p class="texto-difuso">Sin movimientos registrados aún.</p>
-  {% endif %}
+    {% endif %}
+
+    {% if inversion.valor_actual %}
+    <div class="det-card">
+        <h2>Valoración</h2>
+        <p style="margin:0; color: var(--muted); font-size:0.9rem;">
+            Valor unitario actual: <strong style="color: var(--text-color);">{{ inversion.valor_actual.valor_unitario }} {{ inversion.moneda }}</strong>
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- Aportación recurrente -->
+    <div class="det-card">
+        <h2>Aportación recurrente</h2>
+        <p style="color: var(--muted); font-size: 0.85rem; margin: -6px 0 14px;">
+            Define un importe periódico (p. ej. una mensualidad de un depósito) y genera los
+            movimientos cuando tú decidas — no se crea nada automáticamente.
+        </p>
+
+        {% for regla in aportaciones_recurrentes %}
+        <div class="regla-card">
+            <div class="regla-top">
+                <div>
+                    <strong style="color: var(--text-color);">€{{ regla.importe|floatformat:2 }}/mes</strong>
+                    <span style="color: var(--muted); font-size: 0.82rem;"> · día {{ regla.dia_mes }} · desde {{ regla.fecha_inicio|date:"m/Y" }}{% if regla.fecha_fin %} hasta {{ regla.fecha_fin|date:"m/Y" }}{% endif %}</span>
+                    {% if not regla.activa %}<span class="badge-tipo badge-OTRO">Inactiva</span>{% endif %}
+                </div>
+            </div>
+            {% if regla.pendientes_fmt %}
+            <div class="regla-pend">{{ regla.pendientes_fmt|length }} pendiente(s): {{ regla.pendientes_fmt|join:", " }}</div>
+            {% else %}
+            <div class="regla-pend" style="color: var(--muted);">Sin aportaciones pendientes.</div>
+            {% endif %}
+            <div class="regla-actions">
+                {% if regla.pendientes_fmt %}
+                <form method="post" action="{% url 'finanzas:aportacion_recurrente_generar' inversion.id regla.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-generar">Generar {{ regla.pendientes_fmt|length }} pendiente(s)</button>
+                </form>
+                {% endif %}
+                <button type="button" class="btn-ghost" onclick="toggleEdit({{ regla.id }})">Editar</button>
+                <form method="post" action="{% url 'finanzas:aportacion_recurrente_eliminar' inversion.id regla.id %}"
+                      onsubmit="return confirm('¿Eliminar esta aportación recurrente? Los movimientos ya generados no se borran.');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-ghost" style="color:#b4442e; border-color:#b4442e55;">Eliminar</button>
+                </form>
+            </div>
+            <form class="aport-form" id="edit-regla-{{ regla.id }}" method="post"
+                  action="{% url 'finanzas:aportacion_recurrente_editar' inversion.id regla.id %}">
+                {% csrf_token %}
+                <div class="fg"><label>Importe €</label><input type="number" step="0.01" name="importe" value="{{ regla.importe }}" required></div>
+                <div class="fg"><label>Día</label><input type="number" min="1" max="28" name="dia_mes" value="{{ regla.dia_mes }}" required></div>
+                <div class="fg"><label>Desde</label><input type="date" name="fecha_inicio" value="{{ regla.fecha_inicio|date:'Y-m-d' }}" required></div>
+                <div class="fg"><label>Hasta (opcional)</label><input type="date" name="fecha_fin" value="{{ regla.fecha_fin|date:'Y-m-d' }}"></div>
+                <div class="fg" style="flex-direction:row; align-items:center; gap:6px;">
+                    <input type="checkbox" name="activa" id="activa-{{ regla.id }}" {% if regla.activa %}checked{% endif %}>
+                    <label for="activa-{{ regla.id }}" style="text-transform:none;">Activa</label>
+                </div>
+                <button type="submit" class="btn-generar">Guardar</button>
+            </form>
+        </div>
+        {% empty %}
+        <p style="color: var(--muted); font-size: 0.85rem;">No hay ninguna aportación recurrente configurada.</p>
+        {% endfor %}
+
+        <button type="button" class="btn-ghost" onclick="toggleNueva()" style="margin-top: 4px;">+ Nueva aportación recurrente</button>
+        <form class="aport-form" id="nueva-regla" method="post" action="{% url 'finanzas:aportacion_recurrente_crear' inversion.id %}">
+            {% csrf_token %}
+            <div class="fg"><label>Importe €</label><input type="number" step="0.01" name="importe" placeholder="150.00" required></div>
+            <div class="fg"><label>Día del mes</label><input type="number" min="1" max="28" name="dia_mes" value="1" required></div>
+            <div class="fg"><label>Desde</label><input type="date" name="fecha_inicio" required></div>
+            <div class="fg"><label>Hasta (opcional)</label><input type="date" name="fecha_fin"></div>
+            <button type="submit" class="btn-generar">Crear</button>
+        </form>
+    </div>
+
+    <!-- Movimientos -->
+    <div class="det-card">
+        <h2>Movimientos</h2>
+        {% if movimientos %}
+        <div style="overflow-x:auto;">
+        <table class="mov-table">
+            <thead>
+                <tr>
+                    <th>Fecha</th><th>Tipo</th><th>Cartera</th>
+                    <th class="right">Cantidad</th><th class="right">Precio</th><th class="right">Comisión</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in movimientos %}
+                <tr>
+                    <td>{{ m.fecha }}</td>
+                    <td>{{ m.get_tipo_display }}{% if m.origen_recurrente_id %} <span style="color: var(--muted); font-size:0.72rem;">(recurrente)</span>{% endif %}</td>
+                    <td>{% if m.grupo %}<span class="badge-cartera" style="background: {{ m.grupo.color }};">{{ m.grupo.nombre }}</span>{% else %}—{% endif %}</td>
+                    <td class="right">{{ m.cantidad|floatformat:4 }}</td>
+                    <td class="right">{{ m.precio_unitario|floatformat:4 }}</td>
+                    <td class="right">{{ m.comision|floatformat:2 }}</td>
+                    <td><a href="{% url 'finanzas:editar_movimiento' m.id %}" style="font-size:0.75rem; color:var(--muted); text-decoration:none; padding:3px 8px; border:1px solid var(--border-strong); border-radius:6px;">✏️</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p style="color: var(--muted); font-size: 0.85rem;">Sin movimientos registrados aún.</p>
+        {% endif %}
+
+        <div style="margin-top: 14px; font-size: 0.85rem; color: var(--muted);">
+            ¿Vas a cargar el histórico de golpe (p. ej. varios años de aportaciones)?
+            <a href="{% url 'finanzas:importar_csv' %}" style="color: var(--primary-color); font-weight:600;">Usa el importador CSV</a>.
+        </div>
+    </div>
 </div>
+
+<script>
+function toggleEdit(id) {
+    const f = document.getElementById('edit-regla-' + id);
+    if (f) f.classList.toggle('open');
+}
+function toggleNueva() {
+    const f = document.getElementById('nueva-regla');
+    if (f) f.classList.toggle('open');
+}
+</script>
 {% endblock %}
