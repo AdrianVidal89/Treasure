@@ -223,14 +223,10 @@ class Inversion(models.Model):
         null=True, blank=True, related_name='inversiones',
         help_text="Cartera de inversión a la que pertenece este activo.",
     )
-    excluir_de_patrimonio = models.BooleanField(
-        default=False,
-        help_text="No sumar en los totales de cartera ni en el patrimonio de los "
-                   "simuladores (p. ej. depósitos que ya cuentas en otra parte de la "
-                   "app). Sigue apareciendo en Inversiones, en su propia sección, y en "
-                   "el Informe Hacienda.",
-    )
     # ── Parámetros específicos de DEPÓSITO ──────────────────────────────────
+    # Un depósito nunca forma parte de la cartera de mercado (acciones/ETF...);
+    # vive en Inversiones en su propia sección y su valor cuenta como capital
+    # (aparece automáticamente en Evolución).
     deposito_tipo_interes = models.DecimalField(
         max_digits=6, decimal_places=3, null=True, blank=True,
         help_text="Tipo de interés NOMINAL anual del depósito (%). Solo para depósitos.",
@@ -243,6 +239,16 @@ class Inversion(models.Model):
         null=True, blank=True,
         help_text="Fecha de liquidación/vencimiento. Si se indica, el valor y el "
                    "interés se calculan hasta esa fecha (deja de acumular después).",
+    )
+    deposito_saldo_manual = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        help_text="Saldo REAL de hoy del depósito. Si se indica, el valor actual y el "
+                   "interés generado se calculan a partir de este saldo (en vez del "
+                   "interés teórico), para cuadrar con lo que dice el banco.",
+    )
+    deposito_saldo_fecha = models.DateField(
+        null=True, blank=True,
+        help_text="Fecha a la que corresponde el saldo real indicado.",
     )
     fecha_creacion = models.DateField(auto_now_add=True)
 
@@ -353,6 +359,7 @@ class Inversion(models.Model):
     # retiradas (VENTA) fechadas. La primera aportación es la apertura.
 
     def _flujos_deposito(self):
+        """Flujos con signo para el motor de interés compuesto (COMPRA +, VENTA -)."""
         flujos = []
         for m in self.movimientos.all():
             if m.tipo == 'COMPRA':
@@ -361,31 +368,70 @@ class Inversion(models.Model):
                 flujos.append((m.fecha, -m.cantidad))
         return flujos
 
-    def deposito_valor_y_aportado(self, hasta=None):
-        """(valor_con_interes, aportado_neto) del depósito a la fecha `hasta`
-        (por defecto: fecha de liquidación si existe, o hoy)."""
-        from .depositos import valor_a_fecha, PERIODOS_ANO
+    def _sumas_deposito(self, hasta):
+        """(aportado_bruto, retirado_bruto) hasta la fecha `hasta`."""
+        aportado = Decimal('0')
+        retirado = Decimal('0')
+        for m in self.movimientos.all():
+            if m.fecha > hasta:
+                continue
+            if m.tipo == 'COMPRA':
+                aportado += m.cantidad
+            elif m.tipo == 'VENTA':
+                retirado += m.cantidad
+        return aportado, retirado
+
+    def deposito_estado(self, hasta=None):
+        """Estado del depósito a la fecha `hasta` (por defecto: liquidación u hoy).
+
+        Devuelve dict con:
+          - valor:    saldo con interés (o el saldo REAL indicado, si existe).
+          - aportado: dinero total ingresado (aportaciones).
+          - retirado: dinero total retirado.
+          - interes:  rendimiento generado = valor + retirado − aportado.
+                      (Robusto ante retiradas totales: si retiras 6.066 de un
+                      depósito de 6.000, el interés sigue siendo +66, no −66.)
+        """
+        hoy_ref = self.deposito_fecha_liquidacion or date.today()
         if hasta is None:
-            hasta = self.deposito_fecha_liquidacion or date.today()
+            hasta = hoy_ref
         elif self.deposito_fecha_liquidacion and hasta > self.deposito_fecha_liquidacion:
             hasta = self.deposito_fecha_liquidacion
-        r = (self.deposito_tipo_interes or Decimal('0')) / Decimal('100')
-        m = PERIODOS_ANO.get(self.deposito_frecuencia or 'anual', 1)
-        valor, aportado = valor_a_fecha(self._flujos_deposito(), r, m, hasta)
-        return round(valor, 2), round(aportado, 2)
+
+        aportado, retirado = self._sumas_deposito(hasta)
+
+        # Saldo real indicado por el usuario: manda a partir de su fecha.
+        saldo_fecha = self.deposito_saldo_fecha or hoy_ref
+        if self.deposito_saldo_manual is not None and hasta >= saldo_fecha:
+            valor = round(self.deposito_saldo_manual, 2)
+        else:
+            from .depositos import valor_a_fecha, PERIODOS_ANO
+            r = (self.deposito_tipo_interes or Decimal('0')) / Decimal('100')
+            m = PERIODOS_ANO.get(self.deposito_frecuencia or 'anual', 1)
+            valor_calc, _ = valor_a_fecha(self._flujos_deposito(), r, m, hasta)
+            valor = round(valor_calc, 2)
+
+        interes = round(valor + retirado - aportado, 2)
+        return {'valor': valor, 'aportado': round(aportado, 2),
+                'retirado': round(retirado, 2), 'interes': interes, 'hasta': hasta}
+
+    # Compat: (valor, aportado) — aportado = neto (aportado − retirado) para el
+    # "dinero que queda ingresado". El desglose completo está en deposito_estado.
+    def deposito_valor_y_aportado(self, hasta=None):
+        e = self.deposito_estado(hasta)
+        return e['valor'], round(e['aportado'] - e['retirado'], 2)
 
     @property
     def deposito_valor_actual(self):
-        return self.deposito_valor_y_aportado()[0]
+        return self.deposito_estado()['valor']
 
     @property
     def deposito_aportado(self):
-        return self.deposito_valor_y_aportado()[1]
+        return self.deposito_estado()['aportado']
 
     @property
     def deposito_interes(self):
-        valor, aportado = self.deposito_valor_y_aportado()
-        return round(valor - aportado, 2)
+        return self.deposito_estado()['interes']
 
     @property
     def deposito_fecha_apertura(self):
@@ -394,17 +440,20 @@ class Inversion(models.Model):
 
     def deposito_interes_anio(self, anio):
         """Interés generado (devengado) durante el ejercicio `anio`: variación
-        del valor a lo largo del año descontando los flujos de capital de ese
-        año. Es la base orientativa del rendimiento a declarar ese ejercicio."""
+        del patrimonio realizado (valor + retirado acumulado) descontando las
+        aportaciones del año. Base orientativa del rendimiento a declarar."""
         fin = date(anio, 12, 31)
         ini_prev = date(anio - 1, 12, 31)
-        valor_fin, _ = self.deposito_valor_y_aportado(hasta=fin)
-        valor_ini, _ = self.deposito_valor_y_aportado(hasta=ini_prev)
-        flujos_anio = sum(
-            (imp for f, imp in self._flujos_deposito() if f.year == anio and f <= fin),
+        e_fin = self.deposito_estado(hasta=fin)
+        e_ini = self.deposito_estado(hasta=ini_prev)
+        patr_fin = e_fin['valor'] + e_fin['retirado']
+        patr_ini = e_ini['valor'] + e_ini['retirado']
+        aport_anio = sum(
+            (m.cantidad for m in self.movimientos.all()
+             if m.tipo == 'COMPRA' and m.fecha.year == anio and m.fecha <= fin),
             Decimal('0'),
         )
-        return round(valor_fin - valor_ini - flujos_anio, 2)
+        return round(patr_fin - patr_ini - aport_anio, 2)
 
 
 class AportacionRecurrente(models.Model):
@@ -835,7 +884,7 @@ class FondoFamiliar(models.Model):
             return None
         return sum(
             (inv.valor_total_actual or Decimal('0'))
-            for inv in self.inversiones.filter(excluir_de_patrimonio=False).select_related('valor_actual').all()
+            for inv in self.inversiones.exclude(tipo='DEPOSITO').select_related('valor_actual').all()
         )
 
     @property
@@ -844,7 +893,7 @@ class FondoFamiliar(models.Model):
             return None
         return sum(
             (inv.valor_aportado or Decimal('0'))
-            for inv in self.inversiones.filter(excluir_de_patrimonio=False).all()
+            for inv in self.inversiones.exclude(tipo='DEPOSITO').all()
         )
 
     @property

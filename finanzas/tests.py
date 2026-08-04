@@ -169,7 +169,7 @@ class AportacionRecurrenteTests(TestCase):
         self.user = User.objects.create_user('inversor', password='x')
         self.inv = Inversion.objects.create(
             usuario=self.user, nombre='Depósito Irene', tipo='DEPOSITO',
-            plataforma='Banco', excluir_de_patrimonio=True,
+            plataforma='Banco',
         )
 
     def test_meses_pendientes_calcula_rango_completo(self):
@@ -207,7 +207,7 @@ class AportacionRecurrenteGenerarViewTests(TestCase):
         self.client.force_login(self.user)
         self.inv = Inversion.objects.create(
             usuario=self.user, nombre='Depósito Irene', tipo='DEPOSITO',
-            plataforma='Banco', excluir_de_patrimonio=True,
+            plataforma='Banco',
         )
         # Regla que arrancó hace 3 meses (incluido el actual) para no depender de "hoy" fijo.
         hoy = datetime.date.today()
@@ -251,7 +251,7 @@ class DepositoExcluidoDePatrimonioTests(TestCase):
         # Depósito excluido: aporta 500, no debe sumar en los totales.
         dep = Inversion.objects.create(
             usuario=self.user, nombre='Depósito', tipo='DEPOSITO',
-            plataforma='Banco', excluir_de_patrimonio=True,
+            plataforma='Banco',
         )
         MovimientoInversion.objects.create(
             inversion=dep, fecha=datetime.date(2026, 1, 1), tipo='COMPRA',
@@ -278,7 +278,6 @@ class DepositoExcluidoDePatrimonioTests(TestCase):
 
         dep = Inversion.objects.create(
             usuario=self.user, nombre='Depósito', tipo='DEPOSITO', fondo=fondo,
-            excluir_de_patrimonio=True,
         )
         MovimientoInversion.objects.create(
             inversion=dep, fecha=datetime.date(2026, 1, 1), tipo='COMPRA',
@@ -297,7 +296,6 @@ class DepositoMotorInteresTests(TestCase):
             usuario=self.user, nombre='Depósito', tipo='DEPOSITO',
             deposito_tipo_interes=Decimal(str(tipo_interes)),
             deposito_frecuencia=frecuencia, deposito_fecha_liquidacion=liquidacion,
-            excluir_de_patrimonio=True,
         )
 
     def _aportacion(self, dep, fecha, importe, tipo='COMPRA'):
@@ -367,3 +365,66 @@ class InformeDepositosTests(TestCase):
         # Sí aparece como rendimiento de depósito y suma a la base del ahorro
         self.assertTrue(len(informe['depositos']) >= 0)  # depende del año
         self.assertGreaterEqual(informe['base_ahorro'], informe['interes_depositos'])
+
+
+class DepositoContabilidadTests(TestCase):
+    """Ajustes: la retirada total no debe dejar el interés negativo, y el saldo
+    real indicado manda sobre el interés calculado."""
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+
+    def test_retirada_total_no_deja_interes_negativo(self):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='D', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('2'), deposito_frecuencia='diaria')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(2025, 1, 1), tipo='COMPRA',
+            cantidad=Decimal('6000'), precio_unitario=Decimal('1'))
+        valor_antes = dep.deposito_estado()['valor']
+        # Retirar TODO (capital + interés)
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date.today(), tipo='VENTA',
+            cantidad=valor_antes, precio_unitario=Decimal('1'))
+        estado = dep.deposito_estado()
+        self.assertEqual(estado['valor'], Decimal('0.00'))
+        self.assertEqual(estado['aportado'], Decimal('6000.00'))
+        # El interés NO es negativo: es lo retirado (>6000) menos lo aportado.
+        self.assertGreater(estado['interes'], Decimal('0'))
+        self.assertEqual(estado['interes'], round(valor_antes - Decimal('6000'), 2))
+
+    def test_saldo_real_manda_sobre_el_calculado(self):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='D', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('2'), deposito_frecuencia='diaria',
+            deposito_saldo_manual=Decimal('6080'), deposito_saldo_fecha=datetime.date.today())
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(2025, 1, 1), tipo='COMPRA',
+            cantidad=Decimal('6000'), precio_unitario=Decimal('1'))
+        estado = dep.deposito_estado()
+        self.assertEqual(estado['valor'], Decimal('6080.00'))
+        self.assertEqual(estado['interes'], Decimal('80.00'))
+
+
+class DepositoEnEvolucionTests(TestCase):
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, SaldoRealFondo
+        self.user = User.objects.create_user('inversor', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        # Un fondo común con saldo en enero para que el mes tenga datos.
+        self.fondo = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        SaldoRealFondo.objects.create(fondo=self.fondo, año=datetime.date.today().year, mes=1, saldo=Decimal('1000'))
+
+    def test_deposito_suma_al_patrimonio_automaticamente(self):
+        from .views_evolucion import valor_depositos_hogar
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depo', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(datetime.date.today().year, 1, 1),
+            tipo='COMPRA', cantidad=Decimal('5000'), precio_unitario=Decimal('1'))
+        total = valor_depositos_hogar(self.hogar, datetime.date.today())
+        self.assertEqual(total, Decimal('5000.00'))

@@ -50,8 +50,9 @@ urlpatterns = [
     path('inversiones/carteras/', views.carteras_inversion, name='carteras'),
     path('inversiones/accion-masiva/', views.inversiones_accion_masiva, name='inversiones_accion_masiva'),
 
-    # Depósitos: aportación/retirada simple y borrado de movimiento
+    # Depósitos: aportación/retirada simple, saldo real y borrado de movimiento
     path('inversiones/<int:pk>/deposito/aportacion/', views.aportacion_deposito, name='aportacion_deposito'),
+    path('inversiones/<int:pk>/deposito/saldo/', views.deposito_saldo_manual, name='deposito_saldo_manual'),
     path('inversiones/movimiento/<int:pk>/eliminar/', views.eliminar_movimiento, name='eliminar_movimiento'),
 
     # Aportación recurrente (depósitos y activos con aportaciones periódicas)
