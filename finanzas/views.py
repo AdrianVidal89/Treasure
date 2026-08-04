@@ -362,7 +362,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
 from .models import Inversion, MovimientoInversion, ValorActualInversion, GrupoInversion, TIPOS_INVERSION, AportacionRecurrente
-from .forms import InversionForm, MovimientoInversionForm, AportacionRecurrenteForm
+from .forms import InversionForm, MovimientoInversionForm, AportacionRecurrenteForm, MovimientoDepositoForm
 from .models import ResumenInversionesMensual
 
 MESES_ES_LARGO = [
@@ -388,6 +388,20 @@ class InversionDetailView(LoginRequiredMixin, DetailView):
             regla.pendientes_fmt = [f'{MESES_ES_LARGO[m]} {a}' for a, m in regla.pendientes]
         context['aportaciones_recurrentes'] = reglas
         context['form_aportacion'] = AportacionRecurrenteForm()
+
+        # Datos calculados del depósito (valor con interés a fecha de hoy/liquidación)
+        if self.object.tipo == 'DEPOSITO':
+            valor, aportado = self.object.deposito_valor_y_aportado()
+            context['deposito'] = {
+                'valor': valor,
+                'aportado': aportado,
+                'interes': round(valor - aportado, 2),
+                'apertura': self.object.deposito_fecha_apertura,
+                'liquidado': self.object.deposito_fecha_liquidacion,
+                'interes_pct': (round(float((valor - aportado) / aportado * 100), 2)
+                                if aportado and aportado > 0 else None),
+            }
+            context['form_deposito'] = MovimientoDepositoForm(initial={'tipo': 'COMPRA'})
         return context
 
 
@@ -825,6 +839,14 @@ class InversionListView(LoginRequiredMixin, ListView):
         deposit_data = [d for d in inv_data if d['inv'].excluir_de_patrimonio]
         inv_data = [d for d in inv_data if not d['inv'].excluir_de_patrimonio]
 
+        # Para los depósitos, el valor "real" es el capital compuesto al interés.
+        for d in deposit_data:
+            if d['inv'].tipo == 'DEPOSITO':
+                valor_dep, aportado_dep = d['inv'].deposito_valor_y_aportado()
+                d['dep_valor'] = valor_dep
+                d['dep_aportado'] = aportado_dep
+                d['dep_interes'] = round(valor_dep - aportado_dep, 2)
+
         # ─── Totales cartera (sin depósitos) ─────────────────────────────────
         total_valor_actual = sum(d['valor_total'] for d in inv_data)
         total_coste_base = sum(d['coste_base'] for d in inv_data)
@@ -835,9 +857,15 @@ class InversionListView(LoginRequiredMixin, ListView):
         if total_coste_base > 0:
             rentabilidad_total = float((total_valor_actual - total_coste_base) / total_coste_base * 100)
 
-        # ─── Subtotales de depósitos ──────────────────────────────────────────
-        deposit_total_aportado = sum(d['inv'].valor_aportado for d in deposit_data)
-        deposit_total_valor = sum(d['valor_total'] for d in deposit_data)
+        # ─── Subtotales de depósitos (valor con interés cuando es un depósito) ─
+        deposit_total_aportado = sum(
+            (d.get('dep_aportado') if d.get('dep_aportado') is not None else d['inv'].valor_aportado)
+            for d in deposit_data
+        )
+        deposit_total_valor = sum(
+            (d.get('dep_valor') if d.get('dep_valor') is not None else d['valor_total'])
+            for d in deposit_data
+        )
 
         # ─── Carteras (grupos de inversión) del usuario ─────────────────────
         carteras = list(GrupoInversion.objects.filter(usuario=self.request.user))
@@ -1073,3 +1101,43 @@ def aportacion_recurrente_generar(request, pk, regla_id):
     else:
         messages.info(request, 'No había aportaciones pendientes que generar.')
     return redirect('finanzas:detalle', pk=inv.id)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Depósitos: alta simple de aportación/retirada y borrado de movimientos
+# ──────────────────────────────────────────────────────────────────────
+@login_required
+@require_POST
+def aportacion_deposito(request, pk):
+    """Registra un flujo de un depósito (aportación o retirada) desde la ficha,
+    en importe €. Crea un MovimientoInversion con precio unitario = 1."""
+    inv = get_object_or_404(Inversion, id=pk, usuario=request.user)
+    form = MovimientoDepositoForm(request.POST)
+    if form.is_valid():
+        MovimientoInversion.objects.create(
+            inversion=inv,
+            fecha=form.cleaned_data['fecha'],
+            tipo=form.cleaned_data['tipo'],
+            cantidad=form.cleaned_data['importe'],
+            precio_unitario=Decimal('1'),
+            grupo=inv.grupo,
+        )
+        etiqueta = 'Aportación' if form.cleaned_data['tipo'] == 'COMPRA' else 'Retirada'
+        messages.success(request, f'{etiqueta} registrada.')
+    else:
+        # Errores típicos: retirar más de lo aportado (validación del modelo).
+        errores = '; '.join(f'{k}: {", ".join(v)}' for k, v in form.errors.items())
+        messages.error(request, f'No se pudo registrar el movimiento. {errores}')
+    return redirect('finanzas:detalle', pk=inv.id)
+
+
+@login_required
+@require_POST
+def eliminar_movimiento(request, pk):
+    """Borra un movimiento (propio). Útil sobre todo para corregir flujos de un
+    depósito. Redirige a la ficha de la inversión."""
+    mov = get_object_or_404(MovimientoInversion, id=pk, inversion__usuario=request.user)
+    inv_id = mov.inversion_id
+    mov.delete()
+    messages.success(request, 'Movimiento eliminado.')
+    return redirect('finanzas:detalle', pk=inv_id)

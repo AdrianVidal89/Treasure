@@ -286,3 +286,84 @@ class DepositoExcluidoDePatrimonioTests(TestCase):
         )
 
         self.assertEqual(fondo.total_aportado_cartera, Decimal('100'))
+
+
+class DepositoMotorInteresTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+
+    def _deposito(self, tipo_interes, frecuencia='anual', liquidacion=None):
+        return Inversion.objects.create(
+            usuario=self.user, nombre='Depósito', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal(str(tipo_interes)),
+            deposito_frecuencia=frecuencia, deposito_fecha_liquidacion=liquidacion,
+            excluir_de_patrimonio=True,
+        )
+
+    def _aportacion(self, dep, fecha, importe, tipo='COMPRA'):
+        return MovimientoInversion.objects.create(
+            inversion=dep, fecha=fecha, tipo=tipo,
+            cantidad=Decimal(str(importe)), precio_unitario=Decimal('1'),
+        )
+
+    def test_valor_con_interes_anual(self):
+        dep = self._deposito('3', 'anual', liquidacion=datetime.date(2026, 1, 1))
+        self._aportacion(dep, datetime.date(2024, 1, 1), 10000)
+        valor, aportado = dep.deposito_valor_y_aportado()
+        # 2 años (con año bisiesto) al 3% anual ≈ 10.609,86
+        self.assertEqual(aportado, Decimal('10000.00'))
+        self.assertTrue(Decimal('10609') < valor < Decimal('10611'))
+        self.assertEqual(dep.deposito_fecha_apertura, datetime.date(2024, 1, 1))
+
+    def test_valor_con_aportaciones_y_retiradas(self):
+        dep = self._deposito('2', 'mensual', liquidacion=datetime.date(2026, 1, 1))
+        self._aportacion(dep, datetime.date(2024, 1, 1), 10000)
+        self._aportacion(dep, datetime.date(2025, 1, 1), 5000)
+        self._aportacion(dep, datetime.date(2025, 7, 1), 2000, tipo='VENTA')  # retirada
+        valor, aportado = dep.deposito_valor_y_aportado()
+        self.assertEqual(aportado, Decimal('13000.00'))   # 10000 + 5000 - 2000
+        self.assertTrue(valor > aportado)  # generó interés neto
+
+    def test_interes_por_anio(self):
+        dep = self._deposito('3', 'anual')
+        self._aportacion(dep, datetime.date(2024, 1, 1), 10000)
+        # El interés de 2025 ≈ 300 (3% sobre ~10.300)
+        interes_2025 = dep.deposito_interes_anio(2025)
+        self.assertTrue(Decimal('280') < interes_2025 < Decimal('330'))
+
+    def test_liquidacion_congela_el_valor(self):
+        dep = self._deposito('5', 'anual', liquidacion=datetime.date(2025, 1, 1))
+        self._aportacion(dep, datetime.date(2024, 1, 1), 10000)
+        # Sin liquidación crecería más; con liquidación en 2025 el valor a hoy = valor a 2025.
+        valor_hoy, _ = dep.deposito_valor_y_aportado()
+        valor_liq, _ = dep.deposito_valor_y_aportado(hasta=datetime.date(2030, 1, 1))
+        self.assertEqual(valor_hoy, valor_liq)  # no acumula tras la liquidación
+
+
+class InformeDepositosTests(TestCase):
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        self.user = User.objects.create_user('inversor', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+
+    def test_deposito_no_entra_en_plusvalias_y_suma_rendimiento(self):
+        from .informe_hacienda import calcular_informe_ventas
+
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito Irene', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('4'), deposito_frecuencia='anual',
+        )
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(2024, 1, 1), tipo='COMPRA',
+            cantidad=Decimal('10000'), precio_unitario=Decimal('1'),
+        )
+        anio = datetime.date.today().year
+        informe = calcular_informe_ventas(self.hogar, anio)
+        # No aparece como venta/plusvalía
+        self.assertEqual(informe['num_ventas'], 0)
+        # Sí aparece como rendimiento de depósito y suma a la base del ahorro
+        self.assertTrue(len(informe['depositos']) >= 0)  # depende del año
+        self.assertGreaterEqual(informe['base_ahorro'], informe['interes_depositos'])

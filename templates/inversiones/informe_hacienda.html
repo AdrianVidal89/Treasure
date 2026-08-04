@@ -40,15 +40,56 @@
             <span class="stat-tile-valor num text-negative">{{ informe.perdidas|floatformat:2 }} €</span>
         </div>
         <div class="card stat-tile">
-            <span class="stat-tile-label">Ganancia neta declarable</span>
+            <span class="stat-tile-label">Ganancia neta (plusvalías)</span>
             <span class="stat-tile-valor num {% if informe.ganancia_neta < 0 %}text-negative{% else %}text-positive{% endif %}">{{ informe.ganancia_neta|floatformat:2 }} €</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Rendimientos depósitos</span>
+            <span class="stat-tile-valor num text-positive">{{ informe.interes_depositos|floatformat:2 }} €</span>
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Impuesto estimado</span>
             <span class="stat-tile-valor num">{{ informe.impuesto_estimado|floatformat:2 }} €</span>
-            {% if informe.tipo_efectivo %}<span class="stat-tile-sub">tipo efectivo {{ informe.tipo_efectivo }}%</span>{% endif %}
+            {% if informe.tipo_efectivo %}<span class="stat-tile-sub">tipo efectivo {{ informe.tipo_efectivo }}% · base {{ informe.base_ahorro|floatformat:2 }} €</span>{% endif %}
         </div>
     </div>
+
+    {% if informe.depositos %}
+    <div style="margin: 8px 0 6px;">
+        <h2 style="font-size:1.05rem; margin:0 0 4px;">Rendimientos de depósitos {{ anio_actual }}</h2>
+        <p class="text-muted" style="font-size:0.82rem; margin:0 0 8px;">
+            Interés devengado en el ejercicio (rendimiento del capital mobiliario). Se integra en la
+            base del ahorro junto a las plusvalías. Estimación orientativa.
+        </p>
+    </div>
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Depósito</th><th>Titular</th><th>Apertura</th><th class="num">Tipo</th>
+                    <th class="num">Interés {{ anio_actual }}</th><th class="num">Interés total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in informe.depositos %}
+                <tr>
+                    <td>{{ d.nombre }}{% if d.liquidado_en_anio %} <span class="badge badge-warning" style="margin-left:6px;">liquidado</span>{% endif %}</td>
+                    <td>{{ d.titular }}</td>
+                    <td>{{ d.apertura|date:"d/m/Y"|default:"—" }}</td>
+                    <td class="num">{{ d.tipo_interes|default:"0"|floatformat:"-3" }}% {{ d.frecuencia|lower }}</td>
+                    <td class="num text-positive">{{ d.interes_anio|floatformat:2 }} €</td>
+                    <td class="num text-muted">{{ d.interes_total|floatformat:2 }} €</td>
+                </tr>
+                {% endfor %}
+                <tr>
+                    <td colspan="4" class="num" style="font-weight:700;">Total rendimientos {{ anio_actual }}</td>
+                    <td class="num text-positive" style="font-weight:700;">{{ informe.interes_depositos|floatformat:2 }} €</td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
 
     {% if informe.hay_sin_cobertura %}
     <div class="badge badge-warning" style="display:flex; gap:8px; padding:12px 14px; margin-bottom:14px; align-items:flex-start;">

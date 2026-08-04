@@ -130,6 +130,8 @@ TIPOS_INVERSION = [
     ('OTRO', 'Otro'),
 ]
 
+from .depositos import FRECUENCIA_CHOICES as DEPOSITO_FRECUENCIA_CHOICES  # noqa: E402
+
 
 class GrupoInversion(models.Model):
     """Cartera de inversión: agrupación lógica de activos definida por el usuario,
@@ -227,6 +229,20 @@ class Inversion(models.Model):
                    "simuladores (p. ej. depósitos que ya cuentas en otra parte de la "
                    "app). Sigue apareciendo en Inversiones, en su propia sección, y en "
                    "el Informe Hacienda.",
+    )
+    # ── Parámetros específicos de DEPÓSITO ──────────────────────────────────
+    deposito_tipo_interes = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        help_text="Tipo de interés NOMINAL anual del depósito (%). Solo para depósitos.",
+    )
+    deposito_frecuencia = models.CharField(
+        max_length=12, choices=DEPOSITO_FRECUENCIA_CHOICES, default='anual', blank=True,
+        help_text="Cada cuánto capitaliza (paga) el interés el depósito.",
+    )
+    deposito_fecha_liquidacion = models.DateField(
+        null=True, blank=True,
+        help_text="Fecha de liquidación/vencimiento. Si se indica, el valor y el "
+                   "interés se calculan hasta esa fecha (deja de acumular después).",
     )
     fecha_creacion = models.DateField(auto_now_add=True)
 
@@ -330,6 +346,65 @@ class Inversion(models.Model):
                 pmc = round(total_invertido / total_unidades, 8) if total_unidades > 0 else Decimal('0')
                 ganancia += (m.precio_unitario - pmc) * m.cantidad - m.comision
         return round(ganancia, 2)
+
+    # ── Motor de depósito ───────────────────────────────────────────────────
+    # Para tipo=DEPOSITO, el valor no es unidades×precio sino el capital
+    # compuesto al tipo de interés, teniendo en cuenta aportaciones (COMPRA) y
+    # retiradas (VENTA) fechadas. La primera aportación es la apertura.
+
+    def _flujos_deposito(self):
+        flujos = []
+        for m in self.movimientos.all():
+            if m.tipo == 'COMPRA':
+                flujos.append((m.fecha, m.cantidad))
+            elif m.tipo == 'VENTA':
+                flujos.append((m.fecha, -m.cantidad))
+        return flujos
+
+    def deposito_valor_y_aportado(self, hasta=None):
+        """(valor_con_interes, aportado_neto) del depósito a la fecha `hasta`
+        (por defecto: fecha de liquidación si existe, o hoy)."""
+        from .depositos import valor_a_fecha, PERIODOS_ANO
+        if hasta is None:
+            hasta = self.deposito_fecha_liquidacion or date.today()
+        elif self.deposito_fecha_liquidacion and hasta > self.deposito_fecha_liquidacion:
+            hasta = self.deposito_fecha_liquidacion
+        r = (self.deposito_tipo_interes or Decimal('0')) / Decimal('100')
+        m = PERIODOS_ANO.get(self.deposito_frecuencia or 'anual', 1)
+        valor, aportado = valor_a_fecha(self._flujos_deposito(), r, m, hasta)
+        return round(valor, 2), round(aportado, 2)
+
+    @property
+    def deposito_valor_actual(self):
+        return self.deposito_valor_y_aportado()[0]
+
+    @property
+    def deposito_aportado(self):
+        return self.deposito_valor_y_aportado()[1]
+
+    @property
+    def deposito_interes(self):
+        valor, aportado = self.deposito_valor_y_aportado()
+        return round(valor - aportado, 2)
+
+    @property
+    def deposito_fecha_apertura(self):
+        flujos = sorted(self._flujos_deposito(), key=lambda x: x[0])
+        return flujos[0][0] if flujos else None
+
+    def deposito_interes_anio(self, anio):
+        """Interés generado (devengado) durante el ejercicio `anio`: variación
+        del valor a lo largo del año descontando los flujos de capital de ese
+        año. Es la base orientativa del rendimiento a declarar ese ejercicio."""
+        fin = date(anio, 12, 31)
+        ini_prev = date(anio - 1, 12, 31)
+        valor_fin, _ = self.deposito_valor_y_aportado(hasta=fin)
+        valor_ini, _ = self.deposito_valor_y_aportado(hasta=ini_prev)
+        flujos_anio = sum(
+            (imp for f, imp in self._flujos_deposito() if f.year == anio and f <= fin),
+            Decimal('0'),
+        )
+        return round(valor_fin - valor_ini - flujos_anio, 2)
 
 
 class AportacionRecurrente(models.Model):

@@ -40,6 +40,9 @@
 .aport-form label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; font-weight: 600; }
 .aport-form input { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--text-color); font-size: 0.85rem; }
 .aport-form input[type="checkbox"] { width: 16px; height: 16px; }
+.aport-form-fg { display: flex; flex-direction: column; gap: 5px; }
+.aport-form-fg label { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+.aport-form-fg input, .aport-form-fg select { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--app-bg); color: var(--text-color); font-size: 0.85rem; }
 </style>
 
 <div class="det-wrap">
@@ -73,7 +76,54 @@
         {% endfor %}
     {% endif %}
 
-    {% if inversion.valor_actual %}
+    {% if deposito %}
+    <!-- Resumen del depósito con interés -->
+    <div class="det-card" style="border-color: #2c5f7a44;">
+        <h2>Depósito</h2>
+        <div style="display:flex; gap:28px; flex-wrap:wrap; align-items:flex-end; margin-bottom: 10px;">
+            <div>
+                <div style="font-size:0.68rem; text-transform:uppercase; color:var(--muted); font-weight:600;">Valor actual{% if deposito.liquidado %} (liquidado){% endif %}</div>
+                <div style="font-size:1.6rem; font-weight:800; color:#2c5f7a;">€{{ deposito.valor|floatformat:2 }}</div>
+            </div>
+            <div>
+                <div style="font-size:0.68rem; text-transform:uppercase; color:var(--muted); font-weight:600;">Aportado neto</div>
+                <div style="font-size:1.1rem; font-weight:700;">€{{ deposito.aportado|floatformat:2 }}</div>
+            </div>
+            <div>
+                <div style="font-size:0.68rem; text-transform:uppercase; color:var(--muted); font-weight:600;">Interés generado</div>
+                <div style="font-size:1.1rem; font-weight:700;" class="{% if deposito.interes >= 0 %}pos{% else %}neg{% endif %}">
+                    {% if deposito.interes >= 0 %}+{% endif %}€{{ deposito.interes|floatformat:2 }}{% if deposito.interes_pct != None %} ({{ deposito.interes_pct }}%){% endif %}
+                </div>
+            </div>
+        </div>
+        <p style="margin:0; color: var(--muted); font-size:0.85rem;">
+            {% if deposito.apertura %}Apertura: <strong style="color:var(--text-color);">{{ deposito.apertura|date:"d/m/Y" }}</strong> · {% endif %}
+            Interés: <strong style="color:var(--text-color);">{{ inversion.deposito_tipo_interes|default:"0"|floatformat:"-3" }}% anual</strong>
+            (capitaliza {{ inversion.get_deposito_frecuencia_display|lower }})
+            {% if deposito.liquidado %}· liquidado el <strong style="color:var(--text-color);">{{ deposito.liquidado|date:"d/m/Y" }}</strong>{% endif %}
+            · <a href="{% url 'finanzas:editar' inversion.id %}" style="color: var(--primary-color);">editar parámetros</a>
+        </p>
+
+        <!-- Alta de aportación / retirada -->
+        <form method="post" action="{% url 'finanzas:aportacion_deposito' inversion.id %}"
+              style="display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--border);">
+            {% csrf_token %}
+            <div class="aport-form-fg"><label>Fecha</label><input type="date" name="fecha" required></div>
+            <div class="aport-form-fg"><label>Tipo</label>
+                <select name="tipo">
+                    <option value="COMPRA">Aportación</option>
+                    <option value="VENTA">Retirada</option>
+                </select>
+            </div>
+            <div class="aport-form-fg"><label>Importe €</label><input type="number" step="0.01" min="0" name="importe" placeholder="0.00" required></div>
+            <button type="submit" class="btn-generar" style="padding:8px 14px; border-radius:8px; border:1px solid var(--primary-color); background:var(--primary-color); color:#fff; font-weight:600; cursor:pointer;">Registrar</button>
+        </form>
+        <div style="font-size:0.75rem; color:var(--muted); margin-top:8px;">
+            La primera aportación es la apertura del depósito. Registra aquí cada aportación o
+            retirada con su fecha; el valor de arriba se recalcula con el interés.
+        </div>
+    </div>
+    {% elif inversion.valor_actual %}
     <div class="det-card">
         <h2>Valoración</h2>
         <p style="margin:0; color: var(--muted); font-size:0.9rem;">
@@ -168,7 +218,14 @@
                     <td class="right">{{ m.cantidad|floatformat:4 }}</td>
                     <td class="right">{{ m.precio_unitario|floatformat:4 }}</td>
                     <td class="right">{{ m.comision|floatformat:2 }}</td>
-                    <td><a href="{% url 'finanzas:editar_movimiento' m.id %}" style="font-size:0.75rem; color:var(--muted); text-decoration:none; padding:3px 8px; border:1px solid var(--border-strong); border-radius:6px;">✏️</a></td>
+                    <td style="white-space:nowrap;">
+                        <a href="{% url 'finanzas:editar_movimiento' m.id %}" style="font-size:0.75rem; color:var(--muted); text-decoration:none; padding:3px 8px; border:1px solid var(--border-strong); border-radius:6px;">✏️</a>
+                        <form method="post" action="{% url 'finanzas:eliminar_movimiento' m.id %}" style="display:inline;"
+                              onsubmit="return confirm('¿Eliminar este movimiento?');">
+                            {% csrf_token %}
+                            <button type="submit" style="font-size:0.75rem; color:#b4442e; background:transparent; border:1px solid #b4442e55; border-radius:6px; padding:3px 8px; cursor:pointer;">🗑</button>
+                        </form>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
