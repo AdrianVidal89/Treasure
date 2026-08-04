@@ -29,6 +29,10 @@ COMO_DECLARAR = [
     "Este informe aplica el criterio FIFO (primero en entrar, primero en salir) que "
     "exige Hacienda para valores homogéneos, incluyendo las comisiones de compra en el "
     "valor de adquisición. Contrasta las cifras con tu asesor antes de presentarlas.",
+    "Los intereses de DEPÓSITOS son rendimientos del capital mobiliario (no plusvalías): "
+    "se declaran en su apartado propio del IRPF, pero tributan también en la base del "
+    "ahorro con los mismos tramos. El interés mostrado por ejercicio es el devengado ese "
+    "año; la tributación exacta depende de cuándo el banco liquida/paga el interés.",
 ]
 
 
@@ -154,7 +158,9 @@ def informe_hacienda_xlsx(request):
     resumen = [
         ('Ganancias del ejercicio', informe['ganancias_positivas']),
         ('Pérdidas del ejercicio', informe['perdidas']),
-        ('Ganancia neta declarable', informe['ganancia_neta']),
+        ('Ganancia neta (plusvalías)', informe['ganancia_neta']),
+        ('Rendimientos de depósitos', informe['interes_depositos']),
+        ('Base del ahorro', informe['base_ahorro']),
         ('Impuesto estimado (base del ahorro)', informe['impuesto_estimado']),
     ]
     for etiqueta, valor in resumen:
@@ -193,6 +199,33 @@ def informe_hacienda_xlsx(request):
             c4.font = Font(color='B4442E', bold=True)
             ws3.cell(row=r, column=6, value=_fmt(v['unidades_sin_coste']))
             r += 1
+
+    # Hoja de rendimientos de depósitos
+    if informe['depositos']:
+        wsd = wb.create_sheet('Depósitos')
+        cols_dep = [('Depósito', 26), ('Titular', 14), ('Apertura', 14), ('Tipo interés', 14),
+                    ('Frecuencia', 14), (f'Interés {anio}', 16), ('Interés total', 16), ('Liquidado', 14)]
+        for c, (titulo, ancho) in enumerate(cols_dep, start=1):
+            celda = wsd.cell(row=1, column=c, value=titulo)
+            celda.fill = encabezado_fill
+            celda.font = encabezado_font
+            celda.alignment = Alignment(horizontal='center')
+            wsd.column_dimensions[get_column_letter(c)].width = ancho
+        rd = 2
+        for d in informe['depositos']:
+            wsd.cell(row=rd, column=1, value=d['nombre'])
+            wsd.cell(row=rd, column=2, value=d['titular'])
+            wsd.cell(row=rd, column=3, value=d['apertura'].strftime('%d/%m/%Y') if d['apertura'] else '—')
+            wsd.cell(row=rd, column=4, value=(float(d['tipo_interes']) / 100 if d['tipo_interes'] else 0)).number_format = '0.000%'
+            wsd.cell(row=rd, column=5, value=d['frecuencia'])
+            wsd.cell(row=rd, column=6, value=_fmt(d['interes_anio'])).number_format = euro
+            wsd.cell(row=rd, column=7, value=_fmt(d['interes_total'])).number_format = euro
+            wsd.cell(row=rd, column=8, value=d['liquidado'].strftime('%d/%m/%Y') if d['liquidado'] else '—')
+            rd += 1
+        wsd.cell(row=rd + 1, column=5, value='Total rendimientos').font = negrita
+        celda = wsd.cell(row=rd + 1, column=6, value=_fmt(informe['interes_depositos']))
+        celda.number_format = euro
+        celda.font = negrita
 
     # Hoja de cómo declararlo
     ws2 = wb.create_sheet('Cómo declararlo')
@@ -336,12 +369,40 @@ def informe_hacienda_pdf(request):
     else:
         elementos.append(Paragraph('No hay ventas registradas en este ejercicio.', estilo_normal))
 
+    # Rendimientos de depósitos
+    if informe['depositos']:
+        elementos.append(Spacer(1, 8 * mm))
+        elementos.append(Paragraph('Rendimientos de depósitos', estilo_h2))
+        dep_filas = [['Depósito', 'Titular', 'Apertura', 'Tipo', f'Interés {anio}', 'Interés total']]
+        for d in informe['depositos']:
+            dep_filas.append([
+                d['nombre'][:26], d['titular'][:14],
+                d['apertura'].strftime('%d/%m/%Y') if d['apertura'] else '—',
+                (f"{float(d['tipo_interes']):.3f}%" if d['tipo_interes'] else '0%'),
+                moneda(d['interes_anio']), moneda(d['interes_total']),
+            ])
+        dep_filas.append(['', '', '', '', 'TOTAL', moneda(informe['interes_depositos'])])
+        tabla_dep = Table(dep_filas, repeatRows=1)
+        tabla_dep.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), verde),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('ALIGN', (3, 0), (-1, -1), 'RIGHT'),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elementos.append(tabla_dep)
+
     elementos.append(Spacer(1, 8 * mm))
     elementos.append(Paragraph('Resumen fiscal', estilo_h2))
     resumen_filas = [
         ['Ganancias del ejercicio', moneda(informe['ganancias_positivas'])],
         ['Pérdidas del ejercicio', moneda(informe['perdidas'])],
-        ['Ganancia neta declarable', moneda(informe['ganancia_neta'])],
+        ['Ganancia neta (plusvalías)', moneda(informe['ganancia_neta'])],
+        ['Rendimientos de depósitos', moneda(informe['interes_depositos'])],
+        ['Base del ahorro', moneda(informe['base_ahorro'])],
         ['Impuesto estimado (base del ahorro)', moneda(informe['impuesto_estimado'])],
     ]
     tabla_resumen = Table(resumen_filas, colWidths=[80 * mm, 45 * mm])

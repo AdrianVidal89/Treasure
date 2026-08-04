@@ -145,3 +145,14 @@ class AportacionRecurrenteForm(forms.ModelForm):
             'fecha_inicio': forms.DateInput(attrs={'type': 'date'}),
             'fecha_fin': forms.DateInput(attrs={'type': 'date'}),
         }
+
+
+class MovimientoDepositoForm(forms.Form):
+    """Alta simple de un flujo de un depósito (aportación o retirada), pensada
+    en 'importe €' en vez de cantidad×precio. Internamente crea un
+    MovimientoInversion (COMPRA/VENTA con precio unitario = 1)."""
+    TIPO_CHOICES = [('COMPRA', 'Aportación'), ('VENTA', 'Retirada')]
+    fecha = forms.DateField(widget=forms.DateInput(attrs={'type': 'date'}))
+    tipo = forms.ChoiceField(choices=TIPO_CHOICES)
+    importe = forms.DecimalField(min_value=0, decimal_places=2,
+                                 widget=forms.NumberInput(attrs={'step': '0.01', 'min': '0'}))

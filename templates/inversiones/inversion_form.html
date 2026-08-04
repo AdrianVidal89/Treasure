@@ -175,6 +175,37 @@
                 mezclarse con el resto de tu cartera de mercado.
             </div>
 
+            <!-- Parámetros de depósito (solo visibles si el tipo es Depósito) -->
+            <div id="deposito-params" style="display: none; border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 20px; background: var(--app-bg);">
+                <div style="font-size: 0.8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; margin-bottom: 12px;">Parámetros del depósito</div>
+                <div class="form-row-3">
+                    <div class="fg">
+                        <label>Tipo de interés anual (%)</label>
+                        <input type="number" name="deposito_tipo_interes" step="0.001" min="0"
+                               value="{% if form.instance.deposito_tipo_interes != None %}{{ form.instance.deposito_tipo_interes|unlocalize }}{% endif %}"
+                               placeholder="Ej: 3.25">
+                    </div>
+                    <div class="fg">
+                        <label>Capitaliza</label>
+                        <select name="deposito_frecuencia">
+                            {% for val, label in form.deposito_frecuencia.field.choices %}
+                            <option value="{{ val }}" {% if form.instance.deposito_frecuencia == val %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="fg">
+                        <label>Liquidación (opcional)</label>
+                        <input type="date" name="deposito_fecha_liquidacion"
+                               value="{{ form.instance.deposito_fecha_liquidacion|date:'Y-m-d' }}">
+                    </div>
+                </div>
+                <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;">
+                    El valor del depósito se calcula con el interés compuesto a esta frecuencia,
+                    a partir de las aportaciones y retiradas que registres en su ficha. La fecha de
+                    liquidación congela el cálculo (deja de acumular interés después).
+                </div>
+            </div>
+
             <!-- Actualización automática -->
             <div class="fg" style="display: flex; align-items: center; gap: 12px; padding: 12px 0;">
                 <input type="checkbox" name="actualizable" id="id_actualizable"
@@ -312,6 +343,14 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     chk.addEventListener('change', toggleManual);
     toggleManual();
+
+    // Mostrar los parámetros de depósito solo si el tipo es "Depósito"
+    const depoParams = document.getElementById('deposito-params');
+    function toggleDeposito() {
+        depoParams.style.display = (tipoActivo.value === 'DEPOSITO') ? 'block' : 'none';
+    }
+    tipoActivo.addEventListener('change', toggleDeposito);
+    toggleDeposito();
 });
 
 // Permitir escribir ticker manualmente (sin seleccionar del dropdown)

@@ -541,22 +541,31 @@
                 </div>
             </div>
             <div class="dep-metrics">
+                {% if item.dep_valor != None %}
+                <div class="dep-metric">
+                    <span class="l">Valor actual</span>
+                    <span class="v" style="color:#2c5f7a;">€{{ item.dep_valor|floatformat:2 }}</span>
+                </div>
+                <div class="dep-metric">
+                    <span class="l">Aportado</span>
+                    <span class="v">€{{ item.dep_aportado|floatformat:2 }}</span>
+                </div>
+                <div class="dep-metric">
+                    <span class="l">Interés</span>
+                    <span class="v {% if item.dep_interes >= 0 %}pos{% else %}neg{% endif %}">
+                        {% if item.dep_interes >= 0 %}+{% endif %}€{{ item.dep_interes|floatformat:2 }}
+                    </span>
+                </div>
+                {% else %}
                 <div class="dep-metric">
                     <span class="l">Aportado</span>
                     <span class="v">€{{ item.inv.valor_aportado|floatformat:2 }}</span>
                 </div>
-                {% if item.ganancia_realizada %}
-                <div class="dep-metric">
-                    <span class="l">Interés liquidado</span>
-                    <span class="v {% if item.ganancia_realizada >= 0 %}pos{% else %}neg{% endif %}">
-                        {% if item.ganancia_realizada >= 0 %}+{% endif %}€{{ item.ganancia_realizada|floatformat:2 }}
-                    </span>
-                </div>
-                {% endif %}
                 <div class="dep-metric">
                     <span class="l">Movimientos</span>
                     <span class="v">{{ item.movimientos|length }}</span>
                 </div>
+                {% endif %}
             </div>
             <a href="{% url 'finanzas:detalle' item.inv.id %}"
                style="font-size: 0.78rem; color: var(--muted); text-decoration: none;

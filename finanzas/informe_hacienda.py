@@ -66,10 +66,15 @@ def _origen(inv):
 
 
 def calcular_informe_ventas(hogar, anio):
-    """Devuelve un dict con las ventas del año y los totales/estimación fiscal."""
+    """Devuelve un dict con las ventas del año y los totales/estimación fiscal.
+
+    Los DEPÓSITOS se excluyen del pool FIFO de plusvalías: fiscalmente son
+    rendimientos del capital mobiliario, no ganancias patrimoniales. Se calculan
+    aparte en `calcular_informe_depositos` y se suman a la base del ahorro."""
     inversiones = (
         Inversion.objects
         .filter(usuario__userprofile__hogar=hogar)
+        .exclude(tipo='DEPOSITO')
         .select_related('usuario')
         .prefetch_related('movimientos')
     )
@@ -159,10 +164,16 @@ def calcular_informe_ventas(hogar, anio):
     perdidas = sum((v['ganancia'] for v in ventas if v['ganancia'] < 0), Decimal('0'))
     ganancia_neta = sum((v['ganancia'] for v in ventas), Decimal('0'))
 
-    impuesto_estimado = _impuesto_base_ahorro(max(ganancia_neta, Decimal('0')))
+    # ── Rendimientos de depósitos (capital mobiliario) del ejercicio ──────────
+    depositos = calcular_informe_depositos(hogar, anio)
+    interes_depositos = depositos['total_interes']
+
+    # La base del ahorro combina plusvalías (parte positiva) y rendimientos.
+    base_ahorro = max(ganancia_neta, Decimal('0')) + max(interes_depositos, Decimal('0'))
+    impuesto_estimado = _impuesto_base_ahorro(base_ahorro)
     tipo_efectivo = (
-        round(impuesto_estimado / ganancia_neta * 100, 2)
-        if ganancia_neta > 0 else Decimal('0')
+        round(impuesto_estimado / base_ahorro * 100, 2)
+        if base_ahorro > 0 else Decimal('0')
     )
 
     ventas_sin_cobertura = [v for v in ventas if not v['cubierto']]
@@ -177,9 +188,54 @@ def calcular_informe_ventas(hogar, anio):
         'ganancias_positivas': ganancias_positivas,
         'perdidas': perdidas,
         'ganancia_neta': ganancia_neta,
+        'depositos': depositos['depositos'],
+        'interes_depositos': interes_depositos,
+        'base_ahorro': base_ahorro,
         'impuesto_estimado': impuesto_estimado,
         'tipo_efectivo': tipo_efectivo,
         'tramos': TRAMOS_AHORRO_ES,
         'hay_sin_cobertura': bool(ventas_sin_cobertura),
         'ventas_sin_cobertura': len(ventas_sin_cobertura),
     }
+
+
+def calcular_informe_depositos(hogar, anio):
+    """Rendimientos (intereses) de los depósitos del hogar en el ejercicio.
+
+    Para cada depósito calcula el interés DEVENGADO durante el año (variación
+    de valor descontando aportaciones/retiradas). Es una estimación orientativa
+    del rendimiento del capital mobiliario a declarar: la fiscalidad exacta
+    depende de cuándo se paga/liquida el interés."""
+    depositos = (
+        Inversion.objects
+        .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
+        .select_related('usuario')
+        .prefetch_related('movimientos')
+    )
+
+    filas = []
+    for inv in depositos:
+        interes_anio = inv.deposito_interes_anio(anio)
+        valor, aportado = inv.deposito_valor_y_aportado()
+        interes_total = round(valor - aportado, 2)
+        liquidado_en_anio = bool(
+            inv.deposito_fecha_liquidacion and inv.deposito_fecha_liquidacion.year == anio
+        )
+        # Incluimos el depósito si generó interés ese año o se liquidó ese año.
+        if interes_anio == 0 and not liquidado_en_anio:
+            continue
+        filas.append({
+            'nombre': inv.nombre,
+            'titular': _titular(inv.usuario),
+            'apertura': inv.deposito_fecha_apertura,
+            'tipo_interes': inv.deposito_tipo_interes,
+            'frecuencia': inv.get_deposito_frecuencia_display(),
+            'interes_anio': interes_anio,
+            'interes_total': interes_total,
+            'liquidado': inv.deposito_fecha_liquidacion,
+            'liquidado_en_anio': liquidado_en_anio,
+        })
+
+    filas.sort(key=lambda f: (f['titular'], f['nombre']))
+    total_interes = sum((f['interes_anio'] for f in filas), Decimal('0'))
+    return {'anio': anio, 'depositos': filas, 'total_interes': total_interes}
