@@ -71,10 +71,14 @@ def _datos_financieros(hogar):
     gastos_anuales = Decimal('0')
     for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
         tipo_cat = getattr(p.categoria, 'tipo', 'fijo')
-        if tipo_cat == 'variable':
+        if tipo_cat in ('variable', 'discrecional'):
+            # El gasto discrecional no es un compromiso fijo: para el simulador
+            # cuenta como variable, no como coste ineludible.
             gastos_variables += p.importe_mensual
         elif tipo_cat == 'anual':
             gastos_anuales += p.importe_mensual
+        elif tipo_cat in ('ingreso', 'traspaso'):
+            continue  # no son gasto
         else:
             gastos_fijos += p.importe_mensual
 

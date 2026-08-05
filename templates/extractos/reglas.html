@@ -59,8 +59,12 @@
                             <input type="hidden" name="accion" value="recategorizar">
                             <input type="hidden" name="regla_id" value="{{ r.id }}">
                             <select name="categoria_id" onchange="this.form.submit()">
-                                {% for c in categorias_hogar %}
-                                <option value="{{ c.id }}" {% if r.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                                {% for b in bloques_categorias %}
+                                <optgroup label="{{ b.etiqueta }}">
+                                    {% for c in b.categorias %}
+                                    <option value="{{ c.id }}" {% if r.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                                    {% endfor %}
+                                </optgroup>
                                 {% endfor %}
                             </select>
                         </form>

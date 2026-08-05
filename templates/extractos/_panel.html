@@ -39,8 +39,8 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
     <div class="ext-filtro">
         <label>Traspasos internos</label>
         <select name="traspasos" onchange="this.form.submit()">
-            <option value="0" {% if not panel.ver_traspasos %}selected{% endif %}>Ocultos ({{ panel.num_traspasos }})</option>
-            <option value="1" {% if panel.ver_traspasos %}selected{% endif %}>Mostrar</option>
+            <option value="1" {% if panel.ver_traspasos %}selected{% endif %}>Mostrar ({{ panel.num_traspasos }})</option>
+            <option value="0" {% if not panel.ver_traspasos %}selected{% endif %}>Ocultar</option>
         </select>
     </div>
     {% endif %}
@@ -52,7 +52,7 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
 {% if panel.kpi_sin_categorizar %}
 <div class="ext-aviso-sincat">
     <svg class="icon"><use href="#i-info"/></svg>
-    <span>Hay <strong>{{ panel.kpi_sin_categorizar }}</strong> gasto(s) sin categorizar. Agrúpalos por comercio y clasifícalos de una vez.</span>
+    <span>Hay <strong>{{ panel.kpi_sin_categorizar }}</strong> movimiento(s) sin categorizar. Agrúpalos por comercio y clasifícalos de una vez.</span>
     <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar por comercio</a>
 </div>
 {% endif %}
@@ -79,7 +79,39 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
         <span class="stat-tile-label">Sin categorizar</span>
         <span class="stat-tile-valor num {% if panel.kpi_sin_categorizar %}text-negative{% endif %}">{{ panel.kpi_sin_categorizar }}</span>
     </div>
+    {% if panel.num_traspasos %}
+    <div class="card stat-tile" title="Movimientos entre tus propias cuentas. No son ingreso ni gasto: si has cargado las dos cuentas, su neto debe ser cero.">
+        <span class="stat-tile-label">Traspasos (neto)</span>
+        <span class="stat-tile-valor num {% if panel.traspasos_cuadran %}text-positive{% else %}text-muted{% endif %}">{{ panel.kpi_traspaso_neto|floatformat:2|intcomma }} €</span>
+        <span style="font-size:0.65rem;color:var(--muted);">
+            {% if panel.traspasos_cuadran %}cuadran: ambas cuentas cargadas{% else %}{{ panel.num_traspasos }} mov. · falta el otro lado{% endif %}
+        </span>
+    </div>
+    {% endif %}
 </div>
+
+{% if panel.bloques %}
+<!-- GASTO POR BLOQUE DEL PRESUPUESTO -->
+<div class="ext-bloques">
+    <div class="ext-bloques-titulo">Gasto por bloque del presupuesto</div>
+    <div class="ext-bloques-barra">
+        {% for b in panel.bloques %}
+        <span style="width:{{ b.pct }}%;background:{{ b.color }};" title="{{ b.etiqueta }}: {{ b.importe|floatformat:2|intcomma }} € ({{ b.pct }}%)"></span>
+        {% endfor %}
+    </div>
+    <div class="ext-bloques-leyenda">
+        {% for b in panel.bloques %}
+        <span class="ext-bloque-item">
+            <i style="background:{{ b.color }};"></i>
+            {{ b.etiqueta }}
+            <strong>{{ b.importe|floatformat:2|intcomma }} €</strong>
+            <span class="text-muted">{{ b.pct }}%</span>
+        </span>
+        {% endfor %}
+    </div>
+    <a href="{% url 'extractos:conciliacion' %}" class="ext-bloques-link">Comparar con el presupuesto →</a>
+</div>
+{% endif %}
 
 <!-- VISUALIZACIONES -->
 <div class="ext-viz">
@@ -159,8 +191,12 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
                     <td class="ext-cat-cell">
                         <select class="ext-cat-select" data-mov-id="{{ m.id }}">
                             <option value="" {% if not m.categoria_id %}selected{% endif %}>— Sin categorizar —</option>
-                            {% for c in panel.categorias_hogar %}
-                            <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                            {% for b in panel.bloques_categorias %}
+                            <optgroup label="{{ b.etiqueta }}">
+                                {% for c in b.categorias %}
+                                <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                                {% endfor %}
+                            </optgroup>
                             {% endfor %}
                         </select>
                     </td>
@@ -253,6 +289,16 @@ tr.ext-guardada td { animation: ext-flash 0.9s ease; }
     border-radius:10px; padding:11px 14px; margin-bottom:18px; font-size:0.85rem;
 }
 .ext-aviso-sincat .btn { margin-left:auto; }
+
+/* Desglose por bloque del presupuesto: la agrupación superior de las categorías. */
+.ext-bloques { margin:20px 0 4px; }
+.ext-bloques-titulo { font-size:0.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; margin-bottom:8px; }
+.ext-bloques-barra { display:flex; height:14px; border-radius:999px; overflow:hidden; background:var(--app-bg); }
+.ext-bloques-barra span { display:block; transition:width .5s ease; }
+.ext-bloques-leyenda { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; font-size:0.8rem; }
+.ext-bloque-item { display:flex; align-items:center; gap:5px; }
+.ext-bloque-item i { width:10px; height:10px; border-radius:3px; display:inline-block; }
+.ext-bloques-link { display:inline-block; margin-top:10px; font-size:0.8rem; }
 
 /* Traspasos entre cuentas propias: visibles pero claramente al margen. */
 tr.ext-traspaso td { opacity:.62; }

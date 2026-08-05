@@ -62,6 +62,11 @@
                         <option value="{{ cat.id }}" data-tipo="variable">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
+                    <optgroup label="Discrecionales">
+                        {% for cat in categorias %}{% if cat.tipo == 'discrecional' %}
+                        <option value="{{ cat.id }}" data-tipo="discrecional">{{ cat.nombre }}</option>
+                        {% endif %}{% endfor %}
+                    </optgroup>
                 </select>
             </div>
 

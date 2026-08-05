@@ -434,7 +434,7 @@ ACCIONES = {
             'type': 'object',
             'properties': {
                 'nombre': {'type': 'string'},
-                'tipo': {'type': 'string', 'enum': ['fijo', 'anual', 'variable']},
+                'tipo': {'type': 'string', 'enum': ['fijo', 'anual', 'variable', 'discrecional']},
             },
             'required': ['nombre'],
         },

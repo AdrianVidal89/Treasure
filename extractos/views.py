@@ -9,7 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
 from finanzas.parsing import leer_tabla
-from finanzas.views_gastos import _crear_categorias_predefinidas
+from finanzas.models import ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
+from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
 from .categorizacion import categorizar_lote
 from .models import ExtractoBancario, MovimientoBancario, ReglaCategorizacion
@@ -109,11 +110,14 @@ def subir(request):
     return redirect('extractos:revisar')
 
 
-def _analizar_pendientes(pendientes, mapeos_manuales=None):
+def _analizar_pendientes(pendientes, mapeos_manuales=None, hogar=None):
     """Ejecuta analizar_extracto sobre cada archivo pendiente de la sesión.
 
     mapeos_manuales: {indice_archivo(str): {campo: valor}} con las
     correcciones de mapeo enviadas desde el formulario de revisión.
+
+    Si se pasa `hogar`, cada movimiento se marca con `ya_existe` para poder
+    enseñar en la revisión qué se va a omitir por duplicado ANTES de importar.
     """
     mapeos_manuales = mapeos_manuales or {}
     analizados = []
@@ -121,7 +125,38 @@ def _analizar_pendientes(pendientes, mapeos_manuales=None):
         mapeo = mapeos_manuales.get(str(i))
         resultado = analizar_extracto(pend['texto'], mapeo_manual=mapeo)
         analizados.append({'nombre': pend['nombre'], 'resultado': resultado})
+    if hogar is not None:
+        _marcar_duplicados(hogar, analizados)
     return analizados
+
+
+def _marcar_duplicados(hogar, analizados):
+    """Anota `hash` y `ya_existe` en cada movimiento analizado.
+
+    Comprueba contra la base de datos y también dentro del propio lote, para que
+    subir dos veces el mismo archivo (o dos exportaciones que se solapan) no
+    cuente el mismo apunte como nuevo dos veces."""
+    hashes = {}
+    for item in analizados:
+        for mov in item['resultado']['movimientos']:
+            mov['hash'] = MovimientoBancario.calcular_hash(
+                mov['fecha'], mov['concepto'], mov['importe'], mov['saldo'],
+            )
+            hashes.setdefault(mov['hash'], []).append(mov)
+
+    if not hashes:
+        return
+    existentes = set(
+        MovimientoBancario.objects.filter(
+            hogar=hogar, hash_dedupe__in=list(hashes),
+        ).values_list('hash_dedupe', flat=True)
+    )
+    for hash_mov, movs in hashes.items():
+        ya_en_bd = hash_mov in existentes
+        for pos, mov in enumerate(movs):
+            # El primero del lote es nuevo salvo que ya estuviera en la BD; los
+            # siguientes con el mismo hash son repeticiones dentro del lote.
+            mov['ya_existe'] = ya_en_bd or pos > 0
 
 
 def _leer_mapeos_manuales(POST, num_archivos):
@@ -148,6 +183,9 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
     # sección de Gastos al entrar.
     _crear_categorias_predefinidas(hogar)
     nombres_hogar = nombres_del_hogar(hogar)
+    cat_traspaso = CategoriaGasto.objects.filter(
+        hogar=hogar, nombre=CATEGORIA_TRASPASO, activo=True,
+    ).first()
 
     total_creados = 0
     total_duplicados = 0
@@ -172,14 +210,17 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
             archivo_nombre=item['nombre'],
         )
 
-        # Los traspasos entre cuentas propias no son gasto: ni se categorizan ni
-        # cuentan en los KPIs.
+        # Los traspasos entre cuentas propias van a su propia categoría: el
+        # mismo movimiento aparece en negativo en una cuenta y en positivo en la
+        # otra, así que su neto es cero y no debe mezclarse ni con el gasto ni
+        # con el ingreso.
         traspasos = [es_traspaso_interno(m['concepto'], nombres_hogar) for m in movimientos]
 
         # Se categoriza en bloque para cargar las reglas del hogar una sola vez.
-        # Solo el gasto (importe negativo) y solo lo que no sea un traspaso.
+        # Gasto e ingreso usan diccionarios distintos (el signo cambia el
+        # significado del mismo texto).
         categorizables = [
-            m['concepto'] if (m['importe'] < 0 and not t) else ''
+            ('', False) if t else (m['concepto'], m['importe'] >= 0)
             for m, t in zip(movimientos, traspasos)
         ]
         sugerencias = categorizar_lote(categorizables, hogar)
@@ -195,13 +236,14 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
                 continue
 
             estado = 'sin_categorizar'
+            if es_traspaso:
+                categoria, origen = cat_traspaso, 'codigo'
+                total_traspasos += 1
             if categoria:
                 # Distinguir el acierto del diccionario del criterio propio del
                 # usuario (regla aprendida), que antes se marcaban igual.
                 estado = 'por_regla' if origen == 'regla' else 'por_codigo'
                 total_categorizados += 1
-            if es_traspaso:
-                total_traspasos += 1
 
             MovimientoBancario.objects.create(
                 extracto=extracto,
@@ -275,7 +317,7 @@ def revisar(request):
             return redirect('extractos:subir')
 
         mapeos_manuales = _leer_mapeos_manuales(request.POST, len(pendientes))
-        analizados = _analizar_pendientes(pendientes, mapeos_manuales)
+        analizados = _analizar_pendientes(pendientes, mapeos_manuales, hogar=hogar)
 
         nombre_banco = request.POST.get('nombre_banco', meta.get('nombre_banco', '')).strip()
         cuenta_id = request.POST.get('cuenta') or meta.get('cuenta_id')
@@ -323,7 +365,7 @@ def revisar(request):
         request.session[SESSION_KEY_META] = {'nombre_banco': nombre_banco, 'cuenta_id': cuenta_id}
         meta = request.session[SESSION_KEY_META]
     else:
-        analizados = _analizar_pendientes(pendientes)
+        analizados = _analizar_pendientes(pendientes, hogar=hogar)
 
     archivos_ctx = []
     for i, item in enumerate(analizados):
@@ -342,6 +384,8 @@ def revisar(request):
             'campos': campos_ctx,
             'errores_generales': r['errores_generales'],
             'total_ok': len(r['movimientos']),
+            'total_nuevos': sum(1 for m in r['movimientos'] if not m.get('ya_existe')),
+            'total_duplicados': sum(1 for m in r['movimientos'] if m.get('ya_existe')),
             'total_error': len(r['filas_error']),
             'total_omitidas': len(r.get('filas_omitidas', [])),
             'preview': r['movimientos'][:15],
@@ -352,6 +396,8 @@ def revisar(request):
 
     total_ok = sum(a['total_ok'] for a in archivos_ctx)
     total_error = sum(a['total_error'] for a in archivos_ctx)
+    total_nuevos = sum(a['total_nuevos'] for a in archivos_ctx)
+    total_duplicados = sum(a['total_duplicados'] for a in archivos_ctx)
 
     return render(request, 'extractos/revisar.html', {
         'archivos': archivos_ctx,
@@ -360,8 +406,22 @@ def revisar(request):
         'cuenta_id': meta.get('cuenta_id'),
         'total_ok': total_ok,
         'total_error': total_error,
+        'total_nuevos': total_nuevos,
+        'total_duplicados': total_duplicados,
     })
 
+
+# Color de cada bloque del presupuesto. Los tres primeros coinciden con los que
+# ya usa la pantalla de Gastos, para que un bloque se reconozca en ambos sitios.
+COLOR_TIPO = {
+    'fijo': '#b7791f',
+    'anual': '#2c5f7a',
+    'variable': '#3DCD58',
+    'discrecional': '#9d4edd',
+    'ingreso': '#2d6a4f',
+    'traspaso': '#5f8fb0',
+    'sin': '#9aa5a0',
+}
 
 # Paleta para el donut de categorías (verdes/tierra coherentes con la marca).
 _PALETA = [
@@ -385,9 +445,9 @@ def _panel_context(hogar, todos, request):
     anio_sel = request.GET.get('anio', 'all')
     mes_sel = request.GET.get('mes', 'all')
     cat_sel = request.GET.get('categoria', 'all')
-    # Los traspasos entre cuentas propias mueven dinero pero no son gasto ni
-    # ingreso, así que por defecto quedan fuera del análisis.
-    ver_traspasos = request.GET.get('traspasos') == '1'
+    # Los traspasos siguen apareciendo en el listado (tienen su categoría), pero
+    # se pueden ocultar porque no aportan nada al análisis de gasto.
+    ver_traspasos = request.GET.get('traspasos') != '0'
 
     def pasa_filtro(m):
         if m.es_traspaso and not ver_traspasos:
@@ -407,18 +467,43 @@ def _panel_context(hogar, todos, request):
     movimientos = [m for m in todos if pasa_filtro(m)]
 
     # --- KPIs sobre el conjunto filtrado ---
-    ingresos = sum((m.importe for m in movimientos if m.importe >= 0), Decimal('0'))
-    gastos = sum((m.importe for m in movimientos if m.importe < 0), Decimal('0'))
-    sin_categorizar = sum(1 for m in movimientos if m.importe < 0 and not m.categoria_id)
+    # Los traspasos entre cuentas propias se cuentan aparte: al cargar las dos
+    # cuentas su neto es cero, y mezclarlos con el ingreso o el gasto real
+    # inflaría ambos por el mismo importe.
+    reales = [m for m in movimientos if not m.es_traspaso]
+    ingresos = sum((m.importe for m in reales if m.importe >= 0), Decimal('0'))
+    gastos = sum((m.importe for m in reales if m.importe < 0), Decimal('0'))
+    sin_categorizar = sum(1 for m in movimientos if not m.categoria_id and not m.es_traspaso)
+    traspasos = [m for m in movimientos if m.es_traspaso]
+    traspaso_neto = sum((m.importe for m in traspasos), Decimal('0'))
 
     # --- Donut: gasto por categoría (valores absolutos) ---
     por_categoria = defaultdict(lambda: Decimal('0'))
-    for m in movimientos:
+    for m in reales:
         if m.importe < 0:
             nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
             por_categoria[nombre] += -m.importe
     cat_ordenadas = sorted(por_categoria.items(), key=lambda kv: kv[1], reverse=True)
     total_gasto_abs = sum((v for _, v in cat_ordenadas), Decimal('0'))
+
+    # --- Desglose por categoría superior (los bloques del presupuesto) ---
+    por_tipo = defaultdict(lambda: Decimal('0'))
+    for m in reales:
+        if m.importe < 0:
+            tipo = m.categoria.tipo if m.categoria else 'sin'
+            por_tipo[tipo] += -m.importe
+    bloques = []
+    for tipo in list(ORDEN_TIPOS) + ['sin']:
+        if tipo not in por_tipo:
+            continue
+        importe = por_tipo[tipo]
+        bloques.append({
+            'tipo': tipo,
+            'etiqueta': ETIQUETAS_TIPO.get(tipo, 'Sin categorizar'),
+            'importe': importe,
+            'pct': round(float(importe / total_gasto_abs * 100), 1) if total_gasto_abs else 0,
+            'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
+        })
 
     donut = []
     for i, (nombre, importe) in enumerate(cat_ordenadas):
@@ -468,7 +553,11 @@ def _panel_context(hogar, todos, request):
         'cat_sel': cat_sel,
         'ver_traspasos': ver_traspasos,
         'num_traspasos': sum(1 for m in todos if m.es_traspaso),
+        'kpi_traspaso_neto': traspaso_neto,
+        'traspasos_cuadran': traspaso_neto == 0 and bool(traspasos),
+        'bloques': bloques,
         'categorias_hogar': categorias_hogar,
+        'bloques_categorias': _categorias_por_bloque(hogar),
         'hay_filtro': anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all',
     }
 
@@ -585,57 +674,112 @@ def conciliacion(request):
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return redirect('dashboard')
 
-    movimientos = MovimientoBancario.objects.filter(
-        hogar=hogar, importe__lt=0, es_traspaso=False,
-    ).select_related('categoria')
+    movimientos = list(
+        MovimientoBancario.objects.filter(hogar=hogar, es_traspaso=False)
+        .select_related('categoria')
+    )
+    gastos = [m for m in movimientos if m.importe < 0]
 
-    # Nº de meses distintos con datos, para pasar el gasto observado a media mensual.
+    # Nº de meses distintos con datos, para pasar lo observado a media mensual.
     meses = {(m.fecha.year, m.fecha.month) for m in movimientos}
     num_meses = max(len(meses), 1)
 
     # Observado por categoría (gasto absoluto, media mensual).
     observado = defaultdict(lambda: Decimal('0'))
     sin_cat = Decimal('0')
-    for m in movimientos:
+    for m in gastos:
         if m.categoria_id:
             observado[m.categoria_id] += -m.importe
         else:
             sin_cat += -m.importe
 
     # Declarado por categoría: suma de importe_mensual de sus partidas activas.
-    filas = []
-    categorias = CategoriaGasto.objects.filter(hogar=hogar, activo=True).prefetch_related('partidas')
+    # Se agrupa por BLOQUE del presupuesto (Fijos / Fijos anuales / Variables /
+    # Discrecionales), que es la comparación que de verdad interesa: la
+    # categoría concreta se conserva como detalle dentro de cada bloque.
+    por_bloque = {}
+    categorias = CategoriaGasto.objects.filter(
+        hogar=hogar, activo=True, tipo__in=TIPOS_GASTO,
+    ).prefetch_related('partidas')
     total_declarado = Decimal('0')
     total_observado = Decimal('0')
+
     for cat in categorias:
         declarado = sum((p.importe_mensual for p in cat.partidas.filter(activo=True)), Decimal('0'))
         obs_mensual = (observado.get(cat.id, Decimal('0')) / num_meses)
         if declarado == 0 and obs_mensual == 0:
             continue
-        diferencia = obs_mensual - declarado
-        pct = int(min(obs_mensual / declarado * 100, 999)) if declarado > 0 else 0
-        filas.append({
+        bloque = por_bloque.setdefault(cat.tipo, {
+            'tipo': cat.tipo,
+            'etiqueta': ETIQUETAS_TIPO.get(cat.tipo, cat.tipo),
+            'color': COLOR_TIPO.get(cat.tipo, '#9aa5a0'),
+            'filas': [],
+            'declarado': Decimal('0'),
+            'observado': Decimal('0'),
+        })
+        bloque['filas'].append({
             'categoria': cat.nombre,
-            'tipo': cat.get_tipo_display(),
             'declarado': declarado,
             'observado': obs_mensual,
-            'diferencia': diferencia,
-            'pct': pct,
+            'diferencia': obs_mensual - declarado,
+            'pct': int(min(obs_mensual / declarado * 100, 999)) if declarado > 0 else 0,
         })
+        bloque['declarado'] += declarado
+        bloque['observado'] += obs_mensual
         total_declarado += declarado
         total_observado += obs_mensual
 
-    filas.sort(key=lambda f: f['observado'], reverse=True)
+    bloques = []
+    for tipo in ORDEN_TIPOS:
+        bloque = por_bloque.get(tipo)
+        if not bloque:
+            continue
+        bloque['filas'].sort(key=lambda f: f['observado'], reverse=True)
+        bloque['diferencia'] = bloque['observado'] - bloque['declarado']
+        bloque['pct'] = (
+            int(min(bloque['observado'] / bloque['declarado'] * 100, 999))
+            if bloque['declarado'] > 0 else 0
+        )
+        bloques.append(bloque)
+
+    # --- Ingresos: observado en el banco frente a lo declarado en FuenteIngreso ---
+    ingreso_observado = sum(
+        (m.importe for m in movimientos if m.importe >= 0), Decimal('0'),
+    ) / num_meses
+    ingreso_declarado = _ingreso_declarado_mensual(hogar)
 
     return render(request, 'extractos/conciliacion.html', {
-        'filas': filas,
+        'bloques': bloques,
         'num_meses': num_meses,
         'sin_categorizar_importe': sin_cat / num_meses if sin_cat else Decimal('0'),
         'total_declarado': total_declarado,
         'total_observado': total_observado,
         'total_diferencia': total_observado - total_declarado,
-        'hay_datos': movimientos.exists(),
+        'ingreso_declarado': ingreso_declarado,
+        'ingreso_observado': ingreso_observado,
+        'ingreso_diferencia': ingreso_observado - ingreso_declarado,
+        'ahorro_declarado': ingreso_declarado - total_declarado,
+        'ahorro_observado': ingreso_observado - total_observado,
+        'hay_datos': bool(movimientos),
     })
+
+
+def _ingreso_declarado_mensual(hogar):
+    """Ingreso neto mensual declarado por el hogar en sus FuenteIngreso.
+
+    Reutiliza `_neto_fuente_base` del motor de distribución para no duplicar el
+    cálculo de retenciones y reparto en pagas."""
+    from finanzas.distribucion import _neto_fuente_base
+    from finanzas.models import FuenteIngreso
+
+    total = Decimal('0')
+    for miembro in hogar.miembros.select_related('user').all():
+        for fuente in FuenteIngreso.objects.filter(
+            usuario=miembro.user, hogar=hogar, activo=True,
+        ):
+            base, _ = _neto_fuente_base(fuente)
+            total += base
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -645,6 +789,19 @@ def conciliacion(request):
 # nombra UNA vez y ese criterio se aplica a todos los movimientos parecidos (los
 # ya importados y los que vengan) guardándolo como ReglaCategorizacion.
 # ---------------------------------------------------------------------------
+
+def _categorias_por_bloque(hogar):
+    """Categorías del hogar agrupadas por su bloque del presupuesto, en el orden
+    de presentación. Se usa para los selectores, de modo que al clasificar un
+    movimiento se vea a qué bloque irá a parar."""
+    grupos = defaultdict(list)
+    for cat in CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('nombre'):
+        grupos[cat.tipo].append(cat)
+    return [
+        {'tipo': tipo, 'etiqueta': ETIQUETAS_TIPO.get(tipo, tipo), 'categorias': grupos[tipo]}
+        for tipo in ORDEN_TIPOS if grupos.get(tipo)
+    ]
+
 
 def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False):
     """Asigna `categoria` a los movimientos del hogar cuyo comercio o concepto
@@ -687,9 +844,11 @@ def sin_categorizar(request):
 
     _crear_categorias_predefinidas(hogar)
 
+    # Incluye también los positivos: una nómina o una devolución sin clasificar
+    # es tan invisible en el análisis como un gasto sin clasificar.
     pendientes = list(
         MovimientoBancario.objects.filter(
-            hogar=hogar, categoria__isnull=True, importe__lt=0, es_traspaso=False,
+            hogar=hogar, categoria__isnull=True, es_traspaso=False,
         ).order_by('-fecha')
     )
 
@@ -711,11 +870,13 @@ def sin_categorizar(request):
             otra for otra in difflib.get_close_matches(clave, claves, n=5, cutoff=UMBRAL_SIMILITUD)
             if otra != clave
         ]
+        total = sum((m.importe for m in movs), Decimal('0'))
         grupos.append({
             'comercio': clave,
             'etiqueta': etiqueta,
             'num': len(movs),
-            'total': sum((m.importe for m in movs), Decimal('0')),
+            'total': total,
+            'es_ingreso': total >= 0,
             'desde': min(m.fecha for m in movs),
             'hasta': max(m.fecha for m in movs),
             'conceptos': sorted({m.concepto for m in movs})[:5],
@@ -724,17 +885,15 @@ def sin_categorizar(request):
             ],
         })
 
-    # Lo que más pesa primero: así unas pocas decisiones cubren la mayor parte
-    # del gasto sin clasificar.
-    grupos.sort(key=lambda g: g['total'])
+    # Primero el gasto y dentro de cada bloque lo que más pesa: así unas pocas
+    # decisiones cubren la mayor parte de lo que falta por clasificar.
+    grupos.sort(key=lambda g: (g['es_ingreso'], -abs(g['total'])))
 
     return render(request, 'extractos/sin_categorizar.html', {
         'grupos': grupos,
         'total_movimientos': len(pendientes),
         'total_importe': sum((m.importe for m in pendientes), Decimal('0')),
-        'categorias_hogar': CategoriaGasto.objects.filter(
-            hogar=hogar, activo=True,
-        ).order_by('tipo', 'nombre'),
+        'bloques_categorias': _categorias_por_bloque(hogar),
         'num_reglas': ReglaCategorizacion.objects.filter(hogar=hogar, activo=True).count(),
     })
 
@@ -824,9 +983,7 @@ def reglas(request):
 
     return render(request, 'extractos/reglas.html', {
         'reglas': ReglaCategorizacion.objects.filter(hogar=hogar).select_related('categoria'),
-        'categorias_hogar': CategoriaGasto.objects.filter(
-            hogar=hogar, activo=True,
-        ).order_by('tipo', 'nombre'),
+        'bloques_categorias': _categorias_por_bloque(hogar),
     })
 
 

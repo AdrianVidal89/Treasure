@@ -784,11 +784,35 @@ class FuenteIngreso(models.Model):
 
 ### Modulo de Gastos ###
 
+# El `tipo` de una categoría es su AGRUPACIÓN SUPERIOR: es lo que agrupa el
+# presupuesto y contra lo que se compara el gasto real observado en los
+# extractos. La categoría concreta (Alimentacion, Ocio...) se conserva siempre;
+# el tipo solo dice en qué bloque del presupuesto cae.
 TIPO_GASTO_CHOICES = [
     ('fijo', 'Gasto Fijo'),
     ('anual', 'Gasto Anual (provision)'),
     ('variable', 'Gasto Variable'),
+    ('discrecional', 'Gasto Discrecional'),
+    ('ingreso', 'Ingreso'),
+    ('traspaso', 'Traspaso entre cuentas'),
 ]
+
+# Orden de presentación (el alfabético de la clave no sirve: 'anual' iría antes
+# que 'fijo'). Se usa para ordenar bloques y selectores en toda la app.
+ORDEN_TIPOS = ['fijo', 'anual', 'variable', 'discrecional', 'ingreso', 'traspaso']
+
+# Los cuatro bloques que forman el presupuesto de GASTO. Ingresos y traspasos
+# tienen categorías propias pero no son gasto y no entran en esa comparación.
+TIPOS_GASTO = ('fijo', 'anual', 'variable', 'discrecional')
+
+ETIQUETAS_TIPO = {
+    'fijo': 'Fijos',
+    'anual': 'Fijos anuales',
+    'variable': 'Variables',
+    'discrecional': 'Discrecionales',
+    'ingreso': 'Ingresos',
+    'traspaso': 'Traspasos',
+}
 
 PERIODICIDAD_GASTO_CHOICES = [
     ('mensual', 'Mensual'), ('bimensual', 'Bimensual'),
@@ -809,6 +833,18 @@ class CategoriaGasto(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.get_tipo_display()})"
+
+    @property
+    def es_gasto(self):
+        return self.tipo in TIPOS_GASTO
+
+    @property
+    def orden_tipo(self):
+        """Posición del bloque para ordenar (Fijos → Anuales → Variables → …)."""
+        try:
+            return ORDEN_TIPOS.index(self.tipo)
+        except ValueError:
+            return len(ORDEN_TIPOS)
 
 
 class PartidaGasto(models.Model):

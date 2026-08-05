@@ -8,9 +8,14 @@
     <div class="page-header">
         <div>
             <h1><svg class="icon icon-lg page-title-icon"><use href="#i-distribution"/></svg> Conciliación</h1>
-            <div class="page-sub">Gasto <strong>declarado</strong> frente al <strong>observado</strong> en tus extractos (media mensual sobre {{ num_meses }} mes(es)).</div>
+            <div class="page-sub">Lo <strong>presupuestado</strong> frente a lo <strong>observado</strong> en tus extractos, por bloque del presupuesto (media mensual sobre {{ num_meses }} mes(es)).</div>
         </div>
-        <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+        <div class="toolbar">
+            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
+                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
+            </a>
+            <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+        </div>
     </div>
 
     {% if not hay_datos %}
@@ -22,54 +27,117 @@
     </div>
     {% else %}
 
-    <div class="stat-row">
-        <div class="card stat-tile">
-            <span class="stat-tile-label">Declarado / mes</span>
-            <span class="stat-tile-valor num">{{ total_declarado|floatformat:2|intcomma }} €</span>
-        </div>
-        <div class="card stat-tile">
-            <span class="stat-tile-label">Observado / mes</span>
-            <span class="stat-tile-valor num">{{ total_observado|floatformat:2|intcomma }} €</span>
-        </div>
-        <div class="card stat-tile">
-            <span class="stat-tile-label">Diferencia</span>
-            <span class="stat-tile-valor num {% if total_diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ total_diferencia|floatformat:2|intcomma }} €</span>
-        </div>
-    </div>
-
+    <!-- RESUMEN: ingreso, gasto y ahorro, presupuestado vs real -->
     <div class="table-scroll">
-        <table class="table">
+        <table class="table conc-resumen">
             <thead>
                 <tr>
-                    <th>Categoría</th>
-                    <th class="num">Declarado / mes</th>
-                    <th class="num">Observado / mes</th>
+                    <th></th>
+                    <th class="num">Presupuestado / mes</th>
+                    <th class="num">Real / mes</th>
                     <th class="num">Diferencia</th>
-                    <th style="width:120px;">Ejecución</th>
                 </tr>
             </thead>
             <tbody>
-                {% for f in filas %}
                 <tr>
-                    <td>{{ f.categoria }} <span class="text-muted" style="font-size:0.75rem;">· {{ f.tipo }}</span></td>
-                    <td class="num">{{ f.declarado|floatformat:2|intcomma }} €</td>
-                    <td class="num">{{ f.observado|floatformat:2|intcomma }} €</td>
-                    <td class="num {% if f.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ f.diferencia|floatformat:2|intcomma }} €</td>
-                    <td>
-                        <div class="recon-bar" title="{{ f.pct }}% de lo declarado"><span style="width:{% if f.pct > 100 %}100{% else %}{{ f.pct }}{% endif %}%;{% if f.pct > 100 %}background:var(--danger);{% endif %}"></span></div>
-                    </td>
+                    <td><strong>Ingresos</strong></td>
+                    <td class="num">{{ ingreso_declarado|floatformat:2|intcomma }} €</td>
+                    <td class="num">{{ ingreso_observado|floatformat:2|intcomma }} €</td>
+                    <td class="num {% if ingreso_diferencia < 0 %}text-negative{% else %}text-positive{% endif %}">{{ ingreso_diferencia|floatformat:2|intcomma }} €</td>
                 </tr>
-                {% endfor %}
+                <tr>
+                    <td><strong>Gastos</strong></td>
+                    <td class="num">{{ total_declarado|floatformat:2|intcomma }} €</td>
+                    <td class="num">{{ total_observado|floatformat:2|intcomma }} €</td>
+                    <td class="num {% if total_diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ total_diferencia|floatformat:2|intcomma }} €</td>
+                </tr>
+                <tr class="conc-ahorro">
+                    <td><strong>Capacidad de ahorro</strong></td>
+                    <td class="num">{{ ahorro_declarado|floatformat:2|intcomma }} €</td>
+                    <td class="num">{{ ahorro_observado|floatformat:2|intcomma }} €</td>
+                    <td class="num text-muted">ingresos &minus; gastos</td>
+                </tr>
             </tbody>
         </table>
     </div>
 
+    <!-- DETALLE POR BLOQUE DEL PRESUPUESTO -->
+    {% for b in bloques %}
+    <div class="conc-bloque">
+        <div class="conc-bloque-head" style="border-left-color: {{ b.color }};">
+            <span class="conc-bloque-nombre" style="color: {{ b.color }};">{{ b.etiqueta }}</span>
+            <span class="conc-bloque-cifras">
+                <span class="text-muted">presupuestado</span> <strong>{{ b.declarado|floatformat:2|intcomma }} €</strong>
+                <span class="text-muted">· real</span> <strong>{{ b.observado|floatformat:2|intcomma }} €</strong>
+                <span class="conc-dif {% if b.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{% if b.diferencia > 0 %}+{% endif %}{{ b.diferencia|floatformat:2|intcomma }} €</span>
+            </span>
+        </div>
+        <div class="table-scroll">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Categoría</th>
+                        <th class="num">Presupuestado / mes</th>
+                        <th class="num">Real / mes</th>
+                        <th class="num">Diferencia</th>
+                        <th style="width:120px;">Ejecución</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in b.filas %}
+                    <tr>
+                        <td>{{ f.categoria }}</td>
+                        <td class="num">{{ f.declarado|floatformat:2|intcomma }} €</td>
+                        <td class="num">{{ f.observado|floatformat:2|intcomma }} €</td>
+                        <td class="num {% if f.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ f.diferencia|floatformat:2|intcomma }} €</td>
+                        <td>
+                            <div class="recon-bar" title="{{ f.pct }}% de lo presupuestado"><span style="width:{% if f.pct > 100 %}100{% else %}{{ f.pct }}{% endif %}%;{% if f.pct > 100 %}background:var(--danger);{% else %}background:{{ b.color }};{% endif %}"></span></div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="conc-subtotal">
+                        <td><strong>Total {{ b.etiqueta }}</strong></td>
+                        <td class="num"><strong>{{ b.declarado|floatformat:2|intcomma }} €</strong></td>
+                        <td class="num"><strong>{{ b.observado|floatformat:2|intcomma }} €</strong></td>
+                        <td class="num {% if b.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}"><strong>{{ b.diferencia|floatformat:2|intcomma }} €</strong></td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+
     {% if sin_categorizar_importe %}
-    <p class="text-muted" style="margin-top:14px;">
+    <div class="conc-aviso">
         <svg class="icon"><use href="#i-info"/></svg>
-        Hay <strong>{{ sin_categorizar_importe|floatformat:2|intcomma }} €/mes</strong> en gastos sin categorizar que no se han podido cruzar. La categorización con IA ayudará a asignarlos más adelante.
-    </p>
+        <span>Hay <strong>{{ sin_categorizar_importe|floatformat:2|intcomma }} €/mes</strong> de gasto sin categorizar que no entra en ningún bloque, así que la comparación se queda corta por ese importe.</span>
+        <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar ahora</a>
+    </div>
     {% endif %}
     {% endif %}
 </div>
+
+<style>
+.conc-resumen tbody td { font-size:0.9rem; }
+.conc-resumen tr.conc-ahorro td { border-top:2px solid var(--border-strong); font-size:0.95rem; }
+.conc-bloque { margin-top:26px; }
+.conc-bloque-head {
+    display:flex; justify-content:space-between; align-items:baseline; gap:14px; flex-wrap:wrap;
+    border-left:4px solid; padding:6px 0 6px 12px; margin-bottom:10px;
+}
+.conc-bloque-nombre { font-weight:700; font-size:1rem; text-transform:uppercase; letter-spacing:.03em; }
+.conc-bloque-cifras { font-size:0.82rem; display:flex; gap:6px; align-items:baseline; flex-wrap:wrap; }
+.conc-dif { font-weight:700; margin-left:6px; }
+tr.conc-subtotal td { border-top:1px solid var(--border-strong); background:var(--app-bg); }
+.conc-aviso {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:22px;
+    background:color-mix(in srgb, var(--primary-color) 8%, transparent);
+    border:1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+    border-radius:10px; padding:11px 14px; font-size:0.85rem;
+}
+.conc-aviso .btn { margin-left:auto; }
+</style>
 {% endblock %}

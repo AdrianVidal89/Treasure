@@ -17,8 +17,13 @@
 
     <div class="stat-row" style="margin-bottom:20px;">
         <div class="card stat-tile">
-            <span class="stat-tile-label">Movimientos listos</span>
-            <span class="stat-tile-valor num text-positive">{{ total_ok }}</span>
+            <span class="stat-tile-label">Se importarán</span>
+            <span class="stat-tile-valor num text-positive">{{ total_nuevos }}</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Ya los tienes</span>
+            <span class="stat-tile-valor num text-muted">{{ total_duplicados }}</span>
+            <span style="font-size:0.65rem;color:var(--muted);">se omiten</span>
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Filas con error</span>
@@ -58,7 +63,8 @@
             <div class="revisar-archivo-head">
                 <h3><svg class="icon"><use href="#i-file"/></svg> {{ archivo.nombre }}</h3>
                 <div class="revisar-archivo-totales">
-                    <span class="badge badge-success">{{ archivo.total_ok }} listos</span>
+                    <span class="badge badge-success">{{ archivo.total_nuevos }} nuevos</span>
+                    {% if archivo.total_duplicados %}<span class="badge badge-info" title="Ya están importados: se omitirán.">{{ archivo.total_duplicados }} duplicados</span>{% endif %}
                     {% if archivo.total_error %}<span class="badge badge-danger">{{ archivo.total_error }} con error</span>{% endif %}
                     {% if archivo.total_omitidas %}<span class="badge badge-info" title="Operaciones pendientes o rechazadas: se importarán cuando el banco las consolide.">{{ archivo.total_omitidas }} sin consolidar</span>{% endif %}
                 </div>
@@ -91,9 +97,9 @@
                     <thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Importe</th><th class="num">Saldo</th></tr></thead>
                     <tbody>
                         {% for m in archivo.preview %}
-                        <tr>
+                        <tr{% if m.ya_existe %} class="revisar-duplicado"{% endif %}>
                             <td class="num">{{ m.fecha|date:"d/m/Y" }}</td>
-                            <td>{{ m.concepto }}</td>
+                            <td>{% if m.ya_existe %}<span class="badge badge-info" title="Ya está importado: se omitirá">duplicado</span> {% endif %}{{ m.concepto }}</td>
                             <td class="num {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}">{{ m.importe|floatformat:2|intcomma }} €</td>
                             <td class="num">{% if m.saldo is not None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
                         </tr>
@@ -123,8 +129,8 @@
         {% endfor %}
 
         <div class="toolbar" style="margin-top:10px;">
-            <button type="submit" name="accion" value="confirmar" class="btn btn-primary" {% if not total_ok %}disabled title="No hay movimientos listos para importar"{% endif %}>
-                <svg class="icon"><use href="#i-check"/></svg> Confirmar importación ({{ total_ok }})
+            <button type="submit" name="accion" value="confirmar" class="btn btn-primary" {% if not total_nuevos %}disabled title="{% if total_duplicados %}Ya tienes importados todos estos movimientos{% else %}No hay movimientos listos para importar{% endif %}"{% endif %}>
+                <svg class="icon"><use href="#i-check"/></svg> Confirmar importación ({{ total_nuevos }})
             </button>
             <button type="submit" name="accion" value="reanalizar" class="btn btn-secondary">
                 <svg class="icon"><use href="#i-refresh"/></svg> Volver a analizar
@@ -149,6 +155,9 @@
 .revisar-mapeo-grid .form-group { margin:0; }
 .revisar-mas { font-size:0.78rem; color:var(--muted); padding:8px 2px; font-style:italic; }
 .revisar-errores { margin-top:14px; font-size:0.85rem; }
+/* Filas que ya están en la base de datos: se ven, pero no se importarán. */
+tr.revisar-duplicado td { opacity:.5; text-decoration:line-through; }
+tr.revisar-duplicado .badge { text-decoration:none; opacity:1; }
 .revisar-errores summary { cursor:pointer; color:var(--danger); font-weight:600; }
 .revisar-errores ul { margin:10px 0 0; padding-left:18px; }
 .revisar-errores li { margin-bottom:6px; color:var(--text-color); }

@@ -21,6 +21,7 @@
 .gasto-card.tipo-fijo { border-left: 3px solid #b7791f; }
 .gasto-card.tipo-anual { border-left: 3px solid #2c5f7a; }
 .gasto-card.tipo-variable { border-left: 3px solid var(--primary-color); }
+.gasto-card.tipo-discrecional { border-left: 3px solid #9d4edd; }
 
 .gasto-card-header {
     display: flex;
@@ -243,6 +244,11 @@
             <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 4px;">Variables</div>
             <div style="font-size: 1.4rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}</div>
         </div>
+        <div style="background: var(--surface); border: 1px solid #9d4edd; border-radius: 16px; padding: 18px; text-align: center;">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #9d4edd; margin-bottom: 4px;">Discrecionales</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: #9d4edd;">&euro;{{ total_discrecionales|floatformat:2 }}</div>
+            <div style="font-size: 0.6rem; color: var(--muted);">gasto prescindible</div>
+        </div>
     </div>
 
     <!-- BOTONES -->
@@ -439,7 +445,52 @@
     </div>
     {% endif %}
 
-    {% if not gastos_fijos and not gastos_anuales and not gastos_variables %}
+    <!-- GASTOS DISCRECIONALES -->
+    {% if gastos_discrecionales %}
+    <div class="section-label" style="color: #9d4edd;"> Gastos Discrecionales &mdash; &euro;{{ total_discrecionales|floatformat:2 }}/mes</div>
+    <div class="grid-gastos">
+        {% for grupo in gastos_discrecionales %}
+        <div class="gasto-card tipo-discrecional {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
+            <div class="gasto-card-header">
+                <div>
+                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
+                </div>
+                <div>
+                    <div class="gasto-card-monto" style="color: #9d4edd;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-sub">/mes</div>
+                </div>
+            </div>
+            <div class="gasto-card-detail" onclick="event.stopPropagation()">
+                {% for p in grupo.partidas %}
+                <div class="gasto-partida">
+                    <div class="gasto-partida-left">
+                        <div class="gasto-partida-nombre">{{ p.nombre }}</div>
+                        <div class="gasto-partida-meta">
+                            {% if p.periodicidad != 'mensual' %}{{ p.get_periodicidad_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="gasto-partida-right">
+                        <div class="gasto-partida-monto-box">
+                            <div class="gasto-partida-importe" style="color: #9d4edd;">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
+                        </div>
+                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
+                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
+                            {% csrf_token %}
+                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')"><svg class="icon"><use href="#i-trash"/></svg></button>
+                        </form>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not gastos_fijos and not gastos_anuales and not gastos_variables and not gastos_discrecionales %}
     <div style="text-align: center; padding: 60px; color: var(--muted);">
         <p style="font-size: 1.1rem;">No hay gastos registrados todavia.</p>
         <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary" style="margin-top: 16px;"> Crear primer gasto</a>
@@ -460,11 +511,13 @@
                 <input type="text" name="nombre" placeholder="Ej: Mascotas, Educacion..." required>
             </div>
             <div class="form-group">
-                <label>Tipo de gasto</label>
+                <label>Bloque del presupuesto</label>
                 <select name="tipo">
                     <option value="fijo">Fijo</option>
                     <option value="anual">Anual (provision)</option>
                     <option value="variable" selected>Variable</option>
+                    <option value="discrecional">Discrecional</option>
+                    <option value="ingreso">Ingreso</option>
                 </select>
             </div>
             <div class="modal-btns">
