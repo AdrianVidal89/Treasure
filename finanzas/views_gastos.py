@@ -3,14 +3,16 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from decimal import Decimal
 
-from .models import CategoriaGasto, PartidaGasto, MESES_CHOICES, PERIODICIDAD_GASTO_CHOICES
+from .models import (
+    CategoriaGasto, PartidaGasto, MESES_CHOICES, PERIODICIDAD_GASTO_CHOICES,
+    TIPOS_GASTO,
+)
 
 
 CATEGORIAS_PREDEFINIDAS = [
     ('fijo', 'Hipoteca / Alquiler'),
     ('fijo', 'Comunidad'),
     ('fijo', 'Seguros'),
-    ('fijo', 'Suscripciones'),
     ('fijo', 'Gimnasio'),
     ('anual', 'IBI'),
     ('anual', 'Seguro coche'),
@@ -24,23 +26,60 @@ CATEGORIAS_PREDEFINIDAS = [
     ('variable', 'Agua'),
     ('variable', 'Gas'),
     ('variable', 'Internet / Telefono'),
-    ('variable', 'Ocio'),
-    ('variable', 'Ropa'),
-    ('variable', 'Restaurantes'),
     ('variable', 'Transporte'),
     ('variable', 'Salud / Farmacia'),
     ('variable', 'Hogar / Bricolaje'),
-    ('variable', 'Tecnologia / Software'),
     ('variable', 'Impuestos y comisiones'),
+    # Discrecional: gasto prescindible. Se separa de Variables para poder ver
+    # de un vistazo cuánto del mes es recortable.
+    ('discrecional', 'Ocio'),
+    ('discrecional', 'Restaurantes'),
+    ('discrecional', 'Ropa'),
+    ('discrecional', 'Suscripciones'),
+    ('discrecional', 'Tecnologia / Software'),
+    # Ingresos: no son gasto, pero necesitan categoría para que los movimientos
+    # positivos del extracto no queden sueltos.
+    ('ingreso', 'Nomina'),
+    ('ingreso', 'Intereses'),
+    ('ingreso', 'Devoluciones'),
+    ('ingreso', 'Otros ingresos'),
+    # Traspasos entre cuentas propias: el mismo movimiento aparece en negativo
+    # en una cuenta y en positivo en la otra, así que su neto es cero y no debe
+    # mezclarse ni con el gasto ni con el ingreso.
+    ('traspaso', 'Traspaso entre cuentas'),
 ]
+
+# Categorías cuyo bloque cambió al introducir Discrecionales e Ingresos. Los
+# hogares creados antes las tienen con el tipo antiguo, así que hay que
+# recolocarlas (lo hace la migración finanzas.0015 y, por si acaso, esta misma
+# función en cada visita).
+TIPOS_CORREGIDOS = {
+    'Ocio': 'discrecional',
+    'Restaurantes': 'discrecional',
+    'Ropa': 'discrecional',
+    'Suscripciones': 'discrecional',
+    'Tecnologia / Software': 'discrecional',
+}
+
+CATEGORIA_TRASPASO = 'Traspaso entre cuentas'
+CATEGORIA_DEVOLUCIONES = 'Devoluciones'
+CATEGORIA_OTROS_INGRESOS = 'Otros ingresos'
 
 
 def _crear_categorias_predefinidas(hogar):
     for tipo, nombre in CATEGORIAS_PREDEFINIDAS:
-        CategoriaGasto.objects.get_or_create(
+        categoria, creada = CategoriaGasto.objects.get_or_create(
             hogar=hogar, nombre=nombre,
             defaults={'tipo': tipo, 'es_predefinida': True}
         )
+        # Recolocar las predefinidas que cambiaron de bloque. Solo se tocan las
+        # que siguen marcadas como predefinidas: si el usuario creó una propia
+        # con ese nombre, su criterio manda.
+        if (not creada and categoria.es_predefinida
+                and nombre in TIPOS_CORREGIDOS
+                and categoria.tipo != TIPOS_CORREGIDOS[nombre]):
+            categoria.tipo = TIPOS_CORREGIDOS[nombre]
+            categoria.save(update_fields=['tipo'])
 
 
 @login_required
@@ -53,16 +92,23 @@ def listar_gastos(request):
     hogar = profile.hogar
     _crear_categorias_predefinidas(hogar)
 
-    categorias = CategoriaGasto.objects.filter(hogar=hogar, activo=True).prefetch_related('partidas')
+    # El presupuesto solo declara GASTO: las categorías de ingreso y de traspaso
+    # existen para poder clasificar los movimientos del extracto, no para
+    # presupuestarse aquí.
+    categorias = CategoriaGasto.objects.filter(
+        hogar=hogar, activo=True, tipo__in=TIPOS_GASTO,
+    ).prefetch_related('partidas')
 
     gastos_fijos = []
     gastos_anuales = []
     gastos_variables = []
+    gastos_discrecionales = []
 
     total_fijos = Decimal('0')
     total_anuales_anual = Decimal('0')
     total_provision = Decimal('0')
     total_variables = Decimal('0')
+    total_discrecionales = Decimal('0')
 
     for cat in categorias:
         partidas = cat.partidas.filter(activo=True).select_related('responsable')
@@ -91,8 +137,11 @@ def listar_gastos(request):
         elif cat.tipo == 'variable':
             gastos_variables.append(entrada)
             total_variables += subtotal_mensual
+        elif cat.tipo == 'discrecional':
+            gastos_discrecionales.append(entrada)
+            total_discrecionales += subtotal_mensual
 
-    total_mensual = total_fijos + total_provision + total_variables
+    total_mensual = total_fijos + total_provision + total_variables + total_discrecionales
 
     open_cat = request.GET.get('open', '')
     vista = request.GET.get('vista', 'categoria')
@@ -107,10 +156,12 @@ def listar_gastos(request):
         'gastos_fijos': gastos_fijos,
         'gastos_anuales': gastos_anuales,
         'gastos_variables': gastos_variables,
+        'gastos_discrecionales': gastos_discrecionales,
         'total_fijos': total_fijos,
         'total_anuales_anual': total_anuales_anual,
         'total_provision': total_provision,
         'total_variables': total_variables,
+        'total_discrecionales': total_discrecionales,
         'total_mensual': total_mensual,
         'open_cat': open_cat,
         'vista': vista,
@@ -166,7 +217,10 @@ def crear_partida(request):
         return redirect('dashboard')
 
     hogar = profile.hogar
-    categorias = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
+    # Solo categorías de gasto: no se presupuesta un ingreso ni un traspaso.
+    categorias = CategoriaGasto.objects.filter(
+        hogar=hogar, activo=True, tipo__in=TIPOS_GASTO,
+    ).order_by('tipo', 'nombre')
     miembros = hogar.miembros.select_related('user').all()
 
     if request.method == 'POST':
@@ -210,7 +264,10 @@ def editar_partida(request, partida_id):
 
     hogar = profile.hogar
     partida = get_object_or_404(PartidaGasto, id=partida_id, hogar=hogar)
-    categorias = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
+    # Solo categorías de gasto: no se presupuesta un ingreso ni un traspaso.
+    categorias = CategoriaGasto.objects.filter(
+        hogar=hogar, activo=True, tipo__in=TIPOS_GASTO,
+    ).order_by('tipo', 'nombre')
     miembros = hogar.miembros.select_related('user').all()
 
     if request.method == 'POST':

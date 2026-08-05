@@ -58,13 +58,13 @@
             {% csrf_token %}
             <div class="sc-cabecera">
                 <div class="sc-identidad">
-                    <span class="sc-nombre">{{ g.etiqueta }}</span>
+                    <span class="sc-nombre">{% if g.es_ingreso %}<span class="badge badge-success sc-badge">Ingreso</span> {% endif %}{{ g.etiqueta }}</span>
                     <span class="sc-meta">
                         {{ g.num }} movimiento{{ g.num|pluralize }} ·
                         {{ g.desde|date:"d/m/Y" }} – {{ g.hasta|date:"d/m/Y" }}
                     </span>
                 </div>
-                <span class="sc-total num text-negative">{{ g.total|floatformat:2|intcomma }} €</span>
+                <span class="sc-total num {% if g.es_ingreso %}text-positive{% else %}text-negative{% endif %}">{{ g.total|floatformat:2|intcomma }} €</span>
             </div>
 
             <div class="sc-acciones">
@@ -72,8 +72,12 @@
                     <span>Categoría</span>
                     <select name="categoria_id" required>
                         <option value="">— Elige una —</option>
-                        {% for c in categorias_hogar %}
-                        <option value="{{ c.id }}">{{ c.nombre }}</option>
+                        {% for b in bloques_categorias %}
+                        <optgroup label="{{ b.etiqueta }}">
+                            {% for c in b.categorias %}
+                            <option value="{{ c.id }}">{{ c.nombre }}</option>
+                            {% endfor %}
+                        </optgroup>
                         {% endfor %}
                     </select>
                 </label>
@@ -121,6 +125,7 @@
 .sc-cabecera { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; }
 .sc-identidad { display:flex; flex-direction:column; gap:3px; min-width:0; }
 .sc-nombre { font-weight:600; font-size:0.98rem; word-break:break-word; }
+.sc-badge { font-size:0.62rem; vertical-align:middle; }
 .sc-meta { font-size:0.75rem; color:var(--muted); }
 .sc-total { font-weight:700; font-size:1.05rem; white-space:nowrap; }
 .sc-acciones { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-top:14px; }

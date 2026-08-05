@@ -17,7 +17,7 @@ Dos decisiones de diseño importantes:
   porque 'repsol' aparezca antes en el diccionario.
 """
 
-from .normalizacion import contiene_patron, normalizar_texto
+from .normalizacion import contiene_patron, normalizar_comercio, normalizar_texto
 
 # nombre de categoría (tal cual en CATEGORIAS_PREDEFINIDAS) → palabras clave
 REGLAS = {
@@ -147,12 +147,35 @@ REGLAS = {
 }
 
 
-def _construir_indice():
+# Reglas para los movimientos POSITIVOS. Van aparte de REGLAS porque el mismo
+# texto significa cosas distintas según el signo: «Repsol» en negativo es
+# gasolina, pero en positivo es una devolución de la gasolinera.
+REGLAS_INGRESO = {
+    'Nomina': (
+        'nomina', 'nominas', 'payroll', 'salario', 'sueldo', 'paga extra',
+        'abono de nomina', 'transferencia nomina',
+    ),
+    'Intereses': (
+        'interes', 'intereses', 'interes neto', 'liquidacion de intereses',
+        'rendimiento', 'cupon', 'dividendo', 'dividendos',
+    ),
+    'Devoluciones': (
+        'devolucion', 'devoluciones', 'reembolso', 'reintegro de compra',
+        'abono por devolucion', 'refund', 'anulacion',
+    ),
+    'Otros ingresos': (
+        'venta', 'alquiler cobrado', 'subvencion', 'ayuda', 'beca',
+        'indemnizacion', 'premio', 'bizum recibido',
+    ),
+}
+
+
+def _construir_indice(reglas):
     """Índice plano [(clave_normalizada, categoria)] ordenado de la clave más
     larga a la más corta, para que la búsqueda devuelva siempre la coincidencia
     más específica."""
     indice = []
-    for categoria, claves in REGLAS.items():
+    for categoria, claves in reglas.items():
         for clave in claves:
             clave_norm = normalizar_texto(clave)
             if clave_norm:
@@ -161,16 +184,20 @@ def _construir_indice():
     return indice
 
 
-_INDICE = _construir_indice()
+_INDICE = _construir_indice(REGLAS)
+_INDICE_INGRESO = _construir_indice(REGLAS_INGRESO)
 
 
-def categorizar_por_codigo(concepto):
+def categorizar_por_codigo(concepto, es_ingreso=False):
     """Devuelve el nombre de categoría sugerido por las reglas ESTÁTICAS
-    (heurística de comercios habituales) o None si no hay coincidencia."""
+    (heurística de comercios habituales) o None si no hay coincidencia.
+
+    `es_ingreso` selecciona el diccionario de positivos, donde el mismo texto
+    tiene otra lectura (una devolución de Repsol no es gasolina)."""
     texto = normalizar_texto(concepto)
     if not texto:
         return None
-    for clave, categoria in _INDICE:
+    for clave, categoria in (_INDICE_INGRESO if es_ingreso else _INDICE):
         if contiene_patron(texto, clave):
             return categoria
     return None
@@ -200,7 +227,7 @@ def _mejor_regla(texto_norm, reglas):
     return mejor
 
 
-def categorizar(concepto, hogar):
+def categorizar(concepto, hogar, es_ingreso=False):
     """Sugiere una CategoriaGasto para un concepto, priorizando las reglas
     APRENDIDAS del hogar (creadas al categorizar movimientos manualmente o con
     la IA) sobre la heurística estática.
@@ -209,16 +236,33 @@ def categorizar(concepto, hogar):
     origen ∈ {'regla', 'codigo', None}, para que quien la llame pueda distinguir
     un acierto del diccionario de uno de un criterio propio del usuario.
     """
-    resultados = categorizar_lote([concepto], hogar)
+    resultados = categorizar_lote([(concepto, es_ingreso)], hogar)
     return resultados[0]
 
 
-def categorizar_lote(conceptos, hogar):
+def _comercios_de_gasto(hogar, comercios):
+    """De los comercios dados, cuáles ya aparecen en algún GASTO del hogar.
+
+    Sirve para reconocer devoluciones: un abono de «El Corte Ingles» o de
+    «Steam» no es un ingreso nuevo, es dinero que vuelve de una compra."""
+    from .models import MovimientoBancario
+
+    candidatos = {c for c in comercios if c}
+    if not candidatos:
+        return set()
+    return set(
+        MovimientoBancario.objects.filter(
+            hogar=hogar, importe__lt=0, comercio__in=candidatos,
+        ).values_list('comercio', flat=True).distinct()
+    )
+
+
+def categorizar_lote(items, hogar):
     """Versión por lotes de `categorizar`: carga las reglas del hogar UNA vez
     para toda la importación en lugar de reconsultarlas por movimiento.
 
-    Devuelve una lista de tuplas (CategoriaGasto|None, origen) alineada con
-    `conceptos`."""
+    `items` es una lista de tuplas (concepto, es_ingreso). Devuelve una lista de
+    tuplas (CategoriaGasto|None, origen) alineada con la entrada."""
     from django.db.models import F
 
     from finanzas.models import CategoriaGasto
@@ -229,7 +273,30 @@ def categorizar_lote(conceptos, hogar):
     usos = {}
     resultados = []
 
-    for concepto in conceptos:
+    # Un abono cuyo comercio ya aparece como gasto es casi siempre una
+    # devolución. Se mira tanto lo ya importado (una consulta para todo el lote)
+    # como los gastos del propio lote: la compra y su reembolso suelen venir en
+    # el mismo extracto.
+    comercios_ingreso = {
+        normalizar_comercio(concepto) for concepto, ingreso in items
+        if ingreso and concepto
+    }
+    comercios_gasto_lote = {
+        normalizar_comercio(concepto) for concepto, ingreso in items
+        if not ingreso and concepto
+    }
+    con_gasto_previo = (
+        _comercios_de_gasto(hogar, comercios_ingreso) | (comercios_ingreso & comercios_gasto_lote)
+    )
+
+    def resolver(nombre_cat):
+        if nombre_cat not in cache_categorias:
+            cache_categorias[nombre_cat] = CategoriaGasto.objects.filter(
+                hogar=hogar, nombre=nombre_cat, activo=True,
+            ).first()
+        return cache_categorias[nombre_cat]
+
+    for concepto, es_ingreso in items:
         texto = normalizar_texto(concepto)
         if not texto:
             resultados.append((None, None))
@@ -241,16 +308,14 @@ def categorizar_lote(conceptos, hogar):
             resultados.append((regla.categoria, 'regla'))
             continue
 
-        nombre_cat = categorizar_por_codigo(texto)
+        nombre_cat = categorizar_por_codigo(texto, es_ingreso=es_ingreso)
+        if not nombre_cat and es_ingreso and normalizar_comercio(concepto) in con_gasto_previo:
+            nombre_cat = 'Devoluciones'
         if not nombre_cat:
             resultados.append((None, None))
             continue
 
-        if nombre_cat not in cache_categorias:
-            cache_categorias[nombre_cat] = CategoriaGasto.objects.filter(
-                hogar=hogar, nombre=nombre_cat, activo=True,
-            ).first()
-        categoria = cache_categorias[nombre_cat]
+        categoria = resolver(nombre_cat)
         resultados.append((categoria, 'codigo' if categoria else None))
 
     for pk, veces in usos.items():

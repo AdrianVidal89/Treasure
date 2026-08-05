@@ -63,6 +63,11 @@
                         <option value="{{ cat.id }}" {% if partida.categoria_id == cat.id %}selected{% endif %}>{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
+                    <optgroup label="Discrecionales">
+                        {% for cat in categorias %}{% if cat.tipo == 'discrecional' %}
+                        <option value="{{ cat.id }}" {% if partida.categoria_id == cat.id %}selected{% endif %}>{{ cat.nombre }}</option>
+                        {% endif %}{% endfor %}
+                    </optgroup>
                 </select>
             </div>
 
