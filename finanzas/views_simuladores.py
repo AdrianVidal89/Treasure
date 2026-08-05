@@ -1,12 +1,21 @@
 import datetime
-from decimal import Decimal
+import json
+from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
 from django.shortcuts import render, redirect
+from django.views.decorators.http import require_POST
 
-from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad
+from .models import (
+    FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad,
+    SimulacionVivienda, TIPOS_GASTO,
+)
 from .distribucion import _neto_fuente_base, calcular_flujos
 from .views_evolucion import _delta_esperado_mes, _liquidez_patrimonio_por_mes
+
+# Categoría del presupuesto que recoge lo que ya se paga hoy por vivienda.
+CATEGORIA_VIVIENDA = 'Hipoteca / Alquiler'
 
 
 def _get_hogar(request):
@@ -66,23 +75,27 @@ def _datos_financieros(hogar):
 
     # Gastos mensuales (prorrateados) desglosados por tipo de categoría:
     # fijo / variable / anual (provisión). Reutiliza PartidaGasto.importe_mensual.
-    gastos_fijos = Decimal('0')
-    gastos_variables = Decimal('0')
-    gastos_anuales = Decimal('0')
+    # Gasto mensual prorrateado por bloque del presupuesto. Se mantienen los
+    # cuatro separados (no se funden discrecional y variable) para que el
+    # simulador pueda enseñar el presupuesto igual que la pantalla de Gastos.
+    por_bloque = {t: Decimal('0') for t in TIPOS_GASTO}
+    # Lo que ya se paga por vivienda hoy: si al comprar dejas de pagarlo, deja
+    # de ser un gasto y esa parte de la cuota nueva no es coste adicional.
+    vivienda_actual = Decimal('0')
     for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
         tipo_cat = getattr(p.categoria, 'tipo', 'fijo')
-        if tipo_cat in ('variable', 'discrecional'):
-            # El gasto discrecional no es un compromiso fijo: para el simulador
-            # cuenta como variable, no como coste ineludible.
-            gastos_variables += p.importe_mensual
-        elif tipo_cat == 'anual':
-            gastos_anuales += p.importe_mensual
-        elif tipo_cat in ('ingreso', 'traspaso'):
-            continue  # no son gasto
-        else:
-            gastos_fijos += p.importe_mensual
+        if tipo_cat not in TIPOS_GASTO:
+            continue  # ingresos y traspasos no son gasto
+        por_bloque[tipo_cat] += p.importe_mensual
+        if getattr(p.categoria, 'nombre', '') == CATEGORIA_VIVIENDA:
+            vivienda_actual += p.importe_mensual
 
-    gastos_totales = gastos_fijos + gastos_variables + gastos_anuales
+    gastos_fijos = por_bloque['fijo']
+    gastos_variables = por_bloque['variable']
+    gastos_anuales = por_bloque['anual']
+    gastos_discrecionales = por_bloque['discrecional']
+
+    gastos_totales = sum(por_bloque.values(), Decimal('0'))
     libre = max(Decimal('0'), ingresos_netos - gastos_totales)
 
     # ── Ahorro mensual para la proyección a futuro ──────────────────────────
@@ -120,7 +133,10 @@ def _datos_financieros(hogar):
         'gastos_desg_fijos': round(float(gastos_fijos), 2),
         'gastos_desg_variables': round(float(gastos_variables), 2),
         'gastos_desg_anuales': round(float(gastos_anuales), 2),
+        'gastos_desg_discrecionales': round(float(gastos_discrecionales), 2),
         'gastos_totales_mensuales': round(float(gastos_totales), 2),
+        # Lo que hoy ya se destina a vivienda (alquiler o hipoteca en curso).
+        'vivienda_actual_mensual': round(float(vivienda_actual), 2),
         'libre_mensual': round(float(libre), 2),
         'ahorro_mensual_estimado': round(float(ahorro_mensual_estimado), 2),
         'ahorro_mensual_real': (round(float(ahorro_mensual_real), 2)
@@ -133,6 +149,7 @@ def _datos_financieros(hogar):
         'ingresos_netos_mensuales': ingresos_netos,
         'gastos_fijos_mensuales': gastos_totales,
         'libre_mensual': libre,
+        'vivienda_actual_mensual': vivienda_actual,
         'sim_data': sim_data,
         'desglose_fondos': desglose_fondos,
         'ultimo_mes': ultimo_mes,
@@ -151,11 +168,87 @@ def simulador_vivienda(request):
         p.calcular_neto_venta()
         for p in Propiedad.objects.filter(hogar=hogar, activo=True)
     ]
+    simulacion, _ = SimulacionVivienda.objects.get_or_create(hogar=hogar)
     return render(request, 'finanzas/simuladores/vivienda.html', {
         'hogar': hogar,
         'propiedades_data': propiedades_data,
+        'simulacion': simulacion.como_dict(),
         **datos,
     })
+
+
+# Campos que el simulador puede guardar, con su conversión desde JSON. Se
+# valida aquí y no en el cliente para que un valor manipulado no llegue a la BD.
+_CAMPOS_SIMULACION = {
+    'modo': ('choice', [c[0] for c in SimulacionVivienda.MODO_CHOICES]),
+    'base_esfuerzo': ('choice', [c[0] for c in SimulacionVivienda.BASE_CHOICES]),
+    'precio': ('decimal', (0, 5_000_000)),
+    'entrada_pct': ('decimal', (0, 100)),
+    'tipo_interes': ('decimal', (0, 20)),
+    'gastos_compra_pct': ('decimal', (0, 30)),
+    'max_esfuerzo_pct': ('decimal', (1, 100)),
+    'ibi_pct_anual': ('decimal', (0, 5)),
+    'comunidad_mes': ('decimal', (0, 2000)),
+    'seguro_hogar_anio': ('decimal', (0, 10000)),
+    'mantenimiento_pct_anual': ('decimal', (0, 5)),
+    'plazo_anios': ('int', (1, 40)),
+    'meses_colchon': ('int', (0, 36)),
+    'sustituye_vivienda_actual': ('bool', None),
+    'propiedades_vendidas': ('ids', None),
+}
+
+
+@login_required
+@require_POST
+def guardar_simulacion_vivienda(request):
+    """Guarda el escenario del simulador. Se llama en cada cambio de un control
+    (con retardo) para que los valores sigan ahí al volver a entrar."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+
+    try:
+        datos = json.loads(request.body.decode('utf-8') or '{}')
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({'ok': False, 'error': 'json_invalido'}, status=400)
+    if not isinstance(datos, dict):
+        return JsonResponse({'ok': False, 'error': 'json_invalido'}, status=400)
+
+    simulacion, _ = SimulacionVivienda.objects.get_or_create(hogar=hogar)
+    cambios = []
+    for campo, (tipo, limites) in _CAMPOS_SIMULACION.items():
+        if campo not in datos:
+            continue
+        valor = _limpiar_valor(datos[campo], tipo, limites)
+        if valor is None:
+            continue
+        setattr(simulacion, campo, valor)
+        cambios.append(campo)
+
+    if cambios:
+        simulacion.save(update_fields=cambios + ['actualizado_en'])
+    return JsonResponse({'ok': True, 'guardados': cambios})
+
+
+def _limpiar_valor(valor, tipo, limites):
+    """Convierte y acota un valor recibido del simulador; None si no es válido."""
+    if tipo == 'choice':
+        return valor if valor in limites else None
+    if tipo == 'bool':
+        return bool(valor)
+    if tipo == 'ids':
+        if not isinstance(valor, list):
+            return None
+        return [int(v) for v in valor if str(v).lstrip('-').isdigit()]
+    try:
+        numero = Decimal(str(valor))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not numero.is_finite():
+        return None
+    minimo, maximo = limites
+    numero = max(Decimal(str(minimo)), min(Decimal(str(maximo)), numero))
+    return int(numero) if tipo == 'int' else numero
 
 
 @login_required

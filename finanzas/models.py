@@ -1278,3 +1278,98 @@ class HistorialPropiedad(models.Model):
 
     def __str__(self):
         return f"{self.propiedad.nombre} {self.mes}/{self.año}: €{self.valor_mercado}"
+
+
+### Simulador de vivienda ###
+
+class SimulacionVivienda(models.Model):
+    """Escenario del simulador de hipoteca, guardado por hogar.
+
+    Antes los valores vivían solo en el DOM: al recargar se perdían y, peor,
+    el precio se sobrescribía con el óptimo calculado, así que era imposible
+    mantener una simulación concreta ("¿cómo me quedaría ESTA casa?"). Se
+    guarda un escenario por hogar que persiste hasta que el usuario lo cambia.
+    """
+
+    MODO_CHOICES = [
+        ('maximo', '¿Cuánto me puedo permitir?'),
+        ('precio', 'Simular un precio concreto'),
+    ]
+    BASE_CHOICES = [
+        ('ingresos', 'Ingresos netos'),
+        ('libre', 'Dinero libre mensual'),
+    ]
+
+    hogar = models.OneToOneField(
+        'core.Hogar', on_delete=models.CASCADE, related_name='simulacion_vivienda',
+    )
+    modo = models.CharField(max_length=10, choices=MODO_CHOICES, default='maximo')
+
+    # --- Vivienda y financiación ---
+    precio = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('300000'))
+    entrada_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('20'))
+    tipo_interes = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('3.00'))
+    plazo_anios = models.PositiveIntegerField(default=25)
+    gastos_compra_pct = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('11'))
+
+    # --- Límites personales ---
+    meses_colchon = models.PositiveIntegerField(
+        default=6, help_text='Meses de gastos que quieres conservar sin tocar.',
+    )
+    max_esfuerzo_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('30'),
+        help_text='Porcentaje máximo de la base que quieres dedicar a la cuota.',
+    )
+    base_esfuerzo = models.CharField(max_length=10, choices=BASE_CHOICES, default='ingresos')
+
+    # --- Costes recurrentes de ser propietario ---
+    # El simulador anterior solo sumaba la cuota, así que el presupuesto
+    # posterior salía irrealmente holgado.
+    ibi_pct_anual = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('0.500'),
+        help_text='IBI anual como % del precio de la vivienda.',
+    )
+    comunidad_mes = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('60'))
+    seguro_hogar_anio = models.DecimalField(max_digits=8, decimal_places=2, default=Decimal('300'))
+    mantenimiento_pct_anual = models.DecimalField(
+        max_digits=5, decimal_places=3, default=Decimal('1.000'),
+        help_text='Provisión anual de mantenimiento como % del precio.',
+    )
+    sustituye_vivienda_actual = models.BooleanField(
+        default=False,
+        help_text='Si al comprar dejas de pagar el alquiler o la hipoteca actual.',
+    )
+
+    propiedades_vendidas = models.JSONField(
+        default=list, blank=True,
+        help_text='IDs de propiedades cuya venta financia la compra.',
+    )
+
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Simulación de vivienda'
+        verbose_name_plural = 'Simulaciones de vivienda'
+
+    def __str__(self):
+        return f"Simulación vivienda · {self.hogar.nombre} · {self.get_modo_display()}"
+
+    def como_dict(self):
+        """Parámetros en tipos JSON, tal como los consume el simulador."""
+        return {
+            'modo': self.modo,
+            'precio': float(self.precio),
+            'entrada_pct': float(self.entrada_pct),
+            'tipo_interes': float(self.tipo_interes),
+            'plazo_anios': self.plazo_anios,
+            'gastos_compra_pct': float(self.gastos_compra_pct),
+            'meses_colchon': self.meses_colchon,
+            'max_esfuerzo_pct': float(self.max_esfuerzo_pct),
+            'base_esfuerzo': self.base_esfuerzo,
+            'ibi_pct_anual': float(self.ibi_pct_anual),
+            'comunidad_mes': float(self.comunidad_mes),
+            'seguro_hogar_anio': float(self.seguro_hogar_anio),
+            'mantenimiento_pct_anual': float(self.mantenimiento_pct_anual),
+            'sustituye_vivienda_actual': self.sustituye_vivienda_actual,
+            'propiedades_vendidas': list(self.propiedades_vendidas or []),
+        }

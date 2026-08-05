@@ -107,6 +107,8 @@ urlpatterns = [
 
     # ── Simuladores ────────────────────────────────────────────────────────
     path('simuladores/vivienda/', views_simuladores.simulador_vivienda, name='simulador_vivienda'),
+    path('simuladores/vivienda/guardar/', views_simuladores.guardar_simulacion_vivienda,
+         name='guardar_simulacion_vivienda'),
     path('simuladores/vehiculo/', views_simuladores.simulador_vehiculo, name='simulador_vehiculo'),
 
     # ── Propiedades ───────────────────────────────────────────────────────

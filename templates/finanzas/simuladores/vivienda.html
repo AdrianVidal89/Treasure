@@ -1,148 +1,199 @@
 {% extends "base.html" %}
-{% load l10n %}
-{% block title %}Simulador de Vivienda - Treasure{% endblock %}
+{% load l10n humanize %}
+{% block title %}Simulador de Hipoteca - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
 {% block content %}
 <style>
-.sim-wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
-.sim-header { margin-bottom: 28px; }
+.sim-wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px; }
+.sim-header { margin-bottom: 22px; }
 .sim-header h1 { margin: 0 0 6px; font-size: 1.7rem; font-weight: 700; }
 .sim-header p { color: var(--muted); margin: 0; font-size: 0.9rem; }
 
-.sim-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-@media (max-width: 720px) { .sim-grid { grid-template-columns: 1fr; } }
+.sim-grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .sim-grid { grid-template-columns: 1fr; } }
 
-.card { padding: 24px; }
-.card h2 { color: var(--text-color); font-size: 1rem; margin: 0 0 20px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.card { padding: 22px; }
+.card h2 { color: var(--text-color); font-size: 1rem; margin: 0 0 6px; font-weight: 700; }
+.card .card-sub { font-size: 0.78rem; color: var(--muted); margin: 0 0 16px; }
 
-.control { margin-bottom: 20px; }
-.control-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
-.control-label { font-size: 0.82rem; color: var(--muted); }
-.control-value { font-size: 1rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; }
+.control { margin-bottom: 18px; }
+.control-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; gap: 10px; }
+.control-label { font-size: 0.8rem; color: var(--muted); }
+.control-value { font-size: 0.95rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; white-space: nowrap; }
 input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; background: var(--border-strong); border-radius: 3px; outline: none; cursor: pointer; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-color); cursor: pointer; box-shadow: 0 1px 2px rgba(28,35,33,.06); }
+input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border: none; border-radius: 50%; background: var(--primary-color); cursor: pointer; }
+.range-hints { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--border-strong); margin-top: 2px; }
 
-.ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
-.ctx-item { background: color-mix(in srgb, var(--app-bg) 80%, transparent); border-radius: var(--radius); padding: 12px 14px; }
-.ctx-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 4px; }
-.ctx-item .val { font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Selector de modo: la decision que ordena toda la pantalla. */
+.modo-sel { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+.modo-btn { text-align: left; padding: 14px 16px; border-radius: var(--radius); cursor: pointer;
+            border: 1px solid var(--border); background: var(--app-bg); transition: all .18s; }
+.modo-btn .t { font-size: 0.88rem; font-weight: 700; color: var(--text-color); display: block; }
+.modo-btn .s { font-size: 0.74rem; color: var(--muted); display: block; margin-top: 3px; line-height: 1.35; }
+.modo-btn.on { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
+.modo-btn.on .t { color: var(--primary-color); }
+@media (max-width: 520px) { .modo-sel { grid-template-columns: 1fr; } }
 
-.result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.result-item { background: color-mix(in srgb, var(--app-bg) 80%, transparent); border-radius: var(--radius); padding: 14px 16px; }
-.result-item .lbl { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 6px; }
-.result-item .val { font-size: 1.2rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.headline { background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color) 12%, transparent), color-mix(in srgb, var(--info) 8%, transparent));
+            border: 1px solid color-mix(in srgb, var(--primary-color) 27%, transparent); border-radius: var(--radius-lg); padding: 20px 24px; }
+.headline .lbl { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; font-weight: 600; letter-spacing: .04em; }
+.headline .val { font-size: 2.1rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.headline .sub { font-size: 0.82rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
 
-.semaforo { border-radius: var(--radius-lg); padding: 20px 24px; margin-top: 20px; display: flex; align-items: center; gap: 16px; transition: all 0.3s; }
-.semaforo-icon { font-size: 2.2rem; line-height: 1; }
-.semaforo-text .title { font-size: 1.1rem; font-weight: 700; }
-.semaforo-text .sub { font-size: 0.85rem; margin-top: 4px; color: var(--muted); }
-.semaforo.verde { background: color-mix(in srgb, var(--success) 10%, transparent); border: 1px solid color-mix(in srgb, var(--success) 27%, transparent); }
-.semaforo.amarillo { background: color-mix(in srgb, var(--warning) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 27%, transparent); }
-.semaforo.rojo { background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 27%, transparent); }
+.result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 16px; }
+.result-item { background: color-mix(in srgb, var(--app-bg) 80%, transparent); border-radius: var(--radius); padding: 12px 14px; }
+.result-item .lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 5px; }
+.result-item .val { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.result-item .hint { font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
 
-.maximo-box { background: linear-gradient(135deg, color-mix(in srgb, var(--primary-color) 12%, transparent), color-mix(in srgb, var(--info) 8%, transparent)); border: 1px solid color-mix(in srgb, var(--primary-color) 27%, transparent); border-radius: var(--radius-lg); padding: 20px 24px; margin-top: 16px; }
-.maximo-box .lbl { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 8px; }
-.maximo-box .val { font-size: 2rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; }
-.maximo-box .sub { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
+/* Barras de ratio: esfuerzo y LTV, los dos numeros que miran los bancos. */
+.ratio { margin-top: 14px; }
+.ratio-head { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 5px; }
+.ratio-bar { height: 9px; border-radius: 999px; background: var(--app-bg); overflow: hidden; position: relative; }
+.ratio-bar > span { display: block; height: 100%; border-radius: 999px; transition: width .35s ease; }
+.ratio-lim { position: absolute; top: -3px; width: 2px; height: 15px; background: var(--border-strong); }
+.ratio-foot { font-size: 0.72rem; color: var(--muted); margin-top: 4px; }
 
-.desglose { margin-top: 16px; }
-.desglose-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--surface-2); font-size: 0.85rem; }
-.desglose-row:last-child { border-bottom: none; }
-.desglose-row .key { color: var(--muted); }
+.alertas { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+.alerta { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--radius); padding: 11px 14px; font-size: 0.83rem; line-height: 1.45; }
+.alerta .ico { font-weight: 700; flex-shrink: 0; }
+.alerta.critica { background: color-mix(in srgb, var(--danger) 12%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent); }
+.alerta.aviso   { background: color-mix(in srgb, var(--warning) 12%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent); }
+.alerta.ok      { background: color-mix(in srgb, var(--success) 10%, transparent); border: 1px solid color-mix(in srgb, var(--success) 27%, transparent); }
 
-.tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+.presu-tabla { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-top: 12px; }
+.presu-tabla th { text-align: right; font-size: 0.7rem; text-transform: uppercase; color: var(--muted); font-weight: 600; padding: 6px 4px; }
+.presu-tabla th:first-child { text-align: left; }
+.presu-tabla td { padding: 6px 4px; font-variant-numeric: tabular-nums; text-align: right; }
+.presu-tabla td:first-child { text-align: left; color: var(--muted); }
+.presu-tabla tr.nuevo td { color: var(--primary-color); font-weight: 600; }
+.presu-tabla tr.nuevo td:first-child { color: var(--primary-color); }
+.presu-tabla tr.total td { border-top: 1px solid var(--border-strong); font-weight: 700; padding-top: 9px; }
+.presu-tabla tr.total td:first-child { color: var(--text-color); }
+.presu-nota { font-size: 0.74rem; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+
+.ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ctx-item { background: color-mix(in srgb, var(--app-bg) 80%, transparent); border-radius: var(--radius); padding: 11px 13px; }
+.ctx-item .lbl { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; font-weight: 600; margin-bottom: 3px; }
+.ctx-item .val { font-size: 0.98rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.tab-bar { display: flex; margin-bottom: 20px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
 .tab-bar a { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 600; text-decoration: none; color: var(--muted); background: var(--app-bg); transition: all 0.2s; }
 .tab-bar a.active { background: var(--primary-color); color: #000; }
-.range-hints { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--border-strong); margin-top: 2px; }
+
+.acordeon { border-top: 1px solid var(--surface-2); margin-top: 14px; padding-top: 12px; }
+.acordeon > summary { cursor: pointer; font-size: 0.82rem; font-weight: 600; color: var(--muted); list-style: none; }
+.acordeon > summary::-webkit-details-marker { display: none; }
+.acordeon > summary::before { content: '▸ '; }
+.acordeon[open] > summary::before { content: '▾ '; }
+.acordeon-body { padding-top: 14px; }
+
+.guardado { font-size: 0.72rem; color: var(--muted); text-align: right; min-height: 15px; margin-top: 4px; transition: opacity .3s; }
+.desglose-row { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 1px solid var(--surface-2); font-size: 0.84rem; }
+.desglose-row:last-child { border-bottom: none; }
+.desglose-row .key { color: var(--muted); }
+.proy-toggle-btn { padding: 7px 14px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: none; }
 </style>
 
-<!-- Datos financieros serializados como JSON (sin problemas de locale) -->
-{{ sim_data|json_script:"sim-data" }}
-{{ propiedades_data|json_script:"propiedades-data" }}
-
 <div class="sim-wrap">
+    <div class="sim-header">
+        <h1>Simulador de hipoteca</h1>
+        <p>Calcula hasta dónde puedes llegar, o comprueba cómo te quedaría una vivienda concreta. Tus valores se guardan solos.</p>
+    </div>
+
     <div class="tab-bar">
         <a href="{% url 'finanzas:simulador_vivienda' %}" class="active">Vivienda</a>
         <a href="{% url 'finanzas:simulador_vehiculo' %}">Vehículo</a>
     </div>
 
-    <div class="sim-header">
-        <h1><span class="title-gradient">Simulador de Vivienda</span></h1>
-        <p>Calcula si puedes permitirte una vivienda usando tus datos financieros reales.</p>
+    <!-- QUÉ QUIERES SABER -->
+    <div class="modo-sel">
+        <div class="modo-btn" id="modo-maximo" onclick="setModo('maximo')">
+            <span class="t">¿Cuánto me puedo permitir?</span>
+            <span class="s">Calcula el precio máximo de vivienda que aguantan tus finanzas.</span>
+        </div>
+        <div class="modo-btn" id="modo-precio" onclick="setModo('precio')">
+            <span class="t">Tengo una vivienda en mente</span>
+            <span class="s">Pon su precio y mira cómo quedaría la hipoteca y tu presupuesto.</span>
+        </div>
     </div>
 
     <div class="sim-grid">
-        <!-- IZQUIERDA: controles -->
+        <!-- ══════════ COLUMNA IZQUIERDA: CONTROLES ══════════ -->
         <div>
-            <div class="card glass-panel" style="margin-bottom: 20px;">
-                <h2>Tu situación actual</h2>
+            <div class="card glass-panel" style="margin-bottom:16px;">
+                <h2>Tu situación</h2>
+                <p class="card-sub">Datos reales de tus fondos, ingresos y presupuesto.</p>
                 <div class="ctx-grid">
                     <div class="ctx-item">
-                        <div class="lbl">Liquidez (cuentas)</div>
-                        <div class="val" style="color:#2c5f7a;">€{{ capital_liquidez|floatformat:0 }}</div>
+                        <div class="lbl">Liquidez</div>
+                        <div class="val" style="color:#2c5f7a;">€{{ capital_liquidez|floatformat:0|intcomma }}</div>
                     </div>
                     <div class="ctx-item">
-                        <div class="lbl">Inversiones</div>
-                        <div class="val" style="color:#1b4332;">€{{ capital_inversiones|floatformat:0 }}</div>
+                        <div class="lbl">Ingresos netos</div>
+                        <div class="val" style="color:#2d6a4f;">€{{ ingresos_netos_mensuales|floatformat:0|intcomma }}</div>
                     </div>
                     <div class="ctx-item">
-                        <div class="lbl">Ingresos recurrentes/mes</div>
-                        <div class="val" style="color:#2d6a4f;">€{{ ingresos_netos_mensuales|floatformat:0 }}</div>
+                        <div class="lbl">Gastos totales</div>
+                        <div class="val" style="color:#b4442e;">€{{ gastos_fijos_mensuales|floatformat:0|intcomma }}</div>
                     </div>
                     <div class="ctx-item">
-                        <div class="lbl">Libre mensual</div>
-                        <div class="val" style="color:#b7791f;">€{{ libre_mensual|floatformat:0 }}</div>
+                        <div class="lbl">Dinero libre</div>
+                        <div class="val" style="color:#b7791f;">€{{ libre_mensual|floatformat:0|intcomma }}</div>
                     </div>
                 </div>
-                {% if ultimo_mes %}<div style="font-size:0.75rem;color:var(--border-strong);text-align:right;">Datos de {{ ultimo_mes }}/{{ ultimo_anio }}</div>{% endif %}
+                {% if ultimo_mes %}<div style="font-size:0.72rem;color:var(--border-strong);text-align:right;margin-top:8px;">Saldos de {{ ultimo_mes }}/{{ ultimo_anio }}</div>{% endif %}
             </div>
 
             {% if propiedades_data %}
-            <div class="card glass-panel" style="margin-bottom: 20px;">
-                <h2>Incluir venta de propiedad</h2>
-                <p style="font-size: 0.8rem; color: var(--muted); margin: -10px 0 14px;">Marca las propiedades cuya venta quieras incluir en el capital disponible. Se descuenta la hipoteca, plusvalía IRPF y gastos de venta.</p>
+            <div class="card glass-panel" style="margin-bottom:16px;">
+                <h2>Vender una propiedad</h2>
+                <p class="card-sub">Suma su neto al capital disponible (ya descontada hipoteca, plusvalía y gastos).</p>
                 <div id="prop-checkboxes">
                     {% for prop in propiedades_data %}
-                    <label style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--surface); cursor: pointer;">
-                        <input type="checkbox" class="prop-check"
-                               data-neto="{{ prop.neto }}"
-                               data-nombre="{{ prop.nombre }}"
-                               style="margin-top: 3px; width: 16px; height: 16px; cursor: pointer;">
-                        <div style="flex: 1;">
-                            <div style="font-size: 0.88rem; font-weight: 600; color: var(--text-color);">{{ prop.nombre }}</div>
-                            <div style="font-size: 0.75rem; color: #2d6a4f; margin-top: 2px;">Neto libre: €{{ prop.neto|floatformat:0 }}</div>
-                            <div style="font-size: 0.7rem; color: var(--muted); margin-top: 1px;">€{{ prop.valor_actual|floatformat:0 }} − hipoteca €{{ prop.deuda|floatformat:0 }} − plusvalía €{{ prop.plusvalia|floatformat:0 }} − gastos €{{ prop.gastos_venta|floatformat:0 }}</div>
+                    <label style="display:flex; align-items:flex-start; gap:10px; padding:9px 0; border-bottom:1px solid var(--surface); cursor:pointer;">
+                        <input type="checkbox" class="prop-check" data-prop-id="{{ prop.id|default:forloop.counter }}"
+                               data-neto="{{ prop.neto|unlocalize }}" style="margin-top:3px; width:16px; height:16px; cursor:pointer;">
+                        <div style="flex:1;">
+                            <div style="font-size:0.85rem; font-weight:600;">{{ prop.nombre }}</div>
+                            <div style="font-size:0.74rem; color:#2d6a4f; margin-top:2px;">Neto libre: €{{ prop.neto|floatformat:0|intcomma }}</div>
                         </div>
                     </label>
                     {% endfor %}
                 </div>
-                <div id="prop-suma-box" style="display:none; margin-top:12px; background: rgba(45, 106, 79,0.06); border: 1px solid #2d6a4f33; border-radius: 10px; padding: 10px 14px; font-size: 0.85rem;">
-                    <span style="color: var(--muted);">Capital extra por ventas:</span>
-                    <span id="prop-suma-val" style="color: #2d6a4f; font-weight: 700; float: right;">€0</span>
+                <div id="prop-suma-box" style="display:none; margin-top:12px; background:rgba(45,106,79,.06); border:1px solid #2d6a4f33; border-radius:10px; padding:9px 13px; font-size:0.83rem;">
+                    <span style="color:var(--muted);">Capital extra por ventas:</span>
+                    <span id="prop-suma-val" style="color:#2d6a4f; font-weight:700; float:right;">€0</span>
                 </div>
             </div>
             {% endif %}
 
             <div class="card glass-panel">
-                <h2>Parámetros</h2>
+                <h2>La hipoteca</h2>
+                <p class="card-sub">Condiciones de financiación.</p>
 
-                <div class="control">
+                <div class="control" id="ctrl-precio">
                     <div class="control-header">
-                        <span class="control-label">Precio a analizar <span style="font-weight:400;color:var(--border-strong);">(un precio concreto)</span></span>
+                        <span class="control-label">Precio de la vivienda</span>
                         <span class="control-value" id="lbl-precio">—</span>
                     </div>
-                    <input type="range" id="sl-precio" min="50000" max="1000000" step="5000" value="300000">
-                    <div class="range-hints"><span>€50k</span><span>€1M</span></div>
+                    <input type="range" id="sl-precio" min="50000" max="1200000" step="5000">
+                    <div class="range-hints">
+                        <span>50k</span>
+                        <a href="#" onclick="usarMaximo(); return false;" style="font-size:0.72rem;">partir de mi máximo</a>
+                        <span>1,2M</span>
+                    </div>
                 </div>
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">Entrada mínima (%)</span>
+                        <span class="control-label">Entrada (ahorro que aportas)</span>
                         <span class="control-value" id="lbl-entrada-pct">—</span>
                     </div>
-                    <input type="range" id="sl-entrada-pct" min="10" max="70" step="1" value="20">
-                    <div class="range-hints"><span>10%</span><span>70%</span></div>
+                    <input type="range" id="sl-entrada-pct" min="5" max="70" step="1">
+                    <div class="range-hints"><span>5%</span><span>70%</span></div>
                 </div>
 
                 <div class="control">
@@ -150,540 +201,576 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                         <span class="control-label">Tipo de interés anual</span>
                         <span class="control-value" id="lbl-tipo">—</span>
                     </div>
-                    <input type="range" id="sl-tipo" min="0.5" max="8" step="0.1" value="3.5">
-                    <div class="range-hints"><span>0.5%</span><span>8%</span></div>
+                    <input type="range" id="sl-tipo" min="0.5" max="8" step="0.05">
+                    <div class="range-hints"><span>0,5%</span><span>8%</span></div>
                 </div>
 
                 <div class="control">
                     <div class="control-header">
-                        <span class="control-label">Plazo de la hipoteca</span>
+                        <span class="control-label">Plazo</span>
                         <span class="control-value" id="lbl-plazo">—</span>
                     </div>
-                    <input type="range" id="sl-plazo" min="5" max="35" step="1" value="25">
-                    <div class="range-hints"><span>5 años</span><span>35 años</span></div>
+                    <input type="range" id="sl-plazo" min="5" max="40" step="1">
+                    <div class="range-hints"><span>5 años</span><span>40 años</span></div>
                 </div>
 
-                <div class="control">
+                <div class="control" style="margin-bottom:0;">
                     <div class="control-header">
-                        <span class="control-label">Colchón de emergencia (meses de gastos)</span>
-                        <span class="control-value" id="lbl-colchon">—</span>
-                    </div>
-                    <input type="range" id="sl-colchon" min="3" max="12" step="1" value="6">
-                    <div class="range-hints"><span>3 meses</span><span>12 meses</span></div>
-                </div>
-
-                <div class="control">
-                    <div class="control-header">
-                        <span class="control-label">Gastos de compra (ITP/notaría...)</span>
+                        <span class="control-label">Gastos de compraventa</span>
                         <span class="control-value" id="lbl-gastos-pct">—</span>
                     </div>
-                    <input type="range" id="sl-gastos-pct" min="6" max="18" step="0.5" value="11">
+                    <input type="range" id="sl-gastos-pct" min="6" max="18" step="0.5">
                     <div class="range-hints"><span>6%</span><span>18%</span></div>
                 </div>
 
-                <div class="control">
-                    <div class="control-header">
-                        <span class="control-label">Máx. % <span id="lbl-base-nombre">libre mensual</span> para hipoteca</span>
-                        <span class="control-value" id="lbl-max-pct">—</span>
+                <details class="acordeon">
+                    <summary>Costes de ser propietario</summary>
+                    <div class="acordeon-body">
+                        <p class="card-sub" style="margin-top:-6px;">Lo que pagarás cada mes además de la cuota. Sin esto el presupuesto sale irrealmente holgado.</p>
+
+                        <div class="control">
+                            <div class="control-header">
+                                <span class="control-label">IBI anual</span>
+                                <span class="control-value" id="lbl-ibi">—</span>
+                            </div>
+                            <input type="range" id="sl-ibi" min="0" max="2" step="0.05">
+                            <div class="range-hints"><span>0%</span><span>2% del precio</span></div>
+                        </div>
+
+                        <div class="control">
+                            <div class="control-header">
+                                <span class="control-label">Comunidad</span>
+                                <span class="control-value" id="lbl-comunidad">—</span>
+                            </div>
+                            <input type="range" id="sl-comunidad" min="0" max="400" step="5">
+                            <div class="range-hints"><span>0 €/mes</span><span>400 €/mes</span></div>
+                        </div>
+
+                        <div class="control">
+                            <div class="control-header">
+                                <span class="control-label">Seguro de hogar</span>
+                                <span class="control-value" id="lbl-seguro">—</span>
+                            </div>
+                            <input type="range" id="sl-seguro" min="0" max="1200" step="25">
+                            <div class="range-hints"><span>0 €/año</span><span>1.200 €/año</span></div>
+                        </div>
+
+                        <div class="control" style="margin-bottom:10px;">
+                            <div class="control-header">
+                                <span class="control-label">Mantenimiento anual</span>
+                                <span class="control-value" id="lbl-mant">—</span>
+                            </div>
+                            <input type="range" id="sl-mant" min="0" max="3" step="0.1">
+                            <div class="range-hints"><span>0%</span><span>3% del precio</span></div>
+                        </div>
+
+                        {% if vivienda_actual_mensual %}
+                        <label style="display:flex; gap:9px; align-items:flex-start; font-size:0.82rem; cursor:pointer; padding-top:8px; border-top:1px solid var(--surface-2);">
+                            <input type="checkbox" id="chk-sustituye" style="margin-top:2px; width:15px; height:15px; cursor:pointer;">
+                            <span>Dejaré de pagar mi vivienda actual
+                                <span style="color:var(--muted);">(−€{{ vivienda_actual_mensual|floatformat:0|intcomma }}/mes de tu presupuesto)</span>
+                            </span>
+                        </label>
+                        {% endif %}
                     </div>
-                    <div style="display:flex;gap:6px;margin-bottom:10px;">
-                        <button id="btn-base-libre"     onclick="setBase('libre')"     style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid #2d6a4f;background:rgba(45, 106, 79,.15);color:#2d6a4f;">Libre mensual</button>
-                        <button id="btn-base-ingresos"  onclick="setBase('ingresos')"  style="flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;border:1px solid var(--border);background:var(--app-bg);color:var(--muted);">Ingresos netos</button>
+                </details>
+
+                <details class="acordeon">
+                    <summary>Mis límites</summary>
+                    <div class="acordeon-body">
+                        <div class="control">
+                            <div class="control-header">
+                                <span class="control-label">Cuota máxima sobre <span id="lbl-base-nombre">ingresos netos</span></span>
+                                <span class="control-value" id="lbl-max-pct">—</span>
+                            </div>
+                            <div style="display:flex; gap:6px; margin-bottom:8px;">
+                                <button type="button" id="btn-base-ingresos" class="proy-toggle-btn" onclick="setBase('ingresos')" style="flex:1;border-radius:6px;">Ingresos netos</button>
+                                <button type="button" id="btn-base-libre" class="proy-toggle-btn" onclick="setBase('libre')" style="flex:1;border-radius:6px;">Dinero libre</button>
+                            </div>
+                            <input type="range" id="sl-max-pct" min="10" max="70" step="1">
+                            <div class="range-hints"><span>10%</span><span>70%</span></div>
+                        </div>
+
+                        <div class="control" style="margin-bottom:0;">
+                            <div class="control-header">
+                                <span class="control-label">Colchón que no toco</span>
+                                <span class="control-value" id="lbl-colchon">—</span>
+                            </div>
+                            <input type="range" id="sl-colchon" min="0" max="24" step="1">
+                            <div class="range-hints"><span>0 meses</span><span>24 meses</span></div>
+                        </div>
                     </div>
-                    <input type="range" id="sl-max-pct" min="20" max="80" step="1" value="35">
-                    <div class="range-hints"><span>20%</span><span>80%</span></div>
-                </div>
+                </details>
+
+                <div class="guardado" id="estado-guardado"></div>
             </div>
         </div>
 
-        <!-- DERECHA: resultados -->
+        <!-- ══════════ COLUMNA DERECHA: RESULTADO ══════════ -->
         <div>
-            <!-- BLOQUE 1: Tu capacidad de compra (todo derivado del máximo recomendado) -->
             <div class="card glass-panel">
-                <h2>Tu capacidad de compra</h2>
-                <p style="color:var(--muted);font-size:0.82rem;margin:-8px 0 16px;">
-                    Máximo recomendado según tus parámetros. Cambia cualquier ajuste y todo se recalcula.
-                </p>
-
-                <div class="maximo-box" style="margin-top:0;">
-                    <div class="lbl">Precio máximo recomendado</div>
-                    <div class="val" id="r-max-precio">—</div>
-                    <div class="sub" id="r-max-sub">Con los parámetros actuales.</div>
+                <div class="headline">
+                    <div class="lbl" id="head-lbl">—</div>
+                    <div class="val" id="head-val">—</div>
+                    <div class="sub" id="head-sub"></div>
                 </div>
 
-                <div class="result-grid" style="margin-top:16px;">
+                <div class="result-grid">
                     <div class="result-item">
-                        <div class="lbl">Entrada (óptima)</div>
+                        <div class="lbl">Cuota mensual</div>
+                        <div class="val" style="color:var(--primary-color);" id="r-cuota">—</div>
+                        <div class="hint" id="r-cuota-hint"></div>
+                    </div>
+                    <div class="result-item">
+                        <div class="lbl">Hipoteca</div>
+                        <div class="val" id="r-hipoteca">—</div>
+                        <div class="hint" id="r-ltv-hint"></div>
+                    </div>
+                    <div class="result-item">
+                        <div class="lbl">Entrada</div>
                         <div class="val" style="color:#2c5f7a;" id="r-entrada">—</div>
+                        <div class="hint" id="r-entrada-hint"></div>
                     </div>
                     <div class="result-item">
                         <div class="lbl">Gastos de compra</div>
                         <div class="val" style="color:#b7791f;" id="r-gastos">—</div>
+                        <div class="hint" id="r-gastos-hint"></div>
                     </div>
                     <div class="result-item">
-                        <div class="lbl">Capital total necesario</div>
-                        <div class="val" style="color:#ff8844;" id="r-capital-total">—</div>
+                        <div class="lbl">Ahorro necesario</div>
+                        <div class="val" style="color:#ff8844;" id="r-capital-nec">—</div>
+                        <div class="hint" id="r-capital-hint"></div>
                     </div>
                     <div class="result-item">
-                        <div class="lbl">Capital disponible (tras colchón)</div>
-                        <div class="val" style="color:#2d6a4f;" id="r-capital-disp">—</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="lbl">Hipoteca</div>
-                        <div class="val" style="color:var(--primary-color);" id="r-hipoteca">—</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="lbl">Cuota mensual</div>
-                        <div class="val" style="color:var(--text-color);" id="r-cuota">—</div>
-                    </div>
-                    <div class="result-item">
-                        <div class="lbl">% cuota s/ <span id="lbl-pct-tipo">libre</span></div>
-                        <div class="val" id="r-pct-ing">—</div>
-                        <div style="font-size:0.73rem;color:var(--muted);margin-top:3px;" id="r-pct-otro"></div>
-                    </div>
-                    <div class="result-item">
-                        <div class="lbl">Coste total intereses</div>
+                        <div class="lbl">Intereses totales</div>
                         <div class="val" style="color:#b4442e;" id="r-intereses">—</div>
+                        <div class="hint" id="r-total-hint"></div>
                     </div>
                 </div>
 
-                <div class="desglose">
-                    <div style="font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;margin:16px 0 10px;">Resumen hipoteca</div>
+                <!-- Los dos ratios que decide el banco -->
+                <div class="ratio">
+                    <div class="ratio-head">
+                        <span>Esfuerzo · cuota sobre <span id="lbl-esf-base">ingresos</span></span>
+                        <strong id="esf-val">—</strong>
+                    </div>
+                    <div class="ratio-bar"><span id="esf-bar"></span><i class="ratio-lim" id="esf-lim"></i></div>
+                    <div class="ratio-foot" id="esf-foot"></div>
+                </div>
+
+                <div class="ratio">
+                    <div class="ratio-head">
+                        <span>LTV · hipoteca sobre precio</span>
+                        <strong id="ltv-val">—</strong>
+                    </div>
+                    <div class="ratio-bar"><span id="ltv-bar"></span><i class="ratio-lim" style="left:80%;"></i></div>
+                    <div class="ratio-foot">La mayoría de bancos no financia por encima del 80 %.</div>
+                </div>
+
+                <div class="alertas" id="alertas"></div>
+            </div>
+
+            <!-- PRESUPUESTO DESPUÉS DE COMPRAR -->
+            <div class="card glass-panel" style="margin-top:16px;">
+                <h2>Tu presupuesto después de comprar</h2>
+                <p class="card-sub">Sobre tus partidas reales, añadiendo la cuota y los costes de ser propietario en el bloque que les corresponde.</p>
+                <table class="presu-tabla">
+                    <thead>
+                        <tr><th>Concepto</th><th>Ahora</th><th>Tras comprar</th></tr>
+                    </thead>
+                    <tbody id="presu-body"></tbody>
+                </table>
+                <div class="presu-nota" id="presu-nota"></div>
+                <div class="alertas" id="presu-alertas"></div>
+            </div>
+
+            <!-- DESGLOSE DEL PRÉSTAMO -->
+            <div class="card glass-panel" style="margin-top:16px;">
+                <h2>Desglose del préstamo</h2>
+                <div style="margin-top:10px;">
                     <div class="desglose-row"><span class="key">Capital prestado</span><span id="d-capital">—</span></div>
                     <div class="desglose-row"><span class="key">Plazo</span><span id="d-plazo">—</span></div>
                     <div class="desglose-row"><span class="key">Tipo de interés</span><span id="d-tipo">—</span></div>
                     <div class="desglose-row"><span class="key">Cuota mensual</span><span id="d-cuota">—</span></div>
-                    <div class="desglose-row"><span class="key">Total pagado</span><span id="d-total">—</span></div>
-                    <div class="desglose-row"><span class="key">Intereses totales</span><span style="color:#b4442e;" id="d-int">—</span></div>
-                </div>
-
-                <button type="button" id="btn-escenario" onclick="toggleEscenario()"
-                        style="margin-top:18px;width:100%;padding:12px;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;
-                               border:1px solid var(--primary-color);background:rgba(45,106,79,.12);color:var(--primary-color);">
-                    Ver escenario tras aceptación ▾
-                </button>
-
-                <!-- Panel: Escenario tras aceptación -->
-                <div id="escenario-panel" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
-                    <div style="font-size:0.8rem;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:12px;">
-                        Escenario tras aceptar la compra máxima
-                    </div>
-                    <div class="esc-cash" style="background:rgba(44,95,122,.08);border:1px solid #2c5f7a44;border-radius:10px;padding:12px 14px;margin-bottom:14px;">
-                        <span style="color:var(--muted);font-size:0.85rem;">Cash libre restante tras entrada + gastos:</span>
-                        <span id="esc-cash" style="float:right;font-weight:700;color:#2c5f7a;">—</span>
-                    </div>
-
-                    <table style="width:100%;border-collapse:collapse;font-size:0.86rem;">
-                        <thead>
-                            <tr style="color:var(--muted);font-size:0.72rem;text-transform:uppercase;">
-                                <th style="text-align:left;padding:6px 4px;">Presupuesto mensual</th>
-                                <th style="text-align:right;padding:6px 4px;">Ahora</th>
-                                <th style="text-align:right;padding:6px 4px;">Tras hipoteca</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr><td style="padding:5px 4px;">Ingresos netos</td><td style="text-align:right;" id="esc-ing-a">—</td><td style="text-align:right;" id="esc-ing-b">—</td></tr>
-                            <tr><td style="padding:5px 4px;color:var(--muted);">Gastos fijos</td><td style="text-align:right;color:var(--muted);" id="esc-fij-a">—</td><td style="text-align:right;color:var(--muted);" id="esc-fij-b">—</td></tr>
-                            <tr><td style="padding:5px 4px;color:var(--muted);">Gastos variables</td><td style="text-align:right;color:var(--muted);" id="esc-var-a">—</td><td style="text-align:right;color:var(--muted);" id="esc-var-b">—</td></tr>
-                            <tr><td style="padding:5px 4px;color:var(--muted);">Gastos anuales (prorrateados)</td><td style="text-align:right;color:var(--muted);" id="esc-anu-a">—</td><td style="text-align:right;color:var(--muted);" id="esc-anu-b">—</td></tr>
-                            <tr><td style="padding:5px 4px;color:var(--primary-color);font-weight:600;">+ Cuota hipoteca</td><td style="text-align:right;color:var(--border-strong);">—</td><td style="text-align:right;color:var(--primary-color);font-weight:600;" id="esc-cuota-b">—</td></tr>
-                            <tr style="border-top:1px solid var(--border);"><td style="padding:8px 4px;font-weight:700;">Dinero libre</td><td style="text-align:right;font-weight:700;" id="esc-libre-a">—</td><td style="text-align:right;font-weight:700;" id="esc-libre-b">—</td></tr>
-                            <tr><td style="padding:5px 4px;">Ahorro estimado</td><td style="text-align:right;" id="esc-aho-a">—</td><td style="text-align:right;" id="esc-aho-b">—</td></tr>
-                        </tbody>
-                    </table>
-
-                    <div id="esc-verdict" class="semaforo verde" style="margin-top:14px;">
-                        <div class="semaforo-icon"></div>
-                        <div class="semaforo-text">
-                            <div class="title" id="esc-verdict-title">—</div>
-                            <div class="sub" id="esc-verdict-sub"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- BLOQUE 2: Analiza un precio concreto -->
-            <div class="card glass-panel" style="margin-top:20px;">
-                <h2>Analiza un precio concreto</h2>
-                <p style="color:var(--muted);font-size:0.82rem;margin:-8px 0 14px;">
-                    Mueve el slider <em>«Precio a analizar»</em> para ver si un precio objetivo es asequible.
-                </p>
-                <div style="font-size:0.9rem;margin-bottom:6px;">
-                    Precio analizado: <strong id="precio-obj-lbl">—</strong>
-                    · cuota <strong id="precio-obj-cuota">—</strong>
-                </div>
-
-                <div id="alerta-capital" style="display:none;margin-top:12px;background:rgba(180, 68, 46,0.1);border:1px solid #b4442e55;border-radius:10px;padding:12px 16px;font-size:0.85rem;color:#ff8888;">
-                    <span id="alerta-capital-txt"></span>
-                </div>
-
-                <div id="semaforo" class="semaforo verde" style="margin-top:12px;">
-                    <div class="semaforo-icon" id="sem-icon"></div>
-                    <div class="semaforo-text">
-                        <div class="title" id="sem-title">Calculando…</div>
-                        <div class="sub" id="sem-sub"></div>
-                    </div>
+                    <div class="desglose-row"><span class="key">Total devuelto</span><span id="d-total">—</span></div>
+                    <div class="desglose-row"><span class="key">De los cuales, intereses</span><span style="color:#b4442e;" id="d-int">—</span></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- PROYECCIÓN A 5 AÑOS -->
-    <div class="card glass-panel" style="margin-top:24px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-            <h2 style="margin:0;">Proyección de capacidad de compra (5 años)</h2>
-            <div class="proy-toggle" role="tablist" style="display:inline-flex;border:1px solid var(--border);border-radius:10px;overflow:hidden;">
-                <button id="btn-proy-estimado" class="proy-toggle-btn active" onclick="setProy('estimado')"
-                        style="padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;background:rgba(45,106,79,.15);color:#2d6a4f;">
-                    Presupuestado
-                </button>
-                <button id="btn-proy-real" class="proy-toggle-btn" onclick="setProy('real')"
-                        style="padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;background:var(--app-bg);color:var(--muted);">
-                    Real
-                </button>
+    <!-- PROYECCIÓN -->
+    <div class="card glass-panel" style="margin-top:20px;">
+        <h2>Cuánto podrás permitirte más adelante</h2>
+        <p class="card-sub">Si sigues ahorrando al ritmo actual, el precio máximo que aguantarían tus finanzas cada año.</p>
+        <div style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+            <div style="display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;">
+                <button id="btn-proy-estimado" class="proy-toggle-btn active" onclick="setProy('estimado')">Ahorro presupuestado</button>
+                <button id="btn-proy-real" class="proy-toggle-btn" onclick="setProy('real')">Ahorro real</button>
             </div>
         </div>
-        <p style="color:var(--muted);font-size:0.85rem;margin:8px 0 4px;">
-            Cómo crecería tu <strong>precio máximo recomendado</strong> si mantienes el ritmo de ahorro,
-            año a año. Reacciona a los parámetros de la izquierda.
-        </p>
-        <div id="proy-ahorro-info" style="font-size:0.82rem;color:var(--muted);margin-bottom:10px;"></div>
-
+        <div id="proy-ahorro-info" style="font-size:0.82rem; color:var(--muted); margin-bottom:10px;"></div>
         <div style="overflow-x:auto;">
-            <svg id="proy-chart" viewBox="0 0 720 320" preserveAspectRatio="xMidYMid meet"
-                 style="width:100%;min-width:480px;height:auto;"></svg>
+            <svg id="proy-chart" viewBox="0 0 720 320" preserveAspectRatio="xMidYMid meet" style="width:100%; min-width:560px; height:320px;"></svg>
         </div>
-
-        <div id="proy-nodata" style="display:none;margin-top:10px;background:rgba(183,121,31,0.1);border:1px solid #b7791f55;border-radius:10px;padding:12px 16px;font-size:0.85rem;color:#b7791f;">
-            No hay suficientes saldos reales registrados este año para extrapolar el ahorro real.
-            Registra saldos en <strong>Evolución</strong> o usa la proyección «Presupuestado».
+        <div id="proy-nodata" style="display:none; margin-top:10px; background:rgba(183,121,31,.1); border:1px solid #b7791f55; border-radius:10px; padding:12px 16px; font-size:0.85rem; color:#b7791f;">
+            No hay suficientes saldos registrados en Evolución para calcular tu ahorro real.
         </div>
     </div>
 </div>
 
+{{ sim_data|json_script:"sim-data" }}
+{{ propiedades_data|json_script:"propiedades-data" }}
+{{ simulacion|json_script:"sim-guardada" }}
+
 <script>
-// Datos financieros del hogar (JSON seguro, sin problemas de locale)
 const D = JSON.parse(document.getElementById('sim-data').textContent);
-const LIQUIDEZ  = D.capital_liquidez;
-const INGRESOS  = D.ingresos_netos_mensuales;
-const LIBRE     = D.libre_mensual;
-const GASTOS    = D.gastos_fijos_mensuales;
+const S = JSON.parse(document.getElementById('sim-guardada').textContent);
+const URL_GUARDAR = "{% url 'finanzas:guardar_simulacion_vivienda' %}";
+// base.html define su getCsrf() dentro del bloque de notificaciones, así que no
+// está disponible aquí: el token se toma directamente de la plantilla.
+const CSRF = "{{ csrf_token }}";
+
+const LIQUIDEZ = D.capital_liquidez;
+const INGRESOS = D.ingresos_netos_mensuales;
+const LIBRE    = D.libre_mensual;
+const G_TOTAL  = (D.gastos_totales_mensuales != null) ? D.gastos_totales_mensuales : D.gastos_fijos_mensuales;
+const G_FIJOS  = (D.gastos_desg_fijos != null) ? D.gastos_desg_fijos : G_TOTAL;
+const G_VAR    = D.gastos_desg_variables || 0;
+const G_ANU    = D.gastos_desg_anuales || 0;
+const G_DIS    = D.gastos_desg_discrecionales || 0;
+const VIVIENDA_ACTUAL = D.vivienda_actual_mensual || 0;
 const AHORRO_EST  = (D.ahorro_mensual_estimado != null) ? D.ahorro_mensual_estimado : Math.max(0, LIBRE);
-const AHORRO_REAL = D.ahorro_mensual_real; // puede ser null si no hay datos
-// Desglose de gastos mensuales (prorrateados) del presupuesto configurado
-const G_FIJOS     = (D.gastos_desg_fijos     != null) ? D.gastos_desg_fijos     : GASTOS;
-const G_VARIABLES = (D.gastos_desg_variables != null) ? D.gastos_desg_variables : 0;
-const G_ANUALES   = (D.gastos_desg_anuales   != null) ? D.gastos_desg_anuales   : 0;
-const G_TOTAL     = (D.gastos_totales_mensuales != null) ? D.gastos_totales_mensuales : GASTOS;
-const PROPIEDADES = JSON.parse(document.getElementById('propiedades-data').textContent);
+const AHORRO_REAL = D.ahorro_mensual_real;
 
-const PROY_ANIOS = 5;         // horizonte de proyección
-let proyMode = 'estimado';    // 'estimado' | 'real'
+const PROY_ANIOS = 5;
+let proyMode = 'estimado';
 
-// Estado del escenario recomendado (para el panel "tras aceptación")
-const ESC = { cuota: 0, precio: 0, entrada: 0, gastos: 0, cashRestante: 0, hipoteca: 0 };
+// Umbrales criticos. El de esfuerzo es el que usa el Banco de España como
+// referencia de endeudamiento prudente.
+const ESF_AVISO = 30, ESF_CRITICO = 35, ESF_TOTAL_CRITICO = 40, LTV_MAX = 80;
 
-// Capital extra por venta de propiedades seleccionadas
+/* ── Estado: es la unica fuente de verdad, y es lo que se guarda ────────── */
+let st = {
+    modo: S.modo, precio: S.precio, entradaPct: S.entrada_pct, tipo: S.tipo_interes,
+    plazo: S.plazo_anios, gastosPct: S.gastos_compra_pct, colchon: S.meses_colchon,
+    maxPct: S.max_esfuerzo_pct, base: S.base_esfuerzo, ibiPct: S.ibi_pct_anual,
+    comunidad: S.comunidad_mes, seguro: S.seguro_hogar_anio, mantPct: S.mantenimiento_pct_anual,
+    sustituye: S.sustituye_vivienda_actual, propiedades: S.propiedades_vendidas || []
+};
+
+// Django (locale es-es) agrupa los miles con espacio duro, no con punto. Se
+// replica aquí para que los números del simulador no desentonen con el resto.
+const miles = s => s.replace(/\./g, ' ');
+const fmt    = n => '€' + miles(Math.round(n).toLocaleString('es-ES'));
+const fmtDec = (n, d) => '€' + miles(n.toLocaleString('es-ES', {minimumFractionDigits: d, maximumFractionDigits: d}));
+const pct    = n => n.toFixed(1).replace('.', ',') + '%';
+
+/* ── Matemática hipotecaria (sistema francés) ───────────────────────────── */
+function cuotaMensual(capital, tipoAnual, anios) {
+    if (capital <= 0) return 0;
+    const r = tipoAnual / 100 / 12, n = anios * 12;
+    if (r === 0) return capital / n;
+    return capital * r / (1 - Math.pow(1 + r, -n));
+}
+function capitalMaximo(cuotaMax, tipoAnual, anios) {
+    if (cuotaMax <= 0) return 0;
+    const r = tipoAnual / 100 / 12, n = anios * 12;
+    if (r === 0) return cuotaMax * n;
+    return cuotaMax * (1 - Math.pow(1 + r, -n)) / r;
+}
+
 function capitalVentas() {
     let suma = 0;
-    document.querySelectorAll('.prop-check:checked').forEach(function(cb) {
-        suma += parseFloat(cb.dataset.neto) || 0;
-    });
-    return Math.max(0, suma);
+    document.querySelectorAll('.prop-check').forEach(c => { if (c.checked) suma += parseFloat(c.dataset.neto) || 0; });
+    return suma;
 }
 
-document.querySelectorAll('.prop-check').forEach(function(cb) {
-    cb.addEventListener('change', function() {
-        const suma = capitalVentas();
-        const box = document.getElementById('prop-suma-box');
-        const val = document.getElementById('prop-suma-val');
-        if (suma > 0) {
-            box.style.display = 'block';
-            val.textContent = '€' + Math.round(suma).toLocaleString('es-ES');
-        } else {
-            box.style.display = 'none';
-        }
-        actualizar();
-    });
-});
+/* ── El cálculo: un único escenario activo, nunca dos mezclados ─────────── */
+function calcular() {
+    const baseImporte = st.base === 'ingresos' ? INGRESOS : Math.max(LIBRE, 1);
+    const cuotaMax    = baseImporte * st.maxPct / 100;
+    const colchon     = G_TOTAL * st.colchon;
+    const capitalDisp = Math.max(0, LIQUIDEZ - colchon) + capitalVentas();
 
-function fmt(n) {
-    return '€' + Math.round(n).toLocaleString('es-ES');
-}
-function fmtDec(n, d) {
-    return '€' + n.toLocaleString('es-ES', {minimumFractionDigits: d, maximumFractionDigits: d});
-}
+    // Precio máximo asequible: lo limita lo que aguanta la cuota Y lo que da el
+    // ahorro para entrada + gastos. Manda el más restrictivo de los dos.
+    const hipMax        = capitalMaximo(cuotaMax, st.tipo, st.plazo);
+    const factorAhorro  = (st.entradaPct + st.gastosPct) / 100;
+    const precioPorCuota   = st.entradaPct >= 100 ? Infinity : hipMax / (1 - st.entradaPct / 100);
+    const precioPorAhorro  = factorAhorro > 0 ? capitalDisp / factorAhorro : Infinity;
+    const precioMax     = Math.max(0, Math.min(precioPorCuota, precioPorAhorro));
+    const limitante     = precioPorCuota <= precioPorAhorro ? 'cuota' : 'ahorro';
 
-function cuotaMensual(P, tipoAnual, años) {
-    if (tipoAnual === 0) return P / (años * 12);
-    const r = tipoAnual / 100 / 12;
-    const n = años * 12;
-    return P * r * Math.pow(1 + r, n) / (Math.pow(1 + r, n) - 1);
-}
+    // Precio del escenario ACTIVO: el máximo, o el que has puesto tú.
+    const precio    = st.modo === 'maximo' ? precioMax : st.precio;
+    const entrada   = precio * st.entradaPct / 100;
+    const hipoteca  = Math.max(0, precio - entrada);
+    const cuota     = cuotaMensual(hipoteca, st.tipo, st.plazo);
+    const gastos    = precio * st.gastosPct / 100;
+    const capitalNec = entrada + gastos;
+    const totalPagado = cuota * st.plazo * 12;
 
-function hipMaxima(maxCuota, tipoAnual, años) {
-    const n = años * 12;
-    if (tipoAnual === 0) return maxCuota * n;
-    const r = tipoAnual / 100 / 12;
-    return maxCuota * (Math.pow(1+r, n) - 1) / (r * Math.pow(1+r, n));
-}
+    // Costes recurrentes de ser propietario, al bloque que les toca.
+    const ibiMes   = precio * st.ibiPct / 100 / 12;
+    const mantMes  = precio * st.mantPct / 100 / 12;
+    const nuevosFijos   = st.comunidad + st.seguro / 12;
+    const nuevosAnuales = ibiMes + mantMes;
+    const ahorraVivienda = st.sustituye ? VIVIENDA_ACTUAL : 0;
 
-let baseMode = 'libre'; // 'libre' | 'ingresos'
+    const costeViviendaTotal = cuota + nuevosFijos + nuevosAnuales - ahorraVivienda;
 
-function setBase(mode) {
-    baseMode = mode;
-    const S = 'flex:1;padding:5px 8px;font-size:0.75rem;font-weight:600;border-radius:6px;cursor:pointer;';
-    document.getElementById('btn-base-libre').style.cssText    = S + (mode==='libre'    ? 'border:1px solid #2d6a4f;background:rgba(45, 106, 79,.15);color:#2d6a4f;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
-    document.getElementById('btn-base-ingresos').style.cssText = S + (mode==='ingresos' ? 'border:1px solid #2c5f7a;background:rgba(44, 95, 122,.15);color:#2c5f7a;' : 'border:1px solid var(--border);background:var(--app-bg);color:var(--muted);');
-    document.getElementById('lbl-base-nombre').textContent = mode === 'libre' ? 'libre mensual' : 'ingresos netos';
-    document.getElementById('lbl-pct-tipo').textContent    = mode === 'libre' ? 'libre' : 'ingresos';
-    actualizar();
-}
-
-function actualizar() {
-    const precio       = parseFloat(document.getElementById('sl-precio').value);
-    const entradaPct   = parseFloat(document.getElementById('sl-entrada-pct').value);
-    const tipo         = parseFloat(document.getElementById('sl-tipo').value);
-    const plazo        = parseInt(document.getElementById('sl-plazo').value);
-    const mesesColchon = parseInt(document.getElementById('sl-colchon').value);
-    const gastosPct    = parseFloat(document.getElementById('sl-gastos-pct').value);
-    const maxIngPct    = parseFloat(document.getElementById('sl-max-pct').value);
-
-    // Actualizar labels
-    document.getElementById('lbl-precio').textContent      = fmt(precio);
-    document.getElementById('lbl-entrada-pct').textContent = entradaPct + '%';
-    document.getElementById('lbl-tipo').textContent        = tipo.toFixed(2) + '%';
-    document.getElementById('lbl-plazo').textContent       = plazo + ' años';
-    document.getElementById('lbl-colchon').textContent     = mesesColchon + ' meses';
-    document.getElementById('lbl-gastos-pct').textContent  = gastosPct + '%';
-    document.getElementById('lbl-max-pct').textContent     = maxIngPct + '%';
-
-    const base      = baseMode === 'libre' ? Math.max(LIBRE, 1) : INGRESOS;
-    const baseLabel = baseMode === 'libre' ? 'libre mensual' : 'ingresos netos';
-    const baseShort = baseMode === 'libre' ? 'libre' : 'ingresos';
-
-    // Capital disponible: liquidez menos colchón + capital neto de propiedades vendidas
-    const capitalDisponible = Math.max(0, LIQUIDEZ - GASTOS * mesesColchon) + capitalVentas();
-
-    // ===== ESCENARIO RECOMENDADO (máximo) — alimenta todo el bloque 1 =====
-    const MIN_ENT   = entradaPct;                  // el slider actúa como entrada mínima
-    const maxCuota  = base * maxIngPct / 100;
-    const hipMax    = hipMaxima(maxCuota, tipo, plazo);
-    const precioMaxOptimo = (capitalDisponible + hipMax) / (1 + gastosPct / 100);
-    const entOptima = precioMaxOptimo > 0 ? (1 - hipMax / precioMaxOptimo) * 100 : 0;
-    const precioMax = Math.max(0, entOptima >= MIN_ENT ? precioMaxOptimo : hipMax / (1 - MIN_ENT / 100));
-
-    // En ambos casos la hipoteca recomendada es hipMax y la cuota es maxCuota.
-    const hipotecaRec     = hipMax;
-    const entradaRec      = Math.max(0, precioMax - hipotecaRec);
-    const entradaRecPct   = precioMax > 0 ? entradaRec / precioMax * 100 : 0;
-    const gastosCompraRec = precioMax * gastosPct / 100;
-    const capitalNecRec   = entradaRec + gastosCompraRec;
-    const cuotaRec        = cuotaMensual(hipotecaRec, tipo, plazo);
-    const totalPagadoRec  = cuotaRec * plazo * 12;
-    const interesesRec    = totalPagadoRec - hipotecaRec;
-    const cashRestante    = capitalDisponible - capitalNecRec;
-    const pctRec          = base > 0 ? (cuotaRec / base * 100) : 0;
-
-    // Guardar para "Escenario tras aceptación"
-    ESC.cuota = cuotaRec; ESC.precio = precioMax; ESC.entrada = entradaRec;
-    ESC.gastos = gastosCompraRec; ESC.cashRestante = cashRestante; ESC.hipoteca = hipotecaRec;
-
-    // Headline + grid (recomendado)
-    document.getElementById('r-max-precio').textContent = fmt(precioMax);
-    document.getElementById('r-max-sub').textContent =
-        'Entrada ' + Math.round(entradaRecPct) + '% (' + fmt(entradaRec) + ') · hipoteca ' + fmt(hipotecaRec) +
-        ' · cuota ' + fmtDec(cuotaRec, 0) + '/mes · capital disponible ' + fmt(capitalDisponible) + '.';
-
-    document.getElementById('r-entrada').textContent       = fmt(entradaRec);
-    document.getElementById('r-gastos').textContent        = fmt(gastosCompraRec);
-    document.getElementById('r-capital-total').textContent = fmt(capitalNecRec);
-    document.getElementById('r-capital-disp').textContent  = fmt(capitalDisponible);
-    document.getElementById('r-hipoteca').textContent      = fmt(hipotecaRec);
-    document.getElementById('r-cuota').textContent         = fmtDec(cuotaRec, 2) + '/mes';
-    document.getElementById('r-intereses').textContent     = fmt(interesesRec);
-
-    const pctEl = document.getElementById('r-pct-ing');
-    pctEl.textContent = pctRec.toFixed(1) + '%';
-    pctEl.style.color = '#2d6a4f';
-    document.getElementById('r-pct-otro').textContent = 'Al máximo configurado (' + maxIngPct + '% s/ ' + baseLabel + ')';
-
-    // Desglose (recomendado)
-    document.getElementById('d-capital').textContent = fmt(hipotecaRec);
-    document.getElementById('d-plazo').textContent   = plazo + ' años (' + (plazo * 12) + ' cuotas)';
-    document.getElementById('d-tipo').textContent    = tipo.toFixed(2) + '% anual';
-    document.getElementById('d-cuota').textContent   = fmtDec(cuotaRec, 2) + '/mes';
-    document.getElementById('d-total').textContent   = fmt(totalPagadoRec);
-    document.getElementById('d-int').textContent     = fmt(interesesRec);
-
-    // ===== ANALIZA UN PRECIO CONCRETO (slider) — bloque 2 / semáforo =====
-    const entradaObj    = precio * entradaPct / 100;
-    const hipotecaObj   = Math.max(0, precio - entradaObj);
-    const cuotaObj      = cuotaMensual(hipotecaObj, tipo, plazo);
-    const gastosObj     = precio * gastosPct / 100;
-    const capitalNecObj = entradaObj + gastosObj;
-    const pctObj        = base > 0 ? (cuotaObj / base * 100) : 0;
-    const capitalOk     = capitalDisponible >= capitalNecObj;
-    const superaMax     = precio > precioMax + 1;
-
-    document.getElementById('precio-obj-lbl').textContent   = fmt(precio);
-    document.getElementById('precio-obj-cuota').textContent = fmtDec(cuotaObj, 0) + '/mes (' + pctObj.toFixed(0) + '% ' + baseShort + ')';
-
-    const alertaEl  = document.getElementById('alerta-capital');
-    const alertaTxt = document.getElementById('alerta-capital-txt');
-    if (!capitalOk) {
-        alertaEl.style.display = 'block';
-        alertaTxt.textContent = 'A ' + fmt(precio) + ' te faltan ' + fmt(capitalNecObj - capitalDisponible) + ' para entrada + gastos.';
-    } else {
-        alertaEl.style.display = 'none';
-    }
-
-    const sem      = document.getElementById('semaforo');
-    const semTitle = document.getElementById('sem-title');
-    const semSub   = document.getElementById('sem-sub');
-    sem.className  = 'semaforo';
-    if (!capitalOk || pctObj >= maxIngPct) {
-        sem.classList.add('rojo');
-        semTitle.textContent = 'Ajuste necesario';
-        semSub.textContent   = !capitalOk
-            ? 'No cubres entrada + gastos a este precio (capital disponible ' + fmt(capitalDisponible) + ').'
-            : 'La cuota (' + pctObj.toFixed(0) + '% del ' + baseLabel + ') supera tu límite del ' + maxIngPct + '%.';
-    } else if (pctObj >= maxIngPct * 0.8 || superaMax) {
-        sem.classList.add('amarillo');
-        semTitle.textContent = 'Con precaución';
-        semSub.textContent   = superaMax
-            ? 'Por encima de tu máximo recomendado (' + fmt(precioMax) + '), aunque todavía asumible.'
-            : 'Cuota al ' + pctObj.toFixed(0) + '% del ' + baseLabel + ', cerca del límite (' + maxIngPct + '%).';
-    } else {
-        sem.classList.add('verde');
-        semTitle.textContent = 'Asequible';
-        semSub.textContent   = 'Cuota al ' + pctObj.toFixed(0) + '% del ' + baseLabel + ', dentro de lo recomendado y del máximo.';
-    }
-
-    renderProyeccion();
-    renderEscenario();
-}
-
-// ── Escenario tras aceptación: presupuesto mensual resultante ────────────
-function renderEscenario() {
-    const cuota = ESC.cuota || 0;
-    const gastosActuales = G_TOTAL;
-    const libreAntes = INGRESOS - gastosActuales;
-    const libreDespues = libreAntes - cuota;
-    // El ahorro estimado disminuye en el importe de la nueva cuota (gasto fijo nuevo)
-    const ahorroAntes = AHORRO_EST;
-    const ahorroDespues = ahorroAntes - cuota;
-
-    const set = (id, v, signo) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = (signo && v >= 0 ? '+' : '') + fmt(v);
+    return {
+        baseImporte, cuotaMax, capitalDisp, colchon, precioMax, limitante, hipMax,
+        precio, entrada, hipoteca, cuota, gastos, capitalNec, totalPagado,
+        intereses: totalPagado - hipoteca,
+        ltv: precio > 0 ? hipoteca / precio * 100 : 0,
+        esfuerzo: baseImporte > 0 ? cuota / baseImporte * 100 : 0,
+        esfuerzoIngresos: INGRESOS > 0 ? cuota / INGRESOS * 100 : 0,
+        esfuerzoTotal: INGRESOS > 0 ? (cuota + nuevosFijos + nuevosAnuales) / INGRESOS * 100 : 0,
+        ibiMes, mantMes, nuevosFijos, nuevosAnuales, ahorraVivienda, costeViviendaTotal,
+        sobra: capitalDisp - capitalNec
     };
-    document.getElementById('esc-cash').textContent = fmt(ESC.cashRestante || 0);
-    set('esc-ing-a', INGRESOS); set('esc-ing-b', INGRESOS);
-    set('esc-fij-a', G_FIJOS);  set('esc-fij-b', G_FIJOS);
-    set('esc-var-a', G_VARIABLES); set('esc-var-b', G_VARIABLES);
-    set('esc-anu-a', G_ANUALES); set('esc-anu-b', G_ANUALES);
-    document.getElementById('esc-cuota-b').textContent = fmtDec(cuota, 0) + '/mes';
-    set('esc-libre-a', libreAntes); set('esc-libre-b', libreDespues);
-    set('esc-aho-a', ahorroAntes); set('esc-aho-b', ahorroDespues);
+}
 
-    // Colorear dinero libre / ahorro después
-    const libreEl = document.getElementById('esc-libre-b');
-    if (libreEl) libreEl.style.color = libreDespues < 0 ? '#b4442e' : (libreDespues < INGRESOS * 0.1 ? '#b7791f' : '#2d6a4f');
+/* ── Pintado ────────────────────────────────────────────────────────────── */
+function render() {
+    const c = calcular();
+    const baseTxt = st.base === 'ingresos' ? 'ingresos netos' : 'dinero libre';
 
-    // Veredicto
-    const v = document.getElementById('esc-verdict');
-    const vT = document.getElementById('esc-verdict-title');
-    const vS = document.getElementById('esc-verdict-sub');
-    v.className = 'semaforo';
+    // Etiquetas de los controles
+    document.getElementById('lbl-precio').textContent      = fmt(st.precio);
+    document.getElementById('lbl-entrada-pct').textContent = st.entradaPct + '%';
+    document.getElementById('lbl-tipo').textContent        = pct(st.tipo);
+    document.getElementById('lbl-plazo').textContent       = st.plazo + ' años';
+    document.getElementById('lbl-gastos-pct').textContent  = pct(st.gastosPct);
+    document.getElementById('lbl-colchon').textContent     = st.colchon + ' meses';
+    document.getElementById('lbl-max-pct').textContent     = st.maxPct + '%';
+    document.getElementById('lbl-ibi').textContent         = pct(st.ibiPct) + ' · ' + fmt(c.ibiMes) + '/mes';
+    document.getElementById('lbl-comunidad').textContent   = fmt(st.comunidad) + '/mes';
+    document.getElementById('lbl-seguro').textContent      = fmt(st.seguro) + '/año';
+    document.getElementById('lbl-mant').textContent        = pct(st.mantPct) + ' · ' + fmt(c.mantMes) + '/mes';
+    document.getElementById('lbl-base-nombre').textContent = baseTxt;
+    document.getElementById('lbl-esf-base').textContent    = baseTxt;
+
+    // Cabecera: dice exactamente qué estás mirando
+    const headLbl = document.getElementById('head-lbl');
+    const headVal = document.getElementById('head-val');
+    const headSub = document.getElementById('head-sub');
+    if (st.modo === 'maximo') {
+        headLbl.textContent = 'Precio máximo que puedes permitirte';
+        headVal.textContent = fmt(c.precioMax);
+        headSub.textContent = c.limitante === 'cuota'
+            ? 'Te limita la cuota: con un ' + st.maxPct + '% de tus ' + baseTxt + ' (' + fmt(c.cuotaMax) + '/mes) el banco te presta ' + fmt(c.hipMax) + '.'
+            : 'Te limita el ahorro: con ' + fmt(c.capitalDisp) + ' disponibles cubres el ' + st.entradaPct + '% de entrada más el ' + pct(st.gastosPct) + ' de gastos de una vivienda de ' + fmt(c.precioMax) + '.';
+    } else {
+        headLbl.textContent = 'Vivienda de ' + fmt(st.precio) + ' · cuota resultante';
+        headVal.textContent = fmtDec(c.cuota, 0) + '/mes';
+        const dif = st.precio - c.precioMax;
+        headSub.textContent = dif > 1
+            ? 'Son ' + fmt(dif) + ' por encima de tu máximo asequible (' + fmt(c.precioMax) + ').'
+            : 'Dentro de tu máximo asequible (' + fmt(c.precioMax) + '), te sobran ' + fmt(-dif) + ' de margen.';
+    }
+
+    // Resultados
+    document.getElementById('r-cuota').textContent    = fmtDec(c.cuota, 0);
+    document.getElementById('r-cuota-hint').textContent = '+ ' + fmt(c.nuevosFijos + c.nuevosAnuales) + '/mes de costes';
+    document.getElementById('r-hipoteca').textContent = fmt(c.hipoteca);
+    document.getElementById('r-ltv-hint').textContent = 'LTV ' + Math.round(c.ltv) + '%';
+    document.getElementById('r-entrada').textContent  = fmt(c.entrada);
+    document.getElementById('r-entrada-hint').textContent = st.entradaPct + '% del precio';
+    document.getElementById('r-gastos').textContent   = fmt(c.gastos);
+    document.getElementById('r-gastos-hint').textContent = pct(st.gastosPct) + ' (ITP, notaría, gestoría)';
+    document.getElementById('r-capital-nec').textContent = fmt(c.capitalNec);
+    document.getElementById('r-capital-hint').textContent = 'tienes ' + fmt(c.capitalDisp);
+    document.getElementById('r-intereses').textContent = fmt(c.intereses);
+    document.getElementById('r-total-hint').textContent = 'devuelves ' + fmt(c.totalPagado);
+
+    // Desglose
+    document.getElementById('d-capital').textContent = fmt(c.hipoteca);
+    document.getElementById('d-plazo').textContent   = st.plazo + ' años (' + (st.plazo * 12) + ' cuotas)';
+    document.getElementById('d-tipo').textContent    = pct(st.tipo) + ' anual';
+    document.getElementById('d-cuota').textContent   = fmtDec(c.cuota, 2) + '/mes';
+    document.getElementById('d-total').textContent   = fmt(c.totalPagado);
+    document.getElementById('d-int').textContent     = fmt(c.intereses);
+
+    pintarRatios(c);
+    pintarAlertas(c);
+    pintarPresupuesto(c);
+    renderProyeccion(c);
+}
+
+function colorRatio(valor, aviso, critico) {
+    if (valor >= critico) return 'var(--danger)';
+    if (valor >= aviso) return 'var(--warning)';
+    return 'var(--success)';
+}
+
+function pintarRatios(c) {
+    const esfBar = document.getElementById('esf-bar');
+    esfBar.style.width = Math.min(100, c.esfuerzo) + '%';
+    esfBar.style.background = colorRatio(c.esfuerzo, st.maxPct * 0.85, st.maxPct);
+    document.getElementById('esf-val').textContent = Math.round(c.esfuerzo) + '%';
+    document.getElementById('esf-lim').style.left = Math.min(100, st.maxPct) + '%';
+    document.getElementById('esf-foot').textContent =
+        'Tu límite: ' + st.maxPct + '% (' + fmt(c.cuotaMax) + '/mes). Con los costes de propiedad, el esfuerzo real sobre ingresos sube al ' + Math.round(c.esfuerzoTotal) + '%.';
+
+    const ltvBar = document.getElementById('ltv-bar');
+    ltvBar.style.width = Math.min(100, c.ltv) + '%';
+    ltvBar.style.background = colorRatio(c.ltv, 70, LTV_MAX);
+    document.getElementById('ltv-val').textContent = Math.round(c.ltv) + '%';
+}
+
+function alerta(nivel, texto) {
+    const ico = nivel === 'critica' ? '!' : (nivel === 'aviso' ? '·' : '✓');
+    return '<div class="alerta ' + nivel + '"><span class="ico">' + ico + '</span><span>' + texto + '</span></div>';
+}
+
+function pintarAlertas(c) {
+    const av = [];
+
+    if (c.capitalNec > c.capitalDisp + 1) {
+        av.push(['critica', 'Te faltan <strong>' + fmt(c.capitalNec - c.capitalDisp) +
+            '</strong> para entrada y gastos. Necesitas ' + fmt(c.capitalNec) + ' y tienes ' + fmt(c.capitalDisp) +
+            ' disponibles tras reservar el colchón de ' + fmt(c.colchon) + '.']);
+    }
+    if (c.ltv > LTV_MAX + 0.5) {
+        av.push(['critica', 'LTV del <strong>' + Math.round(c.ltv) + '%</strong>: la mayoría de bancos no pasa del ' +
+            LTV_MAX + '%. Tendrías que aportar ' + fmt(c.precio * (1 - LTV_MAX / 100) - c.entrada) + ' más de entrada.']);
+    }
+    if (c.esfuerzoIngresos >= ESF_CRITICO) {
+        av.push(['critica', 'La cuota se lleva el <strong>' + Math.round(c.esfuerzoIngresos) +
+            '%</strong> de tus ingresos netos. Por encima del ' + ESF_CRITICO + '% se considera sobreendeudamiento.']);
+    } else if (c.esfuerzoIngresos >= ESF_AVISO) {
+        av.push(['aviso', 'La cuota se lleva el ' + Math.round(c.esfuerzoIngresos) +
+            '% de tus ingresos netos; a partir del ' + ESF_AVISO + '% conviene ir con cuidado.']);
+    }
+    if (c.esfuerzoTotal >= ESF_TOTAL_CRITICO) {
+        av.push(['critica', 'Sumando IBI, comunidad, seguro y mantenimiento, la vivienda se lleva el <strong>' +
+            Math.round(c.esfuerzoTotal) + '%</strong> de tus ingresos.']);
+    }
+    if (c.esfuerzo > st.maxPct + 0.5) {
+        av.push(['aviso', 'Superas tu propio límite del ' + st.maxPct + '% sobre ' +
+            (st.base === 'ingresos' ? 'ingresos netos' : 'dinero libre') + '.']);
+    }
+    if (st.modo === 'precio' && st.precio > c.precioMax + 1) {
+        av.push(['aviso', 'Este precio está por encima de tu máximo asequible (' + fmt(c.precioMax) + ').']);
+    }
+    if (st.colchon === 0) {
+        av.push(['aviso', 'No estás reservando ningún colchón de emergencia: toda tu liquidez entra en la compra.']);
+    }
+    if (st.plazo >= 35) {
+        av.push(['aviso', 'Un plazo de ' + st.plazo + ' años dispara los intereses: pagarías ' + fmt(c.intereses) +
+            ' solo de intereses, un ' + Math.round(c.intereses / Math.max(c.hipoteca, 1) * 100) + '% del capital.']);
+    }
+
+    if (!av.length) {
+        av.push(['ok', 'Dentro de todos los umbrales: cubres entrada y gastos, el LTV es financiable y la cuota cabe en tu presupuesto.']);
+    }
+    document.getElementById('alertas').innerHTML = av.map(a => alerta(a[0], a[1])).join('');
+}
+
+function pintarPresupuesto(c) {
+    // Los costes nuevos van al bloque del presupuesto que les corresponde, para
+    // que la comparación sea contra las mismas categorías que ya usas.
+    const fijosDespues = G_FIJOS + c.nuevosFijos - c.ahorraVivienda;
+    const anuDespues   = G_ANU + c.nuevosAnuales;
+    const totalAntes   = G_TOTAL;
+    const totalDespues = fijosDespues + G_VAR + G_DIS + anuDespues + c.cuota;
+    const libreAntes   = INGRESOS - totalAntes;
+    const libreDespues = INGRESOS - totalDespues;
+
+    const fila = (nombre, antes, despues, clase) =>
+        '<tr class="' + (clase || '') + '"><td>' + nombre + '</td><td>' +
+        (antes === null ? '—' : fmt(antes)) + '</td><td>' + fmt(despues) + '</td></tr>';
+
+    let html = '';
+    html += fila('Ingresos netos', INGRESOS, INGRESOS);
+    html += fila('Fijos' + (c.ahorraVivienda ? ' (sin tu vivienda actual)' : ''), G_FIJOS, fijosDespues);
+    html += fila('Fijos anuales (prorrateados)', G_ANU, anuDespues);
+    html += fila('Variables', G_VAR, G_VAR);
+    html += fila('Discrecionales', G_DIS, G_DIS);
+    html += fila('Cuota de la hipoteca', null, c.cuota, 'nuevo');
+    html += '<tr class="total"><td>Dinero libre</td><td>' + fmt(libreAntes) +
+            '</td><td style="color:' + (libreDespues < 0 ? 'var(--danger)' : (libreDespues < INGRESOS * 0.1 ? 'var(--warning)' : 'var(--success)')) +
+            ';">' + fmt(libreDespues) + '</td></tr>';
+    document.getElementById('presu-body').innerHTML = html;
+
+    const detalle = [];
+    if (c.nuevosFijos) detalle.push('comunidad ' + fmt(st.comunidad) + ' y seguro ' + fmt(st.seguro / 12) + ' a Fijos');
+    if (c.nuevosAnuales) detalle.push('IBI ' + fmt(c.ibiMes) + ' y mantenimiento ' + fmt(c.mantMes) + ' a Fijos anuales');
+    document.getElementById('presu-nota').innerHTML = detalle.length
+        ? 'Costes de propiedad repartidos: ' + detalle.join('; ') + ' (importes mensuales).'
+        : 'No has configurado costes de propiedad, así que el presupuesto solo suma la cuota.';
+
+    const av = [];
+    const ahorroDespues = AHORRO_EST - c.costeViviendaTotal;
     if (libreDespues < 0) {
-        v.classList.add('rojo');
-        vT.textContent = 'Presupuesto en negativo';
-        vS.textContent = 'Tras la cuota, tus gastos superan tus ingresos en ' + fmt(-libreDespues) + '/mes.';
-    } else if (libreDespues < INGRESOS * 0.1 || ahorroDespues < 0) {
-        v.classList.add('amarillo');
-        vT.textContent = 'Margen ajustado';
-        vS.textContent = 'Te quedarían ' + fmt(libreDespues) + '/mes libres' +
-            (ahorroDespues < 0 ? ' y tu ahorro estimado pasaría a negativo.' : '.');
-    } else {
-        v.classList.add('verde');
-        vT.textContent = 'Presupuesto sostenible';
-        vS.textContent = 'Tras la cuota te quedarían ' + fmt(libreDespues) + '/mes libres y ' +
-            fmt(Math.max(0, ahorroDespues)) + '/mes de ahorro estimado.';
+        av.push(['critica', 'Tu presupuesto quedaría en <strong>negativo por ' + fmt(-libreDespues) +
+            '/mes</strong>: los gastos superarían los ingresos.']);
+    } else if (libreDespues < INGRESOS * 0.1) {
+        av.push(['aviso', 'Te quedarían solo ' + fmt(libreDespues) + '/mes libres (menos del 10% de tus ingresos): sin margen para imprevistos.']);
     }
+    if (ahorroDespues < 0) {
+        av.push(['critica', 'Dejarías de ahorrar: tu capacidad pasaría de ' + fmt(AHORRO_EST) +
+            '/mes a <strong>' + fmt(ahorroDespues) + '/mes</strong>.']);
+    } else if (AHORRO_EST > 0 && ahorroDespues < AHORRO_EST * 0.25) {
+        av.push(['aviso', 'Tu ahorro mensual caería de ' + fmt(AHORRO_EST) + ' a ' + fmt(ahorroDespues) + '.']);
+    }
+    const colchonRestante = G_TOTAL > 0 ? Math.max(0, c.capitalDisp - c.capitalNec + c.colchon) / G_TOTAL : 0;
+    if (c.capitalNec <= c.capitalDisp && colchonRestante < 3) {
+        av.push(['aviso', 'Tras la compra te quedarían ' + colchonRestante.toFixed(1) +
+            ' meses de gastos en liquidez. Lo habitual es no bajar de 3 a 6.']);
+    }
+    if (!av.length) {
+        av.push(['ok', 'Tras comprar seguirías con ' + fmt(libreDespues) + '/mes libres y ' +
+            fmt(Math.max(0, ahorroDespues)) + '/mes de ahorro.']);
+    }
+    document.getElementById('presu-alertas').innerHTML = av.map(a => alerta(a[0], a[1])).join('');
 }
 
-function toggleEscenario() {
-    const p = document.getElementById('escenario-panel');
-    const b = document.getElementById('btn-escenario');
-    const abierto = p.style.display !== 'none' && p.style.display !== '';
-    if (abierto) {
-        p.style.display = 'none';
-        b.textContent = 'Ver escenario tras aceptación ▾';
-    } else {
-        p.style.display = 'block';
-        b.textContent = 'Ocultar escenario tras aceptación ▴';
-        renderEscenario();
-    }
-}
-
-// ── Proyección de capacidad de compra a futuro ──────────────────────────
-// Precio máximo recomendado para un capital disponible dado, con los mismos
-// parámetros (tipo, plazo, gastos, base y % máximo) que el simulador principal.
+/* ── Proyección ─────────────────────────────────────────────────────────── */
 function precioMaxParaCapital(capitalDisp) {
-    const tipo      = parseFloat(document.getElementById('sl-tipo').value);
-    const plazo     = parseInt(document.getElementById('sl-plazo').value);
-    const gastosPct = parseFloat(document.getElementById('sl-gastos-pct').value);
-    const maxIngPct = parseFloat(document.getElementById('sl-max-pct').value);
-    const MIN_ENT   = parseFloat(document.getElementById('sl-entrada-pct').value);
-    const base      = baseMode === 'libre' ? Math.max(LIBRE, 1) : INGRESOS;
-
-    const maxCuota        = base * maxIngPct / 100;
-    const hipMax          = hipMaxima(maxCuota, tipo, plazo);
-    const precioMaxOptimo = (capitalDisp + hipMax) / (1 + gastosPct / 100);
-    const entOptima       = precioMaxOptimo > 0 ? (1 - hipMax / precioMaxOptimo) * 100 : 0;
-    const precioMax       = entOptima >= MIN_ENT ? precioMaxOptimo : hipMax / (1 - MIN_ENT / 100);
-    return Math.max(0, precioMax);
+    const baseImporte = st.base === 'ingresos' ? INGRESOS : Math.max(LIBRE, 1);
+    const hipMax = capitalMaximo(baseImporte * st.maxPct / 100, st.tipo, st.plazo);
+    const porCuota  = st.entradaPct >= 100 ? Infinity : hipMax / (1 - st.entradaPct / 100);
+    const factor    = (st.entradaPct + st.gastosPct) / 100;
+    const porAhorro = factor > 0 ? capitalDisp / factor : Infinity;
+    return Math.max(0, Math.min(porCuota, porAhorro));
 }
 
 function setProy(mode) {
-    if (mode === 'real' && (AHORRO_REAL === null || AHORRO_REAL === undefined)) {
-        document.getElementById('proy-nodata').style.display = 'block';
-        // permitimos seleccionar, pero se proyecta plano (ahorro 0)
-    }
     proyMode = mode;
-    const on  = 'padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;';
-    document.getElementById('btn-proy-estimado').style.cssText = on + (mode==='estimado' ? 'background:rgba(45,106,79,.15);color:#2d6a4f;' : 'background:var(--app-bg);color:var(--muted);');
-    document.getElementById('btn-proy-real').style.cssText     = on + (mode==='real'     ? 'background:rgba(44,95,122,.15);color:#2c5f7a;' : 'background:var(--app-bg);color:var(--muted);');
-    renderProyeccion();
+    const on = 'padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:none;';
+    document.getElementById('btn-proy-estimado').style.cssText = on + (mode === 'estimado' ? 'background:rgba(45,106,79,.15);color:#2d6a4f;' : 'background:var(--app-bg);color:var(--muted);');
+    document.getElementById('btn-proy-real').style.cssText     = on + (mode === 'real'     ? 'background:rgba(44,95,122,.15);color:#2c5f7a;' : 'background:var(--app-bg);color:var(--muted);');
+    render();
 }
 
-function renderProyeccion() {
-    const mesesColchon = parseInt(document.getElementById('sl-colchon').value);
-    const capitalBase  = Math.max(0, LIQUIDEZ - GASTOS * mesesColchon) + capitalVentas();
-
-    const ahorroReal = (AHORRO_REAL === null || AHORRO_REAL === undefined) ? 0 : AHORRO_REAL;
-    const ahorroMensual = proyMode === 'real' ? ahorroReal : AHORRO_EST;
-
-    // Info de ahorro usado
+function renderProyeccion(c) {
+    const sinDatos = (AHORRO_REAL === null || AHORRO_REAL === undefined);
+    const ahorro = proyMode === 'real' ? (sinDatos ? 0 : AHORRO_REAL) : AHORRO_EST;
     const info = document.getElementById('proy-ahorro-info');
-    if (proyMode === 'real' && (AHORRO_REAL === null || AHORRO_REAL === undefined)) {
+    if (proyMode === 'real' && sinDatos) {
         info.innerHTML = 'Ahorro mensual real: <strong>sin datos suficientes</strong> (proyección plana).';
     } else {
-        const etiqueta = proyMode === 'real' ? 'real medio (Evolución)' : 'presupuestado (mes actual)';
-        info.innerHTML = 'Ahorro mensual ' + etiqueta + ': <strong>' + fmt(ahorroMensual) +
-                         '/mes</strong> · ' + fmt(ahorroMensual * 12) + '/año.';
+        info.innerHTML = 'Ahorro mensual ' + (proyMode === 'real' ? 'real medio (Evolución)' : 'presupuestado') +
+                         ': <strong>' + fmt(ahorro) + '/mes</strong> · ' + fmt(ahorro * 12) + '/año.';
     }
-    document.getElementById('proy-nodata').style.display =
-        (proyMode === 'real' && (AHORRO_REAL === null || AHORRO_REAL === undefined)) ? 'block' : 'none';
+    document.getElementById('proy-nodata').style.display = (proyMode === 'real' && sinDatos) ? 'block' : 'none';
 
-    // Serie año a año (año 0 = hoy)
     const valores = [];
     for (let y = 0; y <= PROY_ANIOS; y++) {
-        const capitalDisp = capitalBase + ahorroMensual * 12 * y;
-        valores.push({ anio: y, capital: capitalDisp, precioMax: precioMaxParaCapital(capitalDisp) });
+        valores.push({ anio: y, precioMax: precioMaxParaCapital(c.capitalDisp + ahorro * 12 * y) });
     }
-
+    // A partir de cierto punto ahorrar más no sube el máximo: lo limita la
+    // cuota que puedes pagar. Sin decirlo, las barras iguales parecen un fallo.
+    const ultimo = valores[valores.length - 1].precioMax;
+    const techo = ultimo > 0 && Math.abs(valores[valores.length - 2].precioMax - ultimo) < 1;
+    if (techo) {
+        info.innerHTML += ' El máximo se estanca en <strong>' + fmt(ultimo) +
+            '</strong>: a partir de ahí no te limita el ahorro sino la cuota que puedes asumir.';
+    }
     dibujarBarras(valores);
 }
 
@@ -697,81 +784,156 @@ function svgEl(tag, attrs) {
 function dibujarBarras(valores) {
     const svg = document.getElementById('proy-chart');
     while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-    const W = 720, H = 320;
-    const padL = 20, padR = 20, padT = 30, padB = 46;
-    const plotW = W - padL - padR;
-    const plotH = H - padT - padB;
-
+    const W = 720, H = 320, padL = 20, padR = 20, padT = 30, padB = 46;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
     const maxV = Math.max.apply(null, valores.map(v => v.precioMax)) || 1;
-    const n = valores.length;
-    const slot = plotW / n;
-    const barW = Math.min(70, slot * 0.6);
+    const slot = plotW / valores.length, barW = Math.min(70, slot * 0.6);
 
-    // Eje base
-    svg.appendChild(svgEl('line', {
-        x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH,
-        stroke: 'var(--border-strong)', 'stroke-width': 1
-    }));
-
+    svg.appendChild(svgEl('line', {x1: padL, y1: padT + plotH, x2: padL + plotW, y2: padT + plotH,
+                                   stroke: 'var(--border-strong)', 'stroke-width': 1}));
     const hoyYear = new Date().getFullYear();
-
     valores.forEach((v, i) => {
         const cx = padL + slot * i + slot / 2;
-        const h  = maxV > 0 ? (v.precioMax / maxV) * plotH : 0;
-        const y  = padT + plotH - h;
+        const h = maxV > 0 ? (v.precioMax / maxV) * plotH : 0;
+        const y = padT + plotH - h;
         const esHoy = v.anio === 0;
-
-        const rect = svgEl('rect', {
-            x: cx - barW / 2, y: y, width: barW, height: Math.max(1, h),
-            rx: 6, ry: 6,
-            fill: esHoy ? '#2c5f7a' : '#2d6a4f',
-            opacity: esHoy ? 0.95 : (0.55 + 0.09 * i)
-        });
-        svg.appendChild(rect);
-
-        // Valor encima
-        const lblVal = svgEl('text', {
-            x: cx, y: y - 8, 'text-anchor': 'middle',
-            'font-size': 13, 'font-weight': 700, fill: 'var(--text-color)'
-        });
-        lblVal.textContent = fmt(v.precioMax);
-        svg.appendChild(lblVal);
-
-        // Etiqueta eje X
-        const lblX = svgEl('text', {
-            x: cx, y: padT + plotH + 20, 'text-anchor': 'middle',
-            'font-size': 12, fill: 'var(--muted)'
-        });
-        lblX.textContent = esHoy ? 'Hoy' : ('+' + v.anio + ' año' + (v.anio > 1 ? 's' : ''));
-        svg.appendChild(lblX);
-
-        const lblYear = svgEl('text', {
-            x: cx, y: padT + plotH + 36, 'text-anchor': 'middle',
-            'font-size': 10.5, fill: 'var(--border-strong)'
-        });
-        lblYear.textContent = (hoyYear + v.anio);
-        svg.appendChild(lblYear);
+        svg.appendChild(svgEl('rect', {x: cx - barW / 2, y: y, width: barW, height: Math.max(1, h),
+                                       rx: 6, ry: 6, fill: esHoy ? '#2c5f7a' : '#2d6a4f',
+                                       opacity: esHoy ? 0.95 : (0.55 + 0.09 * i)}));
+        const lv = svgEl('text', {x: cx, y: y - 8, 'text-anchor': 'middle', 'font-size': 13,
+                                  'font-weight': 700, fill: 'var(--text-color)'});
+        lv.textContent = fmt(v.precioMax);
+        svg.appendChild(lv);
+        const lx = svgEl('text', {x: cx, y: padT + plotH + 20, 'text-anchor': 'middle',
+                                  'font-size': 12, fill: 'var(--muted)'});
+        lx.textContent = esHoy ? 'Hoy' : ('+' + v.anio + ' año' + (v.anio > 1 ? 's' : ''));
+        svg.appendChild(lx);
+        const ly = svgEl('text', {x: cx, y: padT + plotH + 36, 'text-anchor': 'middle',
+                                  'font-size': 10.5, fill: 'var(--border-strong)'});
+        ly.textContent = (hoyYear + v.anio);
+        svg.appendChild(ly);
     });
 }
 
-['sl-precio','sl-entrada-pct','sl-tipo','sl-plazo','sl-colchon','sl-gastos-pct','sl-max-pct'].forEach(function(id) {
-    document.getElementById(id).addEventListener('input', actualizar);
+/* ── Guardado: los valores se quedan como los dejes ─────────────────────── */
+let guardarTimer = null;
+let iniciando = true;   // el arranque no debe disparar un guardado
+function guardar() {
+    if (iniciando) return;
+    clearTimeout(guardarTimer);
+    guardarTimer = setTimeout(function() {
+        const estado = document.getElementById('estado-guardado');
+        estado.textContent = 'Guardando…';
+        estado.style.opacity = '1';
+        fetch(URL_GUARDAR, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF, 'X-Requested-With': 'XMLHttpRequest'},
+            body: JSON.stringify({
+                modo: st.modo, precio: st.precio, entrada_pct: st.entradaPct,
+                tipo_interes: st.tipo, plazo_anios: st.plazo, gastos_compra_pct: st.gastosPct,
+                meses_colchon: st.colchon, max_esfuerzo_pct: st.maxPct, base_esfuerzo: st.base,
+                ibi_pct_anual: st.ibiPct, comunidad_mes: st.comunidad,
+                seguro_hogar_anio: st.seguro, mantenimiento_pct_anual: st.mantPct,
+                sustituye_vivienda_actual: st.sustituye, propiedades_vendidas: st.propiedades
+            })
+        }).then(r => r.json()).then(d => {
+            estado.textContent = d.ok ? 'Guardado' : 'No se pudo guardar';
+            setTimeout(() => { estado.style.opacity = '0'; }, 1600);
+        }).catch(() => {
+            estado.textContent = 'Sin conexión: no se guardó';
+        });
+    }, 700);
+}
+
+function setModo(modo) {
+    st.modo = modo;
+    document.getElementById('modo-maximo').classList.toggle('on', modo === 'maximo');
+    document.getElementById('modo-precio').classList.toggle('on', modo === 'precio');
+    // El precio solo se toca en el modo de precio concreto: en el modo máximo
+    // lo calcula el simulador y sería confuso poder moverlo.
+    document.getElementById('ctrl-precio').style.display = modo === 'precio' ? 'block' : 'none';
+    render();
+    guardar();
+}
+
+function usarMaximo() {
+    // Atajo para arrancar la simulación desde el máximo asequible. Solo cuando
+    // el usuario lo pide: nada sobrescribe el precio por su cuenta.
+    const sl = document.getElementById('sl-precio');
+    const maximo = Math.round(calcular().precioMax / 5000) * 5000;
+    st.precio = Math.min(parseFloat(sl.max), Math.max(parseFloat(sl.min), maximo));
+    sl.value = st.precio;
+    render();
+    guardar();
+}
+
+function setBase(base) {
+    st.base = base;
+    const on  = 'padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1px solid var(--primary-color);border-radius:6px;background:color-mix(in srgb, var(--primary-color) 15%, transparent);color:var(--primary-color);flex:1;';
+    const off = 'padding:7px 14px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1px solid var(--border);border-radius:6px;background:var(--app-bg);color:var(--muted);flex:1;';
+    document.getElementById('btn-base-ingresos').style.cssText = base === 'ingresos' ? on : off;
+    document.getElementById('btn-base-libre').style.cssText    = base === 'libre'    ? on : off;
+    render();
+    guardar();
+}
+
+/* ── Enlazado de controles ──────────────────────────────────────────────── */
+const SLIDERS = [
+    ['sl-precio', 'precio', parseFloat], ['sl-entrada-pct', 'entradaPct', parseFloat],
+    ['sl-tipo', 'tipo', parseFloat], ['sl-plazo', 'plazo', parseInt],
+    ['sl-gastos-pct', 'gastosPct', parseFloat], ['sl-colchon', 'colchon', parseInt],
+    ['sl-max-pct', 'maxPct', parseFloat], ['sl-ibi', 'ibiPct', parseFloat],
+    ['sl-comunidad', 'comunidad', parseFloat], ['sl-seguro', 'seguro', parseFloat],
+    ['sl-mant', 'mantPct', parseFloat]
+];
+
+SLIDERS.forEach(function(par) {
+    const el = document.getElementById(par[0]);
+    el.value = st[par[1]];                 // arranca en el valor guardado
+    el.addEventListener('input', function() {
+        st[par[1]] = par[2](el.value);
+        render();
+        guardar();
+    });
 });
 
-// Inicializar slider en el precio máximo óptimo (base: libre mensual por defecto)
+const chk = document.getElementById('chk-sustituye');
+if (chk) {
+    chk.checked = st.sustituye;
+    chk.addEventListener('change', function() { st.sustituye = chk.checked; render(); guardar(); });
+}
+
+document.querySelectorAll('.prop-check').forEach(function(c) {
+    const id = parseInt(c.dataset.propId);
+    c.checked = st.propiedades.indexOf(id) !== -1;
+    c.addEventListener('change', function() {
+        st.propiedades = Array.from(document.querySelectorAll('.prop-check'))
+            .filter(x => x.checked).map(x => parseInt(x.dataset.propId));
+        const suma = capitalVentas();
+        const box = document.getElementById('prop-suma-box');
+        if (box) {
+            box.style.display = suma > 0 ? 'block' : 'none';
+            document.getElementById('prop-suma-val').textContent = fmt(suma);
+        }
+        render();
+        guardar();
+    });
+});
+
+/* ── Arranque: nada sobrescribe lo que el usuario dejó guardado ─────────── */
 (function() {
-    const mesesColchon      = 6;
-    const gastosPct         = 11;
-    const colchon           = GASTOS * mesesColchon;
-    const capitalDisponible = Math.max(0, LIQUIDEZ - colchon);
-    const base              = LIBRE > 0 ? LIBRE : INGRESOS;
-    const maxCuota          = base * 0.35;
-    const hipMax            = hipMaxima(maxCuota, 3.5, 25);
-    const precioSug         = (capitalDisponible + hipMax) / (1 + gastosPct / 100);
-    const clamped           = Math.min(1000000, Math.max(50000, Math.round(precioSug / 5000) * 5000));
-    document.getElementById('sl-precio').value = clamped;
-    actualizar();
+    const suma = capitalVentas();
+    const box = document.getElementById('prop-suma-box');
+    if (box && suma > 0) {
+        box.style.display = 'block';
+        document.getElementById('prop-suma-val').textContent = fmt(suma);
+    }
+    document.getElementById('modo-maximo').classList.toggle('on', st.modo === 'maximo');
+    document.getElementById('modo-precio').classList.toggle('on', st.modo === 'precio');
+    document.getElementById('ctrl-precio').style.display = st.modo === 'precio' ? 'block' : 'none';
+    setBase(st.base);
+    setProy('estimado');
+    iniciando = false;
 })();
 </script>
 {% endblock %}
