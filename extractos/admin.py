@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ExtractoBancario, MovimientoBancario
+from .models import ExtractoBancario, MovimientoBancario, ReglaCategorizacion
 
 
 @admin.register(ExtractoBancario)
@@ -13,8 +13,15 @@ class ExtractoBancarioAdmin(admin.ModelAdmin):
 
 @admin.register(MovimientoBancario)
 class MovimientoBancarioAdmin(admin.ModelAdmin):
-    list_display = ('fecha', 'concepto', 'importe', 'categoria',
-                    'estado_categorizacion', 'hogar')
-    list_filter = ('hogar', 'estado_categorizacion', 'categoria')
-    search_fields = ('concepto',)
+    list_display = ('fecha', 'concepto', 'comercio', 'importe', 'categoria',
+                    'estado_categorizacion', 'es_traspaso', 'hogar')
+    list_filter = ('hogar', 'estado_categorizacion', 'es_traspaso', 'categoria')
+    search_fields = ('concepto', 'comercio')
     date_hierarchy = 'fecha'
+
+
+@admin.register(ReglaCategorizacion)
+class ReglaCategorizacionAdmin(admin.ModelAdmin):
+    list_display = ('patron', 'categoria', 'origen', 'veces_aplicada', 'activo', 'hogar')
+    list_filter = ('hogar', 'origen', 'activo')
+    search_fields = ('patron',)

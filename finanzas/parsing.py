@@ -8,6 +8,7 @@ extractos bancarios (app `extractos`), sin duplicar la lógica.
 
 import datetime
 from decimal import Decimal, InvalidOperation
+from html.parser import HTMLParser
 
 
 def parse_decimal(s):
@@ -99,33 +100,135 @@ def _celda_a_texto(valor):
     return str(valor)
 
 
-def _excel_a_csv(archivo):
-    """Convierte la primera hoja de un .xlsx/.xlsm a texto CSV, para que el
-    resto del pipeline de importación (detección de cabecera, mapeo de
-    columnas, revisión) funcione igual que con un CSV."""
+def _filas_a_csv(filas):
+    """Serializa una lista de filas (list[list]) al texto CSV intermedio."""
     import csv
     import io
-    import openpyxl
 
-    datos = archivo.read() if hasattr(archivo, 'read') else archivo
-    wb = openpyxl.load_workbook(io.BytesIO(datos), read_only=True, data_only=True)
-    ws = wb.active
     salida = io.StringIO()
     escritor = csv.writer(salida)
-    for fila in ws.iter_rows(values_only=True):
+    for fila in filas:
         escritor.writerow([_celda_a_texto(c) for c in fila])
-    wb.close()
     return salida.getvalue()
 
 
+def _xlsx_a_filas(datos):
+    """Primera hoja de un .xlsx/.xlsm (formato OOXML, un zip)."""
+    import io
+    import openpyxl
+
+    wb = openpyxl.load_workbook(io.BytesIO(datos), read_only=True, data_only=True)
+    try:
+        return list(wb.active.iter_rows(values_only=True))
+    finally:
+        wb.close()
+
+
+def _xls_a_filas(datos):
+    """Primera hoja de un .xls clásico (BIFF/OLE2), el que siguen exportando
+    muchas bancas online españolas. openpyxl no lo lee; xlrd 2.x sí (y solo
+    este formato, que es justo el reparto que queremos)."""
+    import datetime as _dt
+    import xlrd
+
+    libro = xlrd.open_workbook(file_contents=datos)
+    hoja = libro.sheet_by_index(0)
+    filas = []
+    for i in range(hoja.nrows):
+        fila = []
+        for celda in hoja.row(i):
+            valor = celda.value
+            if celda.ctype == xlrd.XL_CELL_DATE:
+                try:
+                    partes = xlrd.xldate_as_tuple(valor, libro.datemode)
+                    valor = _dt.datetime(*partes) if any(partes[:3]) else valor
+                except (ValueError, xlrd.XLDateError):
+                    pass
+            fila.append(valor)
+        filas.append(fila)
+    return filas
+
+
+class _TablaHTML(HTMLParser):
+    """Extrae las filas de la primera tabla de un HTML.
+
+    Varios bancos exportan un «.xls» que en realidad es una tabla HTML; sin
+    esto se lee como texto plano y el parseo de columnas falla."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.filas = []
+        self._fila = None
+        self._celda = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'tr':
+            self._fila = []
+        elif tag in ('td', 'th') and self._fila is not None:
+            self._celda = []
+
+    def handle_endtag(self, tag):
+        if tag in ('td', 'th') and self._celda is not None:
+            self._fila.append(' '.join(''.join(self._celda).split()))
+            self._celda = None
+        elif tag == 'tr' and self._fila is not None:
+            self.filas.append(self._fila)
+            self._fila = None
+
+    def handle_data(self, data):
+        if self._celda is not None:
+            self._celda.append(data)
+
+
+def _html_a_filas(datos):
+    try:
+        texto = datos.decode('utf-8-sig')
+    except UnicodeDecodeError:
+        texto = datos.decode('latin-1', errors='replace')
+    parser = _TablaHTML()
+    parser.feed(texto)
+    return parser.filas
+
+
+def _parece_html(datos):
+    cabeza = datos[:2048].lstrip().lower()
+    return cabeza.startswith(b'<') and (b'<table' in cabeza or b'<html' in cabeza)
+
+
+def _excel_a_csv(archivo):
+    """Convierte la primera hoja de un Excel a texto CSV, para que el resto del
+    pipeline de importación (detección de cabecera, mapeo de columnas,
+    revisión) funcione igual que con un CSV.
+
+    El formato se decide por los bytes iniciales y no por la extensión, porque
+    lo que un banco llama «.xls» puede ser un xlsx, un BIFF antiguo o una tabla
+    HTML."""
+    datos = archivo.read() if hasattr(archivo, 'read') else archivo
+    if isinstance(datos, str):
+        datos = datos.encode('utf-8')
+
+    if datos[:2] == b'PK':
+        filas = _xlsx_a_filas(datos)
+    elif datos[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
+        filas = _xls_a_filas(datos)
+    elif _parece_html(datos):
+        filas = _html_a_filas(datos)
+    else:
+        # No es ninguno de los formatos binarios conocidos: probablemente sea
+        # un CSV con extensión equivocada.
+        return leer_csv(datos)
+    return _filas_a_csv(filas)
+
+
 def es_excel(nombre):
-    return (nombre or '').lower().endswith(('.xlsx', '.xlsm'))
+    return (nombre or '').lower().endswith(('.xlsx', '.xlsm', '.xls'))
 
 
 def leer_tabla(archivo):
     """Lee un fichero subido y devuelve texto CSV, aceptando tanto CSV como
-    Excel (.xlsx/.xlsm). Punto de entrada único para la importación de
-    extractos: el resto del código sigue trabajando con texto CSV."""
+    Excel (.xlsx/.xlsm/.xls, incluido el «.xls» que en realidad es HTML).
+    Punto de entrada único para la importación de extractos: el resto del
+    código sigue trabajando con texto CSV."""
     nombre = getattr(archivo, 'name', '') or ''
     if es_excel(nombre):
         return _excel_a_csv(archivo)

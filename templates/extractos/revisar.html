@@ -60,6 +60,7 @@
                 <div class="revisar-archivo-totales">
                     <span class="badge badge-success">{{ archivo.total_ok }} listos</span>
                     {% if archivo.total_error %}<span class="badge badge-danger">{{ archivo.total_error }} con error</span>{% endif %}
+                    {% if archivo.total_omitidas %}<span class="badge badge-info" title="Operaciones pendientes o rechazadas: se importarán cuando el banco las consolide.">{{ archivo.total_omitidas }} sin consolidar</span>{% endif %}
                 </div>
             </div>
 

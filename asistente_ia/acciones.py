@@ -318,6 +318,7 @@ def _resolver_categorizar_movimientos(datos, hogar):
     importaciones) y se recategorizan los movimientos actuales que coincidan."""
     from finanzas.models import CategoriaGasto
     from extractos.models import MovimientoBancario
+    from extractos.normalizacion import normalizar_texto
 
     reglas_in = datos.get('reglas')
     # Permitir también el formato de un único par patron/categoria.
@@ -348,8 +349,8 @@ def _resolver_categorizar_movimientos(datos, hogar):
                 False,
                 error=f"No existe la categoría '{nombre_cat}'. Disponibles: {', '.join(sorted(c.nombre for c in cats.values()))}",
             )
-        patron_l = patron.lower()
-        afectados = [m['id'] for m in sin_cat if patron_l in (m['concepto'] or '').lower()]
+        patron_l = normalizar_texto(patron)
+        afectados = [m['id'] for m in sin_cat if patron_l in normalizar_texto(m['concepto'])]
         reglas_val.append({'patron': patron, 'categoria_id': cat.id, 'categoria_nombre': cat.nombre})
         total_afectados += len(afectados)
         lineas_preview.append(f"«{patron}» → {cat.nombre} ({len(afectados)} mov.)")
@@ -363,21 +364,26 @@ def _resolver_categorizar_movimientos(datos, hogar):
 
 def _aplicar_categorizar_movimientos(payload, hogar, usuario):
     from extractos.models import MovimientoBancario, ReglaCategorizacion
+    from extractos.normalizacion import normalizar_texto
 
     for r in payload['reglas']:
-        patron = r['patron']
+        # Los patrones se guardan normalizados (ReglaCategorizacion.save hace lo
+        # mismo); si aquí se buscara por el texto original, update_or_create no
+        # encontraría la regla existente e intentaría crear una duplicada.
+        patron = normalizar_texto(r['patron'])
         cat_id = r['categoria_id']
+        if not patron:
+            continue
         # 1) Persistir la regla aprendida (idempotente por hogar+patron).
         ReglaCategorizacion.objects.update_or_create(
             hogar=hogar, patron=patron,
             defaults={'categoria_id': cat_id, 'origen': 'ia', 'activo': True},
         )
         # 2) Recategorizar los movimientos actuales sin categorizar que coincidan.
-        patron_l = patron.lower()
         pendientes = MovimientoBancario.objects.filter(
-            hogar=hogar, categoria__isnull=True, importe__lt=0,
+            hogar=hogar, categoria__isnull=True, importe__lt=0, es_traspaso=False,
         )
-        ids = [m.id for m in pendientes if patron_l in (m.concepto or '').lower()]
+        ids = [m.id for m in pendientes if patron in normalizar_texto(m.concepto)]
         if ids:
             MovimientoBancario.objects.filter(id__in=ids).update(
                 categoria_id=cat_id, estado_categorizacion='por_ia',

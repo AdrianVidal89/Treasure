@@ -20,26 +20,49 @@ from decimal import Decimal
 
 from finanzas.parsing import parse_decimal, parse_fecha
 
-# Palabras clave por columna (se comparan en minúsculas, sin acentos relevantes).
+from .normalizacion import normalizar_texto
+
+# Palabras clave por columna. Las cabeceras se comparan ya normalizadas
+# (minúsculas y sin acentos), así que «Más datos» casa con 'mas datos'.
 _CLAVES = {
     'fecha': ('fecha valor', 'fecha operac', 'fecha', 'date'),
     'concepto': ('concepto', 'descripci', 'detalle', 'movimiento', 'description'),
+    # Segunda columna de texto: muchos bancos (CaixaBank, Santander, Unicaja)
+    # dejan en «Concepto» un código corto y ponen la información que de verdad
+    # identifica el gasto en una columna aparte. Sin esto, conceptos como
+    # «ALJARAFESA EMP» llegan sin su «Recibo de agua» y no hay forma de
+    # categorizarlos.
+    'concepto_extra': ('mas datos', 'concepto ampliado', 'descripcion ampliada',
+                       'observacion', 'observaciones', 'ampliacion',
+                       'beneficiario', 'ordenante', 'mas info', 'referencia'),
     'importe': ('importe', 'monto', 'cantidad', 'amount'),
     'saldo': ('saldo', 'balance'),
-    'debe': ('debe', 'cargo', 'debito', 'débito'),
-    'haber': ('haber', 'abono', 'credito', 'crédito'),
+    'debe': ('debe', 'cargo', 'debito'),
+    'haber': ('haber', 'abono', 'credito'),
+    # Estado de la operación: sirve para descartar las que aún no son firmes.
+    'estado': ('state', 'estado', 'situacion', 'status'),
 }
 
 CAMPOS_OBLIGATORIOS_ALT = ('importe', 'haber', 'debe')
+
+# Valores de la columna de estado que indican que el apunte NO es definitivo.
+# Importarlos duplica el movimiento cuando el extracto se vuelve a descargar ya
+# consolidado (Revolut exporta las pendientes sin saldo y luego con saldo).
+ESTADOS_NO_FIRMES = (
+    'pendiente', 'pending', 'rechazado', 'rejected', 'declined', 'revertido',
+    'reverted', 'fallido', 'failed', 'cancelado', 'cancelled', 'canceled',
+)
 
 # Etiquetas legibles para mostrar en el selector de mapeo manual.
 CAMPO_LABELS = {
     'fecha': 'Fecha',
     'concepto': 'Concepto',
+    'concepto_extra': 'Concepto (columna extra)',
     'importe': 'Importe',
     'saldo': 'Saldo',
     'debe': 'Debe (cargo)',
     'haber': 'Haber (abono)',
+    'estado': 'Estado de la operación',
 }
 
 
@@ -53,7 +76,7 @@ def _detectar_delimitador(texto):
 
 
 def _norm(s):
-    return (s or '').strip().lower()
+    return normalizar_texto(s)
 
 
 def _mapear_columnas(cabecera):
@@ -93,8 +116,10 @@ def analizar_extracto(texto, mapeo_manual=None, cabecera_idx_manual=None):
       - cabecera: lista de nombres de columna de esa fila.
       - mapa_auto: {campo: indice} detectado automáticamente por palabras clave.
       - mapa: {campo: indice} realmente usado (mapeo_manual tiene prioridad).
-      - movimientos: [{fila, fecha, concepto, importe, saldo}].
+      - movimientos: [{fila, fecha, concepto, concepto_raw, importe, saldo}].
       - filas_error: [{fila, motivo, valores}] filas descartadas con el motivo.
+      - filas_omitidas: [{fila, motivo, valores}] filas descartadas a propósito
+        (operaciones pendientes o rechazadas), que no son un error del parseo.
       - errores_generales: problemas que impiden el parseo (cabecera no
         encontrada, archivo vacío...).
 
@@ -106,7 +131,7 @@ def analizar_extracto(texto, mapeo_manual=None, cabecera_idx_manual=None):
     resultado = {
         'delimitador': ',', 'filas': [], 'cabecera_idx': None, 'cabecera': [],
         'mapa': {}, 'mapa_auto': {}, 'movimientos': [], 'filas_error': [],
-        'errores_generales': [],
+        'filas_omitidas': [], 'errores_generales': [],
     }
     if not texto or not texto.strip():
         resultado['errores_generales'].append('El archivo está vacío.')
@@ -114,8 +139,18 @@ def analizar_extracto(texto, mapeo_manual=None, cabecera_idx_manual=None):
 
     delimitador = _detectar_delimitador(texto)
     resultado['delimitador'] = delimitador
-    reader = csv.reader(io.StringIO(texto), delimiter=delimitador)
-    filas = [f for f in reader if any((c or '').strip() for c in f)]
+    reader = csv.reader(io.StringIO(texto, newline=''), delimiter=delimitador)
+    try:
+        filas = [f for f in reader if any((c or '').strip() for c in f)]
+    except csv.Error as exc:
+        # Un binario mal interpretado como texto (p. ej. un .xls antiguo que no
+        # se pudo convertir) revienta aquí. Mejor un mensaje en la pantalla de
+        # revisión que un error 500.
+        resultado['errores_generales'].append(
+            f'El archivo no parece una tabla de texto válida ({exc}). '
+            'Compruébalo o vuelve a exportarlo desde el banco en CSV.'
+        )
+        return resultado
     resultado['filas'] = filas
     if not filas:
         resultado['errores_generales'].append('No se encontraron filas con datos.')
@@ -169,12 +204,22 @@ def analizar_extracto(texto, mapeo_manual=None, cabecera_idx_manual=None):
 
     movimientos = []
     filas_error = []
+    filas_omitidas = []
     for n, fila in enumerate(filas[cabecera_idx + 1:], start=cabecera_idx + 2):
         def col(campo):
             i = mapa.get(campo)
             if i is None or i >= len(fila):
                 return ''
             return (fila[i] or '').strip()
+
+        estado_raw = col('estado')
+        if estado_raw and normalizar_texto(estado_raw) in ESTADOS_NO_FIRMES:
+            filas_omitidas.append({
+                'fila': n,
+                'motivo': f"Operación no firme (estado «{estado_raw}»).",
+                'valores': fila,
+            })
+            continue
 
         fecha_raw = col('fecha')
         importe_raw = col('importe')
@@ -205,16 +250,23 @@ def analizar_extracto(texto, mapeo_manual=None, cabecera_idx_manual=None):
             })
             continue
 
-        concepto = col('concepto') or '(Sin concepto)'
+        # El concepto se compone de todas las columnas de texto mapeadas: si el
+        # banco parte la descripción en dos, las juntamos en vez de perder la
+        # mitad. `concepto_raw` guarda el texto íntegro (el `concepto` que se
+        # persiste está limitado a 300 caracteres).
+        partes = [p for p in (col('concepto'), col('concepto_extra')) if p]
+        concepto_raw = ' · '.join(partes)
+        concepto = concepto_raw or '(Sin concepto)'
         saldo = parse_decimal(col('saldo')) if 'saldo' in mapa else None
 
         movimientos.append({
             'fila': n, 'fecha': fecha, 'concepto': concepto,
-            'importe': importe, 'saldo': saldo,
+            'concepto_raw': concepto_raw, 'importe': importe, 'saldo': saldo,
         })
 
     resultado['movimientos'] = movimientos
     resultado['filas_error'] = filas_error
+    resultado['filas_omitidas'] = filas_omitidas
     if not movimientos and not filas_error and not resultado['errores_generales']:
         resultado['errores_generales'].append('No se encontraron movimientos en el archivo.')
 

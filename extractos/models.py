@@ -1,7 +1,10 @@
 import hashlib
+from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.models import User
 from django.db import models
+
+from .normalizacion import normalizar_comercio, normalizar_texto
 
 
 class ExtractoBancario(models.Model):
@@ -89,6 +92,14 @@ class ReglaCategorizacion(models.Model):
     def __str__(self):
         return f"«{self.patron}» → {self.categoria.nombre}"
 
+    def save(self, *args, **kwargs):
+        # Los patrones se guardan ya normalizados para que la restricción de
+        # unicidad (hogar, patron) no deje pasar «Mercadona» y «MERCADONA» como
+        # dos reglas distintas, y para que el matching no tenga que normalizar
+        # en cada comparación.
+        self.patron = normalizar_texto(self.patron)
+        super().save(*args, **kwargs)
+
 
 class MovimientoBancario(models.Model):
     """Un apunte observado en el extracto. Se cruza con los datos declarados."""
@@ -96,6 +107,7 @@ class MovimientoBancario(models.Model):
     ESTADO_CHOICES = [
         ('sin_categorizar', 'Sin categorizar'),
         ('por_codigo', 'Categorizado por código'),
+        ('por_regla', 'Categorizado por una regla aprendida'),
         ('por_ia', 'Categorizado por IA'),
         ('manual', 'Categorizado manualmente'),
     ]
@@ -108,11 +120,21 @@ class MovimientoBancario(models.Model):
 
     fecha = models.DateField()
     concepto = models.CharField(max_length=300)
+    # Descripción original tal cual venía del banco (el concepto es editable por
+    # el usuario y además se recorta a 300 caracteres, así que sin esto se
+    # perdería el texto de partida).
+    concepto_raw = models.TextField(blank=True)
+    # Clave normalizada del comercio, usada para agrupar movimientos «similares»
+    # y para proponer el patrón al aprender una regla. Se calcula en save().
+    comercio = models.CharField(max_length=120, blank=True, db_index=True)
     importe = models.DecimalField(
         max_digits=12, decimal_places=2,
         help_text='Positivo = ingreso, negativo = gasto',
     )
     saldo = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    # Traspaso entre cuentas propias: no es gasto ni ingreso real, así que se
+    # excluye de los KPIs y de la conciliación.
+    es_traspaso = models.BooleanField(default=False)
 
     categoria = models.ForeignKey(
         'finanzas.CategoriaGasto', on_delete=models.SET_NULL, null=True, blank=True,
@@ -146,13 +168,42 @@ class MovimientoBancario(models.Model):
         return self.importe is not None and self.importe >= 0
 
     @staticmethod
+    def _importe_canonico(valor):
+        """Importe con exactamente dos decimales para el hash.
+
+        El mismo apunte llega con distinta representación según el formato del
+        archivo (el CSV trae «-1,700.00» → Decimal('-1700.00') y el Excel trae
+        el número → Decimal('-1700')). Sin normalizar, el mismo movimiento
+        exportado en CSV y en Excel producía dos hashes distintos y se colaba
+        por duplicado."""
+        if valor is None or valor == '':
+            return ''
+        try:
+            return str(Decimal(str(valor)).quantize(Decimal('0.01')))
+        except (InvalidOperation, ValueError, TypeError):
+            return str(valor)
+
+    @staticmethod
     def calcular_hash(fecha, concepto, importe, saldo):
-        base = f"{fecha}|{(concepto or '').strip().lower()}|{importe}|{saldo}"
+        base = '|'.join([
+            str(fecha),
+            (concepto or '').strip().lower(),
+            MovimientoBancario._importe_canonico(importe),
+            MovimientoBancario._importe_canonico(saldo),
+        ])
         return hashlib.sha256(base.encode('utf-8')).hexdigest()
 
     def save(self, *args, **kwargs):
-        if not self.hash_dedupe:
-            self.hash_dedupe = self.calcular_hash(
-                self.fecha, self.concepto, self.importe, self.saldo,
-            )
+        if not self.comercio:
+            self.comercio = normalizar_comercio(self.concepto)
+        # El hash se recalcula siempre a partir de los valores actuales: si solo
+        # se rellenara cuando está vacío, editar el concepto o el importe
+        # dejaría un hash obsoleto y la deduplicación de futuras importaciones
+        # compararía contra datos que ya no existen.
+        self.hash_dedupe = self.calcular_hash(
+            self.fecha, self.concepto, self.importe, self.saldo,
+        )
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            kwargs['update_fields'] = set(update_fields) | {'comercio', 'hash_dedupe'}
         super().save(*args, **kwargs)
