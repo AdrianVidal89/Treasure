@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Reglas de categorización · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-settings"/></svg> Reglas aprendidas</h1>
+            <div class="page-sub">
+                Criterios que has enseñado y que se aplican solos en cada importación.
+                Si el concepto de un movimiento contiene el patrón, recibe esa categoría;
+                cuando varios encajan, gana el más específico.
+            </div>
+        </div>
+        <div class="toolbar">
+            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
+                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
+            </a>
+            <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" style="display:block;padding:10px 14px;margin-bottom:8px;">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% if not reglas %}
+    <div class="empty-state">
+        <svg class="icon icon-xl empty-icon"><use href="#i-settings"/></svg>
+        <h3>Todavía no has enseñado ninguna regla</h3>
+        <p>Cuando categorices un grupo en «Sin categorizar», el criterio se guardará aquí y se aplicará solo a partir de entonces.</p>
+        <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-primary"><svg class="icon"><use href="#i-search"/></svg> Ir a Sin categorizar</a>
+    </div>
+    {% else %}
+
+    <div class="table-scroll">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Si el concepto contiene…</th>
+                    <th>Categoría</th>
+                    <th>Origen</th>
+                    <th class="num">Veces aplicada</th>
+                    <th>Estado</th>
+                    <th style="width:1%;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reglas %}
+                <tr{% if not r.activo %} class="regla-inactiva"{% endif %}>
+                    <td><code>{{ r.patron }}</code></td>
+                    <td>
+                        <form method="post" class="regla-form">
+                            {% csrf_token %}
+                            <input type="hidden" name="accion" value="recategorizar">
+                            <input type="hidden" name="regla_id" value="{{ r.id }}">
+                            <select name="categoria_id" onchange="this.form.submit()">
+                                {% for c in categorias_hogar %}
+                                <option value="{{ c.id }}" {% if r.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                    </td>
+                    <td><span class="badge badge-info">{{ r.get_origen_display }}</span></td>
+                    <td class="num">{{ r.veces_aplicada }}</td>
+                    <td>
+                        {% if r.activo %}
+                        <span class="badge badge-success">Activa</span>
+                        {% else %}
+                        <span class="badge badge-warning">Desactivada</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="regla-botones">
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="accion" value="alternar">
+                                <input type="hidden" name="regla_id" value="{{ r.id }}">
+                                <button type="submit" class="r-btn" title="{% if r.activo %}Desactivar{% else %}Activar{% endif %} la regla">
+                                    <svg class="icon"><use href="#i-refresh"/></svg>
+                                </button>
+                            </form>
+                            <form method="post" onsubmit="return confirm('¿Eliminar la regla «{{ r.patron|escapejs }}»? Los movimientos ya categorizados no cambian.');">
+                                {% csrf_token %}
+                                <input type="hidden" name="accion" value="eliminar">
+                                <input type="hidden" name="regla_id" value="{{ r.id }}">
+                                <button type="submit" class="r-btn" title="Eliminar la regla">
+                                    <svg class="icon"><use href="#i-trash"/></svg>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <p class="text-muted" style="margin-top:14px;font-size:0.82rem;">
+        <svg class="icon"><use href="#i-info"/></svg>
+        Cambiar la categoría de una regla recategoriza también los movimientos que ya la habían usado.
+        Eliminarla solo evita que se aplique en el futuro.
+    </p>
+    {% endif %}
+</div>
+
+<style>
+.regla-inactiva { opacity:.55; }
+.regla-form { margin:0; }
+.regla-form select {
+    background:var(--surface); color:var(--text-color); border:1px solid var(--border-strong);
+    border-radius:8px; padding:6px 10px; font-size:0.82rem;
+}
+.regla-botones { display:flex; gap:6px; }
+.regla-botones form { margin:0; }
+</style>
+{% endblock %}

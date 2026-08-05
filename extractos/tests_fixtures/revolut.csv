@@ -1,0 +1,12 @@
+Tipo,Producto,Fecha de inicio,Fecha de finalización,Descripción,Importe,Comisión,Divisa,State,Saldo
+Pago con tarjeta,Actual,2026-07-01 20:39:42,2026-07-02 12:11:02,Mercadona,-7.18,0.00,EUR,COMPLETADO,2033.52
+Pago con tarjeta,Actual,2026-07-04 12:46:01,2026-07-05 11:07:59,Repsol,-86.92,0.00,EUR,COMPLETADO,1860.20
+Transferir,Actual,2026-07-28 02:00:00,2026-07-28 13:17:27,"Repsol, S.L.U.-REPSOL COMERCIALIZADORA DE ELECTRICIDAD Y GAS SLU",-75.06,0.00,EUR,COMPLETADO,1836.04
+Pago con tarjeta,Actual,2026-07-15 08:40:18,2026-07-16 10:43:51,Cafetería del Hospital Universitario Virgen del Rocío,-3.15,0.00,EUR,COMPLETADO,1112.42
+Pago con tarjeta,Actual,2026-07-15 10:47:59,2026-07-16 11:28:17,Baobab Cafè Restaurant,-57.70,0.00,EUR,COMPLETADO,1014.84
+Pago con tarjeta,Actual,2026-07-10 11:27:41,2026-07-11 11:08:02,Farmacia Ronda,-20.96,0.00,EUR,COMPLETADO,1261.63
+Pago con tarjeta,Actual,2026-07-09 19:30:44,2026-07-10 12:54:10,Leroy Merlin,-53.37,0.00,EUR,COMPLETADO,1282.59
+Pago con tarjeta,Actual,2026-06-30 22:29:12,2026-07-01 14:49:11,Anthropic,-21.78,0.00,EUR,COMPLETADO,2139.30
+Transferir,Actual,2026-07-04 15:44:31,2026-07-04 15:44:32,Transferencia a NOMBRE APELLIDO,-80.00,0.00,EUR,COMPLETADO,1947.12
+Pago con tarjeta,Actual,2026-07-23 22:49:20,2026-07-24 12:20:52,Malacabeza,-85.30,0.00,EUR,COMPLETADO,810.38
+Pago con tarjeta,Actual,2026-07-30 14:32:59,,DIA,-10.76,0.00,EUR,PENDIENTE,

@@ -35,10 +35,27 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
             {% endfor %}
         </select>
     </div>
+    {% if panel.num_traspasos %}
+    <div class="ext-filtro">
+        <label>Traspasos internos</label>
+        <select name="traspasos" onchange="this.form.submit()">
+            <option value="0" {% if not panel.ver_traspasos %}selected{% endif %}>Ocultos ({{ panel.num_traspasos }})</option>
+            <option value="1" {% if panel.ver_traspasos %}selected{% endif %}>Mostrar</option>
+        </select>
+    </div>
+    {% endif %}
     {% if panel.hay_filtro %}
     <a href="{{ request.path }}" class="btn btn-ghost" style="align-self:flex-end;">Limpiar filtros</a>
     {% endif %}
 </form>
+
+{% if panel.kpi_sin_categorizar %}
+<div class="ext-aviso-sincat">
+    <svg class="icon"><use href="#i-info"/></svg>
+    <span>Hay <strong>{{ panel.kpi_sin_categorizar }}</strong> gasto(s) sin categorizar. Agrúpalos por comercio y clasifícalos de una vez.</span>
+    <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar por comercio</a>
+</div>
+{% endif %}
 
 <!-- KPIs -->
 <div class="stat-row">
@@ -136,9 +153,9 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
             </thead>
             <tbody>
                 {% for m in grupo.movimientos %}
-                <tr data-mov-id="{{ m.id }}">
+                <tr data-mov-id="{{ m.id }}"{% if m.es_traspaso %} class="ext-traspaso"{% endif %}>
                     <td class="num ext-fecha">{{ m.fecha|date:"d/m/Y" }}</td>
-                    <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</td>
+                    <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{% if m.es_traspaso %}<span class="badge badge-info ext-badge-traspaso">Traspaso</span> {% endif %}{{ m.concepto }}</td>
                     <td class="ext-cat-cell">
                         <select class="ext-cat-select" data-mov-id="{{ m.id }}">
                             <option value="" {% if not m.categoria_id %}selected{% endif %}>— Sin categorizar —</option>
@@ -227,6 +244,26 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
 tr.ext-guardada td { animation: ext-flash 0.9s ease; }
 @keyframes ext-flash { 0%{ background:color-mix(in srgb, var(--success) 22%, transparent);} 100%{ background:transparent; } }
 .ext-mov-table td { vertical-align:middle; }
+
+/* Aviso de gastos sin categorizar, con acceso directo a la pantalla de grupos. */
+.ext-aviso-sincat {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    background:color-mix(in srgb, var(--primary-color) 8%, transparent);
+    border:1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+    border-radius:10px; padding:11px 14px; margin-bottom:18px; font-size:0.85rem;
+}
+.ext-aviso-sincat .btn { margin-left:auto; }
+
+/* Traspasos entre cuentas propias: visibles pero claramente al margen. */
+tr.ext-traspaso td { opacity:.62; }
+.ext-badge-traspaso { font-size:0.65rem; vertical-align:middle; }
+
+/* Fila de confirmación «aplicar a los similares». */
+tr.ext-sugerencia td {
+    background:color-mix(in srgb, var(--primary-color) 10%, transparent);
+    padding:10px 14px; font-size:0.83rem;
+}
+tr.ext-sugerencia .btn { margin-left:10px; padding:5px 12px; font-size:0.78rem; }
 </style>
 
 <script>
@@ -299,9 +336,76 @@ tr.ext-guardada td { animation: ext-flash 0.9s ease; }
         }).catch(function(){});
     }
 
+    /* ---- Aprender del comercio ----
+       Al categorizar a mano, el servidor dice cuántos movimientos parecidos hay
+       sin clasificar. Se ofrece aplicarlo a todos y recordarlo; la regla NO se
+       crea hasta que el usuario dice que sí. */
+    var URL_APRENDER = "{% url 'extractos:aprender_regla' %}";
+
+    function quitarAviso() {
+        var previo = document.querySelector('.ext-sugerencia');
+        if (previo) previo.remove();
+    }
+
+    function mostrarSugerencia(fila, sug) {
+        quitarAviso();
+        var celdas = fila.children.length;
+        var aviso = document.createElement('tr');
+        aviso.className = 'ext-sugerencia';
+        var td = document.createElement('td');
+        td.colSpan = celdas;
+
+        var texto = document.createElement('span');
+        texto.textContent = '¿Aplicar «' + sug.patron + '» a ' + sug.n_similares +
+            ' movimiento' + (sug.n_similares === 1 ? '' : 's') + ' similar' +
+            (sug.n_similares === 1 ? '' : 'es') + ' y recordarlo para las próximas importaciones?';
+
+        var si = document.createElement('button');
+        si.type = 'button';
+        si.className = 'btn btn-primary btn-sm';
+        si.textContent = 'Sí, aplicar';
+        si.addEventListener('click', function() {
+            si.disabled = true;
+            var body = new URLSearchParams();
+            body.set('patron', sug.patron);
+            body.set('categoria_id', sug.categoria_id);
+            fetch(URL_APRENDER, {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+                body: body.toString()
+            }).then(function(r){ return r.json(); }).then(function(data){
+                if (data.ok) {
+                    texto.textContent = data.aplicados + ' movimiento(s) categorizados como «' + data.categoria + '». Recargando…';
+                    si.remove();
+                    no.remove();
+                    setTimeout(function(){ window.location.reload(); }, 900);
+                } else {
+                    si.disabled = false;
+                }
+            }).catch(function(){ si.disabled = false; });
+        });
+
+        var no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'btn btn-ghost btn-sm';
+        no.textContent = 'No, solo este';
+        no.addEventListener('click', quitarAviso);
+
+        td.appendChild(texto);
+        td.appendChild(si);
+        td.appendChild(no);
+        aviso.appendChild(td);
+        fila.parentNode.insertBefore(aviso, fila.nextSibling);
+    }
+
     document.querySelectorAll('.ext-cat-select').forEach(function(sel) {
         sel.addEventListener('change', function() {
-            guardar(sel.dataset.movId, 'categoria_id', sel.value);
+            quitarAviso();
+            guardar(sel.dataset.movId, 'categoria_id', sel.value, function(data) {
+                if (!data.sugerencia) return;
+                var fila = document.querySelector('tr[data-mov-id="' + sel.dataset.movId + '"]');
+                if (fila) mostrarSugerencia(fila, data.sugerencia);
+            });
         });
     });
 

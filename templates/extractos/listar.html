@@ -11,6 +11,9 @@
             <div class="page-sub">Vista global de todos tus movimientos importados. Filtra por año, mes o categoría, y edítalos aquí mismo.</div>
         </div>
         <div class="toolbar">
+            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
+                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
+            </a>
             <a href="{% url 'extractos:conciliacion' %}" class="btn btn-secondary">
                 <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
             </a>

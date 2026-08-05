@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Sin categorizar · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-search"/></svg> Sin categorizar</h1>
+            <div class="page-sub">
+                Los movimientos que no se han reconocido, agrupados por comercio y ordenados por
+                lo que más pesa. Dile a cada grupo qué es <strong>una sola vez</strong>: se aplicará
+                a todos sus movimientos y se recordará para las próximas importaciones.
+            </div>
+        </div>
+        <div class="toolbar">
+            <a href="{% url 'extractos:reglas' %}" class="btn btn-secondary">
+                <svg class="icon"><use href="#i-settings"/></svg> Reglas aprendidas{% if num_reglas %} ({{ num_reglas }}){% endif %}
+            </a>
+            <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+        </div>
+    </div>
+
+    {% if messages %}
+        {% for message in messages %}
+        <div class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" style="display:block;padding:10px 14px;margin-bottom:8px;">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    {% if not grupos %}
+    <div class="empty-state">
+        <svg class="icon icon-xl empty-icon"><use href="#i-check"/></svg>
+        <h3>No queda nada sin categorizar</h3>
+        <p>Todos tus gastos importados tienen categoría. Cuando importes un extracto nuevo, lo que no se reconozca aparecerá aquí.</p>
+        <a href="{% url 'extractos:subir' %}" class="btn btn-primary"><svg class="icon"><use href="#i-upload"/></svg> Importar CSV / Excel</a>
+    </div>
+    {% else %}
+
+    <div class="stat-row">
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Comercios distintos</span>
+            <span class="stat-tile-valor num">{{ grupos|length }}</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Movimientos</span>
+            <span class="stat-tile-valor num">{{ total_movimientos }}</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Importe sin clasificar</span>
+            <span class="stat-tile-valor num text-negative">{{ total_importe|floatformat:2|intcomma }} €</span>
+        </div>
+    </div>
+
+    <div class="sc-lista">
+        {% for g in grupos %}
+        <form class="card sc-grupo" method="post" action="{% url 'extractos:aprender_regla' %}">
+            {% csrf_token %}
+            <div class="sc-cabecera">
+                <div class="sc-identidad">
+                    <span class="sc-nombre">{{ g.etiqueta }}</span>
+                    <span class="sc-meta">
+                        {{ g.num }} movimiento{{ g.num|pluralize }} ·
+                        {{ g.desde|date:"d/m/Y" }} – {{ g.hasta|date:"d/m/Y" }}
+                    </span>
+                </div>
+                <span class="sc-total num text-negative">{{ g.total|floatformat:2|intcomma }} €</span>
+            </div>
+
+            <div class="sc-acciones">
+                <label class="sc-campo">
+                    <span>Categoría</span>
+                    <select name="categoria_id" required>
+                        <option value="">— Elige una —</option>
+                        {% for c in categorias_hogar %}
+                        <option value="{{ c.id }}">{{ c.nombre }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="sc-campo sc-campo-patron">
+                    <span>Se recordará como</span>
+                    <input type="text" name="patron" value="{{ g.comercio }}"
+                           title="Acórtalo si quieres que la regla cubra más casos (p. ej. «farmacia» en vez de «farmacia ronda»).">
+                </label>
+                <button type="submit" class="btn btn-primary">
+                    <svg class="icon"><use href="#i-check"/></svg> Aplicar y recordar
+                </button>
+            </div>
+
+            {% if g.similares %}
+            <details class="sc-similares">
+                <summary>También parecidos ({{ g.similares|length }})</summary>
+                <p class="text-muted sc-ayuda">Márcalos para que la misma categoría se aplique también a estos comercios.</p>
+                {% for s in g.similares %}
+                <label class="sc-similar">
+                    <input type="checkbox" name="patron" value="{{ s.comercio }}">
+                    <span>{{ s.comercio }}</span>
+                    <span class="text-muted">{{ s.num }} mov.</span>
+                </label>
+                {% endfor %}
+            </details>
+            {% endif %}
+
+            {% if g.conceptos|length > 1 %}
+            <details class="sc-conceptos">
+                <summary>Ver conceptos del grupo</summary>
+                <ul>
+                    {% for c in g.conceptos %}<li>{{ c }}</li>{% endfor %}
+                </ul>
+            </details>
+            {% endif %}
+        </form>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.sc-lista { display:flex; flex-direction:column; gap:12px; margin-top:20px; }
+.sc-grupo { padding:16px 18px; }
+.sc-cabecera { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+.sc-identidad { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.sc-nombre { font-weight:600; font-size:0.98rem; word-break:break-word; }
+.sc-meta { font-size:0.75rem; color:var(--muted); }
+.sc-total { font-weight:700; font-size:1.05rem; white-space:nowrap; }
+.sc-acciones { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; margin-top:14px; }
+.sc-campo { display:flex; flex-direction:column; gap:4px; }
+.sc-campo > span { font-size:0.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; }
+.sc-campo select, .sc-campo input {
+    background:var(--surface); color:var(--text-color); border:1px solid var(--border-strong);
+    border-radius:8px; padding:9px 12px; font-size:0.85rem; min-width:190px;
+}
+.sc-campo-patron input { min-width:240px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.8rem; }
+.sc-similares, .sc-conceptos { margin-top:12px; font-size:0.82rem; }
+.sc-similares summary, .sc-conceptos summary { cursor:pointer; color:var(--muted); }
+.sc-ayuda { font-size:0.75rem; margin:6px 0 8px; }
+.sc-similar { display:flex; align-items:center; gap:8px; padding:4px 0; }
+.sc-conceptos ul { margin:8px 0 0 18px; color:var(--muted); }
+@media (max-width:700px){
+    .sc-acciones { flex-direction:column; align-items:stretch; }
+    .sc-campo select, .sc-campo input, .sc-campo-patron input { min-width:0; width:100%; }
+}
+</style>
+{% endblock %}

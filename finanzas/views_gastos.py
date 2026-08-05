@@ -28,6 +28,10 @@ CATEGORIAS_PREDEFINIDAS = [
     ('variable', 'Ropa'),
     ('variable', 'Restaurantes'),
     ('variable', 'Transporte'),
+    ('variable', 'Salud / Farmacia'),
+    ('variable', 'Hogar / Bricolaje'),
+    ('variable', 'Tecnologia / Software'),
+    ('variable', 'Impuestos y comisiones'),
 ]
 
 
