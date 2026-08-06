@@ -15,12 +15,11 @@
             </div>
         </div>
         <div class="toolbar">
-            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
-                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
-            </a>
             <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
         </div>
     </div>
+
+    {% include "extractos/_subnav.html" with activo='reglas' %}
 
     {% if messages %}
         {% for message in messages %}

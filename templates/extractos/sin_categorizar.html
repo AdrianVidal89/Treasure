@@ -15,12 +15,11 @@
             </div>
         </div>
         <div class="toolbar">
-            <a href="{% url 'extractos:reglas' %}" class="btn btn-secondary">
-                <svg class="icon"><use href="#i-settings"/></svg> Reglas aprendidas{% if num_reglas %} ({{ num_reglas }}){% endif %}
-            </a>
             <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
         </div>
     </div>
+
+    {% include "extractos/_subnav.html" with activo='sin_categorizar' %}
 
     {% if messages %}
         {% for message in messages %}

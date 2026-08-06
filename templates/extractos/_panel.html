@@ -219,10 +219,7 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
 <span id="ext-kpi-data" data-ing="{{ panel.kpi_ingresos|unlocalize }}" data-gas="{{ panel.kpi_gastos|unlocalize }}"></span>
 
 <style>
-.ext-filtros { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; align-items:flex-end; }
-.ext-filtro { display:flex; flex-direction:column; gap:4px; }
-.ext-filtro label { font-size:0.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; }
-.ext-filtro select { background:var(--surface); color:var(--text-color); border:1px solid var(--border-strong); border-radius:8px; padding:9px 12px; font-size:0.85rem; min-width:150px; }
+/* .ext-filtros vive en main.css: lo comparten el panel y la conciliación. */
 
 .ext-viz { display:grid; grid-template-columns:1.3fr 1fr; gap:16px; margin:22px 0 8px; }
 @media (max-width:760px){ .ext-viz { grid-template-columns:1fr; } }

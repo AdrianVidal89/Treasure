@@ -1,0 +1,21 @@
+{% comment %}
+Submenú de la sección Extractos. Cada página lo incluye pasando `activo` con
+su propia clave, p.ej. {% include "extractos/_subnav.html" with activo='categorias' %}
+{% endcomment %}
+<nav class="ext-subnav" aria-label="Secciones de extractos">
+    <a href="{% url 'extractos:listar' %}" class="ext-subnav-link {% if activo == 'movimientos' %}active{% endif %}">
+        <svg class="icon"><use href="#i-statements"/></svg><span>Movimientos</span>
+    </a>
+    <a href="{% url 'extractos:sin_categorizar' %}" class="ext-subnav-link {% if activo == 'sin_categorizar' %}active{% endif %}">
+        <svg class="icon"><use href="#i-search"/></svg><span>Sin categorizar</span>
+    </a>
+    <a href="{% url 'extractos:categorias' %}" class="ext-subnav-link {% if activo == 'categorias' %}active{% endif %}">
+        <svg class="icon"><use href="#i-grip"/></svg><span>Categorías</span>
+    </a>
+    <a href="{% url 'extractos:reglas' %}" class="ext-subnav-link {% if activo == 'reglas' %}active{% endif %}">
+        <svg class="icon"><use href="#i-settings"/></svg><span>Reglas</span>
+    </a>
+    <a href="{% url 'extractos:conciliacion' %}" class="ext-subnav-link {% if activo == 'conciliacion' %}active{% endif %}">
+        <svg class="icon"><use href="#i-distribution"/></svg><span>Conciliación</span>
+    </a>
+</nav>

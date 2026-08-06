@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Categorías · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-grip"/></svg> Categorías</h1>
+            <div class="page-sub">Las categorías que comparten tu <strong>presupuesto</strong> y tus <strong>extractos</strong>. Renómbralas o muévelas de bloque: el cambio se aplica en las dos partes.</div>
+        </div>
+        <div class="toolbar">
+            <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+        </div>
+    </div>
+
+    {% include "extractos/_subnav.html" with activo='categorias' %}
+
+    {% if messages %}
+        {% for message in messages %}
+        <div class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" style="display:block;padding:10px 14px;margin-bottom:8px;">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- CREAR -->
+    <form method="post" class="cat-crear">
+        {% csrf_token %}
+        <input type="hidden" name="accion" value="crear">
+        <div class="cat-crear-campo">
+            <label for="cat-nombre">Nueva categoría</label>
+            <input type="text" id="cat-nombre" name="nombre" placeholder="Ej. Farmacia" maxlength="100" required>
+        </div>
+        <div class="cat-crear-campo">
+            <label for="cat-tipo">Bloque</label>
+            <select id="cat-tipo" name="tipo">
+                {% for t in tipos %}
+                <option value="{{ t.valor }}" {% if t.valor == 'variable' %}selected{% endif %}>{{ t.etiqueta }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary"><svg class="icon"><use href="#i-plus"/></svg> Crear</button>
+    </form>
+
+    {% if not total_categorias %}
+    <div class="empty-state">
+        <svg class="icon icon-xl empty-icon"><use href="#i-grip"/></svg>
+        <h3>Todavía no hay categorías</h3>
+        <p>Crea la primera arriba, o importa un extracto: al hacerlo se generan las categorías predefinidas del hogar.</p>
+    </div>
+    {% endif %}
+
+    {% for b in bloques %}
+    <div class="cat-bloque">
+        <div class="cat-bloque-head">
+            <span class="cat-bloque-nombre">{{ b.etiqueta }}</span>
+            <span class="text-muted">{{ b.categorias|length }} categoría(s){% if not b.es_gasto %} · fuera del presupuesto de gasto{% endif %}</span>
+        </div>
+        <div class="table-scroll">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="min-width:200px;">Nombre</th>
+                        <th style="min-width:170px;">Bloque</th>
+                        <th class="num" title="Partidas del presupuesto que cuelgan de esta categoría">Partidas</th>
+                        <th class="num" title="Movimientos bancarios clasificados en esta categoría">Movimientos</th>
+                        <th class="num" title="Reglas de categorización que apuntan aquí">Reglas</th>
+                        <th style="min-width:280px;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in b.categorias %}
+                    <tr class="{% if not c.activo %}cat-inactiva{% endif %}">
+                        <td>
+                            <input type="text" name="nombre" value="{{ c.nombre }}" maxlength="100"
+                                   form="cat-form-{{ c.id }}" class="cat-input" aria-label="Nombre de la categoría">
+                            {% if c.es_predefinida %}<span class="cat-tag" title="Categoría creada por Treasure; puedes renombrarla igualmente">predefinida</span>{% endif %}
+                            {% if not c.activo %}<span class="cat-tag cat-tag-off">desactivada</span>{% endif %}
+                        </td>
+                        <td>
+                            <select name="tipo" form="cat-form-{{ c.id }}" class="cat-input" aria-label="Bloque de la categoría">
+                                {% for t in tipos %}
+                                <option value="{{ t.valor }}" {% if t.valor == c.tipo %}selected{% endif %}>{{ t.etiqueta }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="num">{{ c.num_partidas }}</td>
+                        <td class="num">{{ c.num_movimientos }}</td>
+                        <td class="num">{{ c.num_reglas }}</td>
+                        <td class="cat-acciones">
+                            <button type="submit" name="accion" value="guardar" form="cat-form-{{ c.id }}"
+                                    class="btn btn-secondary btn-sm">Guardar</button>
+                            <button type="submit" name="accion" value="alternar" form="cat-form-{{ c.id }}"
+                                    class="btn btn-ghost btn-sm">{% if c.activo %}Desactivar{% else %}Activar{% endif %}</button>
+                            {% if c.se_puede_borrar %}
+                            <button type="submit" name="accion" value="eliminar" form="cat-form-{{ c.id }}"
+                                    class="btn btn-ghost btn-sm cat-borrar"
+                                    onclick="return confirm('¿Eliminar la categoría «{{ c.nombre|escapejs }}»? No la usa nada, así que no se pierde ningún dato.');">Eliminar</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% comment %}
+        Un <form> no puede vivir dentro de un <tr>, así que los campos de cada
+        fila se enlazan por form="…" con estos formularios, uno por categoría.
+        {% endcomment %}
+        {% for c in b.categorias %}
+        <form method="post" id="cat-form-{{ c.id }}" hidden>
+            {% csrf_token %}
+            <input type="hidden" name="categoria_id" value="{{ c.id }}">
+        </form>
+        {% endfor %}
+    </div>
+    {% endfor %}
+
+    {% if total_categorias %}
+    <p class="help-text" style="margin-top:18px;">
+        Mover una categoría de bloque recoloca tanto sus partidas del presupuesto como sus movimientos ya importados,
+        así que la <a href="{% url 'extractos:conciliacion' %}">conciliación</a> cambia en consecuencia.
+        Las categorías con datos detrás no se borran: desactívalas y dejarán de ofrecerse sin tocar el histórico.
+    </p>
+    {% endif %}
+</div>
+
+<style>
+.cat-crear {
+    display:flex; gap:14px; align-items:flex-end; flex-wrap:wrap;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px 16px; margin-bottom:22px;
+}
+.cat-crear-campo { display:flex; flex-direction:column; gap:4px; }
+.cat-crear-campo label { font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+.cat-crear input, .cat-crear select { min-width:200px; }
+
+.cat-bloque { margin-top:24px; }
+.cat-bloque-head {
+    display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap;
+    border-left:4px solid var(--accent-color); padding:6px 0 6px 12px; margin-bottom:10px;
+}
+.cat-bloque-nombre { font-weight:700; font-size:1rem; text-transform:uppercase; letter-spacing:.03em; }
+
+.cat-input { width:100%; }
+.cat-acciones { display:flex; gap:6px; flex-wrap:wrap; }
+.cat-borrar { color:var(--danger); }
+.cat-borrar:hover { background:color-mix(in srgb, var(--danger) 12%, transparent); color:var(--danger); }
+
+tr.cat-inactiva { opacity:0.55; }
+.cat-tag {
+    display:inline-block; margin-left:6px; font-size:0.62rem; font-weight:600;
+    text-transform:uppercase; letter-spacing:.04em; padding:1px 7px; border-radius:10px;
+    background:var(--badge-bg); color:var(--muted); border:1px solid var(--border);
+}
+.cat-tag-off { color:var(--warning); border-color:color-mix(in srgb, var(--warning) 40%, transparent); }
+</style>
+{% endblock %}

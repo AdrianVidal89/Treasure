@@ -490,6 +490,228 @@ class ConciliacionTests(TestCase):
         self.assertEqual(respuesta.context['total_observado'], Decimal('380'))
 
 
+class ConciliacionFiltroPeriodoTests(TestCase):
+    """Acotar la conciliación a un año o a un mes concreto."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+
+        cat = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Compra semanal',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+        # Tres meses con importes distintos, repartidos en dos años.
+        for fecha, importe in (
+            (date(2025, 11, 5), '-300'),
+            (date(2026, 6, 5), '-500'),
+            (date(2026, 7, 5), '-100'),
+        ):
+            MovimientoBancario.objects.create(
+                extracto=self.extracto, hogar=self.hogar, fecha=fecha,
+                concepto='Supermercado', importe=Decimal(importe), categoria=cat,
+            )
+
+    def test_sin_filtro_promedia_todos_los_meses(self):
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+        self.assertEqual(respuesta.context['num_meses'], 3)
+        self.assertEqual(respuesta.context['total_observado'], Decimal('300'))
+        self.assertFalse(respuesta.context['hay_filtro'])
+
+    def test_filtrar_por_anio(self):
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'anio': '2026'})
+        self.assertEqual(respuesta.context['num_meses'], 2)
+        self.assertEqual(respuesta.context['total_observado'], Decimal('300'))
+        self.assertTrue(respuesta.context['hay_filtro'])
+
+    def test_filtrar_por_mes_concreto_no_promedia(self):
+        respuesta = self.client.get(
+            reverse('extractos:conciliacion'), {'anio': '2026', 'mes': '6'},
+        )
+        self.assertEqual(respuesta.context['num_meses'], 1)
+        self.assertEqual(respuesta.context['total_observado'], Decimal('500'))
+        # El presupuesto no depende del periodo elegido.
+        self.assertEqual(respuesta.context['total_declarado'], Decimal('400'))
+        self.assertEqual(respuesta.context['total_diferencia'], Decimal('100'))
+
+    def test_el_mes_cruza_todos_los_anios_si_no_se_acota_el_anio(self):
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'mes': '5'})
+        self.assertFalse(respuesta.context['hay_datos_periodo'])
+        # Sigue habiendo datos en el histórico, así que no es la pantalla de
+        # "importa un extracto" sino la de "prueba con otro periodo".
+        self.assertTrue(respuesta.context['hay_datos'])
+
+    def test_ofrece_los_anios_con_datos(self):
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+        self.assertEqual(respuesta.context['anios_disponibles'], [2026, 2025])
+
+
+class CategoriasTests(TestCase):
+    """Pantalla de gestión de categorías dentro de Extractos."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.url = reverse('extractos:categorias')
+
+    def categoria(self, nombre):
+        return CategoriaGasto.objects.get(hogar=self.hogar, nombre=nombre)
+
+    def test_agrupa_las_categorias_por_bloque(self):
+        respuesta = self.client.get(self.url)
+        etiquetas = [b['etiqueta'] for b in respuesta.context['bloques']]
+        self.assertEqual(etiquetas[:4], ['Fijos', 'Fijos anuales', 'Variables', 'Discrecionales'])
+
+    def test_renombrar(self):
+        cat = self.categoria('Alimentacion')
+        self.client.post(self.url, {
+            'accion': 'guardar', 'categoria_id': cat.id,
+            'nombre': 'Alimentación', 'tipo': cat.tipo,
+        })
+        cat.refresh_from_db()
+        self.assertEqual(cat.nombre, 'Alimentación')
+
+    def test_cambiar_de_bloque_mueve_tambien_lo_ya_importado(self):
+        cat = self.categoria('Alimentacion')
+        self.assertEqual(cat.tipo, 'variable')
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 7, 5),
+            concepto='Supermercado', importe=Decimal('-80'), categoria=cat,
+        )
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Compra semanal',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+
+        self.client.post(self.url, {
+            'accion': 'guardar', 'categoria_id': cat.id,
+            'nombre': cat.nombre, 'tipo': 'discrecional',
+        })
+
+        cat.refresh_from_db()
+        self.assertEqual(cat.tipo, 'discrecional')
+        # La conciliación lo refleja: el gasto pasa al bloque nuevo.
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+        bloques = {b['etiqueta']: b for b in respuesta.context['bloques']}
+        self.assertEqual(bloques['Discrecionales']['observado'], Decimal('80'))
+        self.assertNotIn('Variables', bloques)
+
+    def test_no_permite_dos_categorias_con_el_mismo_nombre(self):
+        cat = self.categoria('Ocio')
+        respuesta = self.client.post(self.url, {
+            'accion': 'guardar', 'categoria_id': cat.id,
+            'nombre': 'Alimentacion', 'tipo': cat.tipo,
+        }, follow=True)
+        cat.refresh_from_db()
+        self.assertEqual(cat.nombre, 'Ocio')
+        self.assertContains(respuesta, 'Ya tienes otra categoría')
+
+    def test_crear_categoria(self):
+        self.client.post(self.url, {
+            'accion': 'crear', 'nombre': 'Farmacia', 'tipo': 'variable',
+        })
+        cat = self.categoria('Farmacia')
+        self.assertEqual(cat.tipo, 'variable')
+        self.assertFalse(cat.es_predefinida)
+
+    def test_crear_rechaza_nombre_repetido(self):
+        antes = CategoriaGasto.objects.filter(hogar=self.hogar).count()
+        respuesta = self.client.post(self.url, {
+            'accion': 'crear', 'nombre': 'alimentacion', 'tipo': 'fijo',
+        }, follow=True)
+        self.assertEqual(CategoriaGasto.objects.filter(hogar=self.hogar).count(), antes)
+        self.assertContains(respuesta, 'Ya tienes una categoría')
+
+    def test_desactivar_y_reactivar(self):
+        cat = self.categoria('Ocio')
+        self.client.post(self.url, {'accion': 'alternar', 'categoria_id': cat.id})
+        cat.refresh_from_db()
+        self.assertFalse(cat.activo)
+
+        self.client.post(self.url, {'accion': 'alternar', 'categoria_id': cat.id})
+        cat.refresh_from_db()
+        self.assertTrue(cat.activo)
+
+    def test_eliminar_categoria_sin_uso(self):
+        cat = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Temporal', tipo='variable',
+        )
+        self.client.post(self.url, {'accion': 'eliminar', 'categoria_id': cat.id})
+        self.assertFalse(CategoriaGasto.objects.filter(pk=cat.pk).exists())
+
+    def test_no_elimina_una_categoria_con_partidas(self):
+        """Borrar arrastraría las partidas en cascada: se bloquea."""
+        cat = self.categoria('Alimentacion')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Compra semanal',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+        respuesta = self.client.post(
+            self.url, {'accion': 'eliminar', 'categoria_id': cat.id}, follow=True,
+        )
+        self.assertTrue(CategoriaGasto.objects.filter(pk=cat.pk).exists())
+        self.assertEqual(PartidaGasto.objects.filter(categoria=cat).count(), 1)
+        self.assertContains(respuesta, 'no se puede borrar')
+
+    def test_no_elimina_una_categoria_con_movimientos(self):
+        cat = self.categoria('Ocio')
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 7, 5),
+            concepto='Cine', importe=Decimal('-20'), categoria=cat,
+        )
+        respuesta = self.client.post(
+            self.url, {'accion': 'eliminar', 'categoria_id': cat.id}, follow=True,
+        )
+        self.assertTrue(CategoriaGasto.objects.filter(pk=cat.pk).exists())
+        self.assertContains(respuesta, 'no se puede borrar')
+
+    def test_no_toca_categorias_de_otro_hogar(self):
+        otro = Hogar.objects.create(nombre='Otro hogar')
+        ajena = CategoriaGasto.objects.create(hogar=otro, nombre='Ajena', tipo='variable')
+        respuesta = self.client.post(self.url, {
+            'accion': 'guardar', 'categoria_id': ajena.id,
+            'nombre': 'Secuestrada', 'tipo': 'fijo',
+        })
+        self.assertEqual(respuesta.status_code, 404)
+        ajena.refresh_from_db()
+        self.assertEqual(ajena.nombre, 'Ajena')
+
+    def test_cuenta_lo_que_arrastra_cada_categoria(self):
+        cat = self.categoria('Ocio')
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 7, 5),
+            concepto='Cine', importe=Decimal('-20'), categoria=cat,
+        )
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Ocio mensual',
+            importe=Decimal('100'), periodicidad='mensual',
+        )
+        ReglaCategorizacion.objects.create(hogar=self.hogar, patron='cine', categoria=cat)
+
+        respuesta = self.client.get(self.url)
+        fila = next(
+            c for b in respuesta.context['bloques'] for c in b['categorias']
+            if c.nombre == 'Ocio'
+        )
+        self.assertEqual(fila.num_movimientos, 1)
+        self.assertEqual(fila.num_partidas, 1)
+        self.assertEqual(fila.num_reglas, 1)
+        self.assertFalse(fila.se_puede_borrar)
+
+
 class DuplicadosTests(TestCase):
 
     def setUp(self):

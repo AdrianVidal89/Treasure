@@ -8,15 +8,14 @@
     <div class="page-header">
         <div>
             <h1><svg class="icon icon-lg page-title-icon"><use href="#i-distribution"/></svg> Conciliación</h1>
-            <div class="page-sub">Lo <strong>presupuestado</strong> frente a lo <strong>observado</strong> en tus extractos, por bloque del presupuesto (media mensual sobre {{ num_meses }} mes(es)).</div>
+            <div class="page-sub">Lo <strong>presupuestado</strong> frente a lo <strong>observado</strong> en tus extractos, por bloque del presupuesto{% if hay_datos_periodo %} ({% if num_meses > 1 %}media mensual sobre {{ num_meses }} meses{% else %}un solo mes con datos, sin promediar{% endif %}){% endif %}.</div>
         </div>
         <div class="toolbar">
-            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
-                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
-            </a>
             <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
         </div>
     </div>
+
+    {% include "extractos/_subnav.html" with activo='conciliacion' %}
 
     {% if not hay_datos %}
     <div class="empty-state">
@@ -24,6 +23,40 @@
         <h3>Sin movimientos que conciliar</h3>
         <p>Importa un extracto bancario para comparar tus gastos reales con lo que has declarado en la sección de Gastos.</p>
         <a href="{% url 'extractos:subir' %}" class="btn btn-primary"><svg class="icon"><use href="#i-upload"/></svg> Importar CSV</a>
+    </div>
+    {% else %}
+
+    <!-- FILTRO DE PERIODO -->
+    <form method="get" class="ext-filtros">
+        <div class="ext-filtro">
+            <label>Año</label>
+            <select name="anio" onchange="this.form.submit()">
+                <option value="all" {% if anio_sel == 'all' %}selected{% endif %}>Todos</option>
+                {% for a in anios_disponibles %}
+                <option value="{{ a }}" {% if anio_sel == a|stringformat:'s' %}selected{% endif %}>{{ a }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="ext-filtro">
+            <label>Mes</label>
+            <select name="mes" onchange="this.form.submit()">
+                <option value="all" {% if mes_sel == 'all' %}selected{% endif %}>Todos</option>
+                {% for m in meses_disponibles %}
+                <option value="{{ m.valor }}" {% if mes_sel == m.valor %}selected{% endif %}>{{ m.etiqueta }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% if hay_filtro %}
+        <a href="{{ request.path }}" class="btn btn-ghost" style="align-self:flex-end;">Limpiar filtros</a>
+        {% endif %}
+    </form>
+
+    {% if not hay_datos_periodo %}
+    <div class="empty-state">
+        <svg class="icon icon-xl empty-icon"><use href="#i-search"/></svg>
+        <h3>Sin movimientos en el periodo elegido</h3>
+        <p>No hay nada importado para esa combinación de año y mes. Prueba con otro periodo o quita el filtro.</p>
+        <a href="{{ request.path }}" class="btn btn-secondary">Ver todo el histórico</a>
     </div>
     {% else %}
 
@@ -116,6 +149,7 @@
         <span>Hay <strong>{{ sin_categorizar_importe|floatformat:2|intcomma }} €/mes</strong> de gasto sin categorizar que no entra en ningún bloque, así que la comparación se queda corta por ese importe.</span>
         <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar ahora</a>
     </div>
+    {% endif %}
     {% endif %}
     {% endif %}
 </div>

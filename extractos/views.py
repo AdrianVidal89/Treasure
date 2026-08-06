@@ -4,12 +4,13 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Count
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
 from finanzas.parsing import leer_tabla
-from finanzas.models import ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
+from finanzas.models import ETIQUETAS_TIPO, ORDEN_TIPOS, TIPO_GASTO_CHOICES, TIPOS_GASTO
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
 from .categorizacion import categorizar_lote
@@ -413,15 +414,19 @@ def revisar(request):
 
 # Color de cada bloque del presupuesto. Los tres primeros coinciden con los que
 # ya usa la pantalla de Gastos, para que un bloque se reconozca en ambos sitios.
+# Color por bloque del presupuesto. Son tokens del sistema de diseño, no hex,
+# porque se pintan como texto y como fondo de barra: así siguen al tema activo
+# en vez de quedarse en el verde oscuro del tema claro sobre fondo negro.
 COLOR_TIPO = {
-    'fijo': '#b7791f',
-    'anual': '#2c5f7a',
-    'variable': '#3DCD58',
-    'discrecional': '#9d4edd',
-    'ingreso': '#2d6a4f',
-    'traspaso': '#5f8fb0',
-    'sin': '#9aa5a0',
+    'fijo': 'var(--warning)',
+    'anual': 'var(--info)',
+    'variable': 'var(--success-2)',
+    'discrecional': 'var(--accent-alt)',
+    'ingreso': 'var(--success)',
+    'traspaso': 'var(--info)',
+    'sin': 'var(--muted)',
 }
+COLOR_TIPO_POR_DEFECTO = 'var(--muted)'
 
 # Paleta para el donut de categorías (verdes/tierra coherentes con la marca).
 _PALETA = [
@@ -502,7 +507,7 @@ def _panel_context(hogar, todos, request):
             'etiqueta': ETIQUETAS_TIPO.get(tipo, 'Sin categorizar'),
             'importe': importe,
             'pct': round(float(importe / total_gasto_abs * 100), 1) if total_gasto_abs else 0,
-            'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
+            'color': COLOR_TIPO.get(tipo, COLOR_TIPO_POR_DEFECTO),
         })
 
     donut = []
@@ -674,13 +679,35 @@ def conciliacion(request):
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return redirect('dashboard')
 
-    movimientos = list(
+    todos = list(
         MovimientoBancario.objects.filter(hogar=hogar, es_traspaso=False)
         .select_related('categoria')
     )
+
+    # --- Filtro de periodo ---
+    # Sin filtro se concilia todo el histórico en media mensual, que sirve para
+    # ver la tendencia pero diluye un mes atípico. Acotando a un año o a un mes
+    # concreto se compara el presupuesto contra lo que pasó de verdad en ese
+    # periodo, que es la pregunta habitual a fin de mes.
+    anio_sel = request.GET.get('anio', 'all')
+    mes_sel = request.GET.get('mes', 'all')
+
+    anios_disponibles = sorted({m.fecha.year for m in todos}, reverse=True)
+    meses_disponibles = [{'valor': str(n), 'etiqueta': MESES_ES[n]} for n in range(1, 13)]
+
+    def pasa_filtro(m):
+        if anio_sel != 'all' and str(m.fecha.year) != anio_sel:
+            return False
+        if mes_sel != 'all' and str(m.fecha.month) != mes_sel:
+            return False
+        return True
+
+    movimientos = [m for m in todos if pasa_filtro(m)]
     gastos = [m for m in movimientos if m.importe < 0]
 
     # Nº de meses distintos con datos, para pasar lo observado a media mensual.
+    # Al acotar a un mes concreto vale 1, así que "real / mes" pasa a ser el
+    # gasto real de ese mes sin promediar.
     meses = {(m.fecha.year, m.fecha.month) for m in movimientos}
     num_meses = max(len(meses), 1)
 
@@ -712,7 +739,7 @@ def conciliacion(request):
         bloque = por_bloque.setdefault(cat.tipo, {
             'tipo': cat.tipo,
             'etiqueta': ETIQUETAS_TIPO.get(cat.tipo, cat.tipo),
-            'color': COLOR_TIPO.get(cat.tipo, '#9aa5a0'),
+            'color': COLOR_TIPO.get(cat.tipo, COLOR_TIPO_POR_DEFECTO),
             'filas': [],
             'declarado': Decimal('0'),
             'observado': Decimal('0'),
@@ -760,7 +787,13 @@ def conciliacion(request):
         'ingreso_diferencia': ingreso_observado - ingreso_declarado,
         'ahorro_declarado': ingreso_declarado - total_declarado,
         'ahorro_observado': ingreso_observado - total_observado,
-        'hay_datos': bool(movimientos),
+        'hay_datos': bool(todos),
+        'hay_datos_periodo': bool(movimientos),
+        'anios_disponibles': anios_disponibles,
+        'meses_disponibles': meses_disponibles,
+        'anio_sel': anio_sel,
+        'mes_sel': mes_sel,
+        'hay_filtro': anio_sel != 'all' or mes_sel != 'all',
     })
 
 
@@ -941,6 +974,149 @@ def aprender_regla(request):
         "Se aplicará automáticamente en las próximas importaciones."
     )
     return redirect('extractos:sin_categorizar')
+
+
+@login_required
+def categorias(request):
+    """Gestión de las categorías del hogar: renombrar, mover de bloque, activar
+    o desactivar y borrar.
+
+    La categoría es la pieza que comparten el presupuesto (PartidaGasto) y los
+    extractos (MovimientoBancario, ReglaCategorizacion), así que cambiarla aquí
+    se nota en las dos partes. Por eso cada fila enseña cuánto arrastra: es la
+    única forma de que el usuario vea el alcance antes de tocar nada.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        return _procesar_accion_categoria(request, hogar)
+
+    categorias_hogar = (
+        CategoriaGasto.objects.filter(hogar=hogar)
+        .annotate(
+            num_partidas=Count('partidas', distinct=True),
+            num_reglas=Count('reglas_categorizacion', distinct=True),
+            num_movimientos=Count('movimientos_bancarios', distinct=True),
+        )
+        .order_by('nombre')
+    )
+
+    por_tipo = defaultdict(list)
+    for cat in categorias_hogar:
+        # Sin partidas ni movimientos ni reglas no hay nada que perder: se puede
+        # borrar del todo. En cuanto arrastra algo, el camino seguro es
+        # desactivarla (deja de ofrecerse, pero el histórico se mantiene).
+        cat.se_puede_borrar = not (cat.num_partidas or cat.num_movimientos or cat.num_reglas)
+        por_tipo[cat.tipo].append(cat)
+
+    bloques = [
+        {
+            'tipo': tipo,
+            'etiqueta': ETIQUETAS_TIPO.get(tipo, tipo),
+            'es_gasto': tipo in TIPOS_GASTO,
+            'categorias': por_tipo[tipo],
+        }
+        for tipo in ORDEN_TIPOS if por_tipo.get(tipo)
+    ]
+
+    return render(request, 'extractos/categorias.html', {
+        'bloques': bloques,
+        'tipos': [
+            {'valor': tipo, 'etiqueta': ETIQUETAS_TIPO.get(tipo, tipo)}
+            for tipo in ORDEN_TIPOS
+        ],
+        'total_categorias': len(categorias_hogar),
+    })
+
+
+def _procesar_accion_categoria(request, hogar):
+    """POST de la pantalla de categorías. Siempre redirige, para que recargar no
+    repita la acción."""
+    accion = request.POST.get('accion')
+
+    if accion == 'crear':
+        nombre = request.POST.get('nombre', '').strip()
+        tipo = request.POST.get('tipo', 'variable')
+        if not nombre:
+            messages.error(request, "El nombre no puede estar vacío.")
+        elif tipo not in dict(TIPO_GASTO_CHOICES):
+            messages.error(request, "Ese bloque no existe.")
+        elif CategoriaGasto.objects.filter(hogar=hogar, nombre__iexact=nombre).exists():
+            messages.error(request, f"Ya tienes una categoría llamada «{nombre}».")
+        else:
+            CategoriaGasto.objects.create(
+                hogar=hogar, nombre=nombre, tipo=tipo, es_predefinida=False,
+            )
+            messages.success(request, f"Categoría «{nombre}» creada en {ETIQUETAS_TIPO.get(tipo, tipo)}.")
+        return redirect('extractos:categorias')
+
+    categoria = get_object_or_404(
+        CategoriaGasto, pk=request.POST.get('categoria_id') or 0, hogar=hogar,
+    )
+
+    if accion == 'guardar':
+        nombre = request.POST.get('nombre', '').strip()
+        tipo = request.POST.get('tipo', categoria.tipo)
+        if not nombre:
+            messages.error(request, "El nombre no puede estar vacío.")
+            return redirect('extractos:categorias')
+        if tipo not in dict(TIPO_GASTO_CHOICES):
+            messages.error(request, "Ese bloque no existe.")
+            return redirect('extractos:categorias')
+        # unique_together (hogar, nombre): avisar en vez de reventar con IntegrityError.
+        choque = CategoriaGasto.objects.filter(
+            hogar=hogar, nombre__iexact=nombre,
+        ).exclude(pk=categoria.pk).first()
+        if choque:
+            messages.error(request, f"Ya tienes otra categoría llamada «{choque.nombre}».")
+            return redirect('extractos:categorias')
+
+        cambios = []
+        if categoria.nombre != nombre:
+            cambios.append(f"renombrada a «{nombre}»")
+            categoria.nombre = nombre
+        if categoria.tipo != tipo:
+            cambios.append(f"movida a {ETIQUETAS_TIPO.get(tipo, tipo)}")
+            categoria.tipo = tipo
+        if cambios:
+            categoria.save(update_fields=['nombre', 'tipo'])
+            messages.success(request, f"Categoría {' y '.join(cambios)}.")
+        else:
+            messages.info(request, "No había nada que cambiar.")
+
+    elif accion == 'alternar':
+        categoria.activo = not categoria.activo
+        categoria.save(update_fields=['activo'])
+        messages.success(
+            request,
+            f"Categoría «{categoria.nombre}» {'activada' if categoria.activo else 'desactivada'}. "
+            + ("Vuelve a ofrecerse al clasificar." if categoria.activo else
+               "Deja de ofrecerse al clasificar; lo ya categorizado no cambia."),
+        )
+
+    elif accion == 'eliminar':
+        # Borrar arrastra en cascada las partidas del presupuesto, así que solo
+        # se permite cuando la categoría está limpia. Con datos detrás, la
+        # alternativa es desactivarla.
+        num_partidas = categoria.partidas.count()
+        num_movimientos = categoria.movimientos_bancarios.count()
+        num_reglas = categoria.reglas_categorizacion.count()
+        if num_partidas or num_movimientos or num_reglas:
+            messages.error(
+                request,
+                f"«{categoria.nombre}» no se puede borrar: la usan "
+                f"{num_partidas} partida(s) de gasto, {num_movimientos} movimiento(s) "
+                f"y {num_reglas} regla(s). Desactívala si no quieres seguir usándola.",
+            )
+        else:
+            nombre = categoria.nombre
+            categoria.delete()
+            messages.success(request, f"Categoría «{nombre}» eliminada.")
+
+    return redirect('extractos:categorias')
 
 
 @login_required
