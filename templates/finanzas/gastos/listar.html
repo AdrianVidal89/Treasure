@@ -18,10 +18,10 @@
     box-shadow: 0 1px 2px rgba(28,35,33,.06);
     transform: translateY(-2px);
 }
-.gasto-card.tipo-fijo { border-left: 3px solid #b7791f; }
-.gasto-card.tipo-anual { border-left: 3px solid #2c5f7a; }
+.gasto-card.tipo-fijo { border-left: 3px solid var(--warning); }
+.gasto-card.tipo-anual { border-left: 3px solid var(--info); }
 .gasto-card.tipo-variable { border-left: 3px solid var(--primary-color); }
-.gasto-card.tipo-discrecional { border-left: 3px solid #9d4edd; }
+.gasto-card.tipo-discrecional { border-left: 3px solid var(--accent-alt); }
 
 .gasto-card-header {
     display: flex;
@@ -129,12 +129,12 @@
     border-left: 1px solid var(--border);
 }
 .gasto-action-btn:hover {
-    background: rgba(45, 106, 79, 0.15);
+    background: color-mix(in srgb, var(--success) 15%, transparent);
     color: var(--primary-color);
 }
 .gasto-action-btn.danger:hover {
-    background: rgba(180, 68, 46, 0.15);
-    color: #b4442e;
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
+    color: var(--danger);
 }
 
 .grid-gastos {
@@ -197,7 +197,7 @@
 
 .vista-toggle { display: inline-flex; gap: 4px; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px; }
 .vista-toggle-btn { text-decoration: none; font-size: 0.8rem; font-weight: 600; color: var(--muted); padding: 7px 14px; border-radius: 7px; transition: all 0.2s; }
-.vista-toggle-btn.active { background: var(--primary-color); color: #fff; }
+.vista-toggle-btn.active { background: var(--primary-color); color: var(--on-primary); }
 .badge-cat { display: inline-block; background: color-mix(in srgb, var(--primary-color) 12%, transparent); color: var(--primary-color); padding: 1px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 600; }
 
 .msg-toast {
@@ -227,26 +227,26 @@
 
     <!-- RESUMEN -->
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 14px; margin-bottom: 28px;">
-        <div style="background: var(--surface); border: 1px solid #b4442e; border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
-            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #b4442e; margin-bottom: 4px;">Total Mensual</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #b4442e;">&euro;{{ total_mensual|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid var(--danger); border-radius: 16px; padding: 18px; text-align: center; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--danger); margin-bottom: 4px;">Total Mensual</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: var(--danger);">&euro;{{ total_mensual|floatformat:2 }}</div>
         </div>
-        <div style="background: var(--surface); border: 1px solid #b7791f; border-radius: 16px; padding: 18px; text-align: center;">
-            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #b7791f; margin-bottom: 4px;">Fijos</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #b7791f;">&euro;{{ total_fijos|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid var(--warning); border-radius: 16px; padding: 18px; text-align: center;">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--warning); margin-bottom: 4px;">Fijos</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: var(--warning);">&euro;{{ total_fijos|floatformat:2 }}</div>
         </div>
-        <div style="background: var(--surface); border: 1px solid #2c5f7a; border-radius: 16px; padding: 18px; text-align: center;">
-            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #2c5f7a; margin-bottom: 4px;">Provision</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #2c5f7a;">&euro;{{ total_provision|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid var(--info); border-radius: 16px; padding: 18px; text-align: center;">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--info); margin-bottom: 4px;">Provision</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: var(--info);">&euro;{{ total_provision|floatformat:2 }}</div>
             <div style="font-size: 0.6rem; color: var(--muted);">anual: &euro;{{ total_anuales_anual|floatformat:0 }}</div>
         </div>
         <div style="background: var(--surface); border: 1px solid var(--primary-color); border-radius: 16px; padding: 18px; text-align: center;">
             <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--primary-color); margin-bottom: 4px;">Variables</div>
             <div style="font-size: 1.4rem; font-weight: 700; color: var(--primary-color);">&euro;{{ total_variables|floatformat:2 }}</div>
         </div>
-        <div style="background: var(--surface); border: 1px solid #9d4edd; border-radius: 16px; padding: 18px; text-align: center;">
-            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: #9d4edd; margin-bottom: 4px;">Discrecionales</div>
-            <div style="font-size: 1.4rem; font-weight: 700; color: #9d4edd;">&euro;{{ total_discrecionales|floatformat:2 }}</div>
+        <div style="background: var(--surface); border: 1px solid var(--accent-alt); border-radius: 16px; padding: 18px; text-align: center;">
+            <div style="font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--accent-alt); margin-bottom: 4px;">Discrecionales</div>
+            <div style="font-size: 1.4rem; font-weight: 700; color: var(--accent-alt);">&euro;{{ total_discrecionales|floatformat:2 }}</div>
             <div style="font-size: 0.6rem; color: var(--muted);">gasto prescindible</div>
         </div>
     </div>
@@ -274,7 +274,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ g.partidas|length }} partida{{ g.partidas|length|pluralize:"s" }}</div>
                 </div>
                 <div style="text-align:right;">
-                    <div class="gasto-card-monto" style="color: {% if g.es_comun %}#2c5f7a{% else %}var(--primary-color){% endif %};">&euro;{{ g.total_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: {% if g.es_comun %}var(--info){% else %}var(--primary-color){% endif %};">&euro;{{ g.total_mensual|floatformat:2 }}</div>
                     <div class="gasto-card-sub">/mes{% if g.total_anual %} &middot; &euro;{{ g.total_anual|floatformat:0 }}/a{% endif %}</div>
                 </div>
             </div>
@@ -291,7 +291,7 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: {% if g.es_comun %}#2c5f7a{% else %}var(--primary-color){% endif %};">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            <div class="gasto-partida-importe" style="color: {% if g.es_comun %}var(--info){% else %}var(--primary-color){% endif %};">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
                             {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
@@ -312,7 +312,7 @@
 
     <!-- GASTOS FIJOS -->
     {% if gastos_fijos %}
-    <div class="section-label" style="color: #b7791f;"> Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
+    <div class="section-label" style="color: var(--warning);"> Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_fijos %}
         <div class="gasto-card tipo-fijo {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
@@ -322,7 +322,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
-                    <div class="gasto-card-monto" style="color: #b7791f;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: var(--warning);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
@@ -338,7 +338,7 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: #b7791f;">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            <div class="gasto-partida-importe" style="color: var(--warning);">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
                             {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
@@ -357,7 +357,7 @@
 
     <!-- GASTOS ANUALES -->
     {% if gastos_anuales %}
-    <div class="section-label" style="color: #2c5f7a;"> Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
+    <div class="section-label" style="color: var(--info);"> Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
     <div class="grid-gastos">
         {% for grupo in gastos_anuales %}
         <div class="gasto-card tipo-anual {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
@@ -367,7 +367,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div class="gasto-card-monto" style="color: #2c5f7a;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: var(--info);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
                     <div class="gasto-card-sub">/mes &middot; &euro;{{ grupo.subtotal_anual|floatformat:0 }}/a</div>
                 </div>
             </div>
@@ -383,7 +383,7 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: #2c5f7a;">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></div>
+                            <div class="gasto-partida-importe" style="color: var(--info);">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></div>
                             <div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
@@ -447,7 +447,7 @@
 
     <!-- GASTOS DISCRECIONALES -->
     {% if gastos_discrecionales %}
-    <div class="section-label" style="color: #9d4edd;"> Gastos Discrecionales &mdash; &euro;{{ total_discrecionales|floatformat:2 }}/mes</div>
+    <div class="section-label" style="color: var(--accent-alt);"> Gastos Discrecionales &mdash; &euro;{{ total_discrecionales|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_discrecionales %}
         <div class="gasto-card tipo-discrecional {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
@@ -457,7 +457,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
-                    <div class="gasto-card-monto" style="color: #9d4edd;">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: var(--accent-alt);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
@@ -473,7 +473,7 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: #9d4edd;">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            <div class="gasto-partida-importe" style="color: var(--accent-alt);">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
                             {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>

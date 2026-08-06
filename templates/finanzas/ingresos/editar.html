@@ -107,8 +107,8 @@
                 </div>
                 <div id="resumen-anual" style="display: none; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                        <div><span style="color: var(--muted); font-size: 0.8rem;">Paga mensual:</span> <span style="color: #2d6a4f; font-weight: 700;" id="calc-mensual">—</span></div>
-                        <div><span style="color: var(--muted); font-size: 0.8rem;">Paga extra:</span> <span style="color: #2c5f7a; font-weight: 700;" id="calc-extra">—</span></div>
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Paga mensual:</span> <span style="color: var(--success); font-weight: 700;" id="calc-mensual">—</span></div>
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Paga extra:</span> <span style="color: var(--info); font-weight: 700;" id="calc-extra">—</span></div>
                         <div><span style="color: var(--muted); font-size: 0.8rem;">Extras/año:</span> <span style="color: var(--text-color); font-weight: 700;" id="calc-num-extras">—</span></div>
                     </div>
                 </div>
@@ -140,7 +140,7 @@
                 </div>
                 <div id="resumen-periodo" style="display: none; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                        <div><span style="color: var(--muted); font-size: 0.8rem;">Cada pago:</span> <span style="color: #2d6a4f; font-weight: 700;" id="calc-pago">—</span></div>
+                        <div><span style="color: var(--muted); font-size: 0.8rem;">Cada pago:</span> <span style="color: var(--success); font-weight: 700;" id="calc-pago">—</span></div>
                         <div><span style="color: var(--muted); font-size: 0.8rem;">Pagos/año:</span> <span style="color: var(--text-color); font-weight: 700;" id="calc-pagos-anio">—</span></div>
                         <div><span style="color: var(--muted); font-size: 0.8rem;">Total anual:</span> <span style="color: var(--primary-color); font-weight: 700;" id="calc-total-anual">—</span></div>
                     </div>
@@ -205,11 +205,11 @@
                     </div>
                     <div>
                         <div style="font-size: 0.7rem; color: var(--muted);">IRPF (por tramos)</div>
-                        <div style="font-size: 1rem; color: #b4442e;" id="sim-irpf">—</div>
+                        <div style="font-size: 1rem; color: var(--danger);" id="sim-irpf">—</div>
                     </div>
                     <div>
                         <div style="font-size: 0.7rem; color: var(--muted);">Seguridad Social</div>
-                        <div style="font-size: 1rem; color: #b7791f;" id="sim-ss">—</div>
+                        <div style="font-size: 1rem; color: var(--warning);" id="sim-ss">—</div>
                     </div>
                     <div>
                         <div style="font-size: 0.7rem; color: var(--muted);">Tipo efectivo</div>
@@ -217,11 +217,11 @@
                     </div>
                     <div>
                         <div style="font-size: 0.7rem; color: var(--muted);">Neto mensual base</div>
-                        <div style="font-size: 1.2rem; font-weight: 700; color: #2d6a4f;" id="sim-neto-base">—</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--success);" id="sim-neto-base">—</div>
                     </div>
                     <div>
                         <div style="font-size: 0.7rem; color: var(--muted);">Neto mensual ponderado</div>
-                        <div style="font-size: 1.2rem; font-weight: 700; color: #2c5f7a;" id="sim-neto-pond">—</div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: var(--info);" id="sim-neto-pond">—</div>
                     </div>
                 </div>
             </div>
@@ -242,7 +242,7 @@
     background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 8px;
     font-size: 0.85rem; color: var(--text-color); cursor: pointer; user-select: none;
 }
-.mes-chip:has(input:checked) { border-color: var(--primary-color); background: rgba(45, 106, 79,0.15); }
+.mes-chip:has(input:checked) { border-color: var(--primary-color); background: color-mix(in srgb, var(--success) 15%, transparent); }
 .mes-chip input { accent-color: var(--primary-color); }
 </style>
 

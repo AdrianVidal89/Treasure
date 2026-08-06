@@ -26,14 +26,14 @@
 .resumen-card .objetivo .icon { flex-shrink: 0; margin-top: 1px; }
 
 /* Gráfico esperado vs. real */
-:root { --schneider-green: #3DCD58; }
+:root { --schneider-green: var(--success-2); }
 .evo-chart-panel { padding: 22px; margin-bottom: 32px; }
 .evo-chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
 .evo-chart-head h3 { margin: 0 0 4px; font-size: 1.05rem; color: var(--text-color); }
 .evo-chart-sub { margin: 0; font-size: 0.78rem; color: var(--muted); max-width: 52ch; }
 .evo-chart-toggle { display: flex; gap: 6px; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px; }
 .evo-toggle-btn { border: none; background: transparent; color: var(--muted); font-size: 0.78rem; font-weight: 600; padding: 7px 14px; border-radius: 7px; cursor: pointer; transition: all var(--ease); }
-.evo-toggle-btn.active { background: var(--primary-color); color: #fff; }
+.evo-toggle-btn.active { background: var(--primary-color); color: var(--on-primary); }
 .evo-chart-body { position: relative; }
 #evo-chart-svg { width: 100%; height: 300px; display: block; }
 .evo-chart-legend { display: flex; gap: 18px; margin-top: 10px; font-size: 0.76rem; color: var(--muted); flex-wrap: wrap; }
@@ -117,7 +117,7 @@
 .dep-row-label { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-color); min-width: 0; }
 .dep-row-sub { font-size: 0.68rem; color: var(--muted); display: block; }
 /* Depósitos: valor automático (no editable), se distinguen con borde punteado */
-.evo-dep-auto { border-style: dashed; border-color: color-mix(in srgb, #2c5f7a 45%, var(--border)); }
+.evo-dep-auto { border-style: dashed; border-color: color-mix(in srgb, var(--info) 45%, var(--border)); }
 .evo-month-totals { display: flex; gap: 28px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
 
 /* Edición en línea */
@@ -334,7 +334,7 @@
                     {% for celda in fila.celdas_depositos %}
                     <div class="evo-dep-row evo-dep-auto" title="Depósito — valor calculado automáticamente">
                         <span class="dep-row-label">
-                            <span class="fondo-dot" style="background: #2c5f7a;"></span>
+                            <span class="fondo-dot" style="background: var(--info);"></span>
                             <span>
                                 <a href="{% url 'finanzas:detalle' celda.deposito.id %}" style="color:inherit; text-decoration:none;">{{ celda.deposito.nombre }}</a>
                                 <span class="dep-row-sub">
@@ -344,7 +344,7 @@
                         </span>
                         <span class="cell-display">
                             {% if celda.valor is not None %}
-                                <span class="cell-valor" style="color: #2c5f7a;">€{{ celda.valor|floatformat:0 }}</span>
+                                <span class="cell-valor" style="color: var(--info);">€{{ celda.valor|floatformat:0 }}</span>
                             {% else %}
                                 <span class="cell-vacio">—</span>
                             {% endif %}
@@ -381,7 +381,7 @@
     {% if propiedades %}
     <div style="margin-top: 40px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-            <h2 style="color: #b7791f; margin: 0; font-size: 1.2rem;">Inmuebles</h2>
+            <h2 style="color: var(--warning); margin: 0; font-size: 1.2rem;">Inmuebles</h2>
             <a href="{% url 'finanzas:listar_propiedades' %}" style="font-size: 0.8rem; color: var(--muted); text-decoration: none;">Gestionar →</a>
         </div>
         <div class="evo-table-wrap">
@@ -399,7 +399,7 @@
                         </th>
                         {% endfor %}
                         {% if propiedades|length > 1 %}
-                        <th style="color: #b7791f;">Total neto</th>
+                        <th style="color: var(--warning);">Total neto</th>
                         {% endif %}
                     </tr>
                 </thead>
@@ -419,7 +419,7 @@
                         </td>
                         {% endfor %}
                         {% if propiedades|length > 1 %}
-                        <td style="color: #b7791f; font-weight: 700;">
+                        <td style="color: var(--warning); font-weight: 700;">
                             {% if fila.total_neto is not None %}€{{ fila.total_neto|floatformat:0 }}{% else %}<span class="cell-vacio">—</span>{% endif %}
                         </td>
                         {% endif %}
@@ -458,7 +458,7 @@
             </div>
             <div class="fg">
                 <label>Color</label>
-                <input type="color" name="color" value="#2c5f7a" style="height: 40px; padding: 4px;">
+                <input type="color" name="color" value="var(--info)" style="height: 40px; padding: 4px;">
             </div>
             <div class="btn-row">
                 <button type="button" class="btn btn-secondary" onclick="cerrarModales()">Cancelar</button>
@@ -751,7 +751,7 @@ let datosGrafico = JSON.parse(document.getElementById('evo-chart-data').textCont
 let metricaActual = 'liquidez';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const SCH_GREEN = '#3DCD58';
+const SCH_GREEN = 'var(--success-2)';
 const PAD_L = 58, PAD_R = 16, PAD_T = 16, PAD_B = 30;
 
 function svgEl(tipo, attrs) {

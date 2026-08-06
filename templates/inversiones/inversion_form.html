@@ -45,24 +45,24 @@
     padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--surface);
     transition: background 0.15s;
 }
-.ticker-item:hover { background: rgba(45, 106, 79, 0.15); }
+.ticker-item:hover { background: color-mix(in srgb, var(--success) 15%, transparent); }
 .ticker-item-symbol { font-weight: 700; color: var(--primary-color); font-size: 0.95rem; }
 .ticker-item-name { color: var(--text-color); font-size: 0.85rem; margin-top: 2px; }
 .ticker-item-meta { color: var(--muted); font-size: 0.72rem; margin-top: 2px; }
 .ticker-selected {
     display: none; align-items: center; gap: 10px; padding: 10px 14px;
-    background: rgba(45, 106, 79, 0.08); border: 1px solid #2d6a4f44;
+    background: color-mix(in srgb, var(--success) 8%, transparent); border: 1px solid color-mix(in srgb, var(--success) 27%, transparent);
     border-radius: 10px; margin-top: 8px;
 }
 .ticker-selected.active { display: flex; }
 .ticker-selected-info { flex: 1; }
-.ticker-selected-symbol { font-weight: 700; color: #2d6a4f; }
+.ticker-selected-symbol { font-weight: 700; color: var(--success); }
 .ticker-selected-name { font-size: 0.8rem; color: var(--muted); }
 .ticker-clear {
     background: transparent; border: 1px solid var(--border-strong); color: var(--muted);
     border-radius: 6px; padding: 4px 10px; cursor: pointer; font-size: 0.8rem;
 }
-.ticker-clear:hover { border-color: #b4442e; color: #b4442e; }
+.ticker-clear:hover { border-color: var(--danger); color: var(--danger); }
 .ticker-loading { color: var(--muted); font-size: 0.8rem; padding: 12px 16px; }
 </style>
 
@@ -74,7 +74,7 @@
     <p style="color: var(--muted); margin-bottom: 32px;">Registra un activo de tu cartera.</p>
 
     {% if form.errors %}
-    <div style="background: rgba(180, 68, 46,0.1); border: 1px solid #b4442e; border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #b4442e;">
+    <div style="background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid var(--danger); border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: var(--danger);">
         {{ form.non_field_errors }}
         {% for field in form %}{% for error in field.errors %}<div>{{ field.label }}: {{ error }}</div>{% endfor %}{% endfor %}
     </div>

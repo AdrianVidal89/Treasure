@@ -38,13 +38,13 @@
             </div>
           </div>
           {% if ctx.override %}
-            <span style="font-size:0.72rem;background:rgba(45, 106, 79,0.12);color:#2d6a4f;
-                         padding:4px 10px;border-radius:20px;border:1px solid rgba(45, 106, 79,0.3);">
+            <span style="font-size:0.72rem;background:color-mix(in srgb, var(--success) 12%, transparent);color:var(--success);
+                         padding:4px 10px;border-radius:20px;border:1px solid color-mix(in srgb, var(--success) 30%, transparent);">
                Ajustado
             </span>
           {% else %}
-            <span style="font-size:0.72rem;background:rgba(183, 121, 31,0.1);color:#b7791f;
-                         padding:4px 10px;border-radius:20px;border:1px solid rgba(183, 121, 31,0.3);">
+            <span style="font-size:0.72rem;background:color-mix(in srgb, var(--warning) 10%, transparent);color:var(--warning);
+                         padding:4px 10px;border-radius:20px;border:1px solid color-mix(in srgb, var(--warning) 30%, transparent);">
               Estimado
             </span>
           {% endif %}
@@ -54,7 +54,7 @@
                     background:rgba(255,255,255,0.03);border-radius:10px;font-size:0.8rem;">
           <div>
             <div style="color:var(--muted);">Neto estimado base</div>
-            <div style="color:#b7791f;font-weight:600;">
+            <div style="color:var(--warning);font-weight:600;">
               &euro;{{ ctx.base_estimada_neto|floatformat:2 }}/mes
             </div>
           </div>
@@ -69,7 +69,7 @@
           {% if ctx.override %}
           <div>
             <div style="color:var(--muted);">Declarado</div>
-            <div style="color:#2d6a4f;font-weight:600;">
+            <div style="color:var(--success);font-weight:600;">
               &euro;{{ ctx.override.importe_real|floatformat:2 }}
             </div>
           </div>
@@ -109,7 +109,7 @@
       {% endfor %}
 
       <div style="font-size:0.78rem;color:var(--muted);padding:12px 16px;
-                  background:rgba(44, 95, 122,0.06);border-left:3px solid #2c5f7a;
+                  background:color-mix(in srgb, var(--info) 6%, transparent);border-left:3px solid var(--info);
                   border-radius:0 8px 8px 0;margin-bottom:20px;">
         &#9432; Introduce siempre el <strong>neto</strong> que llegó a tu cuenta.
         Los valores originales no se modifican — esto es un apunte mensual.
@@ -131,7 +131,7 @@
       <p>No hay ingresos variables configurados.</p>
       <p style="font-size:0.82rem;">
         Marca una fuente como <strong>Variable</strong> en
-        <a href="{% url 'finanzas:listar_ingresos' %}" style="color:#2c5f7a;">Ingresos</a>.
+        <a href="{% url 'finanzas:listar_ingresos' %}" style="color:var(--info);">Ingresos</a>.
       </p>
     </div>
   {% endif %}

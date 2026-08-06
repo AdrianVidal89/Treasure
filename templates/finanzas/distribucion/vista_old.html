@@ -31,23 +31,23 @@
 <div class="kpi-bar">
     <div class="kpi-item">
         <div class="kpi-label">Ingresos</div>
-        <div class="kpi-valor" style="color:#2d6a4f;">€{{ d.ingreso_base_hogar|floatformat:2 }}</div>
+        <div class="kpi-valor" style="color:var(--success);">€{{ d.ingreso_base_hogar|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Gastos</div>
-        <div class="kpi-valor" style="color:#b4442e;">€{{ d.total_gastos_all|floatformat:2 }}</div>
+        <div class="kpi-valor" style="color:var(--danger);">€{{ d.total_gastos_all|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Ahorro</div>
-        <div class="kpi-valor" style="color:#2c5f7a;">€{{ d.total_ahorro|floatformat:2 }}</div>
+        <div class="kpi-valor" style="color:var(--info);">€{{ d.total_ahorro|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Inversión</div>
-        <div class="kpi-valor" style="color:#1b4332;">€{{ d.total_inversion|floatformat:2 }}</div>
+        <div class="kpi-valor" style="color:var(--primary-color);">€{{ d.total_inversion|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Libre</div>
-        <div class="kpi-valor" style="color:{% if d.libre_total >= 0 %}#b7791f{% else %}#b4442e{% endif %};">€{{ d.libre_total|floatformat:2 }}</div>
+        <div class="kpi-valor" style="color:{% if d.libre_total >= 0 %}var(--warning){% else %}var(--danger){% endif %};">€{{ d.libre_total|floatformat:2 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Tasa ahorro</div>
@@ -66,10 +66,10 @@
     </div>
 
     <div class="dist-legend">
-        {% if d.pct_gastos > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#b4442e;"></span>Gastos {{ d.pct_gastos }}%</span>{% endif %}
-        {% if d.pct_ahorro > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#2c5f7a;"></span>Ahorro {{ d.pct_ahorro }}%</span>{% endif %}
-        {% if d.pct_inversion > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#1b4332;"></span>Inversión {{ d.pct_inversion }}%</span>{% endif %}
-        {% if d.pct_libre > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:#b7791f;"></span>Libre {{ d.pct_libre }}%</span>{% endif %}
+        {% if d.pct_gastos > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:var(--danger);"></span>Gastos {{ d.pct_gastos }}%</span>{% endif %}
+        {% if d.pct_ahorro > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:var(--info);"></span>Ahorro {{ d.pct_ahorro }}%</span>{% endif %}
+        {% if d.pct_inversion > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:var(--primary-color);"></span>Inversión {{ d.pct_inversion }}%</span>{% endif %}
+        {% if d.pct_libre > 0 %}<span class="dist-legend-item"><span class="dist-dot" style="background:var(--warning);"></span>Libre {{ d.pct_libre }}%</span>{% endif %}
     </div>
 </div>
 
@@ -85,7 +85,7 @@
 {% endif %}
 {% if dm.extras_mes %}
 <div class="aviso-box aviso-extra">
-    <span class="aviso-titulo" style="color:#2c5f7a;">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — extras:</span>
+    <span class="aviso-titulo" style="color:var(--info);">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }} — extras:</span>
     {% for ex in dm.extras_mes %}
     <span style="color:var(--text-color); margin-left:10px;">{{ ex.fuente }}: <strong>+€{{ ex.importe|floatformat:2 }}</strong></span>
     {% endfor %}
@@ -130,7 +130,7 @@
             <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                 {{ fa.fondo.nombre }}
                 {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
-                <span style="font-size:1rem; font-weight:700; color:{% if fa.libre_fondo >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">€{{ fa.libre_fondo|floatformat:2 }}</span>
+                <span style="font-size:1rem; font-weight:700; color:{% if fa.libre_fondo >= 0 %}var(--success){% else %}var(--danger){% endif %};">€{{ fa.libre_fondo|floatformat:2 }}</span>
                 <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }}{% if fa.gastos_cubiertos > 0 %} − gastos €{{ fa.gastos_cubiertos|floatformat:2 }}{% endif %}{% if fa.total_cascada_saliente > 0 %} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }}{% endif %})</span>
                 {% else %}
                 <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
@@ -158,7 +158,7 @@
     <!-- Gastos cubiertos -->
     {% if fa.fondo.tipo_fondo == 'comun' and fa.gastos_asignados %}
     <div class="fondo-gastos-box">
-        <div style="color:#b4442e; font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
+        <div style="color:var(--danger); font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
         {% for g in fa.gastos_asignados %}
         <div style="color:var(--muted); padding:2px 0; display:flex; justify-content:space-between; align-items:center;">
             <span>{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
@@ -169,7 +169,7 @@
         </div>
         {% endfor %}
         {% if fa.libre_fondo is not None %}
-        <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}#b7791f{% else %}#b4442e{% endif %}; font-weight:600;">
+        <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}var(--warning){% else %}var(--danger){% endif %}; font-weight:600;">
             Remanente: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}
         </div>
         {% endif %}
@@ -183,10 +183,10 @@
             <span style="color:var(--text-color);">{{ ss.nombre }}</span>
             <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>
             {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
-            {% if ss.solo_mes %}<span style="font-size:0.7rem; color:#b7791f; margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
+            {% if ss.solo_mes %}<span style="font-size:0.7rem; color:var(--warning); margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
         </span>
         <div style="display:flex; align-items:center; gap:10px;">
-            <span style="color:#b7791f; font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
+            <span style="color:var(--warning); font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
             <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" onclick="return confirm('¿Eliminar?')"></button></form>
         </div>
     </div>
@@ -198,9 +198,9 @@
     <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
         <span>Asignado: €{{ fa.total_cascada_saliente|floatformat:2 }}</span>
         {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
-        <span style="color:{% if fa.libre_fondo >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">Libre: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span>
+        <span style="color:{% if fa.libre_fondo >= 0 %}var(--success){% else %}var(--danger){% endif %};">Libre: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span>
         {% else %}
-        <span style="color:{% if fa.total_aportacion_neta >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">Libre: {% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
+        <span style="color:{% if fa.total_aportacion_neta >= 0 %}var(--success){% else %}var(--danger){% endif %};">Libre: {% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
         {% endif %}
     </div>
     {% endif %}
@@ -218,7 +218,7 @@
         <div class="transfer-sub">De: {{ t.origen }}</div>
         <div style="font-size:0.9rem; font-weight:600;">{{ t.concepto }}{% if t.tipo == 'cascada' %} <span style="font-size:0.68rem; color:var(--muted);">(cascada)</span>{% endif %}</div>
         <div class="transfer-sub">→ {{ t.destino }}</div>
-        {% if t.cuenta %}<div style="font-size:0.68rem; color:#2c5f7a; margin-top:2px;">{{ t.cuenta }}</div>{% endif %}
+        {% if t.cuenta %}<div style="font-size:0.68rem; color:var(--info); margin-top:2px;">{{ t.cuenta }}</div>{% endif %}
     </div>
     <div style="font-size:1.1rem; font-weight:700; color:{{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
 </div>
@@ -257,13 +257,13 @@
         </form>
     </div>
     {% endif %}
-    <div class="resumen-row"><span class="rl">Ingreso neto {{ d.mes_nombre }}</span><span style="color:#2d6a4f;">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
-    {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos individuales</span><span style="color:#b4442e;">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
+    <div class="resumen-row"><span class="rl">Ingreso neto {{ d.mes_nombre }}</span><span style="color:var(--success);">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
+    {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos individuales</span><span style="color:var(--danger);">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
     {% for ap in dm.aportaciones_fondos %}{% if ap.importe_base > 0 %}
     <div class="resumen-row"><span class="rl">{{ ap.regla.nombre }}{% if ap.fondo %} → {{ ap.fondo.nombre }}{% endif %}</span><span style="color:{{ ap.regla.color }};">−€{{ ap.importe_base|floatformat:2 }}</span></div>
     {% endif %}{% endfor %}
     <div class="resumen-info">ℹParte proporcional gastos hogar ({{ dm.proporcion }}%): €{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes</div>
-    <div class="resumen-row resumen-total"><span style="color:{% if dm.libre_base >= 0 %}#2d6a4f{% else %}#b4442e{% endif %};">Libre personal</span><span style="color:{% if dm.libre_base >= 0 %}#2d6a4f{% else %}#b4442e{% endif %}; font-size:1.05rem;">€{{ dm.libre_base|floatformat:2 }}</span></div>
+    <div class="resumen-row resumen-total"><span style="color:{% if dm.libre_base >= 0 %}var(--success){% else %}var(--danger){% endif %};">Libre personal</span><span style="color:{% if dm.libre_base >= 0 %}var(--success){% else %}var(--danger){% endif %}; font-size:1.05rem;">€{{ dm.libre_base|floatformat:2 }}</span></div>
 </div>
 {% endfor %}
 
@@ -288,13 +288,13 @@
             <div class="fg">
                 <label>Color</label>
                 <div class="color-row" id="fondo-color-row">
-                    <button type="button" class="cdot active" style="background:#2d6a4f;" onclick="selC(this,'#2d6a4f','fondo')"></button>
-                    <button type="button" class="cdot" style="background:#2c5f7a;" onclick="selC(this,'#2c5f7a','fondo')"></button>
-                    <button type="button" class="cdot" style="background:#1b4332;" onclick="selC(this,'#1b4332','fondo')"></button>
-                    <button type="button" class="cdot" style="background:#b4442e;" onclick="selC(this,'#b4442e','fondo')"></button>
-                    <button type="button" class="cdot" style="background:#b7791f;" onclick="selC(this,'#b7791f','fondo')"></button>
+                    <button type="button" class="cdot active" style="background:var(--success);" onclick="selC(this,'var(--success)','fondo')"></button>
+                    <button type="button" class="cdot" style="background:var(--info);" onclick="selC(this,'var(--info)','fondo')"></button>
+                    <button type="button" class="cdot" style="background:var(--primary-color);" onclick="selC(this,'var(--primary-color)','fondo')"></button>
+                    <button type="button" class="cdot" style="background:var(--danger);" onclick="selC(this,'var(--danger)','fondo')"></button>
+                    <button type="button" class="cdot" style="background:var(--warning);" onclick="selC(this,'var(--warning)','fondo')"></button>
                 </div>
-                <input type="hidden" name="color" id="color-fondo" value="#2d6a4f">
+                <input type="hidden" name="color" id="color-fondo" value="var(--success)">
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="cerrar('modal-fondo')" class="btn btn-secondary">Cancelar</button>
@@ -333,13 +333,13 @@
             <div class="fg">
                 <label>Color</label>
                 <div class="color-row" id="regla-color-row">
-                    <button type="button" class="cdot active" style="background:#2d6a4f;" onclick="selC(this,'#2d6a4f','regla')"></button>
-                    <button type="button" class="cdot" style="background:#2c5f7a;" onclick="selC(this,'#2c5f7a','regla')"></button>
-                    <button type="button" class="cdot" style="background:#1b4332;" onclick="selC(this,'#1b4332','regla')"></button>
-                    <button type="button" class="cdot" style="background:#b4442e;" onclick="selC(this,'#b4442e','regla')"></button>
-                    <button type="button" class="cdot" style="background:#b7791f;" onclick="selC(this,'#b7791f','regla')"></button>
+                    <button type="button" class="cdot active" style="background:var(--success);" onclick="selC(this,'var(--success)','regla')"></button>
+                    <button type="button" class="cdot" style="background:var(--info);" onclick="selC(this,'var(--info)','regla')"></button>
+                    <button type="button" class="cdot" style="background:var(--primary-color);" onclick="selC(this,'var(--primary-color)','regla')"></button>
+                    <button type="button" class="cdot" style="background:var(--danger);" onclick="selC(this,'var(--danger)','regla')"></button>
+                    <button type="button" class="cdot" style="background:var(--warning);" onclick="selC(this,'var(--warning)','regla')"></button>
                 </div>
-                <input type="hidden" name="color" id="color-regla" value="#2d6a4f">
+                <input type="hidden" name="color" id="color-regla" value="var(--success)">
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="cerrar('modal-regla')" class="btn btn-secondary">Cancelar</button>
@@ -418,10 +418,10 @@
 .kpi-item { background:var(--surface); border-radius:12px; padding:12px 16px; flex:1; min-width:90px; }
 .kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
 .kpi-valor { font-size:1.05rem; font-weight:700; }
-.semaforo-verde { color:#2d6a4f; }
-.semaforo-amarillo { color:#b7791f; }
-.semaforo-naranja { color:#b7791f; }
-.semaforo-rojo { color:#b4442e; }
+.semaforo-verde { color:var(--success); }
+.semaforo-amarillo { color:var(--warning); }
+.semaforo-naranja { color:var(--warning); }
+.semaforo-rojo { color:var(--danger); }
 
 /* --- Barra distribución --- */
 .dist-bar-wrap { margin:18px 0 24px; }
@@ -444,10 +444,10 @@
 }
 
 
-.seg-gastos   { background:linear-gradient(135deg, #b4442e, #b4442e); }
-.seg-ahorro   { background:linear-gradient(135deg, #2c5f7a, #2c5f7a); }
-.seg-inversion{ background:linear-gradient(135deg, #1b4332, #1b4332); }
-.seg-libre    { background:linear-gradient(135deg, #b7791f, #cc8800); }
+.seg-gastos   { background:linear-gradient(135deg, var(--danger), var(--danger)); }
+.seg-ahorro   { background:linear-gradient(135deg, var(--info), var(--info)); }
+.seg-inversion{ background:linear-gradient(135deg, var(--primary-color), var(--primary-color)); }
+.seg-libre    { background:linear-gradient(135deg, var(--warning), var(--warning-2)); }
 .dist-legend {
     display:flex; gap:16px; flex-wrap:wrap; margin-top:8px;
     font-size:0.75rem; color:var(--muted);
@@ -457,9 +457,9 @@
 
 /* --- Avisos --- */
 .aviso-box { border-radius:12px; padding:12px 16px; margin-bottom:8px; font-size:0.82rem; }
-.aviso-ajuste { background:rgba(183, 121, 31,0.07); border:1px solid #b7791f33; }
-.aviso-extra  { background:rgba(44, 95, 122,0.07); border:1px solid #2c5f7a33; }
-.aviso-titulo { font-weight:600; color:#b7791f; }
+.aviso-ajuste { background:color-mix(in srgb, var(--warning) 7%, transparent); border:1px solid color-mix(in srgb, var(--warning) 20%, transparent); }
+.aviso-extra  { background:color-mix(in srgb, var(--info) 7%, transparent); border:1px solid color-mix(in srgb, var(--info) 20%, transparent); }
+.aviso-titulo { font-weight:600; color:var(--warning); }
 
 /* --- Secciones --- */
 .section-title { font-size:0.78rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:20px 0 10px; }
@@ -471,12 +471,12 @@
 .regla-pill-sub { font-size:0.72rem; color:var(--muted); margin-top:3px; }
 
 .tag-tipo { font-size:0.62rem; padding:2px 8px; border-radius:6px; font-weight:600; display:inline-block; }
-.tag-comun     { background:rgba(45, 106, 79,0.12); color:#2d6a4f; }
-.tag-ahorro    { background:rgba(44, 95, 122,0.12); color:#2c5f7a; }
-.tag-inversion { background:rgba(45, 106, 79,0.12); color:#1b4332; }
+.tag-comun     { background:color-mix(in srgb, var(--success) 12%, transparent); color:var(--success); }
+.tag-ahorro    { background:color-mix(in srgb, var(--info) 12%, transparent); color:var(--info); }
+.tag-inversion { background:color-mix(in srgb, var(--success) 12%, transparent); color:var(--primary-color); }
 
 /* --- Fondo detalles --- */
-.fondo-gastos-box { margin-top:10px; padding:8px 12px; background:rgba(180, 68, 46,0.06); border:1px solid #b4442e22; border-radius:8px; font-size:0.78rem; }
+.fondo-gastos-box { margin-top:10px; padding:8px 12px; background:color-mix(in srgb, var(--danger) 6%, transparent); border:1px solid color-mix(in srgb, var(--danger) 13%, transparent); border-radius:8px; font-size:0.78rem; }
 .subsobre-row { margin-top:10px; padding:8px 12px; background:rgba(255,255,255,0.04); border-radius:8px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; }
 
 /* --- Transferencias --- */
@@ -489,8 +489,8 @@
 .resumen-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--surface-2); font-size:0.85rem; }
 .resumen-total { border-bottom:none; font-weight:700; padding-top:10px; }
 .resumen-row .rl { color:var(--muted); }
-.resumen-info { font-size:0.75rem; color:#b7791f; padding:6px 10px; background:rgba(183, 121, 31,0.08); border-radius:8px; margin:8px 0; border-left:2px solid #b7791f; }
-.ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:rgba(183, 121, 31,0.06); border:1px solid #b7791f22; border-radius:10px; margin-bottom:12px; }
+.resumen-info { font-size:0.75rem; color:var(--warning); padding:6px 10px; background:color-mix(in srgb, var(--warning) 8%, transparent); border-radius:8px; margin:8px 0; border-left:2px solid var(--warning); }
+.ajuste-form { display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; padding:10px 12px; background:color-mix(in srgb, var(--warning) 6%, transparent); border:1px solid color-mix(in srgb, var(--warning) 13%, transparent); border-radius:10px; margin-bottom:12px; }
 
 /* --- Botones inline --- */
 .r-btn { background:transparent; border:1px solid var(--border-strong); color:var(--muted); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:0.8rem; transition:all .2s; }
@@ -504,7 +504,7 @@
 
 /* --- Gastos checkbox --- */
 .gasto-check { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--surface-2); font-size:0.85rem; color:var(--text-color); cursor:pointer; }
-.gasto-check input { width:18px; height:18px; accent-color:#2d6a4f; }
+.gasto-check input { width:18px; height:18px; accent-color:var(--success); }
 
 /* --- Modales --- */
 .modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.75); z-index:2000; justify-content:center; align-items:center;  }
@@ -517,7 +517,7 @@
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
 
 /* --- Toasts --- */
-.msg-toast { background:#1e2a1e; border:1px solid #2d6a4f; color:#2d6a4f; border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
+.msg-toast { background:var(--accent-soft); border:1px solid var(--success); color:var(--success); border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
 </style>
 
 <!-- ===== JAVASCRIPT ===== -->

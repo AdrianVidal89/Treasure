@@ -34,10 +34,10 @@
 .cart-edit-form input[type="text"] { padding: 8px 10px; border: 1px solid var(--border-strong); border-radius: 8px;
     background: var(--surface); color: var(--text-color); font-size: 0.85rem; }
 .cart-edit-form input[type="color"] { width: 40px; height: 36px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); padding: 2px; }
-.btn-p { border-color: var(--primary-color) !important; background: var(--primary-color) !important; color: #fff !important; }
-.btn-danger { border-color: #b4442e !important; color: #b4442e !important; }
+.btn-p { border-color: var(--primary-color) !important; background: var(--primary-color) !important; color: var(--on-primary) !important; }
+.btn-danger { border-color: var(--danger) !important; color: var(--danger) !important; }
 .cart-empty { text-align: center; padding: 40px 20px; color: var(--muted); }
-.pos { color: #2d6a4f; } .neg { color: #b4442e; }
+.pos { color: var(--success); } .neg { color: var(--danger); }
 </style>
 
 <div class="cart-wrap">
@@ -75,7 +75,7 @@
         </div>
         <div class="fg">
             <label>Color</label>
-            <input type="color" name="color" value="#2d6a4f">
+            <input type="color" name="color" value="var(--success)">
         </div>
         <button type="submit" class="btn btn-primary" style="padding: 10px 18px;">Crear cartera</button>
     </form>

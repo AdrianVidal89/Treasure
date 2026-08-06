@@ -24,7 +24,7 @@
         </p>
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
             <a href="{% url 'backup_bd' %}" class="btn btn-primary">Descargar backup (.dump)</a>
-            <a href="{% url 'restaurar_bd' %}" class="btn" style="background: var(--danger); color: #fff;">Restaurar desde backup</a>
+            <a href="{% url 'restaurar_bd' %}" class="btn" style="background: var(--danger); color: var(--on-danger);">Restaurar desde backup</a>
         </div>
     </div>
 
@@ -51,7 +51,7 @@
                 </div>
                 <div style="display: flex; gap: 6px;">
                     <a href="{% url 'editar_hogar' hogar.id %}" style="display:inline-flex; align-items:center; color: var(--muted); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border-strong);" title="Editar hogar"><svg class="icon"><use href="#i-edit"/></svg></a>
-                    <a href="{% url 'eliminar_hogar' hogar.id %}" style="display:inline-flex; align-items:center; color: #b4442e; text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid #b4442e;" title="Eliminar hogar"><svg class="icon"><use href="#i-trash"/></svg></a>
+                    <a href="{% url 'eliminar_hogar' hogar.id %}" style="display:inline-flex; align-items:center; color: var(--danger); text-decoration: none; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--danger);" title="Eliminar hogar"><svg class="icon"><use href="#i-trash"/></svg></a>
                 </div>
             
             </div>
@@ -64,9 +64,9 @@
                         <span style="color: var(--text-color); font-size: 0.9rem;">{{ miembro.user.username }}</span>
                         <span style="
                             margin-left: 8px; font-size: 0.75rem; padding: 2px 8px; border-radius: 20px;
-                            {% if miembro.rol == 'admin' %}background: rgba(45, 106, 79,0.2); color: var(--primary-color); border: 1px solid var(--primary-color);
-                            {% elif miembro.rol == 'viewer' %}background: rgba(44, 95, 122,0.1); color: #2c5f7a; border: 1px solid #2c5f7a;
-                            {% else %}background: rgba(45, 106, 79,0.1); color: #2d6a4f; border: 1px solid #2d6a4f;{% endif %}
+                            {% if miembro.rol == 'admin' %}background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--primary-color); border: 1px solid var(--primary-color);
+                            {% elif miembro.rol == 'viewer' %}background: color-mix(in srgb, var(--info) 10%, transparent); color: var(--info); border: 1px solid var(--info);
+                            {% else %}background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--success); border: 1px solid var(--success);{% endif %}
                         ">{{ miembro.get_rol_display }}</span>
                     </div>
                     <form method="post" action="{% url 'eliminar_miembro' miembro.id %}" style="margin: 0;">
@@ -108,7 +108,7 @@
     <!-- USUARIOS SIN HOGAR -->
     {% if usuarios_sin_hogar %}
     <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
-        <h2 style="color: #b7791f; margin-top: 0; font-size: 1rem;">Usuarios sin hogar asignado ({{ usuarios_sin_hogar|length }})</h2>
+        <h2 style="color: var(--warning); margin-top: 0; font-size: 1rem;">Usuarios sin hogar asignado ({{ usuarios_sin_hogar|length }})</h2>
         <div style="display: flex; flex-wrap: wrap; gap: 10px;">
             {% for profile in usuarios_sin_hogar %}
             <div style="background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 8px; padding: 8px 14px; font-size: 0.85rem; color: var(--text-color);">

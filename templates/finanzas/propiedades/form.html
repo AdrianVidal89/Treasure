@@ -35,7 +35,7 @@
 
     {% if messages %}
         {% for message in messages %}
-        <div style="background: rgba(180, 68, 46,0.1); border: 1px solid #b4442e44; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; color: #ff8888;">{{ message }}</div>
+        <div style="background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 27%, transparent); padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem; color: var(--danger);">{{ message }}</div>
         {% endfor %}
     {% endif %}
 
@@ -59,7 +59,7 @@
                 </div>
                 <div class="fg">
                     <label>Color</label>
-                    <input type="color" name="color" value="{{ propiedad.color|default:'#b7791f' }}">
+                    <input type="color" name="color" value="{{ propiedad.color|default:'var(--warning)' }}">
                 </div>
             </div>
             <div class="fg">

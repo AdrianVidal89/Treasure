@@ -24,6 +24,11 @@ class UserProfile(models.Model):
         ('viewer', 'Solo lectura'),
     ]
 
+    TEMA_CHOICES = [
+        ('claro', 'Claro'),
+        ('black', 'Black'),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     hogar = models.ForeignKey(
         Hogar, on_delete=models.SET_NULL, null=True, blank=True, related_name='miembros'
@@ -32,6 +37,10 @@ class UserProfile(models.Model):
 
     idioma = models.CharField(
         max_length=10, choices=[('es', 'Español'), ('en', 'Inglés')], default='es'
+    )
+    tema = models.CharField(
+        max_length=10, choices=TEMA_CHOICES, default='claro',
+        verbose_name='Tema de la interfaz'
     )
     moneda = models.CharField(
         max_length=5,

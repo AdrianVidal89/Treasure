@@ -16,6 +16,8 @@ from finanzas.models import (
     IngresoRealMes, ReglaReparto, Propiedad, HistorialPropiedad,
 )
 from finanzas.distribucion import calcular_flujos, clasificar_salud
+from core.models import UserProfile
+from core.context_processors import TEMAS_VALIDOS
 
 from django.db.models import Sum, F, FloatField, ExpressionWrapper
 from django.db.models.functions import TruncMonth
@@ -402,3 +404,27 @@ def datos_evolucion_financiera(request):
         data['inversiones'] = [historial_dict.get(l, 0.0) for l in labels]
 
     return JsonResponse({'labels': labels, 'series': data, 'resumen_actual': {}})
+
+
+# ─── Tema de la interfaz ──────────────────────────────────────────────────────
+
+@login_required
+def api_cambiar_tema(request):
+    """Guarda el tema elegido en el perfil para que persista entre sesiones."""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'Método no permitido'}, status=405)
+
+    try:
+        payload = json.loads(request.body or '{}')
+    except (ValueError, TypeError):
+        payload = {}
+
+    tema = payload.get('tema') or request.POST.get('tema')
+    if tema not in TEMAS_VALIDOS:
+        return JsonResponse({'ok': False, 'error': 'Tema desconocido'}, status=400)
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    profile.tema = tema
+    profile.save(update_fields=['tema'])
+
+    return JsonResponse({'ok': True, 'tema': tema})

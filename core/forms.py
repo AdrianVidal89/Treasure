@@ -20,6 +20,7 @@ class UserProfileForm(forms.ModelForm):
     class Meta:
         model = UserProfile
         fields = [
+            'tema',
             'idioma', 'moneda', 'inflacion_referencia',
             'porcentaje_max_endeudamiento',
             'permitir_apis_externas',

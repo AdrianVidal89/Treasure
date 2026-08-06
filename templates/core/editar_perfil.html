@@ -21,6 +21,15 @@
         {% endif %}
 
         <div class="form-group">
+            {{ form.tema.label_tag }}
+            {{ form.tema }}
+            <p class="help-text">«Black» usa la paleta negra con verde fósforo. La elección se guarda en tu perfil y se mantiene hasta que la cambies.</p>
+            {% for error in form.tema.errors %}
+                <p class="error-msg">{{ error }}</p>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
             {{ form.idioma.label_tag }}
             {{ form.idioma }}
             {% for error in form.idioma.errors %}
