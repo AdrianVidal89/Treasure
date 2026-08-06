@@ -29,11 +29,24 @@
     --border: #e2e7e3;
     --border-strong: #cdd5cf;
 
+    /* Tinta sobre superficies de color sólido (marca / peligro) */
+    --on-primary: #ffffff;
+    --on-danger: #ffffff;
+
     /* Semánticos sobrios (NO neón) */
     --success: #2d6a4f;
     --danger: #b4442e;
+    --danger-strong: #9a3826;
     --info: #2c5f7a;
     --warning: #b7791f;
+
+    /* Segundo tono de cada semántico (degradados de barras) */
+    --success-2: #3dcd58;
+    --danger-2: #e07a5f;
+    --warning-2: #cc8800;
+
+    /* Categoría "discrecional": el único color fuera de la gama */
+    --accent-alt: #9d4edd;
 
     /* Radios */
     --radius-sm: 8px;
@@ -70,6 +83,125 @@
 
     color-scheme: light;
 }
+
+/* ============================================================
+   TEMA "BLACK" — negro azulado + verde VFD
+   Inspirado en un cuadro de instrumentos digital de los 80: el color
+   solo aparece donde algo "emite" (acentos, cifras, estados); las
+   superficies se quedan en negro con un punto de azul.
+   Se activa con <html data-theme="black">.
+   ============================================================ */
+:root[data-theme="black"] {
+    /* Marca — verde fósforo */
+    --primary-color: #3df06b;
+    --primary-strong: #5cff86;
+    --accent-color: #4cff7a;
+    --accent-soft: #10281a;
+
+    /* El glow sí existe en este tema: es su razón de ser */
+    --glow: rgba(76, 255, 122, 0.30);
+    --glow-soft: rgba(76, 255, 122, 0.12);
+
+    /* Superficies — negro con deriva azulada, como la moqueta de la foto */
+    --app-bg: #0a0c10;
+    --dark-bg: #070910;
+    --surface: #14181f;
+    --surface-2: #1b212a;
+    --input-bg: #10141b;
+
+    /* Texto y bordes */
+    --text-color: #dfe8e2;
+    --muted: #8b98a4;
+    --border: #242c37;
+    --border-strong: #38434f;
+
+    /* Tinta oscura sobre el verde: negro sobre fósforo, nunca blanco */
+    --on-primary: #04140a;
+    --on-danger: #1a0803;
+
+    /* Semánticos subidos de luminancia para que respiren sobre negro */
+    --success: #4cff7a;
+    --danger: #ff6b4a;
+    --danger-strong: #ff8467;
+    --info: #5ad8ff;
+    --warning: #ffbc4d;
+
+    --success-2: #8dffa8;
+    --danger-2: #ff9d80;
+    --warning-2: #ffd88a;
+
+    --accent-alt: #c98bff;
+
+    /* Sombras: sobre negro una sombra normal no se ve, se usa profundidad + halo */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.6);
+    --shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+    --shadow-glow: 0 6px 24px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(76, 255, 122, 0.06);
+
+    /* Componentes */
+    --navbar-bg: rgba(10, 12, 16, 0.92);
+    --navbar-shadow: 0 1px 0 rgba(76, 255, 122, 0.10);
+    --menu-bg: #14181f;
+    --menu-text: #dfe8e2;
+    --menu-hover: #1b212a;
+    --menu-border: #242c37;
+    --nav-text: #dfe8e2;
+    --nav-text-soft: #8b98a4;
+    --login-bg: #14181f;
+    --dashboard-overlay: rgba(10, 12, 16, 0.92);
+    --scrollbar-thumb: #2f3a45;
+    --scrollbar-thumb-hover: #46545f;
+    --social-hover: #1b212a;
+    --badge-bg: rgba(76, 255, 122, 0.07);
+
+    color-scheme: dark;
+}
+
+/* El verde emite: los elementos activos llevan halo, como los segmentos VFD */
+:root[data-theme="black"] .sidebar-link.active,
+:root[data-theme="black"] .btn-primary,
+:root[data-theme="black"] .nav-profile-avatar {
+    box-shadow: 0 0 18px var(--glow-soft);
+}
+:root[data-theme="black"] .btn-primary:hover {
+    box-shadow: 0 0 22px var(--glow);
+}
+:root[data-theme="black"] a:focus-visible,
+:root[data-theme="black"] button:focus-visible,
+:root[data-theme="black"] input:focus-visible,
+:root[data-theme="black"] select:focus-visible,
+:root[data-theme="black"] textarea:focus-visible,
+:root[data-theme="black"] .btn:focus-visible {
+    box-shadow: 0 0 16px var(--glow-soft);
+}
+
+/* Las imágenes con fondo claro (logo, capturas) se apagan un punto para no
+   convertirse en el elemento más brillante de la pantalla. */
+:root[data-theme="black"] .nav-logo { filter: brightness(1.08); }
+
+/* ============================================================
+   CONMUTADOR DE TEMA (cabecera)
+   ============================================================ */
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--nav-text-soft);
+    cursor: pointer;
+    padding: 0;
+    flex-shrink: 0;
+    transition: color var(--ease), border-color var(--ease), background var(--ease), box-shadow var(--ease);
+}
+.theme-toggle:hover { color: var(--accent-color); border-color: var(--accent-color); }
+.theme-toggle .icon { width: 18px; height: 18px; }
+.theme-toggle .theme-icon-black { display: none; }
+:root[data-theme="black"] .theme-toggle .theme-icon-black { display: inline-block; }
+:root[data-theme="black"] .theme-toggle .theme-icon-claro { display: none; }
+:root[data-theme="black"] .theme-toggle { color: var(--accent-color); box-shadow: 0 0 14px var(--glow-soft); }
 
 /* ============================================================
    BASE / RESET
@@ -156,7 +288,7 @@ body.login-background {
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    background: linear-gradient(180deg, #eef2ef 0%, var(--app-bg) 100%);
+    background: linear-gradient(180deg, var(--dark-bg) 0%, var(--app-bg) 100%);
     padding: 24px;
 }
 
@@ -288,7 +420,7 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 .btn:hover { box-shadow: var(--shadow-sm); }
 .btn:active { transform: translateY(1px); }
 
-.btn-primary { background-color: var(--primary-color); color: #fff; border-color: var(--primary-color); }
+.btn-primary { background-color: var(--primary-color); color: var(--on-primary); border-color: var(--primary-color); }
 .btn-primary:hover { background-color: var(--primary-strong); border-color: var(--primary-strong); }
 
 .btn-secondary {
@@ -305,13 +437,13 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 .btn-social { background: transparent; color: var(--text-color); border: 1px solid var(--border-strong); }
 .btn-social:hover { background-color: var(--social-hover); }
 
-.btn-danger { background-color: var(--danger); color: #fff; border-color: var(--danger); }
-.btn-danger:hover { background-color: #9a3826; border-color: #9a3826; }
+.btn-danger { background-color: var(--danger); color: var(--on-danger); border-color: var(--danger); }
+.btn-danger:hover { background-color: var(--danger-strong); border-color: var(--danger-strong); }
 
 /* Botones antiguos "glow": ahora sobrios (verde / teal outline) */
 .btn-glow-primary {
     display: inline-flex; align-items: center; gap: 6px;
-    background-color: var(--primary-color); color: #fff;
+    background-color: var(--primary-color); color: var(--on-primary);
     padding: 9px 16px; border-radius: var(--radius-sm);
     text-decoration: none; font-weight: 600; font-size: 14px;
 }
@@ -433,7 +565,7 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 .nav-profile-avatar {
     width: 30px; height: 30px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    background: var(--primary-color); color: #fff; font-weight: 700; font-size: 0.85rem; flex-shrink: 0;
+    background: var(--primary-color); color: var(--on-primary); font-weight: 700; font-size: 0.85rem; flex-shrink: 0;
 }
 
 .nav-user-menu {
@@ -716,7 +848,7 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 }
 .ia-btn-sec:hover { border-color: var(--accent-color); color: var(--accent-color); }
 .ia-btn-peligro:hover { border-color: var(--danger); color: var(--danger); background: rgba(180, 68, 46, 0.08); }
-.ia-btn-principal { background: var(--primary-color); color: #fff; border: none; padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.82rem; font-weight: 600; }
+.ia-btn-principal { background: var(--primary-color); color: var(--on-primary); border: none; padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.82rem; font-weight: 600; }
 .ia-btn-principal:disabled { opacity: 0.55; cursor: default; }
 .ia-proveedor-modelos { display: flex; gap: 8px; margin-bottom: 12px; }
 .ia-proveedor-modelos select { flex: 1; min-width: 0; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 0.82rem; }
@@ -802,11 +934,11 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 .ia-chat-bubble.assistant th { background: var(--surface-2); font-weight: 600; }
 .ia-chat-proposal-slot:empty { display: none; }
 .ia-chat-proposal-slot { padding: 0 18px; }
-.ia-chat-proposal-slot button.ia-confirmar { background: var(--primary-color); color: #fff; border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; }
+.ia-chat-proposal-slot button.ia-confirmar { background: var(--primary-color); color: var(--on-primary); border: none; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; }
 .ia-chat-proposal-slot button.ia-rechazar { background: none; border: 1px solid var(--border-strong); color: var(--muted); padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; }
 .ia-chat-input-row { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
 .ia-chat-input-row textarea { flex: 1; resize: none; border-radius: 10px; border: 1px solid var(--border); background: var(--input-bg); color: var(--text-color); padding: 10px 12px; font-family: inherit; }
-.ia-chat-input-row button { background: var(--primary-color); color: #fff; border: none; padding: 0 20px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+.ia-chat-input-row button { background: var(--primary-color); color: var(--on-primary); border: none; padding: 0 20px; border-radius: 10px; cursor: pointer; font-weight: 600; }
 
 @media (max-width: 720px) {
     .ia-chat-panel { width: 100vw; height: 100vh; max-width: none; max-height: none; border-radius: 0; top: 0; left: 0; transform: none; }

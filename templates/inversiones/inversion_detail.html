@@ -10,11 +10,11 @@
 .det-header h1 { color: var(--primary-color); text-shadow: none; margin: 0 0 4px; font-size: 1.5rem; }
 .det-header .meta { color: var(--muted); font-size: 0.88rem; }
 .badge-tipo { font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; font-weight: 600; display: inline-block; margin-left: 6px; }
-.badge-ACCION  { background: rgba(45, 106, 79,0.12); color: #2d6a4f; border: 1px solid #2d6a4f44; }
-.badge-ETF     { background: rgba(44, 95, 122,0.12); color: #2c5f7a; border: 1px solid #2c5f7a44; }
-.badge-FONDO   { background: rgba(183, 121, 31,0.12); color: #b7791f; border: 1px solid #b7791f44; }
-.badge-CRIPTO  { background: rgba(45, 106, 79,0.12); color: #1b4332; border: 1px solid #1b433244; }
-.badge-DEPOSITO { background: rgba(44, 95, 122,0.12); color: #2c5f7a; border: 1px solid #2c5f7a44; }
+.badge-ACCION  { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 27%, transparent); }
+.badge-ETF     { background: color-mix(in srgb, var(--info) 12%, transparent); color: var(--info); border: 1px solid color-mix(in srgb, var(--info) 27%, transparent); }
+.badge-FONDO   { background: color-mix(in srgb, var(--warning) 12%, transparent); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 27%, transparent); }
+.badge-CRIPTO  { background: color-mix(in srgb, var(--success) 12%, transparent); color: var(--primary-color); border: 1px solid color-mix(in srgb, var(--primary-color) 27%, transparent); }
+.badge-DEPOSITO { background: color-mix(in srgb, var(--info) 12%, transparent); color: var(--info); border: 1px solid color-mix(in srgb, var(--info) 27%, transparent); }
 .badge-OTRO    { background: rgba(255,255,255,0.06); color: var(--muted); border: 1px solid var(--border-strong); }
 
 .det-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 20px; }
@@ -25,14 +25,14 @@
 .mov-table th.right, .mov-table td.right { text-align: right; }
 .mov-table td { padding: 9px 10px; border-bottom: 1px solid var(--app-bg); }
 .badge-cartera { font-size: 0.62rem; padding: 1px 8px; border-radius: 10px; font-weight: 600; color: #fff; display: inline-block; }
-.pos { color: #2d6a4f; } .neg { color: #b4442e; }
+.pos { color: var(--success); } .neg { color: var(--danger); }
 
 .regla-card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; background: var(--app-bg); }
 .regla-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
-.regla-pend { font-size: 0.8rem; color: #b7791f; margin-top: 6px; }
+.regla-pend { font-size: 0.8rem; color: var(--warning); margin-top: 6px; }
 .regla-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .regla-actions button, .regla-actions a { font-size: 0.78rem; padding: 6px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; text-decoration: none; }
-.btn-generar { border: 1px solid var(--primary-color); background: var(--primary-color); color: #fff; }
+.btn-generar { border: 1px solid var(--primary-color); background: var(--primary-color); color: var(--on-primary); }
 .btn-ghost { border: 1px solid var(--border-strong); background: transparent; color: var(--muted); }
 
 .aport-form { display: none; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px; }
@@ -58,13 +58,13 @@
 /* Formularios de depósito: grid uniforme (campos del mismo tamaño) */
 .dep-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) auto; gap: 12px; align-items: end; }
 .dep-form button { align-self: end; height: 38px; }
-.btn-dep { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--primary-color); background: var(--primary-color); color: #fff; font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
+.btn-dep { padding: 8px 16px; border-radius: 8px; border: 1px solid var(--primary-color); background: var(--primary-color); color: var(--on-primary); font-weight: 600; font-size: 0.85rem; cursor: pointer; white-space: nowrap; }
 .btn-dep-ghost { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-strong); background: transparent; color: var(--muted); font-weight: 600; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
 .btn-ico { display: inline-flex; align-items: center; gap: 6px; }
 .btn-ico .icon { width: 15px; height: 15px; }
 .mov-table .icon { width: 15px; height: 15px; }
 .act-btn { display: inline-flex; align-items: center; justify-content: center; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border-strong); background: transparent; cursor: pointer; color: var(--muted); }
-.act-btn.danger { color: #b4442e; border-color: #b4442e55; }
+.act-btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 33%, transparent); }
 </style>
 
 <div class="det-wrap">
@@ -76,7 +76,7 @@
             </h1>
             <div class="meta">
                 {{ inversion.ticker|default:"—" }} · {{ inversion.plataforma|default:"Sin plataforma" }}
-                {% if deposito %}· <span style="color:#2c5f7a;">cuenta como capital en Evolución</span>{% elif inversion.grupo %}· <span style="color: {{ inversion.grupo.color }};">{{ inversion.grupo.nombre }}</span>{% endif %}
+                {% if deposito %}· <span style="color:var(--info);">cuenta como capital en Evolución</span>{% elif inversion.grupo %}· <span style="color: {{ inversion.grupo.color }};">{{ inversion.grupo.nombre }}</span>{% endif %}
             </div>
         </div>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
@@ -99,13 +99,13 @@
 
     {% if deposito %}
     <!-- Resumen del depósito -->
-    <div class="det-card" style="border-color: #2c5f7a44;">
+    <div class="det-card" style="border-color: color-mix(in srgb, var(--info) 27%, transparent);">
         <h2>Depósito</h2>
 
         <div class="dep-grid">
             <div class="dep-kpi">
                 <span class="l">Saldo restante{% if deposito.saldo_manual != None %} (saldo real){% elif deposito.liquidado %} (liquidado){% endif %}</span>
-                <span class="v" style="color:#2c5f7a; font-size:1.6rem;">€{{ deposito.valor|floatformat:2 }}</span>
+                <span class="v" style="color:var(--info); font-size:1.6rem;">€{{ deposito.valor|floatformat:2 }}</span>
             </div>
             <div class="dep-kpi">
                 <span class="l">Aportado</span>
@@ -227,7 +227,7 @@
                 <form method="post" action="{% url 'finanzas:aportacion_recurrente_eliminar' inversion.id regla.id %}"
                       onsubmit="return confirm('¿Eliminar esta aportación recurrente? Los movimientos ya generados no se borran.');">
                     {% csrf_token %}
-                    <button type="submit" class="btn-ghost" style="color:#b4442e; border-color:#b4442e55;">Eliminar</button>
+                    <button type="submit" class="btn-ghost" style="color:var(--danger); border-color:color-mix(in srgb, var(--danger) 33%, transparent);">Eliminar</button>
                 </form>
             </div>
             <form class="aport-form" id="edit-regla-{{ regla.id }}" method="post"

@@ -49,6 +49,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "finanzas.context_processors.resumen_inversiones_context",
+                "core.context_processors.tema_context",
             ],
         },
     },

@@ -18,23 +18,23 @@
 <div class="kpi-bar" style="margin-bottom:24px;">
     <div class="kpi-item">
         <div class="kpi-label">Ingresos</div>
-        <div class="kpi-valor" style="color:#2d6a4f;">€{{ resumen.total_ingresos|floatformat:0 }}</div>
+        <div class="kpi-valor" style="color:var(--success);">€{{ resumen.total_ingresos|floatformat:0 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Gastos</div>
-        <div class="kpi-valor" style="color:#b4442e;">€{{ resumen.total_gastos|floatformat:0 }}</div>
+        <div class="kpi-valor" style="color:var(--danger);">€{{ resumen.total_gastos|floatformat:0 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Ahorro</div>
-        <div class="kpi-valor" style="color:#2c5f7a;">€{{ resumen.total_ahorro|floatformat:0 }}</div>
+        <div class="kpi-valor" style="color:var(--info);">€{{ resumen.total_ahorro|floatformat:0 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Inversión</div>
-        <div class="kpi-valor" style="color:#1b4332;">€{{ resumen.total_inversion|floatformat:0 }}</div>
+        <div class="kpi-valor" style="color:var(--primary-color);">€{{ resumen.total_inversion|floatformat:0 }}</div>
     </div>
     <div class="kpi-item">
         <div class="kpi-label">Libre</div>
-        <div class="kpi-valor" style="color:{% if resumen.total_libre >= 0 %}#b7791f{% else %}#b4442e{% endif %};">€{{ resumen.total_libre|floatformat:0 }}</div>
+        <div class="kpi-valor" style="color:{% if resumen.total_libre >= 0 %}var(--warning){% else %}var(--danger){% endif %};">€{{ resumen.total_libre|floatformat:0 }}</div>
     </div>
 </div>
 
@@ -57,11 +57,11 @@
         {% for m in resumen.meses %}
         <tr style="border-bottom:1px solid var(--surface);">
             <td style="padding:10px 8px; font-weight:600;">{{ m.nombre }}</td>
-            <td style="padding:10px 8px; text-align:right; color:#2d6a4f;">€{{ m.ingresos|floatformat:2 }}</td>
-            <td style="padding:10px 8px; text-align:right; color:#b4442e;">€{{ m.gastos|floatformat:2 }}</td>
-            <td style="padding:10px 8px; text-align:right; color:#2c5f7a;">€{{ m.ahorro|floatformat:2 }}</td>
-            <td style="padding:10px 8px; text-align:right; color:#1b4332;">€{{ m.inversion|floatformat:2 }}</td>
-            <td style="padding:10px 8px; text-align:right; color:{% if m.libre >= 0 %}#b7791f{% else %}#b4442e{% endif %}; font-weight:700;">€{{ m.libre|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:var(--success);">€{{ m.ingresos|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:var(--danger);">€{{ m.gastos|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:var(--info);">€{{ m.ahorro|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:var(--primary-color);">€{{ m.inversion|floatformat:2 }}</td>
+            <td style="padding:10px 8px; text-align:right; color:{% if m.libre >= 0 %}var(--warning){% else %}var(--danger){% endif %}; font-weight:700;">€{{ m.libre|floatformat:2 }}</td>
             <td style="padding:10px 8px; text-align:center;"><span class="semaforo-dot semaforo-{{ m.semaforo }}"></span></td>
             <td style="padding:10px 8px;"><a href="{% url 'finanzas:vista_distribucion' %}?mes={{ m.mes }}&anio={{ resumen.anio }}" style="font-size:0.72rem; color:var(--muted); text-decoration:none;">Ver →</a></td>
         </tr>
@@ -70,11 +70,11 @@
     <tfoot>
         <tr style="border-top:2px solid var(--border-strong); font-weight:700;">
             <td style="padding:12px 8px; color:var(--primary-color);">TOTAL</td>
-            <td style="padding:12px 8px; text-align:right; color:#2d6a4f;">€{{ resumen.total_ingresos|floatformat:2 }}</td>
-            <td style="padding:12px 8px; text-align:right; color:#b4442e;">€{{ resumen.total_gastos|floatformat:2 }}</td>
-            <td style="padding:12px 8px; text-align:right; color:#2c5f7a;">€{{ resumen.total_ahorro|floatformat:2 }}</td>
-            <td style="padding:12px 8px; text-align:right; color:#1b4332;">€{{ resumen.total_inversion|floatformat:2 }}</td>
-            <td style="padding:12px 8px; text-align:right; color:{% if resumen.total_libre >= 0 %}#b7791f{% else %}#b4442e{% endif %};">€{{ resumen.total_libre|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:var(--success);">€{{ resumen.total_ingresos|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:var(--danger);">€{{ resumen.total_gastos|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:var(--info);">€{{ resumen.total_ahorro|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:var(--primary-color);">€{{ resumen.total_inversion|floatformat:2 }}</td>
+            <td style="padding:12px 8px; text-align:right; color:{% if resumen.total_libre >= 0 %}var(--warning){% else %}var(--danger){% endif %};">€{{ resumen.total_libre|floatformat:2 }}</td>
             <td></td><td></td>
         </tr>
     </tfoot>
@@ -89,10 +89,10 @@
 .kpi-label { font-size:0.68rem; color:var(--muted); margin-bottom:3px; }
 .kpi-valor { font-size:1.05rem; font-weight:700; }
 .semaforo-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
-.semaforo-verde { background:#2d6a4f; }
-.semaforo-amarillo { background:#b7791f; }
-.semaforo-naranja { background:#b7791f; }
-.semaforo-rojo { background:#b4442e; }
+.semaforo-verde { background:var(--success); }
+.semaforo-amarillo { background:var(--warning); }
+.semaforo-naranja { background:var(--warning); }
+.semaforo-rojo { background:var(--danger); }
 tbody tr:hover { background:rgba(255,255,255,0.02); }
 </style>
 {% endblock %}

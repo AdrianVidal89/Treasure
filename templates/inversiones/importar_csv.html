@@ -17,12 +17,12 @@
     <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 32px; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
 
         <!-- Instrucciones -->
-        <div style="background: rgba(44, 95, 122,0.06); border: 1px solid #2c5f7a33; border-radius: 10px; padding: 16px; margin-bottom: 24px; font-size: 0.82rem; color: var(--text-color);">
-            <div style="font-weight: 700; color: #2c5f7a; margin-bottom: 8px;">Formato esperado</div>
+        <div style="background: color-mix(in srgb, var(--info) 6%, transparent); border: 1px solid color-mix(in srgb, var(--info) 20%, transparent); border-radius: 10px; padding: 16px; margin-bottom: 24px; font-size: 0.82rem; color: var(--text-color);">
+            <div style="font-weight: 700; color: var(--info); margin-bottom: 8px;">Formato esperado</div>
             <div style="color: var(--muted); margin-bottom: 6px;">El CSV debe tener estas columnas (el orden no importa):</div>
             <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px;">
                 {% for col in columnas %}
-                <span style="background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 6px; padding: 3px 10px; font-size: 0.75rem; font-family: monospace; color: #2d6a4f;">{{ col }}</span>
+                <span style="background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 6px; padding: 3px 10px; font-size: 0.75rem; font-family: monospace; color: var(--success);">{{ col }}</span>
                 {% endfor %}
             </div>
             <div style="color: var(--muted); font-size: 0.78rem;">

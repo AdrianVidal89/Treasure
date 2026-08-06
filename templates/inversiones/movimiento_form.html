@@ -17,7 +17,7 @@
     </p>
 
     {% if form.non_field_errors %}
-    <div style="background: rgba(180, 68, 46,0.1); border: 1px solid #b4442e; border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: #b4442e;">
+    <div style="background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid var(--danger); border-radius: 10px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem; color: var(--danger);">
         {{ form.non_field_errors }}
     </div>
     {% endif %}
@@ -33,7 +33,7 @@
                        value="{{ form.fecha.value|date:'Y-m-d' }}"
                        style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
                               background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
-                {% if form.fecha.errors %}<div style="color:#b4442e;font-size:0.78rem;margin-top:4px;">{{ form.fecha.errors.0 }}</div>{% endif %}
+                {% if form.fecha.errors %}<div style="color:var(--danger);font-size:0.78rem;margin-top:4px;">{{ form.fecha.errors.0 }}</div>{% endif %}
             </div>
 
             <!-- Tipo -->
@@ -74,7 +74,7 @@
                         </div>
                     </label>
                 </div>
-                {% if form.tipo.errors %}<div style="color:#b4442e;font-size:0.78rem;margin-top:4px;">{{ form.tipo.errors.0 }}</div>{% endif %}
+                {% if form.tipo.errors %}<div style="color:var(--danger);font-size:0.78rem;margin-top:4px;">{{ form.tipo.errors.0 }}</div>{% endif %}
             </div>
 
             <!-- Cantidad + Precio -->
@@ -86,7 +86,7 @@
                            placeholder="0.00000000"
                            style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
                                   background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
-                    {% if form.cantidad.errors %}<div style="color:#b4442e;font-size:0.78rem;margin-top:4px;">{{ form.cantidad.errors.0 }}</div>{% endif %}
+                    {% if form.cantidad.errors %}<div style="color:var(--danger);font-size:0.78rem;margin-top:4px;">{{ form.cantidad.errors.0 }}</div>{% endif %}
                 </div>
                 <div>
                     <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">Precio unitario (€)</label>
@@ -95,7 +95,7 @@
                            placeholder="0.00"
                            style="width: 100%; padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
                                   background: var(--app-bg); color: var(--text-color); font-size: 1rem; box-sizing: border-box;">
-                    {% if form.precio_unitario.errors %}<div style="color:#b4442e;font-size:0.78rem;margin-top:4px;">{{ form.precio_unitario.errors.0 }}</div>{% endif %}
+                    {% if form.precio_unitario.errors %}<div style="color:var(--danger);font-size:0.78rem;margin-top:4px;">{{ form.precio_unitario.errors.0 }}</div>{% endif %}
                 </div>
             </div>
 
@@ -131,7 +131,7 @@
                     <label style="display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 6px;">Coste total</label>
                     <div id="coste-total"
                          style="padding: 13px 16px; border: 1px solid var(--border-strong); border-radius: 10px;
-                                background: var(--app-bg); color: #b7791f; font-size: 1rem; font-weight: 700;">
+                                background: var(--app-bg); color: var(--warning); font-size: 1rem; font-weight: 700;">
                         —
                     </div>
                 </div>
@@ -151,7 +151,7 @@ function actualizarTipoBtns() {
     document.querySelectorAll('.tipo-radio').forEach(function(radio) {
         const btn = radio.nextElementSibling;
         if (radio.checked) {
-            const colores = { 'COMPRA': '#2d6a4f', 'VENTA': '#b4442e', 'DIVIDENDO': '#b7791f' };
+            const colores = { 'COMPRA': 'var(--success)', 'VENTA': 'var(--danger)', 'DIVIDENDO': 'var(--warning)' };
             const color = colores[radio.value] || 'var(--primary-color)';
             btn.style.borderColor = color;
             btn.style.color = color;
