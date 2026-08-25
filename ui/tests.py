@@ -82,3 +82,69 @@ class TemaInterfazTests(TestCase):
 
         self.profile.refresh_from_db()
         self.assertEqual(self.profile.tema, 'black')
+
+
+class DashboardCapitalLiquidoTests(TestCase):
+    """El capital líquido del dashboard es dinero DISPONIBLE: saldo de los
+    fondos común/ahorro más el valor de los depósitos (que también se puede
+    disponer), igual que la vista de Evolución."""
+
+    def setUp(self):
+        import datetime
+        from decimal import Decimal
+
+        from core.models import Hogar
+        from finanzas.models import (
+            FondoFamiliar, Inversion, MovimientoInversion, SaldoRealFondo,
+        )
+
+        self.date = datetime.date
+        self.Decimal = Decimal
+        self.Inversion = Inversion
+        self.MovimientoInversion = MovimientoInversion
+
+        self.user = User.objects.create_user(username='luis', password='clave12345')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        profile, _ = UserProfile.objects.get_or_create(user=self.user)
+        profile.hogar = self.hogar
+        profile.save()
+        self.client.force_login(self.user)
+
+        self.hoy = datetime.date.today()
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        SaldoRealFondo.objects.create(
+            fondo=self.fondo, año=self.hoy.year, mes=self.hoy.month,
+            saldo=Decimal('10000'))
+
+    def _deposito(self, nombre, importe, fondo=None):
+        dep = self.Inversion.objects.create(
+            usuario=self.user, nombre=nombre, tipo='DEPOSITO', fondo=fondo,
+            deposito_tipo_interes=self.Decimal('0'), deposito_frecuencia='anual')
+        self.MovimientoInversion.objects.create(
+            inversion=dep, fecha=self.date(self.hoy.year, 1, 1), tipo='COMPRA',
+            cantidad=self.Decimal(importe), precio_unitario=self.Decimal('1'))
+        return dep
+
+    def _capital(self):
+        resp = self.client.get(reverse('dashboard'))
+        self.assertEqual(resp.status_code, 200)
+        return resp.context['capital_liquido_total']
+
+    def test_deposito_suma_al_capital_liquido(self):
+        self._deposito('Depo', '6000')
+        self.assertEqual(self._capital(), self.Decimal('16000.00'))
+
+    def test_deposito_vinculado_a_fondo_no_se_cuenta_dos_veces(self):
+        self._deposito('Depo', '6000', fondo=self.fondo)
+        # El saldo manual del fondo lo sustituye el valor real del depósito.
+        self.assertEqual(self._capital(), self.Decimal('6000.00'))
+
+    def test_sin_saldos_registrados_el_deposito_sigue_siendo_liquido(self):
+        from finanzas.models import SaldoRealFondo
+        SaldoRealFondo.objects.all().delete()
+        self._deposito('Depo', '4000')
+        self.assertEqual(self._capital(), self.Decimal('4000.00'))
+
+    def test_sin_depositos_el_capital_es_el_saldo_de_los_fondos(self):
+        self.assertEqual(self._capital(), self.Decimal('10000'))

@@ -139,7 +139,8 @@
 
 .grid-gastos {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    /* min(...,100%): en movil la columna nunca es mas ancha que el contenedor. */
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
     gap: 16px;
     margin-bottom: 24px;
 }

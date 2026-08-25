@@ -51,7 +51,7 @@
                 <span style="font-size: 1.1rem; font-weight: 700; color: var(--primary-color);">{{ grupo.miembro.user.first_name|default:grupo.miembro.user.username }}</span>
                 <span style="margin-left: 12px; font-size: 0.75rem; padding: 2px 8px; border-radius: 20px; background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--success); border: 1px solid var(--success);">{{ grupo.miembro.get_rol_display }}</span>
             </div>
-            <div style="display: flex; gap: 20px; text-align: right;">
+            <div style="display: flex; gap: 8px 20px; text-align: right; flex-wrap: wrap; min-width: 0;">
                 <div>
                     <div style="font-size: 0.7rem; color: var(--muted);">Mensual base</div>
                     <div style="font-size: 1rem; font-weight: 700; color: var(--success);">€{{ grupo.total_mensual|floatformat:2 }}</div>
