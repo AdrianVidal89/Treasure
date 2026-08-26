@@ -16,6 +16,9 @@ from finanzas.models import (
     IngresoRealMes, ReglaReparto, Propiedad, HistorialPropiedad,
 )
 from finanzas.distribucion import calcular_flujos, clasificar_salud
+from finanzas.views_evolucion import (
+    _fecha_corte_mes, _saldos_liquidez_patrimonio,
+)
 from core.models import UserProfile
 from core.context_processors import TEMAS_VALIDOS
 
@@ -187,27 +190,36 @@ def dashboard_view(request):
     miembros_ids = list(
         hogar.miembros.values_list('user_id', flat=True)
     )
-    inversiones = Inversion.objects.filter(usuario_id__in=miembros_ids)
+    # Los depósitos no son cartera de mercado: viven en su propia sección y su
+    # valor se cuenta como liquidez (ver bloque 4), no como inversión.
+    inversiones = Inversion.objects.filter(
+        usuario_id__in=miembros_ids
+    ).exclude(tipo='DEPOSITO')
     total_inversiones = sum(inv.valor_total_actual for inv in inversiones)
     num_inversiones = inversiones.count()
 
     # ── 4. Evolución: liquidez actual ──
+    # Se reutiliza el mismo motor que la vista de Evolución para que el dashboard
+    # no dé otra cifra: los depósitos son dinero disponible y cuentan como
+    # liquidez (y el helper evita contarlos dos veces si están ligados a un fondo).
     ultimo_mes_con_saldo = None
     for m in range(mes, 0, -1):
         if SaldoRealFondo.objects.filter(fondo__hogar=hogar, año=anio, mes=m).exists():
             ultimo_mes_con_saldo = m
             break
 
-    liquidez_real = Decimal('0')
-    patrimonio_real = Decimal('0')
-    if ultimo_mes_con_saldo:
-        saldos = SaldoRealFondo.objects.filter(
+    saldos = (
+        SaldoRealFondo.objects.filter(
             fondo__hogar=hogar, año=anio, mes=ultimo_mes_con_saldo
         ).select_related('fondo')
-        for s in saldos:
-            if s.fondo.tipo_fondo in ('comun', 'ahorro'):
-                liquidez_real += s.saldo
-            patrimonio_real += s.saldo
+        if ultimo_mes_con_saldo else SaldoRealFondo.objects.none()
+    )
+    # Sin saldos registrados aún los depósitos siguen siendo líquidos: se valoran
+    # al mes en curso.
+    fecha_depositos = _fecha_corte_mes(anio, ultimo_mes_con_saldo or mes)
+    liquidez_real, patrimonio_real = _saldos_liquidez_patrimonio(
+        saldos, hogar=hogar, fecha_depositos=fecha_depositos,
+    )
 
     # ── 4b. Propiedades ──
     propiedades = Propiedad.objects.filter(hogar=hogar, activo=True)
@@ -289,8 +301,8 @@ def dashboard_view(request):
         },
     ]
 
-    # Capital líquido total del hogar = liquidez disponible en fondos
-    # (común + ahorro) registrada en el último mes con datos.
+    # Capital líquido total del hogar = liquidez disponible: saldo de los fondos
+    # (común + ahorro) del último mes con datos + el valor de los depósitos.
     capital_liquido_total = liquidez_real
 
     context = {

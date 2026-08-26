@@ -28,14 +28,20 @@
     padding: 26px 28px;
     margin-bottom: 20px;
     box-shadow: var(--shadow-sm);
+    container-type: inline-size;   /* el importe se mide contra esta caja */
 }
 .cc-hero-label {
     font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px;
 }
 .cc-hero-value {
-    font-size: 2.8rem; font-weight: 800; line-height: 1.05;
+    /* clamp con cqi: en una pantalla estrecha el importe encoge en vez de
+       salirse de la tarjeta. La 1a declaracion es el fallback sin cq. */
+    font-size: 2.8rem;
+    font-size: clamp(1.5rem, 13cqi, 2.8rem);
+    font-weight: 800; line-height: 1.05;
     color: var(--primary-color); font-variant-numeric: tabular-nums;
+    overflow-wrap: break-word;
 }
 .cc-hero-sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
 .cc-hero-net {
@@ -47,10 +53,10 @@
     font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.05em; color: var(--muted);
 }
-.cc-hero-net-value { font-size: 1.25rem; font-weight: 700; color: #b7791f; }
+.cc-hero-net-value { font-size: 1.25rem; font-size: clamp(1rem, 6cqi, 1.25rem); font-weight: 700; color: #b7791f; min-width: 0; overflow-wrap: break-word; }
 .cc-hero-net-sub { font-size: 0.72rem; color: var(--muted); margin-left: auto; }
 @media (max-width: 600px) {
-    .cc-hero-value { font-size: 2.1rem; }
+    .cc-hero-value { font-size: 2.1rem; font-size: clamp(1.5rem, 13cqi, 2.1rem); }
     .cc-hero-net { flex-wrap: wrap; }
     .cc-hero-net-sub { margin-left: 0; width: 100%; }
 }
@@ -86,10 +92,12 @@
     padding: 16px; text-align: center;
     border: 1px solid var(--border);
     transition: border-color 0.2s, box-shadow 0.2s;
+    min-width: 0;
+    container-type: inline-size;   /* el importe se mide contra esta caja */
 }
 .cc-kpi:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
 .cc-kpi-label { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
-.cc-kpi-value { font-size: 1.3rem; font-weight: 700; }
+.cc-kpi-value { font-size: 1.3rem; font-size: clamp(0.95rem, 13cqi, 1.3rem); font-weight: 700; overflow-wrap: break-word; }
 .cc-kpi-sub { font-size: 0.68rem; color: var(--muted); margin-top: 3px; }
 
 /* ─── Distribution bar ─────────────────────────────────────────────────── */
@@ -199,7 +207,7 @@
         <div class="cc-hero-label">Capital líquido total</div>
         <div class="cc-hero-value">€{{ capital_liquido_total|floatformat:0 }}</div>
         <div class="cc-hero-sub">
-            {% if mes_liquidez_nombre %}Liquidez en fondos · {{ mes_liquidez_nombre }} {{ anio }}{% else %}Sin saldos registrados aún{% endif %}
+            {% if mes_liquidez_nombre %}Fondos y depósitos · {{ mes_liquidez_nombre }} {{ anio }}{% elif capital_liquido_total > 0 %}Depósitos · {{ mes_nombre }} {{ anio }}{% else %}Sin saldos registrados aún{% endif %}
         </div>
         {% if num_propiedades > 0 %}
         <div class="cc-hero-net">

@@ -750,9 +750,14 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 .glass-panel--accent:hover { border-color: var(--border-strong); box-shadow: var(--shadow); }
 
 /* KPI / stat tile */
-.stat-tile { display: flex; flex-direction: column; gap: 4px; }
+/* min-width:0 es lo que permite que la caja se encoja dentro de un flex/grid:
+   sin el, el importe (que no tiene donde partir) empuja la caja y se sale. */
+.stat-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; container-type: inline-size; }
 .stat-tile .stat-tile-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-.stat-tile .stat-tile-valor { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+/* El importe se dimensiona respecto al ANCHO DE SU CAJA (cqi), asi que en una
+   caja estrecha encoge en vez de salirse. La primera declaracion es el fallback
+   para navegadores sin container queries. */
+.stat-tile .stat-tile-valor { font-size: 1.5rem; font-size: clamp(0.95rem, 11cqi, 1.5rem); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; min-width: 0; overflow-wrap: break-word; }
 .stat-tile .stat-tile-sub { font-size: 0.78rem; color: var(--muted); }
 
 /* Título con acento (antes gradiente) */
@@ -821,7 +826,7 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 /* ============================================================
    ASISTENTE IA — proveedores
    ============================================================ */
-.ia-proveedores-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 20px; }
+.ia-proveedores-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(330px, 100%), 1fr)); gap: 20px; }
 .ia-proveedor-card {
     position: relative; background: var(--surface); border: 1px solid var(--border);
     border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-sm);
@@ -997,7 +1002,12 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
     .dashboard-container, .panel { margin: 16px 12px; }
 
     [style*="grid-template-columns"] { grid-template-columns: 1fr !important; }
-    .kpi-item, .inv-kpi, .resumen-card { min-width: calc(50% - 10px); }
+    /* Dos por fila, pero que puedan encogerse (min-width:0): con un
+       min-width en px o en %, un importe largo empuja la caja y se sale. */
+    .kpi-item, .inv-kpi, .resumen-card {
+        flex: 1 1 calc(50% - 10px);
+        min-width: 0;
+    }
     .btn, .r-btn { min-height: 42px; }
 
     .nav-user-menu { position: static !important; box-shadow: none; border: none; background: var(--badge-bg); border-radius: 8px; margin: 0 0 6px; }
@@ -1005,6 +1015,10 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 }
 
 @media (max-width: 600px) {
+    /* Los importes bajan de cuerpo en movil para caber en su caja. */
+    .stat-tile .stat-tile-valor { font-size: 1.15rem; font-size: clamp(0.95rem, 11cqi, 1.15rem); }
+    .total-patrimonio-valor { font-size: 1.35rem; }
+
     .cuenta-card { padding: 16px; }
     .cuenta-nombre { font-size: 1rem; }
     .cuenta-detalle { font-size: 0.9rem; }

@@ -105,6 +105,17 @@
 .evo-month-stat .val { font-size: 0.92rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .evo-month-chevron { color: var(--muted); transition: transform var(--ease); flex-shrink: 0; }
 .evo-month-card[open] .evo-month-chevron { transform: rotate(180deg); }
+@media (max-width: 600px) {
+    /* En movil el nombre del mes no puede comerse el ancho de la fila: si se
+       queda con 130px fijos, los importes se quedan sin sitio y se parten o se
+       salen de su caja. Nombre arriba, importes debajo en una sola fila. */
+    .evo-month-card > summary { flex-wrap: wrap; gap: 8px 12px; padding: 14px 16px; }
+    .evo-month-name { width: auto; flex: 1 1 auto; }
+    /* order: el chevron se queda junto al mes y los importes bajan de linea. */
+    .evo-month-chevron { order: 1; }
+    .evo-month-stats { order: 2; flex: 1 1 100%; justify-content: flex-start; gap: 18px; }
+    .evo-month-stat { align-items: flex-start; }
+}
 
 .evo-month-body { padding: 4px 20px 20px; border-top: 1px solid var(--border); }
 .evo-dep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; margin-top: 14px; }
