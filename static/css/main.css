@@ -752,13 +752,20 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 /* KPI / stat tile */
 /* min-width:0 es lo que permite que la caja se encoja dentro de un flex/grid:
    sin el, el importe (que no tiene donde partir) empuja la caja y se sale. */
-.stat-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; container-type: inline-size; }
+.stat-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .stat-tile .stat-tile-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
-/* El importe se dimensiona respecto al ANCHO DE SU CAJA (cqi), asi que en una
-   caja estrecha encoge en vez de salirse. La primera declaracion es el fallback
-   para navegadores sin container queries. */
-.stat-tile .stat-tile-valor { font-size: 1.5rem; font-size: clamp(0.95rem, 11cqi, 1.5rem); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; min-width: 0; overflow-wrap: break-word; }
+.stat-tile .stat-tile-valor { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; min-width: 0; overflow-wrap: break-word; }
 .stat-tile .stat-tile-sub { font-size: 0.78rem; color: var(--muted); }
+
+/* Container query SOLO en las cajas cuyo ancho lo decide su contenedor
+   (.kpi-item reparte el ancho con flex-basis). NO se puede poner en .stat-tile
+   a secas: container-type contiene el eje inline, asi que una caja que se
+   dimensiona por su contenido —los totales del mes en Evolucion, por ejemplo—
+   colapsaria a ancho 0 y el importe saldria partido letra a letra. */
+.kpi-item.stat-tile { container-type: inline-size; }
+/* El importe se mide contra el ANCHO DE SU CAJA (cqi): en una caja estrecha
+   encoge en vez de salirse. La 1a declaracion es el fallback sin container queries. */
+.kpi-item.stat-tile .stat-tile-valor { font-size: 1.5rem; font-size: clamp(0.95rem, 11cqi, 1.5rem); }
 
 /* Título con acento (antes gradiente) */
 .title-gradient { display: inline-block; color: var(--primary-color); letter-spacing: -0.01em; }
@@ -1016,7 +1023,8 @@ h1 { font-size: 24px; margin-bottom: 10px; color: var(--text-color); }
 
 @media (max-width: 600px) {
     /* Los importes bajan de cuerpo en movil para caber en su caja. */
-    .stat-tile .stat-tile-valor { font-size: 1.15rem; font-size: clamp(0.95rem, 11cqi, 1.15rem); }
+    .stat-tile .stat-tile-valor { font-size: 1.15rem; }
+    .kpi-item.stat-tile .stat-tile-valor { font-size: 1.15rem; font-size: clamp(0.95rem, 11cqi, 1.15rem); }
     .total-patrimonio-valor { font-size: 1.35rem; }
 
     .cuenta-card { padding: 16px; }
