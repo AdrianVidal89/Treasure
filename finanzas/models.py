@@ -1133,6 +1133,37 @@ class IngresoRealMes(models.Model):
         return f"Ingresos {self.mes}/{self.año} - {self.hogar.nombre}: €{self.importe}"
 
 
+class CierreMensual(models.Model):
+    """Foto de un mes ya CERRADO.
+
+    Evolución es un registro histórico, no una vista en vivo: lo que pasó en
+    julio no puede cambiar porque hoy subas el sueldo. Cuando un mes queda
+    atrás, las cifras que Evolución consume del motor de distribución se
+    congelan aquí y ya no se recalculan. El mes en curso —y los futuros— se
+    siguen calculando en vivo.
+    """
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='cierres_mensuales')
+    año = models.IntegerField()
+    mes = models.IntegerField(help_text='Número de mes 1-12')
+    ingreso = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Ingreso neto del hogar ese mes, tal y como quedó al cerrarlo.')
+    gastos = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Total de gastos del mes al cerrarlo.')
+    inversion = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Importe que ese mes salió hacia fondos de inversión.')
+    congelado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-año', '-mes']
+        unique_together = ('hogar', 'año', 'mes')
+        verbose_name = 'Cierre mensual'
+        verbose_name_plural = 'Cierres mensuales'
+
+    def __str__(self):
+        return f"Cierre {self.mes}/{self.año} - {self.hogar.nombre}: €{self.ingreso}"
+
+
 # ─── Catálogo de Tickers ──────────────────────────────────────────────────────
 
 class TickerCatalogo(models.Model):

@@ -707,3 +707,135 @@ class EvolucionUsaSaldoRealTests(TestCase):
         # Mes pasado → su último día (histórico real)
         if self.hoy.month > 1:
             self.assertEqual(_fecha_corte_mes(self.hoy.year, 1), datetime.date(self.hoy.year, 1, 31))
+
+
+class CierreMensualEvolucionTests(TestCase):
+    """Evolución es el registro de lo que pasó: una vez cerrado el mes, sus
+    cifras quedan fijadas. Cambiar hoy el sueldo solo puede mover el mes en
+    curso (y lo que venga después), nunca el pasado."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, FuenteIngreso, SaldoRealFondo
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+
+        self.hoy = datetime.date.today()
+        self.año = self.hoy.year
+        # El test necesita al menos un mes cerrado en el año en curso.
+        self.mes_cerrado = self.hoy.month - 1
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        SaldoRealFondo.objects.create(
+            fondo=self.fondo, año=self.año, mes=self.hoy.month, saldo=Decimal('1000'))
+
+        self.fuente = FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+
+    def _ingresos_por_mes(self):
+        from .views_evolucion import _flujos_por_mes
+        flujos = _flujos_por_mes(self.hogar, self.año)
+        return {m: flujos[m]['ingreso_base_hogar'] for m in flujos}
+
+    def _subir_sueldo(self, importe):
+        self.fuente.importe_declarado = Decimal(importe)
+        self.fuente.save()
+
+    def test_subir_el_sueldo_no_reescribe_los_meses_cerrados(self):
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        antes = self._ingresos_por_mes()
+        self._subir_sueldo('48000')
+        despues = self._ingresos_por_mes()
+
+        for mes in range(1, self.mes_cerrado + 1):
+            self.assertEqual(despues[mes], antes[mes],
+                             f'El mes cerrado {mes} ha cambiado al subir el sueldo')
+
+    def test_el_mes_en_curso_y_los_futuros_si_se_actualizan(self):
+        antes = self._ingresos_por_mes()
+        self._subir_sueldo('48000')
+        despues = self._ingresos_por_mes()
+
+        self.assertGreater(despues[self.hoy.month], antes[self.hoy.month])
+        if self.hoy.month < 12:
+            self.assertGreater(despues[12], antes[12])
+
+    def test_el_cierre_se_hace_con_los_valores_de_antes_del_cambio(self):
+        """La foto se toma al guardar el cambio, no después: guarda lo que
+        había, no lo nuevo. Sin esto, quien cambia el sueldo sin haber abierto
+        Evolución antes congelaría el pasado ya corrompido."""
+        from .models import CierreMensual
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self.assertFalse(CierreMensual.objects.filter(hogar=self.hogar).exists())
+        antes = self._ingresos_por_mes()[self.mes_cerrado]
+
+        self._subir_sueldo('48000')
+
+        cierre = CierreMensual.objects.get(hogar=self.hogar, año=self.año, mes=self.mes_cerrado)
+        self.assertEqual(cierre.ingreso, antes)
+
+    def test_el_mes_en_curso_no_se_congela(self):
+        from .models import CierreMensual
+        self._subir_sueldo('48000')
+        self.assertFalse(
+            CierreMensual.objects.filter(
+                hogar=self.hogar, año=self.año, mes=self.hoy.month).exists())
+
+    def test_un_gasto_nuevo_no_cambia_el_ahorro_esperado_del_pasado(self):
+        from .models import CategoriaGasto, PartidaGasto
+        from .views_evolucion import _flujos_por_mes
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        antes = _flujos_por_mes(self.hogar, self.año)[self.mes_cerrado]['total_gastos_all']
+
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Vivienda', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Hipoteca',
+            importe=Decimal('900'), periodicidad='mensual', activo=True)
+
+        despues = _flujos_por_mes(self.hogar, self.año)
+        self.assertEqual(despues[self.mes_cerrado]['total_gastos_all'], antes)
+        self.assertGreater(despues[self.hoy.month]['total_gastos_all'], antes)
+
+    def test_corregir_un_ajuste_de_un_mes_cerrado_si_rehace_su_cierre(self):
+        """Un ajuste de ingreso es un dato del propio mes: si el usuario
+        corrige lo que cobró en un mes cerrado, la foto se rehace."""
+        from .models import AjusteIngresoMensual
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        antes = self._ingresos_por_mes()[self.mes_cerrado]
+
+        AjusteIngresoMensual.objects.create(
+            fuente=self.fuente, año=self.año, mes=self.mes_cerrado,
+            importe_real=antes + Decimal('500'), nota='Bonus',
+        )
+
+        despues = self._ingresos_por_mes()[self.mes_cerrado]
+        self.assertEqual(despues, antes + Decimal('500'))
+
+    def test_los_meses_cerrados_quedan_registrados_al_abrir_evolucion(self):
+        from .models import CierreMensual
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:vista_evolucion'))
+        self.assertEqual(resp.status_code, 200)
+
+        registrados = set(
+            CierreMensual.objects.filter(hogar=self.hogar, año=self.año)
+            .values_list('mes', flat=True))
+        self.assertEqual(registrados, set(range(1, self.hoy.month)))
