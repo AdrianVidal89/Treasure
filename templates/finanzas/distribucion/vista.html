@@ -28,6 +28,18 @@
 <div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
 {% endfor %}
 
+{% if d.mes_cerrado %}
+<!-- Mes ya cerrado: los totales son los que quedaron registrados, no se
+     recalculan con la configuración de hoy. El desglose de abajo (fondos,
+     gastos asignados, reglas) sí es la configuración actual. -->
+<div class="dist-mes-cerrado">
+    <strong>{{ d.mes_nombre }} {{ d.anio }} está cerrado.</strong>
+    Los totales de arriba son los que quedaron registrados ese mes: cambiar hoy
+    un ingreso o un gasto ya no los mueve. El desglose de abajo es tu
+    configuración actual.
+</div>
+{% endif %}
+
 <!-- ===== RESUMEN GENERAL (KPIs + barra) ===== -->
 <div class="resumen-general glass-panel">
     <div class="kpi-bar">
@@ -573,6 +585,15 @@
 .lbl-sm { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px; }
 .inp-sm { width:100%; padding:8px; background:var(--app-bg); border:1px solid var(--border-strong); border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
 .empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; padding:8px 2px; }
+
+/* ── Aviso de mes cerrado ── */
+.dist-mes-cerrado {
+    background: color-mix(in srgb, var(--info) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 35%, transparent);
+    border-radius: var(--radius); padding: 12px 16px; margin-bottom: 16px;
+    font-size: 0.82rem; color: var(--text-color); line-height: 1.5;
+}
+.dist-mes-cerrado strong { color: var(--info); }
 
 /* ── Resumen general ── */
 .resumen-general { padding:18px; margin-bottom:22px; }

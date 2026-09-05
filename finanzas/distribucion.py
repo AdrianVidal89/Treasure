@@ -445,8 +445,11 @@ def calcular_resumen_anual(hogar, anio=None):
         'total_libre': Decimal('0'),
     }
 
+    from .cierres import flujo_del_mes
+
     for mes in range(1, 13):
-        d = calcular_flujos(hogar, mes=mes, anio=anio)
+        # Los meses ya cerrados se leen de su cierre, no se recalculan.
+        d = flujo_del_mes(hogar, mes, anio)
         resumen['meses'].append({
             'mes': mes, 'nombre': _nombre_mes(mes),
             'ingresos': d['ingreso_base_hogar'],

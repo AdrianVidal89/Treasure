@@ -31,6 +31,8 @@ CAMPOS_CONGELADOS = {
     'ingreso': 'ingreso_base_hogar',
     'gastos': 'total_gastos_all',
     'inversion': 'total_inversion',
+    'ahorro': 'total_ahorro',
+    'libre': 'libre_total',
 }
 
 
@@ -104,6 +106,39 @@ def congelar_meses_cerrados(hogar, año=None, flujos_por_mes=None):
                      flujo=(flujos_por_mes or {}).get(mes))
 
 
+def _aplicar_cierre_a_flujo(flujo, cierre):
+    """Mete en un flujo las cifras registradas de su cierre y recalcula lo que
+    se deriva de ellas (tasa de ahorro, semáforo, porcentajes), para que la
+    pantalla no mezcle cifras congeladas con porcentajes en vivo.
+
+    Un campo a None es un cierre tomado antes de que ese campo existiera: se
+    respeta el valor en vivo en vez de inventar un cero."""
+    from .distribucion import clasificar_salud
+
+    for campo, clave in CAMPOS_CONGELADOS.items():
+        valor = getattr(cierre, campo, None)
+        if valor is not None:
+            flujo[clave] = valor
+
+    ingreso = flujo['ingreso_base_hogar']
+    gastos = flujo['total_gastos_all']
+
+    def pct(val):
+        return round(float(val / ingreso * 100), 1) if ingreso > 0 else 0
+
+    tasa = round((ingreso - gastos) / ingreso * 100, 1) if ingreso > 0 else Decimal('0')
+    semaforo, semaforo_texto = clasificar_salud(tasa)
+    flujo['tasa_ahorro'] = tasa
+    flujo['semaforo'] = semaforo
+    flujo['semaforo_texto'] = semaforo_texto
+    flujo['pct_gastos'] = pct(gastos)
+    flujo['pct_ahorro'] = pct(flujo['total_ahorro'])
+    flujo['pct_inversion'] = pct(flujo['total_inversion'])
+    flujo['pct_libre'] = pct(flujo['libre_total'])
+    flujo['mes_cerrado'] = True
+    return flujo
+
+
 def aplicar_cierres(hogar, año, flujos_por_mes):
     """Sustituye en los meses CERRADOS las cifras del motor por las de su foto.
 
@@ -119,6 +154,26 @@ def aplicar_cierres(hogar, año, flujos_por_mes):
         cierre = cierres.get(mes)
         if cierre is None or not mes_cerrado(año, mes):
             continue
-        for campo, clave in CAMPOS_CONGELADOS.items():
-            flujo[clave] = getattr(cierre, campo) or Decimal('0')
+        _aplicar_cierre_a_flujo(flujo, cierre)
     return flujos_por_mes
+
+
+def flujo_del_mes(hogar, mes, anio):
+    """El flujo de UN mes, ya con la regla de histórico aplicada: en vivo si es
+    el mes en curso o uno futuro; con las cifras registradas si ya está cerrado.
+
+    Es el punto de entrada que deben usar las pantallas que pueden enseñar un
+    mes pasado, en lugar de llamar a `calcular_flujos` directamente."""
+    from .distribucion import calcular_flujos
+
+    flujo = calcular_flujos(hogar, mes=mes, anio=anio)
+    flujo['mes_cerrado'] = False
+    if not mes_cerrado(anio, mes):
+        return flujo
+
+    cierre = (congelar_mes(hogar, anio, mes, flujo=flujo)
+              or CierreMensual.objects.filter(hogar=hogar, año=anio, mes=mes).first())
+    if cierre is None:
+        # Mes cerrado sin nada que registrar (hogar aún sin configurar).
+        return flujo
+    return _aplicar_cierre_a_flujo(flujo, cierre)

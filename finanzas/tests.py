@@ -956,3 +956,110 @@ class IngresoFueraDeLaDistribucionTests(TestCase):
         self.alquiler.refresh_from_db()
         self.assertFalse(self.alquiler.incluir_en_distribucion)
         self.assertEqual(self._ingreso_distribuido(), Decimal('2000'))
+
+
+class MesCerradoEnTodaLaAppTests(TestCase):
+    """La regla del mes cerrado no es solo de Evolución: cualquier pantalla que
+    pueda enseñar un mes pasado tiene que enseñar lo que quedó registrado."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import CategoriaGasto, FuenteIngreso, PartidaGasto
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        self.hoy = datetime.date.today()
+        self.año = self.hoy.year
+        self.mes_cerrado = self.hoy.month - 1
+
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Anuales', tipo='anual')
+        self.gasto = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Seguros',
+            importe=Decimal('1200'), periodicidad='anual', mes_pago=3, activo=True)
+
+    def _subir_gasto(self):
+        self.gasto.importe = Decimal('6000')
+        self.gasto.save()
+
+    def test_distribucion_de_un_mes_cerrado_no_se_recalcula(self):
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        url = reverse('finanzas:vista_distribucion')
+        antes = self.client.get(
+            f'{url}?mes={self.mes_cerrado}&anio={self.año}').context['d']['total_gastos_all']
+
+        self._subir_gasto()
+
+        despues = self.client.get(
+            f'{url}?mes={self.mes_cerrado}&anio={self.año}').context['d']
+        self.assertEqual(despues['total_gastos_all'], antes)
+        self.assertTrue(despues['mes_cerrado'])
+
+    def test_distribucion_del_mes_en_curso_si_se_actualiza(self):
+        url = reverse('finanzas:vista_distribucion')
+        antes = self.client.get(
+            f'{url}?mes={self.hoy.month}&anio={self.año}').context['d']['total_gastos_all']
+
+        self._subir_gasto()
+
+        despues = self.client.get(
+            f'{url}?mes={self.hoy.month}&anio={self.año}').context['d']
+        self.assertGreater(despues['total_gastos_all'], antes)
+        self.assertFalse(despues['mes_cerrado'])
+
+    def test_el_resumen_anual_tampoco_reescribe_los_meses_cerrados(self):
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        url = reverse('finanzas:resumen_anual')
+        antes = {m['mes']: m['gastos']
+                 for m in self.client.get(f'{url}?anio={self.año}').context['resumen']['meses']}
+
+        self._subir_gasto()
+
+        despues = {m['mes']: m['gastos']
+                   for m in self.client.get(f'{url}?anio={self.año}').context['resumen']['meses']}
+
+        for mes in range(1, self.mes_cerrado + 1):
+            self.assertEqual(despues[mes], antes[mes], f'El mes cerrado {mes} ha cambiado')
+        self.assertGreater(despues[self.hoy.month], antes[self.hoy.month])
+
+    def test_los_porcentajes_del_mes_cerrado_cuadran_con_sus_cifras(self):
+        """Si el total se congela pero la tasa de ahorro se recalcula en vivo,
+        la pantalla se contradice a sí misma."""
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self._subir_gasto()
+
+        d = self.client.get(
+            f'{reverse("finanzas:vista_distribucion")}?mes={self.mes_cerrado}&anio={self.año}'
+        ).context['d']
+        esperado = round(
+            (d['ingreso_base_hogar'] - d['total_gastos_all']) / d['ingreso_base_hogar'] * 100, 1)
+        self.assertEqual(d['tasa_ahorro'], esperado)
+
+    def test_evolucion_y_distribucion_dan_la_misma_cifra_del_mes_cerrado(self):
+        from .views_evolucion import _flujos_por_mes
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self._subir_gasto()
+
+        evo = _flujos_por_mes(self.hogar, self.año)[self.mes_cerrado]
+        dist = self.client.get(
+            f'{reverse("finanzas:vista_distribucion")}?mes={self.mes_cerrado}&anio={self.año}'
+        ).context['d']
+        self.assertEqual(evo['ingreso_base_hogar'], dist['ingreso_base_hogar'])
+        self.assertEqual(evo['total_gastos_all'], dist['total_gastos_all'])

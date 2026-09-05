@@ -1157,6 +1157,12 @@ class CierreMensual(models.Model):
         help_text='Total de gastos del mes al cerrarlo.')
     inversion = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
         help_text='Importe que ese mes salió hacia fondos de inversión.')
+    # Nulos = cierre tomado antes de que existieran estos campos: para esos
+    # meses se sigue usando el valor en vivo (no se puede inventar el pasado).
+    ahorro = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Importe que ese mes salió hacia fondos de ahorro.')
+    libre = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Dinero que quedó libre ese mes, sin asignar a ningún fondo.')
     congelado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 

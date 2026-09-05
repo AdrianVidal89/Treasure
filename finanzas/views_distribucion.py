@@ -46,7 +46,9 @@ def vista_distribucion(request):
     except (ValueError, TypeError):
         mes, anio = hoy.month, hoy.year
 
-    datos = calcular_flujos(hogar, mes=mes, anio=anio)
+    # Un mes ya cerrado no se recalcula: se lee de su cierre (ver cierres.py).
+    from .cierres import flujo_del_mes
+    datos = flujo_del_mes(hogar, mes, anio)
     fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
     reglas = ReglaReparto.objects.filter(
         hogar=hogar, activo=True
