@@ -1185,3 +1185,106 @@ class FondosEnGestionTests(TestCase):
         quietos = self.client.get(
             reverse('finanzas:vista_distribucion')).context['fondos_quietos']
         self.assertEqual([f.id for f in quietos], [self.otro.id])
+
+
+class FormularioEditarIngresoTests(TestCase):
+    """El formulario de edición tiene que llegar con los valores actuales
+    puestos y en un formato que el navegador acepte."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FuenteIngreso
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        self.fuente = FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Alquiler piso', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('9600'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+
+    def _html(self):
+        resp = self.client.get(reverse('finanzas:editar_ingreso', args=[self.fuente.id]))
+        self.assertEqual(resp.status_code, 200)
+        return resp.content.decode()
+
+    def _post(self, **extra):
+        datos = {
+            'usuario_id': self.user.id, 'nombre': 'Alquiler piso', 'tipo': 'fijo',
+            'modo_entrada': 'anual', 'importe_declarado': '9600', 'es_bruto': 'false',
+            'pais_fiscal': 'ES', 'num_pagas': '12', 'meses_pagas_extras': '6,12',
+            'periodicidad': 'mensual', 'porcentaje_variabilidad': '0',
+            'incluir_en_mensual': 'on', 'incluir_en_distribucion': 'on',
+        }
+        datos.update(extra)
+        return self.client.post(
+            reverse('finanzas:editar_ingreso', args=[self.fuente.id]), datos)
+
+    def test_el_importe_llega_con_punto_decimal(self):
+        """En es-ES un Decimal se pinta '9600,00', y <input type="number"> con
+        coma lo descarta: el campo se vería VACÍO."""
+        html = self._html()
+        self.assertIn('value="9600.00"', html)
+        self.assertNotIn('value="9600,00"', html)
+
+    def test_el_porcentaje_de_variabilidad_tambien(self):
+        self.fuente.tipo = 'variable'
+        self.fuente.porcentaje_variabilidad = Decimal('12.5')
+        self.fuente.save()
+        html = self._html()
+        self.assertIn('value="12.50"', html)   # dos decimales, con punto
+        self.assertNotIn('value="12,50"', html)
+
+    def test_el_campo_de_pagas_personalizadas_existe(self):
+        """Faltaba la etiqueta <input>: sus atributos salían como texto suelto
+        en la página y el JS del formulario moría al no encontrarlo."""
+        html = self._html()
+        self.assertIn('id="num_pagas_custom"', html)
+        self.assertIn('name="num_pagas_custom"', html)
+        # Y el bloque que lo contiene no se cierra sobre sí mismo.
+        self.assertNotIn('id="bloque-pagas-custom" style="display: none;"></div>', html)
+
+    def test_guardar_sin_tocar_nada_no_cambia_el_importe(self):
+        resp = self._post()
+        self.assertEqual(resp.status_code, 302)
+        self.fuente.refresh_from_db()
+        self.assertEqual(self.fuente.importe_declarado, Decimal('9600'))
+
+    def test_guardar_un_importe_nuevo(self):
+        self._post(importe_declarado='10800')
+        self.fuente.refresh_from_db()
+        self.assertEqual(self.fuente.importe_declarado, Decimal('10800'))
+
+    def test_las_pagas_personalizadas_se_guardan_y_no_revientan(self):
+        """El selector envía 'custom' y el número real va en el campo de al
+        lado; antes esto acababa en int('custom') y un 500."""
+        resp = self._post(num_pagas='custom', num_pagas_custom='16')
+        self.assertEqual(resp.status_code, 302)
+        self.fuente.refresh_from_db()
+        self.assertEqual(self.fuente.num_pagas, 16)
+
+    def test_un_numero_de_pagas_ilegible_cae_en_12(self):
+        resp = self._post(num_pagas='custom', num_pagas_custom='')
+        self.assertEqual(resp.status_code, 302)
+        self.fuente.refresh_from_db()
+        self.assertEqual(self.fuente.num_pagas, 12)
+
+    def test_al_crear_tambien_valen_las_pagas_personalizadas(self):
+        from .models import FuenteIngreso
+
+        resp = self.client.post(reverse('finanzas:crear_ingreso'), {
+            'usuario_id': self.user.id, 'nombre': 'Nómina', 'tipo': 'fijo',
+            'modo_entrada': 'anual', 'importe_declarado': '30000', 'es_bruto': 'false',
+            'pais_fiscal': 'ES', 'num_pagas': 'custom', 'num_pagas_custom': '14',
+            'meses_pagas_extras': '6,12', 'periodicidad': 'mensual',
+            'porcentaje_variabilidad': '0', 'incluir_en_mensual': 'on',
+            'incluir_en_distribucion': 'on',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            FuenteIngreso.objects.get(hogar=self.hogar, nombre='Nómina').num_pagas, 14)
