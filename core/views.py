@@ -320,3 +320,56 @@ def restaurar_bd(request):
     # Página mínima, sin base.html: tras un restore la sesión/BD pueden estar
     # en un estado distinto al que había al iniciar la petición.
     return render(request, 'core/restaurar_bd_resultado.html', {'exito': exito, 'detalle': detalle})
+
+# ─── Consola SQL ─────────────────────────────────────────────────────────────
+# Acceso directo a la base de datos para corregir a mano lo que ninguna pantalla
+# cubre (por ejemplo, un histórico que quedó mal por un bug). Es la página más
+# peligrosa de la aplicación, así que:
+#   · solo superusuario (ser admin de un hogar no basta),
+#   · una sentencia por vez y sin DDL (ver core/sql_consola.py),
+#   · las escrituras se prueban antes de aplicarse,
+#   · y todo queda registrado en ConsultaSQL.
+
+@login_required
+def consola_sql(request):
+    if not request.user.is_superuser:
+        messages.error(request, "La consola SQL es solo para superusuarios.")
+        return redirect('panel_admin')
+
+    from .models import ConsultaSQL
+    from .sql_consola import LIMITE_FILAS, SQLNoPermitido, ejecutar, esquema
+
+    sql = request.POST.get('sql', '') if request.method == 'POST' else ''
+    aplicar = request.POST.get('accion') == 'aplicar'
+    resultado = None
+    error = None
+
+    if request.method == 'POST' and sql.strip():
+        try:
+            resultado = ejecutar(sql, aplicar=aplicar)
+            ConsultaSQL.objects.create(
+                usuario=request.user, sql=resultado['sentencia'],
+                verbo=resultado['verbo'], aplicado=resultado['aplicado'],
+                filas_afectadas=resultado['filas_afectadas'],
+            )
+            if resultado['aplicado']:
+                messages.success(
+                    request,
+                    f"Aplicado: {resultado['filas_afectadas']} fila(s) modificadas.")
+        except SQLNoPermitido as e:
+            error = str(e)
+            ConsultaSQL.objects.create(
+                usuario=request.user, sql=sql.strip()[:5000], error=error)
+        except Exception as e:  # error de SQL: se enseña tal cual, es lo útil
+            error = f"{type(e).__name__}: {e}"
+            ConsultaSQL.objects.create(
+                usuario=request.user, sql=sql.strip()[:5000], error=error)
+
+    return render(request, 'core/consola_sql.html', {
+        'sql': sql,
+        'resultado': resultado,
+        'error': error,
+        'limite_filas': LIMITE_FILAS,
+        'esquema': esquema(),
+        'historial': ConsultaSQL.objects.select_related('usuario')[:15],
+    })
