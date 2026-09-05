@@ -46,8 +46,17 @@ def vista_distribucion(request):
     except (ValueError, TypeError):
         mes, anio = hoy.month, hoy.year
 
-    datos = calcular_flujos(hogar, mes=mes, anio=anio)
+    # Un mes ya cerrado no se recalcula: se lee de su cierre (ver cierres.py).
+    from .cierres import flujo_del_mes
+    datos = flujo_del_mes(hogar, mes, anio)
     fondos = FondoFamiliar.objects.filter(hogar=hogar, activo=True)
+    # Fondos por los que este mes no pasa nada: se listan aparte para que el
+    # bloque de resultado no se llene de tarjetas a cero.
+    fondos_quietos = [
+        fa['fondo'] for fa in datos['fondos_aportaciones']
+        if not (fa['total_aportacion_base'] or fa['gastos_cubiertos']
+                or fa['total_cascada_saliente'])
+    ]
     reglas = ReglaReparto.objects.filter(
         hogar=hogar, activo=True
     ).select_related('fondo', 'usuario').order_by('orden')
@@ -59,24 +68,11 @@ def vista_distribucion(request):
 
     anios = [anio - 1, anio, anio + 1]
 
-    # Depósitos del hogar: capital con valor calculado automáticamente.
-    from .models import Inversion
-    depositos_data = []
-    depositos_total = Decimal('0')
-    depositos_interes = Decimal('0')
-    for dep in (Inversion.objects
-                .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
-                .prefetch_related('movimientos')
-                .order_by('nombre')):
-        estado = dep.deposito_estado()
-        depositos_data.append({'obj': dep, **estado})
-        depositos_total += estado['valor']
-        depositos_interes += estado['interes']
-
     return render(request, 'finanzas/distribucion/vista.html', {
         'hogar': hogar,
         'd': datos,
         'fondos': fondos,
+        'fondos_quietos': fondos_quietos,
         'reglas': reglas,
         'miembros': miembros,
         'gastos_hogar': gastos_hogar,
@@ -85,9 +81,6 @@ def vista_distribucion(request):
         'mes_actual': mes,
         'anio_actual': anio,
         'anios': anios,
-        'depositos_data': depositos_data,
-        'depositos_total': depositos_total,
-        'depositos_interes': depositos_interes,
     })
 
 
@@ -168,121 +161,6 @@ def ajustar_ingreso_mes(request):
 # ---------------------------------------------------------------------------
 # CRUD fondos
 # ---------------------------------------------------------------------------
-
-
-def _propietario_de_post(request, hogar):
-    """Devuelve el User propietario indicado en el POST, validando que sea
-    miembro del hogar. Vacío = fondo compartido (None)."""
-    pid = (request.POST.get('propietario_id') or '').strip()
-    if not pid:
-        return None
-    return next(
-        (m.user for m in hogar.miembros.select_related('user').all() if str(m.user_id) == pid),
-        None,
-    )
-
-
-@login_required
-def crear_fondo(request):
-    profile, hogar = _get_hogar_o_redirect(request)
-    if not hogar:
-        return redirect('dashboard')
-
-    if request.method == 'POST':
-        nombre = request.POST.get('nombre', '').strip()
-        tipo_fondo = request.POST.get('tipo_fondo', 'comun')
-        color = request.POST.get('color', '#00ff88')
-        cuenta = request.POST.get('cuenta_asociada', '').strip()
-        propietario = _propietario_de_post(request, hogar)
-
-        if not nombre:
-            messages.error(request, "El nombre es obligatorio.")
-        else:
-            max_orden = FondoFamiliar.objects.filter(hogar=hogar).count()
-            FondoFamiliar.objects.get_or_create(
-                hogar=hogar, nombre=nombre,
-                defaults={
-                    'tipo_fondo': tipo_fondo,
-                    'color': color,
-                    'cuenta_asociada': cuenta,
-                    'propietario': propietario,
-                    'orden': max_orden,
-                }
-            )
-            messages.success(request, f"Fondo '{nombre}' creado.")
-
-    return redirect('finanzas:vista_distribucion')
-
-
-@login_required
-def editar_fondo(request, fondo_id):
-    profile, hogar = _get_hogar_o_redirect(request)
-    if not hogar:
-        return redirect('dashboard')
-
-    fondo = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=hogar)
-
-    if request.method == 'POST':
-        nombre = request.POST.get('nombre', '').strip()
-        tipo_fondo = request.POST.get('tipo_fondo', 'comun')
-        color = request.POST.get('color', '#00ff88')
-        cuenta = request.POST.get('cuenta_asociada', '').strip()
-
-        if not nombre:
-            messages.error(request, "El nombre es obligatorio.")
-        else:
-            fondo.nombre = nombre
-            fondo.tipo_fondo = tipo_fondo
-            fondo.color = color
-            fondo.cuenta_asociada = cuenta
-            fondo.propietario = _propietario_de_post(request, hogar)
-            fondo.save()
-            messages.success(request, f"Fondo '{nombre}' actualizado.")
-
-    return redirect('finanzas:vista_distribucion')
-
-
-@login_required
-def eliminar_fondo(request, fondo_id):
-    profile, hogar = _get_hogar_o_redirect(request)
-    if not hogar:
-        return redirect('dashboard')
-
-    fondo = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=hogar)
-    nombre = fondo.nombre
-    fondo.delete()
-    messages.success(request, f"Fondo '{nombre}' eliminado.")
-    return redirect('finanzas:vista_distribucion')
-
-
-# ---------------------------------------------------------------------------
-# Asignar gastos del hogar a un fondo común
-# ---------------------------------------------------------------------------
-
-@login_required
-def asignar_gastos_fondo(request, fondo_id):
-    profile, hogar = _get_hogar_o_redirect(request)
-    if not hogar:
-        return redirect('dashboard')
-
-    fondo = get_object_or_404(FondoFamiliar, id=fondo_id, hogar=hogar)
-
-    if request.method == 'POST':
-        ids_seleccionados = request.POST.getlist('partida_ids')
-        ids_seleccionados = [int(x) for x in ids_seleccionados if x.isdigit()]
-
-        PartidaGasto.objects.filter(
-            hogar=hogar, fondo_asignado=fondo, activo=True, responsable__isnull=True
-        ).exclude(id__in=ids_seleccionados).update(fondo_asignado=None)
-
-        if ids_seleccionados:
-            PartidaGasto.objects.filter(
-                id__in=ids_seleccionados, hogar=hogar, activo=True, responsable__isnull=True
-            ).update(fondo_asignado=fondo)
-
-        messages.success(request, f"Gastos asignados a '{fondo.nombre}' actualizados.")
-
-    return redirect('finanzas:vista_distribucion')
 
 
 # ---------------------------------------------------------------------------
@@ -462,20 +340,4 @@ def eliminar_subsobres(request, subsobres_id):
     nombre = ss.nombre
     ss.delete()
     messages.success(request, f"Distribución interna '{nombre}' eliminada.")
-    return redirect('finanzas:vista_distribucion')
-
-
-@login_required
-def desasignar_gasto_fondo(request, partida_id):
-    profile = getattr(request.user, 'userprofile', None)
-    if not profile or not profile.hogar:
-        return redirect('dashboard')
-
-    partida = get_object_or_404(PartidaGasto, id=partida_id, hogar=profile.hogar)
-    if request.method == 'POST':
-        nombre = partida.nombre
-        partida.fondo_asignado = None
-        partida.save(update_fields=['fondo_asignado'])
-        messages.success(request, f"'{nombre}' desasignado del fondo.")
-
     return redirect('finanzas:vista_distribucion')

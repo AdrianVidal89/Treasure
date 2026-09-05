@@ -3,6 +3,7 @@ from .models import CuentaBancaria, SaldoMensualCuenta, RegistroMensual, Tarjeta
 from .models import Inversion, MovimientoInversion, ValorActualInversion, ResumenInversionesMensual, HistorialValorInversion, GrupoInversion, AportacionRecurrente
 from .models import TablaIRPF, CotizacionSS, DestinoIngreso, FuenteIngreso
 from .models import CategoriaGasto, PartidaGasto, FondoFamiliar, ReglaReparto
+from .models import CierreMensual
 
 admin.site.register(CuentaBancaria)
 admin.site.register(SaldoMensualCuenta)
@@ -95,4 +96,12 @@ class SubsobreFondoAdmin(admin.ModelAdmin):
 @admin.register(IngresoExtraordinario)
 class IngresoExtraordinarioAdmin(admin.ModelAdmin):
     list_display = ('concepto', 'usuario', 'hogar', 'importe', 'año', 'mes', 'fondo_destino')
+    list_filter = ('hogar', 'año', 'mes')
+
+
+@admin.register(CierreMensual)
+class CierreMensualAdmin(admin.ModelAdmin):
+    """Foto de un mes ya cerrado. Editarla reescribe el historial de Evolución
+    para ese mes: solo para corregir un cierre mal tomado."""
+    list_display = ('hogar', 'año', 'mes', 'ingreso', 'gastos', 'inversion', 'congelado_en')
     list_filter = ('hogar', 'año', 'mes')

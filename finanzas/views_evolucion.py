@@ -106,8 +106,15 @@ def _saldos_liquidez_patrimonio(saldos_qs, hogar=None, fecha_depositos=None, inc
 def _flujos_por_mes(hogar, año):
     """Calcula (una sola vez) el motor de distribución para los 12 meses.
     Se reutiliza tanto para el resumen como para el ingreso derivado de cada
-    fila, evitando recalcular calcular_flujos por duplicado."""
-    return {mes: calcular_flujos(hogar, mes=mes, anio=año) for mes in range(1, 13)}
+    fila, evitando recalcular calcular_flujos por duplicado.
+
+    Los meses ya CERRADOS no se sirven en vivo: se leen de su cierre (ver
+    `cierres.py`). Evolución es el registro de lo que pasó, así que subir hoy
+    el sueldo no puede cambiar lo que ingresaste en meses pasados; el mes en
+    curso y los futuros sí siguen el motor en vivo."""
+    from .cierres import aplicar_cierres
+    flujos = {mes: calcular_flujos(hogar, mes=mes, anio=año) for mes in range(1, 13)}
+    return aplicar_cierres(hogar, año, flujos)
 
 
 def _liquidez_patrimonio_por_mes(hogar, año):

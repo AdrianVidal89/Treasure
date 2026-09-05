@@ -141,6 +141,9 @@
                 <a href="{% url 'finanzas:listar_gastos' %}" class="sidebar-link {% if vn == 'finanzas:listar_gastos' %}active{% endif %}">
                     <svg class="icon"><use href="#i-expense"/></svg><span>Gastos</span>
                 </a>
+                <a href="{% url 'finanzas:listar_fondos' %}" class="sidebar-link {% if vn == 'finanzas:listar_fondos' %}active{% endif %}">
+                    <svg class="icon"><use href="#i-file"/></svg><span>Fondos</span>
+                </a>
                 <a href="{% url 'finanzas:listar' %}" class="sidebar-link {% if vn == 'finanzas:listar' %}active{% endif %}">
                     <svg class="icon"><use href="#i-investments"/></svg><span>Inversiones</span>
                 </a>

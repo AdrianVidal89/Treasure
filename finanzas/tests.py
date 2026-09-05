@@ -463,7 +463,9 @@ class DepositoEnTablaEvolucionTests(TestCase):
         self.assertEqual(fila_enero['liquidez'], Decimal('16000.00'))
         self.assertEqual(fila_enero['patrimonio'], Decimal('16000.00'))
 
-    def test_deposito_aparece_en_distribucion(self):
+    def test_deposito_aparece_entre_los_fondos(self):
+        """Los depósitos son parte del ecosistema de cuentas, así que se ven
+        donde se definen los fondos: en Gestión."""
         dep = Inversion.objects.create(
             usuario=self.user, nombre='DepoDistrib', tipo='DEPOSITO',
             deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
@@ -471,7 +473,7 @@ class DepositoEnTablaEvolucionTests(TestCase):
             inversion=dep, fecha=datetime.date(self.year, 1, 10), tipo='COMPRA',
             cantidad=Decimal('3000'), precio_unitario=Decimal('1'))
         self.client.force_login(self.user)
-        resp = self.client.get(reverse('finanzas:vista_distribucion'))
+        resp = self.client.get(reverse('finanzas:listar_fondos'))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'DepoDistrib')
         self.assertEqual(resp.context['depositos_total'], Decimal('3000.00'))
@@ -707,3 +709,479 @@ class EvolucionUsaSaldoRealTests(TestCase):
         # Mes pasado → su último día (histórico real)
         if self.hoy.month > 1:
             self.assertEqual(_fecha_corte_mes(self.hoy.year, 1), datetime.date(self.hoy.year, 1, 31))
+
+
+class CierreMensualEvolucionTests(TestCase):
+    """Evolución es el registro de lo que pasó: una vez cerrado el mes, sus
+    cifras quedan fijadas. Cambiar hoy el sueldo solo puede mover el mes en
+    curso (y lo que venga después), nunca el pasado."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, FuenteIngreso, SaldoRealFondo
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+
+        self.hoy = datetime.date.today()
+        self.año = self.hoy.year
+        # El test necesita al menos un mes cerrado en el año en curso.
+        self.mes_cerrado = self.hoy.month - 1
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        SaldoRealFondo.objects.create(
+            fondo=self.fondo, año=self.año, mes=self.hoy.month, saldo=Decimal('1000'))
+
+        self.fuente = FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+
+    def _ingresos_por_mes(self):
+        from .views_evolucion import _flujos_por_mes
+        flujos = _flujos_por_mes(self.hogar, self.año)
+        return {m: flujos[m]['ingreso_base_hogar'] for m in flujos}
+
+    def _subir_sueldo(self, importe):
+        self.fuente.importe_declarado = Decimal(importe)
+        self.fuente.save()
+
+    def test_subir_el_sueldo_no_reescribe_los_meses_cerrados(self):
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        antes = self._ingresos_por_mes()
+        self._subir_sueldo('48000')
+        despues = self._ingresos_por_mes()
+
+        for mes in range(1, self.mes_cerrado + 1):
+            self.assertEqual(despues[mes], antes[mes],
+                             f'El mes cerrado {mes} ha cambiado al subir el sueldo')
+
+    def test_el_mes_en_curso_y_los_futuros_si_se_actualizan(self):
+        antes = self._ingresos_por_mes()
+        self._subir_sueldo('48000')
+        despues = self._ingresos_por_mes()
+
+        self.assertGreater(despues[self.hoy.month], antes[self.hoy.month])
+        if self.hoy.month < 12:
+            self.assertGreater(despues[12], antes[12])
+
+    def test_el_cierre_se_hace_con_los_valores_de_antes_del_cambio(self):
+        """La foto se toma al guardar el cambio, no después: guarda lo que
+        había, no lo nuevo. Sin esto, quien cambia el sueldo sin haber abierto
+        Evolución antes congelaría el pasado ya corrompido."""
+        from .models import CierreMensual
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self.assertFalse(CierreMensual.objects.filter(hogar=self.hogar).exists())
+        antes = self._ingresos_por_mes()[self.mes_cerrado]
+
+        self._subir_sueldo('48000')
+
+        cierre = CierreMensual.objects.get(hogar=self.hogar, año=self.año, mes=self.mes_cerrado)
+        self.assertEqual(cierre.ingreso, antes)
+
+    def test_el_mes_en_curso_no_se_congela(self):
+        from .models import CierreMensual
+        self._subir_sueldo('48000')
+        self.assertFalse(
+            CierreMensual.objects.filter(
+                hogar=self.hogar, año=self.año, mes=self.hoy.month).exists())
+
+    def test_un_gasto_nuevo_no_cambia_el_ahorro_esperado_del_pasado(self):
+        from .models import CategoriaGasto, PartidaGasto
+        from .views_evolucion import _flujos_por_mes
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        antes = _flujos_por_mes(self.hogar, self.año)[self.mes_cerrado]['total_gastos_all']
+
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Vivienda', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Hipoteca',
+            importe=Decimal('900'), periodicidad='mensual', activo=True)
+
+        despues = _flujos_por_mes(self.hogar, self.año)
+        self.assertEqual(despues[self.mes_cerrado]['total_gastos_all'], antes)
+        self.assertGreater(despues[self.hoy.month]['total_gastos_all'], antes)
+
+    def test_corregir_un_ajuste_de_un_mes_cerrado_si_rehace_su_cierre(self):
+        """Un ajuste de ingreso es un dato del propio mes: si el usuario
+        corrige lo que cobró en un mes cerrado, la foto se rehace."""
+        from .models import AjusteIngresoMensual
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        antes = self._ingresos_por_mes()[self.mes_cerrado]
+
+        AjusteIngresoMensual.objects.create(
+            fuente=self.fuente, año=self.año, mes=self.mes_cerrado,
+            importe_real=antes + Decimal('500'), nota='Bonus',
+        )
+
+        despues = self._ingresos_por_mes()[self.mes_cerrado]
+        self.assertEqual(despues, antes + Decimal('500'))
+
+    def test_los_meses_cerrados_quedan_registrados_al_abrir_evolucion(self):
+        from .models import CierreMensual
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:vista_evolucion'))
+        self.assertEqual(resp.status_code, 200)
+
+        registrados = set(
+            CierreMensual.objects.filter(hogar=self.hogar, año=self.año)
+            .values_list('mes', flat=True))
+        self.assertEqual(registrados, set(range(1, self.hoy.month)))
+
+
+class IngresoFueraDeLaDistribucionTests(TestCase):
+    """Un ingreso puede estar declarado (cuenta para el total anual y para el
+    IRPF) y aun así quedar fuera del reparto mensual del hogar: el alquiler de
+    un piso, por ejemplo, que existe pero se gestiona aparte."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FuenteIngreso
+
+        self.user = User.objects.create_user('irene', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+
+        self.nomina = FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        self.alquiler = FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Alquiler piso', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('12000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+
+    def _ingreso_distribuido(self):
+        from .distribucion import calcular_flujos
+        return calcular_flujos(self.hogar)['ingreso_base_hogar']
+
+    def test_por_defecto_todo_ingreso_entra_en_la_distribucion(self):
+        self.assertTrue(self.alquiler.incluir_en_distribucion)
+        self.assertEqual(self._ingreso_distribuido(), Decimal('3000'))  # 2000 + 1000
+
+    def test_excluir_un_ingreso_lo_saca_del_reparto_del_mes(self):
+        self.alquiler.incluir_en_distribucion = False
+        self.alquiler.save()
+        self.assertEqual(self._ingreso_distribuido(), Decimal('2000'))
+
+    def test_el_ingreso_excluido_sigue_declarado(self):
+        """No desaparece: sigue en la lista de ingresos y en el total anual."""
+        self.alquiler.incluir_en_distribucion = False
+        self.alquiler.save()
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:listar_ingresos'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Alquiler piso')
+        self.assertContains(resp, 'fuera del reparto')
+        # El total anual del hogar sigue contando los 12.000 del alquiler.
+        self.assertEqual(resp.context['total_anual_hogar'], Decimal('36000'))
+        self.assertEqual(resp.context['total_fuera_reparto_hogar'], Decimal('1000'))
+        self.assertEqual(resp.context['total_reparto_hogar'], Decimal('2000'))
+
+    def test_no_cuenta_para_repartir_los_gastos_comunes(self):
+        """La proporción con la que cada miembro cubre los gastos del hogar sale
+        del ingreso que sí se reparte."""
+        from core.models import Hogar
+        from .models import FuenteIngreso, CategoriaGasto, PartidaGasto
+        from .distribucion import calcular_flujos
+
+        from core.models import UserProfile
+        otro = User.objects.create_user('adri', password='x')
+        perfil_otro, _ = UserProfile.objects.get_or_create(user=otro)
+        perfil_otro.hogar = self.hogar
+        perfil_otro.save()
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=otro, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Vivienda', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Alquiler',
+            importe=Decimal('1000'), periodicidad='mensual', activo=True)
+
+        def proporcion_de_irene():
+            d = calcular_flujos(self.hogar)
+            dm = next(x for x in d['datos_miembros']
+                      if x['miembro'].user_id == self.user.id)
+            return dm['proporcion']
+
+        # Con el alquiler dentro, Irene ingresa 3000 de 5000 → aporta más.
+        prop_con = proporcion_de_irene()
+
+        self.alquiler.incluir_en_distribucion = False
+        self.alquiler.save()
+
+        prop_sin = proporcion_de_irene()
+
+        self.assertEqual(prop_con, Decimal('60.0'))   # 3000 de 5000
+        self.assertEqual(prop_sin, Decimal('50.0'))   # 2000 de 4000
+
+    def test_el_formulario_guarda_la_casilla(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            reverse('finanzas:editar_ingreso', args=[self.alquiler.id]), {
+                'usuario_id': self.user.id,
+                'nombre': 'Alquiler piso',
+                'tipo': 'fijo',
+                'modo_entrada': 'anual',
+                'importe_declarado': '12000',
+                'es_bruto': 'false',
+                'pais_fiscal': 'ES',
+                'num_pagas': '12',
+                'meses_pagas_extras': '6,12',
+                'periodicidad': 'mensual',
+                'porcentaje_variabilidad': '0',
+                'incluir_en_mensual': 'on',
+                # sin 'incluir_en_distribucion' → fuera del reparto
+            })
+        self.assertEqual(resp.status_code, 302)
+        self.alquiler.refresh_from_db()
+        self.assertFalse(self.alquiler.incluir_en_distribucion)
+        self.assertEqual(self._ingreso_distribuido(), Decimal('2000'))
+
+
+class MesCerradoEnTodaLaAppTests(TestCase):
+    """La regla del mes cerrado no es solo de Evolución: cualquier pantalla que
+    pueda enseñar un mes pasado tiene que enseñar lo que quedó registrado."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import CategoriaGasto, FuenteIngreso, PartidaGasto
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        self.hoy = datetime.date.today()
+        self.año = self.hoy.year
+        self.mes_cerrado = self.hoy.month - 1
+
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Anuales', tipo='anual')
+        self.gasto = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Seguros',
+            importe=Decimal('1200'), periodicidad='anual', mes_pago=3, activo=True)
+
+    def _subir_gasto(self):
+        self.gasto.importe = Decimal('6000')
+        self.gasto.save()
+
+    def test_distribucion_de_un_mes_cerrado_no_se_recalcula(self):
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        url = reverse('finanzas:vista_distribucion')
+        antes = self.client.get(
+            f'{url}?mes={self.mes_cerrado}&anio={self.año}').context['d']['total_gastos_all']
+
+        self._subir_gasto()
+
+        despues = self.client.get(
+            f'{url}?mes={self.mes_cerrado}&anio={self.año}').context['d']
+        self.assertEqual(despues['total_gastos_all'], antes)
+        self.assertTrue(despues['mes_cerrado'])
+
+    def test_distribucion_del_mes_en_curso_si_se_actualiza(self):
+        url = reverse('finanzas:vista_distribucion')
+        antes = self.client.get(
+            f'{url}?mes={self.hoy.month}&anio={self.año}').context['d']['total_gastos_all']
+
+        self._subir_gasto()
+
+        despues = self.client.get(
+            f'{url}?mes={self.hoy.month}&anio={self.año}').context['d']
+        self.assertGreater(despues['total_gastos_all'], antes)
+        self.assertFalse(despues['mes_cerrado'])
+
+    def test_el_resumen_anual_tampoco_reescribe_los_meses_cerrados(self):
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        url = reverse('finanzas:resumen_anual')
+        antes = {m['mes']: m['gastos']
+                 for m in self.client.get(f'{url}?anio={self.año}').context['resumen']['meses']}
+
+        self._subir_gasto()
+
+        despues = {m['mes']: m['gastos']
+                   for m in self.client.get(f'{url}?anio={self.año}').context['resumen']['meses']}
+
+        for mes in range(1, self.mes_cerrado + 1):
+            self.assertEqual(despues[mes], antes[mes], f'El mes cerrado {mes} ha cambiado')
+        self.assertGreater(despues[self.hoy.month], antes[self.hoy.month])
+
+    def test_los_porcentajes_del_mes_cerrado_cuadran_con_sus_cifras(self):
+        """Si el total se congela pero la tasa de ahorro se recalcula en vivo,
+        la pantalla se contradice a sí misma."""
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self._subir_gasto()
+
+        d = self.client.get(
+            f'{reverse("finanzas:vista_distribucion")}?mes={self.mes_cerrado}&anio={self.año}'
+        ).context['d']
+        esperado = round(
+            (d['ingreso_base_hogar'] - d['total_gastos_all']) / d['ingreso_base_hogar'] * 100, 1)
+        self.assertEqual(d['tasa_ahorro'], esperado)
+
+    def test_evolucion_y_distribucion_dan_la_misma_cifra_del_mes_cerrado(self):
+        from .views_evolucion import _flujos_por_mes
+        if not self.mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        self._subir_gasto()
+
+        evo = _flujos_por_mes(self.hogar, self.año)[self.mes_cerrado]
+        dist = self.client.get(
+            f'{reverse("finanzas:vista_distribucion")}?mes={self.mes_cerrado}&anio={self.año}'
+        ).context['d']
+        self.assertEqual(evo['ingreso_base_hogar'], dist['ingreso_base_hogar'])
+        self.assertEqual(evo['total_gastos_all'], dist['total_gastos_all'])
+
+
+class FondosEnGestionTests(TestCase):
+    """Los fondos se definen en Gestión, y los gastos se asignan desde el
+    fondo. Distribución solo dice cómo se reparte el dinero entre ellos."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import CategoriaGasto, FondoFamiliar, PartidaGasto
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Cuenta Conjunta', tipo_fondo='comun')
+        self.otro = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Ahorro', tipo_fondo='ahorro')
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Hogar', tipo='fijo')
+        self.gasto = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Supermercados',
+            importe=Decimal('450'), periodicidad='mensual', activo=True)
+
+    def test_la_pantalla_de_fondos_lista_los_fondos_del_hogar(self):
+        resp = self.client.get(reverse('finanzas:listar_fondos'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Cuenta Conjunta')
+        self.assertContains(resp, 'Ahorro')
+
+    def test_avisa_de_los_gastos_del_hogar_que_no_cubre_ningun_fondo(self):
+        resp = self.client.get(reverse('finanzas:listar_fondos'))
+        self.assertEqual(
+            [g.id for g in resp.context['gastos_sin_asignar']], [self.gasto.id])
+        self.assertEqual(resp.context['total_sin_asignar'], Decimal('450'))
+
+    def test_asignar_un_gasto_desde_el_fondo(self):
+        resp = self.client.post(
+            reverse('finanzas:asignar_gastos_fondo', args=[self.fondo.id]),
+            {'partida_ids': [self.gasto.id]})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('finanzas:listar_fondos'))
+
+        self.gasto.refresh_from_db()
+        self.assertEqual(self.gasto.fondo_asignado_id, self.fondo.id)
+
+        datos = self.client.get(reverse('finanzas:listar_fondos')).context['fondos_data']
+        fila = next(f for f in datos if f['fondo'].id == self.fondo.id)
+        self.assertEqual([g.id for g in fila['gastos']], [self.gasto.id])
+        self.assertEqual(fila['total_gastos'], Decimal('450'))
+
+    def test_reasignar_el_gasto_lo_quita_del_fondo_anterior(self):
+        self.client.post(reverse('finanzas:asignar_gastos_fondo', args=[self.fondo.id]),
+                         {'partida_ids': [self.gasto.id]})
+        # Ahora se marca en el otro fondo y se deja de marcar en el primero.
+        self.client.post(reverse('finanzas:asignar_gastos_fondo', args=[self.otro.id]),
+                         {'partida_ids': [self.gasto.id]})
+        self.gasto.refresh_from_db()
+        self.assertEqual(self.gasto.fondo_asignado_id, self.otro.id)
+
+        self.client.post(reverse('finanzas:asignar_gastos_fondo', args=[self.otro.id]),
+                         {'partida_ids': []})
+        self.gasto.refresh_from_db()
+        self.assertIsNone(self.gasto.fondo_asignado_id)
+
+    def test_crear_y_editar_un_fondo_vuelve_a_la_pantalla_de_fondos(self):
+        from .models import FondoFamiliar
+
+        resp = self.client.post(reverse('finanzas:crear_fondo'), {
+            'nombre': 'Emergencia', 'tipo_fondo': 'ahorro',
+            'color': 'var(--info)', 'cuenta_asociada': 'Revolut',
+        })
+        self.assertEqual(resp['Location'], reverse('finanzas:listar_fondos'))
+        nuevo = FondoFamiliar.objects.get(hogar=self.hogar, nombre='Emergencia')
+
+        resp = self.client.post(reverse('finanzas:editar_fondo', args=[nuevo.id]), {
+            'nombre': 'Emergencia', 'tipo_fondo': 'ahorro',
+            'color': 'var(--info)', 'cuenta_asociada': 'Kutxabank',
+        })
+        self.assertEqual(resp['Location'], reverse('finanzas:listar_fondos'))
+        nuevo.refresh_from_db()
+        self.assertEqual(nuevo.cuenta_asociada, 'Kutxabank')
+
+    def test_distribucion_ya_no_edita_fondos_pero_enseña_como_quedan(self):
+        from .models import ReglaReparto, FuenteIngreso
+
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True)
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.fondo, nombre='Aporte común',
+            tipo_regla='porcentaje', porcentaje=Decimal('25'), orden=0, activo=True)
+
+        resp = self.client.get(reverse('finanzas:vista_distribucion'))
+        self.assertEqual(resp.status_code, 200)
+        # El resultado del fondo sí se ve...
+        self.assertContains(resp, 'Cómo queda cada fondo')
+        self.assertContains(resp, 'Cuenta Conjunta')
+        # ...pero la edición del fondo se ha ido a Gestión.
+        self.assertNotContains(resp, 'id="modal-fondo"')
+        self.assertNotContains(resp, 'id="modal-gastos"')
+        self.assertContains(resp, reverse('finanzas:listar_fondos'))
+
+    def test_los_fondos_sin_movimiento_no_llenan_el_resultado(self):
+        from .models import FuenteIngreso, ReglaReparto
+
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True)
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.fondo, nombre='Aporte común',
+            tipo_regla='porcentaje', porcentaje=Decimal('25'), orden=0, activo=True)
+
+        quietos = self.client.get(
+            reverse('finanzas:vista_distribucion')).context['fondos_quietos']
+        self.assertEqual([f.id for f in quietos], [self.otro.id])

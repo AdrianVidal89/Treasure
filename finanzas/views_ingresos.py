@@ -30,6 +30,9 @@ def listar_ingresos(request):
     total_mensual_hogar = Decimal('0')
     total_ponderado_hogar = Decimal('0')
     total_anual_hogar = Decimal('0')
+    # Parte del mensual que está declarada pero queda fuera del reparto del mes
+    # (p. ej. el alquiler de un piso que se gestiona aparte).
+    total_fuera_reparto_hogar = Decimal('0')
 
     for miembro in miembros:
         fuentes = FuenteIngreso.objects.filter(
@@ -39,6 +42,7 @@ def listar_ingresos(request):
         total_mensual = Decimal('0')
         total_ponderado = Decimal('0')
         total_anual = Decimal('0')
+        total_fuera_reparto = Decimal('0')
         fuentes_detalle = []
 
 
@@ -84,12 +88,15 @@ def listar_ingresos(request):
 
             if f.es_mensual_recurrente and f.incluir_en_mensual:
                 total_mensual += neto_mensual_base
+                if not f.incluir_en_distribucion:
+                    total_fuera_reparto += neto_mensual_base
             total_ponderado += neto_mensual_ponderado
             total_anual += neto_anual
 
         total_mensual_hogar += total_mensual
         total_ponderado_hogar += total_ponderado
         total_anual_hogar += total_anual
+        total_fuera_reparto_hogar += total_fuera_reparto
 
         ingresos_por_miembro.append({
             'miembro': miembro,
@@ -97,6 +104,8 @@ def listar_ingresos(request):
             'total_mensual': total_mensual,
             'total_ponderado': total_ponderado,
             'total_anual': total_anual,
+            'total_fuera_reparto': total_fuera_reparto,
+            'total_reparto': total_mensual - total_fuera_reparto,
         })
 
     destinos = DestinoIngreso.objects.filter(hogar=hogar, activo=True)
@@ -106,6 +115,8 @@ def listar_ingresos(request):
         'total_mensual_hogar': total_mensual_hogar,
         'total_ponderado_hogar': total_ponderado_hogar,
         'total_anual_hogar': total_anual_hogar,
+        'total_fuera_reparto_hogar': total_fuera_reparto_hogar,
+        'total_reparto_hogar': total_mensual_hogar - total_fuera_reparto_hogar,
         'destinos': destinos,
         'hogar': hogar,
     })
@@ -135,6 +146,7 @@ def crear_ingreso(request):
         meses_cobro = ','.join(meses_cobro_list) if meses_cobro_list else ''
         porcentaje_variabilidad = request.POST.get('porcentaje_variabilidad') or '0'
         incluir_en_mensual = 'incluir_en_mensual' in request.POST
+        incluir_en_distribucion = 'incluir_en_distribucion' in request.POST
         destino_id = request.POST.get('destino_id') or None
 
         if not nombre or not importe_declarado:
@@ -158,6 +170,7 @@ def crear_ingreso(request):
                 meses_cobro=meses_cobro,
                 porcentaje_variabilidad=Decimal(porcentaje_variabilidad),
                 incluir_en_mensual=incluir_en_mensual,
+                incluir_en_distribucion=incluir_en_distribucion,
                 destino_id=int(destino_id) if destino_id else None,
             )
             messages.success(request, f"Ingreso '{nombre}' creado.")
@@ -196,6 +209,7 @@ def editar_ingreso(request, ingreso_id):
         porcentaje_var = request.POST.get('porcentaje_variabilidad') or '0'
         fuente.porcentaje_variabilidad = Decimal(porcentaje_var)
         fuente.incluir_en_mensual = 'incluir_en_mensual' in request.POST
+        fuente.incluir_en_distribucion = 'incluir_en_distribucion' in request.POST
         destino_id = request.POST.get('destino_id')
         fuente.destino_id = int(destino_id) if destino_id else None
         fuente.save()

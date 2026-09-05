@@ -698,6 +698,12 @@ class FuenteIngreso(models.Model):
         default=Decimal('0'), help_text="% de variabilidad. Ej: 40 = +40% sobre la base.")
     incluir_en_mensual = models.BooleanField(default=True,
         help_text="Si False, solo aparece en el ponderado, no en el mensual base.")
+    incluir_en_distribucion = models.BooleanField(default=True,
+        help_text="Si se desmarca, el ingreso sigue declarado (cuenta para el total "
+                  "anual y para el IRPF) pero NO entra en el reparto mensual del "
+                  "hogar: ni en el dinero a distribuir, ni en la proporción con la "
+                  "que se cubren los gastos comunes. Para ingresos que existen pero "
+                  "se gestionan aparte, como el alquiler de un piso.")
     destino = models.ForeignKey(DestinoIngreso, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='fuentes',
         help_text="Destino para ingresos no recurrentes mensuales.")
@@ -1131,6 +1137,43 @@ class IngresoRealMes(models.Model):
 
     def __str__(self):
         return f"Ingresos {self.mes}/{self.año} - {self.hogar.nombre}: €{self.importe}"
+
+
+class CierreMensual(models.Model):
+    """Foto de un mes ya CERRADO.
+
+    Evolución es un registro histórico, no una vista en vivo: lo que pasó en
+    julio no puede cambiar porque hoy subas el sueldo. Cuando un mes queda
+    atrás, las cifras que Evolución consume del motor de distribución se
+    congelan aquí y ya no se recalculan. El mes en curso —y los futuros— se
+    siguen calculando en vivo.
+    """
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='cierres_mensuales')
+    año = models.IntegerField()
+    mes = models.IntegerField(help_text='Número de mes 1-12')
+    ingreso = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Ingreso neto del hogar ese mes, tal y como quedó al cerrarlo.')
+    gastos = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Total de gastos del mes al cerrarlo.')
+    inversion = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0'),
+        help_text='Importe que ese mes salió hacia fondos de inversión.')
+    # Nulos = cierre tomado antes de que existieran estos campos: para esos
+    # meses se sigue usando el valor en vivo (no se puede inventar el pasado).
+    ahorro = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Importe que ese mes salió hacia fondos de ahorro.')
+    libre = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Dinero que quedó libre ese mes, sin asignar a ningún fondo.')
+    congelado_en = models.DateTimeField(auto_now_add=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-año', '-mes']
+        unique_together = ('hogar', 'año', 'mes')
+        verbose_name = 'Cierre mensual'
+        verbose_name_plural = 'Cierres mensuales'
+
+    def __str__(self):
+        return f"Cierre {self.mes}/{self.año} - {self.hogar.nombre}: €{self.ingreso}"
 
 
 # ─── Catálogo de Tickers ──────────────────────────────────────────────────────

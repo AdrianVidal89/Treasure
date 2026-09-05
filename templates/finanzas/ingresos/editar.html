@@ -195,6 +195,21 @@
                 <label for="incluir_en_mensual" style="margin: 0; cursor: pointer;">Incluir en el mensual base</label>
             </div>
 
+            <!-- Entra en el reparto del mes -->
+            <div class="form-group" style="padding: 12px 0;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="checkbox" name="incluir_en_distribucion" id="incluir_en_distribucion" {% if fuente.incluir_en_distribucion %}checked{% endif %}
+                           style="width: 18px; height: 18px; accent-color: var(--primary-color);">
+                    <label for="incluir_en_distribucion" style="margin: 0; cursor: pointer;">Entra en la distribución del mes</label>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--muted); margin-top: 6px; margin-left: 30px;">
+                    Desmárcalo para un ingreso que existe y se declara, pero que no repartes
+                    con el resto del hogar (por ejemplo, el alquiler de un piso). Seguirá
+                    contando en el total anual y en el IRPF, pero no en el dinero a
+                    distribuir ni en el reparto de los gastos comunes.
+                </div>
+            </div>
+
             <!-- Simulador fiscal -->
             <div id="simulador-fiscal" style="display: none; background: var(--app-bg); border: 1px solid var(--primary-color); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                 <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-color); margin-bottom: 12px;">Simulación fiscal en tiempo real</div>

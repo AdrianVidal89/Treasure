@@ -22,6 +22,12 @@
             <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--success); margin-bottom: 6px;">Mensual Recurrente</div>
             <div style="font-size: 1.6rem; font-weight: 700; color: var(--success);">€{{ total_mensual_hogar|floatformat:2 }}</div>
             <div style="font-size: 0.7rem; color: var(--muted); margin-top: 4px;">Base garantizada</div>
+            {% if total_fuera_reparto_hogar > 0 %}
+            <div style="font-size: 0.7rem; color: var(--muted); margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);">
+                €{{ total_reparto_hogar|floatformat:2 }} entra en la distribución<br>
+                <span style="color: var(--warning);">€{{ total_fuera_reparto_hogar|floatformat:2 }} fuera del reparto</span>
+            </div>
+            {% endif %}
         </div>
         <div style="background: var(--surface); border: 1px solid var(--info); border-radius: 16px; padding: 20px; text-align: center; box-shadow: 0 1px 2px rgba(28,35,33,.06);">
             <div style="font-size: 0.75rem; font-weight: 600; text-transform: uppercase; color: var(--info); margin-bottom: 6px;">Mensual Ponderado</div>
@@ -81,6 +87,10 @@
                     {% endif %}
                     {% if not item.fuente.incluir_en_mensual %}
                     <span style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); border: 1px solid var(--danger);">solo ponderado</span>
+                    {% endif %}
+                    {% if not item.fuente.incluir_en_distribucion %}
+                    <span title="Declarado, pero fuera del reparto mensual del hogar"
+                          style="font-size: 0.7rem; padding: 2px 8px; border-radius: 20px; background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted); border: 1px solid var(--border-strong);">fuera del reparto</span>
                     {% endif %}
                 </div>
                 <div style="font-size: 0.75rem; color: var(--muted); margin-top: 4px; display: flex; gap: 10px; flex-wrap: wrap;">
