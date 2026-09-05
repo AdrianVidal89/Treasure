@@ -25,7 +25,16 @@
         <div style="display: flex; gap: 12px; flex-wrap: wrap;">
             <a href="{% url 'backup_bd' %}" class="btn btn-primary">Descargar backup (.dump)</a>
             <a href="{% url 'restaurar_bd' %}" class="btn" style="background: var(--danger); color: var(--on-danger);">Restaurar desde backup</a>
+            {% if request.user.is_superuser %}
+            <a href="{% url 'consola_sql' %}" class="btn btn-secondary">Consola SQL</a>
+            {% endif %}
         </div>
+        {% if request.user.is_superuser %}
+        <p style="color: var(--muted); font-size: 0.78rem; margin: 12px 0 0;">
+            La consola SQL permite corregir a mano datos que ninguna pantalla cubre.
+            Las escrituras se prueban antes de aplicarse y todo queda registrado.
+        </p>
+        {% endif %}
     </div>
 
     <!-- HEADER HOGARES -->

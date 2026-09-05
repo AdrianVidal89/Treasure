@@ -64,3 +64,29 @@ class UserProfile(models.Model):
     @property
     def es_viewer(self):
         return self.rol == 'viewer'
+
+
+class ConsultaSQL(models.Model):
+    """Registro de lo ejecutado en la consola SQL del panel de administración.
+
+    Una consola SQL sin rastro es una caja negra: si algo se rompe, esto es lo
+    que permite saber qué se hizo y cuándo."""
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
+                                related_name='consultas_sql')
+    sql = models.TextField()
+    verbo = models.CharField(max_length=20, blank=True, default='')
+    aplicado = models.BooleanField(
+        default=False,
+        help_text='False = solo se probó (se deshizo); True = se aplicó de verdad.')
+    filas_afectadas = models.IntegerField(null=True, blank=True)
+    error = models.TextField(blank=True, default='')
+    ejecutado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-ejecutado_en']
+        verbose_name = 'Consulta SQL'
+        verbose_name_plural = 'Consultas SQL'
+
+    def __str__(self):
+        estado = 'aplicada' if self.aplicado else 'prueba'
+        return f"{self.verbo} ({estado}) · {self.ejecutado_en:%d/%m/%Y %H:%M}"
