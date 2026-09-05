@@ -698,6 +698,12 @@ class FuenteIngreso(models.Model):
         default=Decimal('0'), help_text="% de variabilidad. Ej: 40 = +40% sobre la base.")
     incluir_en_mensual = models.BooleanField(default=True,
         help_text="Si False, solo aparece en el ponderado, no en el mensual base.")
+    incluir_en_distribucion = models.BooleanField(default=True,
+        help_text="Si se desmarca, el ingreso sigue declarado (cuenta para el total "
+                  "anual y para el IRPF) pero NO entra en el reparto mensual del "
+                  "hogar: ni en el dinero a distribuir, ni en la proporción con la "
+                  "que se cubren los gastos comunes. Para ingresos que existen pero "
+                  "se gestionan aparte, como el alquiler de un piso.")
     destino = models.ForeignKey(DestinoIngreso, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='fuentes',
         help_text="Destino para ingresos no recurrentes mensuales.")

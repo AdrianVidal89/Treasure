@@ -121,7 +121,12 @@ def calcular_flujos(hogar, mes=None, anio=None):
     total_base_puro_hogar = Decimal('0')
 
     for m in miembros:
-        fuentes = FuenteIngreso.objects.filter(usuario=m.user, hogar=hogar, activo=True)
+        # Las fuentes marcadas como fuera del reparto siguen declaradas (total
+        # anual, IRPF, informes), pero no son dinero que el hogar distribuya:
+        # no entran aquí ni en la proporción con la que se cubren los gastos.
+        fuentes = FuenteIngreso.objects.filter(
+            usuario=m.user, hogar=hogar, activo=True, incluir_en_distribucion=True,
+        )
         ing_base = Decimal('0')
         ing_pond = Decimal('0')
         ing_base_puro = Decimal('0')

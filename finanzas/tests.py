@@ -839,3 +839,120 @@ class CierreMensualEvolucionTests(TestCase):
             CierreMensual.objects.filter(hogar=self.hogar, año=self.año)
             .values_list('mes', flat=True))
         self.assertEqual(registrados, set(range(1, self.hoy.month)))
+
+
+class IngresoFueraDeLaDistribucionTests(TestCase):
+    """Un ingreso puede estar declarado (cuenta para el total anual y para el
+    IRPF) y aun así quedar fuera del reparto mensual del hogar: el alquiler de
+    un piso, por ejemplo, que existe pero se gestiona aparte."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FuenteIngreso
+
+        self.user = User.objects.create_user('irene', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+
+        self.nomina = FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        self.alquiler = FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Alquiler piso', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('12000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+
+    def _ingreso_distribuido(self):
+        from .distribucion import calcular_flujos
+        return calcular_flujos(self.hogar)['ingreso_base_hogar']
+
+    def test_por_defecto_todo_ingreso_entra_en_la_distribucion(self):
+        self.assertTrue(self.alquiler.incluir_en_distribucion)
+        self.assertEqual(self._ingreso_distribuido(), Decimal('3000'))  # 2000 + 1000
+
+    def test_excluir_un_ingreso_lo_saca_del_reparto_del_mes(self):
+        self.alquiler.incluir_en_distribucion = False
+        self.alquiler.save()
+        self.assertEqual(self._ingreso_distribuido(), Decimal('2000'))
+
+    def test_el_ingreso_excluido_sigue_declarado(self):
+        """No desaparece: sigue en la lista de ingresos y en el total anual."""
+        self.alquiler.incluir_en_distribucion = False
+        self.alquiler.save()
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:listar_ingresos'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Alquiler piso')
+        self.assertContains(resp, 'fuera del reparto')
+        # El total anual del hogar sigue contando los 12.000 del alquiler.
+        self.assertEqual(resp.context['total_anual_hogar'], Decimal('36000'))
+        self.assertEqual(resp.context['total_fuera_reparto_hogar'], Decimal('1000'))
+        self.assertEqual(resp.context['total_reparto_hogar'], Decimal('2000'))
+
+    def test_no_cuenta_para_repartir_los_gastos_comunes(self):
+        """La proporción con la que cada miembro cubre los gastos del hogar sale
+        del ingreso que sí se reparte."""
+        from core.models import Hogar
+        from .models import FuenteIngreso, CategoriaGasto, PartidaGasto
+        from .distribucion import calcular_flujos
+
+        from core.models import UserProfile
+        otro = User.objects.create_user('adri', password='x')
+        perfil_otro, _ = UserProfile.objects.get_or_create(user=otro)
+        perfil_otro.hogar = self.hogar
+        perfil_otro.save()
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=otro, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Vivienda', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Alquiler',
+            importe=Decimal('1000'), periodicidad='mensual', activo=True)
+
+        def proporcion_de_irene():
+            d = calcular_flujos(self.hogar)
+            dm = next(x for x in d['datos_miembros']
+                      if x['miembro'].user_id == self.user.id)
+            return dm['proporcion']
+
+        # Con el alquiler dentro, Irene ingresa 3000 de 5000 → aporta más.
+        prop_con = proporcion_de_irene()
+
+        self.alquiler.incluir_en_distribucion = False
+        self.alquiler.save()
+
+        prop_sin = proporcion_de_irene()
+
+        self.assertEqual(prop_con, Decimal('60.0'))   # 3000 de 5000
+        self.assertEqual(prop_sin, Decimal('50.0'))   # 2000 de 4000
+
+    def test_el_formulario_guarda_la_casilla(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            reverse('finanzas:editar_ingreso', args=[self.alquiler.id]), {
+                'usuario_id': self.user.id,
+                'nombre': 'Alquiler piso',
+                'tipo': 'fijo',
+                'modo_entrada': 'anual',
+                'importe_declarado': '12000',
+                'es_bruto': 'false',
+                'pais_fiscal': 'ES',
+                'num_pagas': '12',
+                'meses_pagas_extras': '6,12',
+                'periodicidad': 'mensual',
+                'porcentaje_variabilidad': '0',
+                'incluir_en_mensual': 'on',
+                # sin 'incluir_en_distribucion' → fuera del reparto
+            })
+        self.assertEqual(resp.status_code, 302)
+        self.alquiler.refresh_from_db()
+        self.assertFalse(self.alquiler.incluir_en_distribucion)
+        self.assertEqual(self._ingreso_distribuido(), Decimal('2000'))
