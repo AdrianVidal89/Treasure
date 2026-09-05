@@ -3,6 +3,7 @@ from . import views
 from . import views_ingresos
 from . import views_gastos
 from . import views_distribucion
+from . import views_fondos
 from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 from . import views_evolucion
 from . import views_simuladores
@@ -82,12 +83,13 @@ urlpatterns = [
     path('distribucion/resumen-anual/', views_distribucion.vista_resumen_anual, name='resumen_anual'),
     path('distribucion/ajustar-ingreso/', views_distribucion.ajustar_ingreso_mes, name='ajustar_ingreso_mes'),
 
-    # Fondos
-    path('distribucion/fondo/crear/', views_distribucion.crear_fondo, name='crear_fondo'),
-    path('distribucion/fondo/<int:fondo_id>/editar/', views_distribucion.editar_fondo, name='editar_fondo'),
-    path('distribucion/fondo/<int:fondo_id>/eliminar/', views_distribucion.eliminar_fondo, name='eliminar_fondo'),
-    path('distribucion/fondo/<int:fondo_id>/gastos/', views_distribucion.asignar_gastos_fondo, name='asignar_gastos_fondo'),
-    path('distribucion/gasto/<int:partida_id>/desasignar/', views_distribucion.desasignar_gasto_fondo, name='desasignar_gasto_fondo'),
+    # ── Fondos (Gestión): qué fondos hay y qué gastos cubre cada uno ──────
+    path('fondos/', views_fondos.listar_fondos, name='listar_fondos'),
+    path('fondos/crear/', views_fondos.crear_fondo, name='crear_fondo'),
+    path('fondos/<int:fondo_id>/editar/', views_fondos.editar_fondo, name='editar_fondo'),
+    path('fondos/<int:fondo_id>/eliminar/', views_fondos.eliminar_fondo, name='eliminar_fondo'),
+    path('fondos/<int:fondo_id>/gastos/', views_fondos.asignar_gastos_fondo, name='asignar_gastos_fondo'),
+    path('fondos/gasto/<int:partida_id>/desasignar/', views_fondos.desasignar_gasto_fondo, name='desasignar_gasto_fondo'),
 
     # Subsobres
     path('distribucion/fondo/<int:fondo_id>/subsobre/crear/', views_distribucion.crear_subsobres, name='crear_subsobres'),

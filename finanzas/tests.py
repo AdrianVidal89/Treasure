@@ -463,7 +463,9 @@ class DepositoEnTablaEvolucionTests(TestCase):
         self.assertEqual(fila_enero['liquidez'], Decimal('16000.00'))
         self.assertEqual(fila_enero['patrimonio'], Decimal('16000.00'))
 
-    def test_deposito_aparece_en_distribucion(self):
+    def test_deposito_aparece_entre_los_fondos(self):
+        """Los depósitos son parte del ecosistema de cuentas, así que se ven
+        donde se definen los fondos: en Gestión."""
         dep = Inversion.objects.create(
             usuario=self.user, nombre='DepoDistrib', tipo='DEPOSITO',
             deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
@@ -471,7 +473,7 @@ class DepositoEnTablaEvolucionTests(TestCase):
             inversion=dep, fecha=datetime.date(self.year, 1, 10), tipo='COMPRA',
             cantidad=Decimal('3000'), precio_unitario=Decimal('1'))
         self.client.force_login(self.user)
-        resp = self.client.get(reverse('finanzas:vista_distribucion'))
+        resp = self.client.get(reverse('finanzas:listar_fondos'))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'DepoDistrib')
         self.assertEqual(resp.context['depositos_total'], Decimal('3000.00'))
@@ -1063,3 +1065,123 @@ class MesCerradoEnTodaLaAppTests(TestCase):
         ).context['d']
         self.assertEqual(evo['ingreso_base_hogar'], dist['ingreso_base_hogar'])
         self.assertEqual(evo['total_gastos_all'], dist['total_gastos_all'])
+
+
+class FondosEnGestionTests(TestCase):
+    """Los fondos se definen en Gestión, y los gastos se asignan desde el
+    fondo. Distribución solo dice cómo se reparte el dinero entre ellos."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import CategoriaGasto, FondoFamiliar, PartidaGasto
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Cuenta Conjunta', tipo_fondo='comun')
+        self.otro = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Ahorro', tipo_fondo='ahorro')
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Hogar', tipo='fijo')
+        self.gasto = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Supermercados',
+            importe=Decimal('450'), periodicidad='mensual', activo=True)
+
+    def test_la_pantalla_de_fondos_lista_los_fondos_del_hogar(self):
+        resp = self.client.get(reverse('finanzas:listar_fondos'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Cuenta Conjunta')
+        self.assertContains(resp, 'Ahorro')
+
+    def test_avisa_de_los_gastos_del_hogar_que_no_cubre_ningun_fondo(self):
+        resp = self.client.get(reverse('finanzas:listar_fondos'))
+        self.assertEqual(
+            [g.id for g in resp.context['gastos_sin_asignar']], [self.gasto.id])
+        self.assertEqual(resp.context['total_sin_asignar'], Decimal('450'))
+
+    def test_asignar_un_gasto_desde_el_fondo(self):
+        resp = self.client.post(
+            reverse('finanzas:asignar_gastos_fondo', args=[self.fondo.id]),
+            {'partida_ids': [self.gasto.id]})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('finanzas:listar_fondos'))
+
+        self.gasto.refresh_from_db()
+        self.assertEqual(self.gasto.fondo_asignado_id, self.fondo.id)
+
+        datos = self.client.get(reverse('finanzas:listar_fondos')).context['fondos_data']
+        fila = next(f for f in datos if f['fondo'].id == self.fondo.id)
+        self.assertEqual([g.id for g in fila['gastos']], [self.gasto.id])
+        self.assertEqual(fila['total_gastos'], Decimal('450'))
+
+    def test_reasignar_el_gasto_lo_quita_del_fondo_anterior(self):
+        self.client.post(reverse('finanzas:asignar_gastos_fondo', args=[self.fondo.id]),
+                         {'partida_ids': [self.gasto.id]})
+        # Ahora se marca en el otro fondo y se deja de marcar en el primero.
+        self.client.post(reverse('finanzas:asignar_gastos_fondo', args=[self.otro.id]),
+                         {'partida_ids': [self.gasto.id]})
+        self.gasto.refresh_from_db()
+        self.assertEqual(self.gasto.fondo_asignado_id, self.otro.id)
+
+        self.client.post(reverse('finanzas:asignar_gastos_fondo', args=[self.otro.id]),
+                         {'partida_ids': []})
+        self.gasto.refresh_from_db()
+        self.assertIsNone(self.gasto.fondo_asignado_id)
+
+    def test_crear_y_editar_un_fondo_vuelve_a_la_pantalla_de_fondos(self):
+        from .models import FondoFamiliar
+
+        resp = self.client.post(reverse('finanzas:crear_fondo'), {
+            'nombre': 'Emergencia', 'tipo_fondo': 'ahorro',
+            'color': 'var(--info)', 'cuenta_asociada': 'Revolut',
+        })
+        self.assertEqual(resp['Location'], reverse('finanzas:listar_fondos'))
+        nuevo = FondoFamiliar.objects.get(hogar=self.hogar, nombre='Emergencia')
+
+        resp = self.client.post(reverse('finanzas:editar_fondo', args=[nuevo.id]), {
+            'nombre': 'Emergencia', 'tipo_fondo': 'ahorro',
+            'color': 'var(--info)', 'cuenta_asociada': 'Kutxabank',
+        })
+        self.assertEqual(resp['Location'], reverse('finanzas:listar_fondos'))
+        nuevo.refresh_from_db()
+        self.assertEqual(nuevo.cuenta_asociada, 'Kutxabank')
+
+    def test_distribucion_ya_no_edita_fondos_pero_enseña_como_quedan(self):
+        from .models import ReglaReparto, FuenteIngreso
+
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True)
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.fondo, nombre='Aporte común',
+            tipo_regla='porcentaje', porcentaje=Decimal('25'), orden=0, activo=True)
+
+        resp = self.client.get(reverse('finanzas:vista_distribucion'))
+        self.assertEqual(resp.status_code, 200)
+        # El resultado del fondo sí se ve...
+        self.assertContains(resp, 'Cómo queda cada fondo')
+        self.assertContains(resp, 'Cuenta Conjunta')
+        # ...pero la edición del fondo se ha ido a Gestión.
+        self.assertNotContains(resp, 'id="modal-fondo"')
+        self.assertNotContains(resp, 'id="modal-gastos"')
+        self.assertContains(resp, reverse('finanzas:listar_fondos'))
+
+    def test_los_fondos_sin_movimiento_no_llenan_el_resultado(self):
+        from .models import FuenteIngreso, ReglaReparto
+
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True)
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.fondo, nombre='Aporte común',
+            tipo_regla='porcentaje', porcentaje=Decimal('25'), orden=0, activo=True)
+
+        quietos = self.client.get(
+            reverse('finanzas:vista_distribucion')).context['fondos_quietos']
+        self.assertEqual([f.id for f in quietos], [self.otro.id])

@@ -85,27 +85,157 @@
     </div>
 </div>
 
-<!-- ===== HUB DE GESTIÓN (todo lo editable, agrupado y a un clic) ===== -->
-<div class="hub-grid">
-    <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--primary-color); --accent:var(--primary-color);" onclick="abrir('modal-reglas')">
-        <span class="hub-icon"><svg class="icon"><use href="#i-distribution"/></svg></span>
-        <span class="hub-num">{{ reglas|length }}</span>
-        <span class="hub-title">Reglas de reparto</span>
-        <span class="hub-go">Gestionar →</span>
-    </button>
-    <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--success); --accent:var(--success);" onclick="abrir('modal-fondos')">
-        <span class="hub-icon"><svg class="icon"><use href="#i-file"/></svg></span>
-        <span class="hub-num">{{ d.fondos_aportaciones|length }}</span>
-        <span class="hub-title">Fondos</span>
-        <span class="hub-go">Gestionar →</span>
-    </button>
-    <button class="hub-card glass-panel glass-panel--accent" style="--hc:var(--info); --accent:var(--info);" onclick="abrir('modal-transferencias')">
-        <span class="hub-icon"><svg class="icon"><use href="#i-refresh"/></svg></span>
-        <span class="hub-num">{{ d.transferencias|length }}</span>
-        <span class="hub-title">Transferencias</span>
-        <span class="hub-go">Ver detalle →</span>
-    </button>
+<!-- ═══ 1 · CÓMO SE REPARTE ═══════════════════════════════════════════════
+     Las reglas son lo único que se define aquí: cómo se reparte el dinero que
+     entra. Los fondos (y qué gastos cubre cada uno) se definen en Gestión. -->
+<div class="paso">
+    <div class="paso-head">
+        <div>
+            <span class="paso-num">1</span>
+            <span class="paso-titulo">Cómo se reparte</span>
+            <p class="paso-sub">Reglas que se aplican de arriba a abajo sobre el dinero libre de cada mes.</p>
+        </div>
+        <button onclick="abrirModalRegla()" class="btn btn-primary btn-mini">＋ Nueva regla</button>
+    </div>
+
+    {% if reglas %}
+    <p class="reglas-orden-hint">Arrastra <svg class="icon icon-dots"><use href="#i-grip"/></svg> para cambiar el orden de aplicación.</p>
+    {% endif %}
+    <div id="reglas-lista" data-reordenar-url="{% url 'finanzas:reordenar_reglas' %}">
+    {% for regla in reglas %}
+    <div class="regla-pill" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
+        <span class="regla-drag-handle" title="Arrastrar para reordenar"><svg class="icon icon-dots"><use href="#i-grip"/></svg></span>
+        <div class="regla-pill-info">
+            <div class="regla-pill-nombre">{{ regla.nombre }}</div>
+            <div class="regla-pill-sub">
+                {% if regla.usuario %}{{ regla.usuario.first_name|default:regla.usuario.username }}{% else %}Hogar{% endif %}
+                · {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
+                {% if regla.fondo %} → {{ regla.fondo.nombre }}{% else %} → sin fondo{% endif %}
+                {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
+            </div>
+        </div>
+        <div style="display:flex; gap:6px;">
+            <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
+            <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
+        </div>
+    </div>
+    {% empty %}
+    <p class="empty-msg">Sin reglas todavía: todo el dinero se queda como libre. Crea la primera con “＋ Nueva regla”.</p>
+    {% endfor %}
+    </div>
+
+    <!-- Movimientos entre fondos (cascada) -->
+    <div class="paso-sub-bloque">
+        <div class="paso-head">
+            <div>
+                <span class="paso-subtitulo">Movimientos entre fondos</span>
+                <p class="paso-sub">Dinero que, una vez en un fondo, pasa a otro o se reserva dentro de él.</p>
+            </div>
+            {% if fondos %}
+            <button onclick="abrirModalSubsobre()" class="btn btn-secondary btn-mini">＋ Nuevo movimiento</button>
+            {% endif %}
+        </div>
+        {% for fa in d.fondos_aportaciones %}
+            {% for ss in fa.subsobres %}
+            <div class="cascada-row">
+                <div class="cascada-info">
+                    <span class="cascada-nombre">{{ ss.nombre }}</span>
+                    <span class="cascada-ruta">{{ fa.fondo.nombre }} → {% if ss.fondo_destino %}{{ ss.fondo_destino.nombre }}{% else %}reserva dentro del fondo{% endif %}{% if ss.solo_mes %} · solo {{ ss.solo_mes_display }}{% endif %}</span>
+                </div>
+                <div class="cascada-acciones">
+                    <span class="cascada-importe">€{{ ss.importe|floatformat:2 }}</span>
+                    <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
+                </div>
+            </div>
+            {% endfor %}
+        {% endfor %}
+    </div>
 </div>
+
+
+<!-- ═══ 2 · CÓMO QUEDA CADA FONDO ═════════════════════════════════════════
+     Resultado, no formulario: lo que entra, lo que paga y lo que sobra. -->
+<div class="paso">
+    <div class="paso-head">
+        <div>
+            <span class="paso-num">2</span>
+            <span class="paso-titulo">Cómo queda cada fondo</span>
+            <p class="paso-sub">Resultado de aplicar las reglas a {{ d.mes_nombre }}. Para cambiar un fondo o los gastos que cubre, ve a <a href="{% url 'finanzas:listar_fondos' %}">Gestión → Fondos</a>.</p>
+        </div>
+    </div>
+
+    <div class="fondos-estado">
+    {% for fa in d.fondos_aportaciones %}{% if fa.total_aportacion_base or fa.gastos_cubiertos or fa.total_cascada_saliente %}
+    <div class="fondo-estado" style="--fc: {{ fa.fondo.color }};">
+        <div class="fondo-estado-head">
+            <span class="fondo-estado-nombre">{{ fa.fondo.nombre }}</span>
+            <span class="tag-tipo tag-{{ fa.fondo.tipo_fondo }}">{% if fa.fondo.tipo_fondo == 'comun' %}Común{% elif fa.fondo.tipo_fondo == 'ahorro' %}Ahorro{% else %}Inversión{% endif %}</span>
+        </div>
+        <div class="fondo-estado-filas">
+            <div class="fe-fila"><span>Entra</span><span class="fe-val" style="color:{{ fa.fondo.color }};">+€{{ fa.total_aportacion_base|floatformat:2 }}</span></div>
+            {% if fa.gastos_cubiertos > 0 %}
+            <div class="fe-fila"><span>Paga gastos</span><span class="fe-val" style="color:var(--danger);">−€{{ fa.gastos_cubiertos|floatformat:2 }}</span></div>
+            {% endif %}
+            {% if fa.total_cascada_saliente > 0 %}
+            <div class="fe-fila"><span>Sale a otros fondos</span><span class="fe-val" style="color:var(--warning);">−€{{ fa.total_cascada_saliente|floatformat:2 }}</span></div>
+            {% endif %}
+            {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
+            <div class="fe-fila fe-total"><span>Queda</span><span class="fe-val" style="color:{% if fa.libre_fondo >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span></div>
+            {% else %}
+            <div class="fe-fila fe-total"><span>Queda</span><span class="fe-val" style="color:{% if fa.total_aportacion_neta >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span></div>
+            {% endif %}
+        </div>
+        {% if fa.gastos_asignados %}
+        <details class="fondo-estado-gastos">
+            <summary>{{ fa.gastos_asignados|length }} gasto{{ fa.gastos_asignados|pluralize:"s" }} que paga</summary>
+            {% for g in fa.gastos_asignados %}
+            <div class="fe-gasto"><span>{{ g.nombre }}</span><span>€{{ g.importe_mensual|floatformat:2 }}</span></div>
+            {% endfor %}
+        </details>
+        {% endif %}
+    </div>
+    {% endif %}{% empty %}
+    <p class="empty-msg">Sin fondos definidos. Créalos en <a href="{% url 'finanzas:listar_fondos' %}">Gestión → Fondos</a>.</p>
+    {% endfor %}
+    </div>
+
+    {% if fondos_quietos %}
+    <details class="fondos-quietos">
+        <summary>{{ fondos_quietos|length }} fondo{{ fondos_quietos|pluralize:"s" }} sin movimiento en {{ d.mes_nombre }}</summary>
+        <div class="fondos-quietos-lista">
+            {% for f in fondos_quietos %}<span class="fondo-quieto" style="--fc: {{ f.color }};">{{ f.nombre }}</span>{% endfor %}
+        </div>
+    </details>
+    {% endif %}
+</div>
+
+
+<!-- ═══ 3 · TRANSFERENCIAS DEL MES ════════════════════════════════════════
+     Lo único accionable: los traspasos que hay que hacer este mes. -->
+<div class="paso">
+    <div class="paso-head">
+        <div>
+            <span class="paso-num">3</span>
+            <span class="paso-titulo">Transferencias de {{ d.mes_nombre }}</span>
+            <p class="paso-sub">Los traspasos que hay que hacer para que el reparto de arriba sea real.</p>
+        </div>
+    </div>
+    <div class="transfer-lista">
+    {% for t in d.transferencias %}
+    <div class="transfer-card" style="border-left-color: {{ t.color }};">
+        <div class="transfer-left">
+            <div style="font-size:0.9rem; font-weight:600;">{{ t.origen }} → {{ t.destino }}</div>
+            <div class="transfer-sub">{{ t.concepto }}{% if t.tipo == 'cascada' %} · movimiento entre fondos{% endif %}</div>
+            {% if t.cuenta %}<div style="font-size:0.68rem; color:var(--info); margin-top:2px;">{{ t.cuenta }}</div>{% endif %}
+        </div>
+        <div style="font-size:1.1rem; font-weight:700; color:{{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
+    </div>
+    {% empty %}
+    <p class="empty-msg">Ninguna: con las reglas de arriba no hay que mover dinero este mes.</p>
+    {% endfor %}
+    </div>
+</div>
+
 
 <!-- ===== RESUMEN POR PERSONA (lo principal, siempre visible) ===== -->
 <div class="section-title persona-section-title">Resumen por persona</div>
@@ -188,300 +318,6 @@
 </div><!-- /panel -->
 
 
-<!-- ═══════════════════════════════════════════════════════════════════════
-     MODAL LISTA · REGLAS DE REPARTO
-     ═══════════════════════════════════════════════════════════════════════ -->
-<div id="modal-reglas" class="modal-overlay modal-list">
-    <div class="modal-box modal-box-wide glass-panel">
-        <div class="modal-list-head">
-            <h2>Reglas de reparto</h2>
-            <div class="modal-list-actions">
-                <button onclick="abrirModalRegla()" class="btn btn-primary" style="font-size:0.8rem;padding:8px 14px;">＋ Nueva regla</button>
-                <button onclick="cerrar('modal-reglas')" class="modal-close" aria-label="Cerrar"><svg class="icon"><use href="#i-close"/></svg></button>
-            </div>
-        </div>
-        <div class="modal-list-body">
-            {% if reglas %}
-            <p class="reglas-orden-hint">Arrastra <svg class="icon icon-dots"><use href="#i-grip"/></svg> para cambiar el orden de aplicación. Las reglas se aplican de arriba a abajo sobre el dinero libre restante.</p>
-            {% endif %}
-            <div id="reglas-lista" data-reordenar-url="{% url 'finanzas:reordenar_reglas' %}">
-            {% for regla in reglas %}
-            <div class="regla-pill" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
-                <span class="regla-drag-handle" title="Arrastrar para reordenar"><svg class="icon icon-dots"><use href="#i-grip"/></svg></span>
-                <div class="regla-pill-info">
-                    <div class="regla-pill-nombre">{{ regla.nombre }}</div>
-                    <div class="regla-pill-sub">
-                        {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}%{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
-                        {% if regla.fondo %} → {{ regla.fondo.nombre }}{% endif %}
-                        {% if regla.usuario %} · {{ regla.usuario.first_name|default:regla.usuario.username }}{% else %} · Hogar{% endif %}
-                        {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
-                    </div>
-                </div>
-                <div style="display:flex; gap:6px;">
-                    <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
-                    <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
-                </div>
-            </div>
-            {% empty %}
-            <p class="empty-msg">Sin reglas definidas. Crea la primera con “＋ Nueva regla”.</p>
-            {% endfor %}
-            </div>
-        </div>
-    </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════════════════════════════════
-     MODAL LISTA · FONDOS
-     ═══════════════════════════════════════════════════════════════════════ -->
-<div id="modal-fondos" class="modal-overlay modal-list">
-    <div class="modal-box modal-box-wide glass-panel">
-        <div class="modal-list-head">
-            <h2>Fondos</h2>
-            <div class="modal-list-actions">
-                <button onclick="abrirModalFondo()" class="btn btn-primary" style="font-size:0.8rem;padding:8px 14px;">＋ Nuevo fondo</button>
-                <button onclick="cerrar('modal-fondos')" class="modal-close" aria-label="Cerrar"><svg class="icon"><use href="#i-close"/></svg></button>
-            </div>
-        </div>
-        <div class="modal-list-body">
-            {% for fa in d.fondos_aportaciones %}
-            <div class="regla-pill fondo-pill" style="border-left-color: {{ fa.fondo.color }};">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; width:100%;">
-                    <div style="flex:1; min-width:0;">
-                        <div class="regla-pill-nombre" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                            {{ fa.fondo.nombre }}
-                            {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
-                            <span style="font-size:1rem; font-weight:700; color:{% if fa.libre_fondo >= 0 %}var(--success){% else %}var(--danger){% endif %};">€{{ fa.libre_fondo|floatformat:2 }}</span>
-                            <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }}{% if fa.gastos_cubiertos > 0 %} − gastos €{{ fa.gastos_cubiertos|floatformat:2 }}{% endif %}{% if fa.total_cascada_saliente > 0 %} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }}{% endif %})</span>
-                            {% else %}
-                            <span style="font-size:1rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
-                            {% if fa.total_cascada_saliente > 0 %}
-                            <span style="font-size:0.72rem; color:var(--muted);">(bruto €{{ fa.total_aportacion_base|floatformat:2 }} − cascada €{{ fa.total_cascada_saliente|floatformat:2 }})</span>
-                            {% endif %}
-                            {% endif %}
-                        </div>
-                        <div class="regla-pill-sub">
-                            <span class="tag-tipo tag-{{ fa.fondo.tipo_fondo }}">{{ fa.fondo.get_tipo_fondo_display }}</span>
-                            · <span title="Titular del fondo (Informe Hacienda)">{{ fa.fondo.titular_nombre }}</span>
-                            {% if fa.fondo.cuenta_asociada %} · {{ fa.fondo.cuenta_asociada }}{% endif %}
-                            {% for ap in fa.aportantes %} · {{ ap.miembro.user.first_name|default:ap.miembro.user.username }} €{{ ap.importe_base|floatformat:0 }}{% endfor %}
-                        </div>
-                    </div>
-                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
-                        <button onclick="editarFondo({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}','{{ fa.fondo.tipo_fondo }}','{{ fa.fondo.color }}','{{ fa.fondo.cuenta_asociada|escapejs }}','{{ fa.fondo.propietario_id|default_if_none:"" }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
-                        {% if fa.fondo.tipo_fondo == 'comun' %}
-                        <button onclick="abrirAsignarGastos({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Asignar gastos"><svg class="icon"><use href="#i-check"/></svg></button>
-                        {% endif %}
-                        <button onclick="abrirModalSubsobre({{ fa.fondo.id }},'{{ fa.fondo.nombre|escapejs }}')" class="r-btn" title="Añadir subsobre"><svg class="icon"><use href="#i-plus"/></svg></button>
-                        <form method="post" action="{% url 'finanzas:eliminar_fondo' fa.fondo.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar fondo" onclick="return confirm('¿Eliminar fondo?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
-                    </div>
-                </div>
-
-                <!-- Gastos cubiertos -->
-                {% if fa.fondo.tipo_fondo == 'comun' and fa.gastos_asignados %}
-                <div class="fondo-gastos-box">
-                    <div style="color:var(--danger); font-weight:600; margin-bottom:4px;">Gastos cubiertos: €{{ fa.gastos_cubiertos|floatformat:2 }}</div>
-                    {% for g in fa.gastos_asignados %}
-                    <div style="color:var(--muted); padding:2px 0; display:flex; justify-content:space-between; align-items:center;">
-                        <span>{{ g.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
-                        <form method="post" action="{% url 'finanzas:desasignar_gasto_fondo' g.id %}" style="margin:0;">
-                            {% csrf_token %}
-                            <button type="submit" class="r-btn" style="font-size:0.7rem; padding:2px 6px;" title="Desasignar" onclick="return confirm('¿Desasignar {{ g.nombre }}?')"><svg class="icon" style="width:0.85em;height:0.85em;"><use href="#i-close"/></svg></button>
-                        </form>
-                    </div>
-                    {% endfor %}
-                    {% if fa.libre_fondo is not None %}
-                    <div style="margin-top:6px; color:{% if fa.libre_fondo >= 0 %}var(--warning){% else %}var(--danger){% endif %}; font-weight:600;">
-                        Remanente: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}
-                    </div>
-                    {% endif %}
-                </div>
-                {% endif %}
-
-                <!-- Subsobres -->
-                {% for ss in fa.subsobres %}
-                <div class="subsobre-row">
-                    <span>
-                        <span style="color:var(--text-color);">{{ ss.nombre }}</span>
-                        <span style="font-size:0.7rem; color:var(--muted);">({{ ss.tipo }})</span>
-                        {% if ss.fondo_destino %} → {{ ss.fondo_destino.nombre }}{% endif %}
-                        {% if ss.solo_mes %}<span style="font-size:0.7rem; color:var(--warning); margin-left:6px;">· solo {{ ss.solo_mes_display }}</span>{% endif %}
-                    </span>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="color:var(--warning); font-weight:600;">€{{ ss.importe|floatformat:2 }}</span>
-                        <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" style="font-size:0.7rem;" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon" style="width:0.85em;height:0.85em;"><use href="#i-trash"/></svg></button></form>
-                    </div>
-                </div>
-                {% endfor %}
-
-                {% if fa.subsobres %}
-                <div style="font-size:0.75rem; color:var(--muted); margin-top:8px; display:flex; justify-content:space-between;">
-                    <span>Asignado: €{{ fa.total_cascada_saliente|floatformat:2 }}</span>
-                    {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
-                    <span style="color:{% if fa.libre_fondo >= 0 %}var(--success){% else %}var(--danger){% endif %};">Libre: {% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span>
-                    {% else %}
-                    <span style="color:{% if fa.total_aportacion_neta >= 0 %}var(--success){% else %}var(--danger){% endif %};">Libre: {% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span>
-                    {% endif %}
-                </div>
-                {% endif %}
-
-                <!-- Cartera real para fondos de inversión -->
-                {% if fa.fondo.tipo_fondo == 'inversion' and fa.fondo.num_activos_vinculados > 0 %}
-                <div style="margin-top:12px; padding:12px 14px; background:color-mix(in srgb, var(--success) 8%, transparent); border:1px solid color-mix(in srgb, var(--success) 20%, transparent); border-radius:10px;">
-                    <div style="font-size:0.72rem; font-weight:600; color:var(--primary-color); text-transform:uppercase; margin-bottom:8px;">
-                        Cartera real · {{ fa.fondo.num_activos_vinculados }} activo{{ fa.fondo.num_activos_vinculados|pluralize:"s" }}
-                    </div>
-                    <div style="display:flex; gap:20px; flex-wrap:wrap;">
-                        <div>
-                            <div style="font-size:0.68rem; color:var(--muted);">Valor mercado</div>
-                            <div style="font-size:1.05rem; font-weight:700; color:var(--primary-color);">€{{ fa.fondo.valor_cartera|floatformat:2 }}</div>
-                        </div>
-                        <div>
-                            <div style="font-size:0.68rem; color:var(--muted);">Aportado</div>
-                            <div style="font-size:1.05rem; font-weight:700; color:var(--text-color);">€{{ fa.fondo.total_aportado_cartera|floatformat:2 }}</div>
-                        </div>
-                        {% if fa.fondo.rentabilidad_cartera is not None %}
-                        <div>
-                            <div style="font-size:0.68rem; color:var(--muted);">Rentabilidad</div>
-                            <div style="font-size:1.05rem; font-weight:700; color:{% if fa.fondo.rentabilidad_cartera >= 0 %}var(--success){% else %}var(--danger){% endif %};">
-                                {% if fa.fondo.rentabilidad_cartera >= 0 %}+{% endif %}{{ fa.fondo.rentabilidad_cartera }}%
-                            </div>
-                        </div>
-                        {% endif %}
-                        <div>
-                            <div style="font-size:0.68rem; color:var(--muted);">Flujo presupuestado</div>
-                            <div style="font-size:1.05rem; font-weight:700; color:{{ fa.fondo.color }};">€{{ fa.total_aportacion_neta|floatformat:2 }}/mes</div>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-            {% empty %}
-            <p class="empty-msg">Sin fondos definidos. Crea el primero con “＋ Nuevo fondo”.</p>
-            {% endfor %}
-
-            {% if depositos_data %}
-            <!-- Depósitos: capital con valor automático (no son fondos ni cartera) -->
-            <div class="section-title" style="margin-top:24px;">Depósitos · liquidez</div>
-            <p style="font-size:0.78rem; color:var(--muted); margin:-6px 0 10px;">
-                Su valor se calcula solo (interés + aportaciones/retiradas) y cuenta como liquidez
-                en Evolución. Total: <strong style="color:var(--text-color);">€{{ depositos_total|floatformat:2 }}</strong>
-                {% if depositos_interes %}· interés <strong style="color:var(--success);">+€{{ depositos_interes|floatformat:2 }}</strong>{% endif %}
-            </p>
-            {% for dep in depositos_data %}
-            <div class="fondo-card" style="border-left:3px solid var(--info);">
-                <div class="fondo-head">
-                    <div class="fondo-title">
-                        <a href="{% url 'finanzas:detalle' dep.obj.id %}" style="color:inherit; text-decoration:none;">{{ dep.obj.nombre }}</a>
-                        <span style="color:var(--info); font-weight:700; margin-left:8px;">€{{ dep.valor|floatformat:2 }}</span>
-                    </div>
-                </div>
-                <div style="font-size:0.75rem; color:var(--muted); margin-top:4px;">
-                    <span class="tag tag-ahorro">Depósito</span>
-                    {% if dep.obj.plataforma %}· {{ dep.obj.plataforma }}{% endif %}
-                    · {{ dep.obj.deposito_tipo_interes|default:"0"|floatformat:"-3" }}% anual
-                    · aportado €{{ dep.aportado|floatformat:2 }}
-                    {% if dep.retirado %}· retirado €{{ dep.retirado|floatformat:2 }}{% endif %}
-                    · rendimiento <span style="color:{% if dep.interes >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if dep.interes >= 0 %}+{% endif %}€{{ dep.interes|floatformat:2 }}{% if dep.interes_pct != None %} ({% if dep.interes_pct >= 0 %}+{% endif %}{{ dep.interes_pct }}%){% endif %}</span>
-                </div>
-                <div style="font-size:0.75rem; margin-top:6px;">
-                    {% if dep.obj.fondo %}
-                    <span style="color:var(--muted);">Recibe reparto vía fondo:</span>
-                    <strong style="color:{{ dep.obj.fondo.color }};">{{ dep.obj.fondo.nombre }}</strong>
-                    <span style="color:var(--muted);">— asígnale reglas o transferencias eligiendo ese fondo.</span>
-                    {% else %}
-                    <span style="color:var(--warning);">
-                        Sin fondo vinculado: para poder asignarle una regla de reparto o una
-                        transferencia,
-                        <a href="{% url 'finanzas:editar' dep.obj.id %}" style="color:var(--primary-color); font-weight:600;">vincúlalo a un fondo</a>.
-                    </span>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
-            {% endif %}
-        </div>
-    </div>
-</div>
-
-
-<!-- ═══════════════════════════════════════════════════════════════════════
-     MODAL LISTA · TRANSFERENCIAS
-     ═══════════════════════════════════════════════════════════════════════ -->
-<div id="modal-transferencias" class="modal-overlay modal-list">
-    <div class="modal-box modal-box-wide glass-panel">
-        <div class="modal-list-head">
-            <h2>Transferencias del mes</h2>
-            <div class="modal-list-actions">
-                <button onclick="cerrar('modal-transferencias')" class="modal-close" aria-label="Cerrar"><svg class="icon"><use href="#i-close"/></svg></button>
-            </div>
-        </div>
-        <div class="modal-list-body">
-            {% for t in d.transferencias %}
-            <div class="transfer-card" style="border-left-color: {{ t.color }};">
-                <div class="transfer-left">
-                    <div class="transfer-sub">De: {{ t.origen }}</div>
-                    <div style="font-size:0.9rem; font-weight:600;">{{ t.concepto }}{% if t.tipo == 'cascada' %} <span style="font-size:0.68rem; color:var(--muted);">(cascada)</span>{% endif %}</div>
-                    <div class="transfer-sub">→ {{ t.destino }}</div>
-                    {% if t.cuenta %}<div style="font-size:0.68rem; color:var(--info); margin-top:2px;">{{ t.cuenta }}</div>{% endif %}
-                </div>
-                <div style="font-size:1.1rem; font-weight:700; color:{{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
-            </div>
-            {% empty %}
-            <p class="empty-msg">No hay transferencias previstas este mes.</p>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-
-
-<!-- ===== MODAL FONDO (crear/editar) ===== -->
-<div id="modal-fondo" class="modal-overlay">
-    <div class="modal-box glass-panel">
-        <h2 id="modal-fondo-titulo">Nuevo fondo</h2>
-        <form method="post" id="form-fondo" action="{% url 'finanzas:crear_fondo' %}">
-            {% csrf_token %}
-            <div class="fg"><label>Nombre</label><input type="text" name="nombre" id="fondo-nombre" required></div>
-            <div class="fg"><label>Cuenta bancaria (opcional)</label><input type="text" name="cuenta_asociada" id="fondo-cuenta"></div>
-            <div class="fg">
-                <label>Tipo</label>
-                <select name="tipo_fondo" id="fondo-tipo">
-                    <option value="comun">Fondo común del hogar</option>
-                    <option value="ahorro">Ahorro</option>
-                    <option value="inversion">Inversión</option>
-                </select>
-            </div>
-            <div class="fg">
-                <label>Propietario</label>
-                <select name="propietario_id" id="fondo-propietario">
-                    <option value="">Compartido (hogar)</option>
-                    {% for m in miembros %}
-                    <option value="{{ m.user.id }}">{{ m.user.first_name|default:m.user.username }}</option>
-                    {% endfor %}
-                </select>
-                <div style="font-size:0.75rem; color:var(--muted); margin-top:4px;">
-                    Titular del fondo: determina quién declara sus rendimientos en el Informe Hacienda.
-                </div>
-            </div>
-            <div class="fg">
-                <label>Color</label>
-                <div class="color-row" id="fondo-color-row">
-                    <button type="button" class="cdot active" style="background:var(--success);" onclick="selC(this,'var(--success)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--info);" onclick="selC(this,'var(--info)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--primary-color);" onclick="selC(this,'var(--primary-color)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--danger);" onclick="selC(this,'var(--danger)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--warning);" onclick="selC(this,'var(--warning)','fondo')"></button>
-                </div>
-                <input type="hidden" name="color" id="color-fondo" value="var(--success)">
-            </div>
-            <div class="modal-actions">
-                <button type="button" onclick="cerrar('modal-fondo')" class="btn btn-secondary">Cancelar</button>
-                <button type="submit" class="btn btn-primary" id="btn-fondo-submit">Crear fondo</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- ===== MODAL REGLA (crear/editar) ===== -->
 <div id="modal-regla" class="modal-overlay">
     <div class="modal-box glass-panel">
@@ -530,14 +366,21 @@
 <!-- ===== MODAL SUBSOBRE ===== -->
 <div id="modal-subsobre" class="modal-overlay">
     <div class="modal-box glass-panel">
-        <h2>↪Distribución interna</h2>
-        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Desde: <strong id="ss-fondo-nombre"></strong></p>
-        <form method="post" id="form-subsobre" action="">
+        <h2>Movimiento entre fondos</h2>
+        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Dinero que, una vez en un fondo, pasa a otro o se reserva dentro de él.</p>
+        <form method="post" id="form-subsobre" action="" onsubmit="return prepararSubsobre();">
             {% csrf_token %}
+            <div class="fg">
+                <label>Fondo de origen</label>
+                <select id="ss-fondo-origen" required>
+                    <option value="">— Elige el fondo del que sale —</option>
+                    {% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}
+                </select>
+            </div>
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" required></div>
             <div class="fg"><label>Tipo</label><select name="tipo"><option value="libre">Libre</option><option value="gasto_fijo">Gasto fijo</option><option value="gasto_variable">Gasto variable</option><option value="discrecional">Discrecional</option></select></div>
             <div class="fg"><label>Importe (€/mes)</label><input type="number" name="importe_manual" step="0.01" min="0" value="0"></div>
-            <div class="fg"><label>Fondo destino (opcional)</label><select name="fondo_destino_id"><option value="">— Ninguno —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
+            <div class="fg"><label>Fondo de destino</label><select name="fondo_destino_id"><option value="">— Se queda reservado en el fondo de origen —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
             <div class="fg">
                 <label>¿Cuándo aplica?</label>
                 <select name="solo_mes">
@@ -553,30 +396,6 @@
     </div>
 </div>
 
-<!-- ===== MODAL ASIGNAR GASTOS ===== -->
-<div id="modal-gastos" class="modal-overlay">
-    <div class="modal-box glass-panel">
-        <h2>Asignar gastos del hogar</h2>
-        <p style="font-size:0.8rem; color:var(--muted); margin-bottom:14px;">Fondo: <strong id="gastos-fondo-nombre"></strong></p>
-        <form method="post" id="form-gastos" action="">
-            {% csrf_token %}
-            {% for g in gastos_hogar %}
-            <label class="gasto-check" data-fondo="{{ g.fondo_asignado_id|default:'' }}">
-                <input type="checkbox" name="partida_ids" value="{{ g.id }}">
-                <span>{{ g.nombre }} <span style="color:var(--muted); font-size:0.75rem;">· {{ g.categoria.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span></span>
-            </label>
-            {% empty %}
-            <p class="empty-msg">No hay gastos del hogar declarados.</p>
-            {% endfor %}
-            <div class="modal-actions">
-                <button type="button" onclick="cerrar('modal-gastos')" class="btn btn-secondary">Cancelar</button>
-                <button type="submit" class="btn btn-primary">Guardar asignación</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-
 <!-- ===== ESTILOS ===== -->
 <style>
 .dist-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px; }
@@ -585,6 +404,60 @@
 .lbl-sm { font-size:0.7rem; color:var(--muted); display:block; margin-bottom:3px; }
 .inp-sm { width:100%; padding:8px; background:var(--app-bg); border:1px solid var(--border-strong); border-radius:8px; color:var(--text-color); font-size:0.82rem; box-sizing:border-box; }
 .empty-msg { color:var(--muted); font-style:italic; font-size:0.85rem; padding:8px 2px; }
+
+/* ── Pasos: se reparte → queda así → transferencias ── */
+.paso { margin-top: 26px; }
+.paso-head { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap; margin-bottom:12px; }
+.paso-num {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; border-radius:50%; margin-right:8px;
+    background:var(--primary-color); color:var(--on-primary);
+    font-size:0.72rem; font-weight:700; vertical-align:middle;
+}
+.paso-titulo { font-size:0.95rem; font-weight:700; color:var(--text-color); }
+.paso-subtitulo { font-size:0.85rem; font-weight:700; color:var(--text-color); }
+.paso-sub { font-size:0.78rem; color:var(--muted); margin:6px 0 0; line-height:1.5; max-width:70ch; }
+.paso-sub a { color:var(--primary-color); }
+.paso-sub-bloque { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+.btn-mini { font-size:0.75rem; padding:7px 12px; }
+
+/* Movimientos entre fondos */
+.cascada-row {
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    padding:10px 14px; border:1px solid var(--border); border-radius:10px;
+    background:var(--surface-2); margin-bottom:8px; flex-wrap:wrap;
+}
+.cascada-info { min-width:0; }
+.cascada-nombre { font-size:0.86rem; font-weight:600; color:var(--text-color); display:block; }
+.cascada-ruta { font-size:0.74rem; color:var(--muted); }
+.cascada-acciones { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.cascada-importe { font-weight:700; color:var(--warning); font-variant-numeric:tabular-nums; }
+
+/* Estado de cada fondo (solo lectura) */
+.fondos-estado { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap:12px; }
+.fondo-estado {
+    border:1px solid var(--border); border-left:3px solid var(--fc);
+    border-radius:12px; padding:14px 16px; background:var(--surface);
+}
+.fondo-estado-head { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.fondo-estado-nombre { font-size:0.9rem; font-weight:700; color:var(--text-color); }
+.fondo-estado-filas { display:flex; flex-direction:column; gap:4px; }
+.fe-fila { display:flex; justify-content:space-between; gap:10px; font-size:0.8rem; color:var(--muted); }
+.fe-fila .fe-val { font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.fe-total { margin-top:6px; padding-top:6px; border-top:1px solid var(--border); color:var(--text-color); font-weight:600; }
+.fondo-estado-gastos { margin-top:10px; font-size:0.76rem; }
+.fondo-estado-gastos summary { color:var(--muted); cursor:pointer; }
+.fe-gasto { display:flex; justify-content:space-between; gap:10px; padding:3px 0 3px 12px; color:var(--muted); }
+
+.transfer-lista { display:flex; flex-direction:column; gap:8px; }
+
+.fondos-quietos { margin-top:12px; font-size:0.78rem; }
+.fondos-quietos summary { color:var(--muted); cursor:pointer; }
+.fondos-quietos-lista { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+.fondo-quieto {
+    font-size:0.76rem; color:var(--muted); padding:4px 10px; border-radius:20px;
+    border:1px solid var(--border); border-left:3px solid var(--fc); background:var(--surface-2);
+}
 
 /* ── Aviso de mes cerrado ── */
 .dist-mes-cerrado {
@@ -743,29 +616,6 @@ function selCByVal(target,color){
     document.getElementById('color-'+target).value=color;
 }
 
-function abrirModalFondo(){
-    document.getElementById('modal-fondo-titulo').textContent='Nuevo fondo';
-    document.getElementById('btn-fondo-submit').textContent='Crear fondo';
-    document.getElementById('form-fondo').action="{% url 'finanzas:crear_fondo' %}";
-    document.getElementById('fondo-nombre').value='';
-    document.getElementById('fondo-cuenta').value='';
-    document.getElementById('fondo-tipo').value='comun';
-    document.getElementById('fondo-propietario').value='';
-    selCByVal('fondo','#2d6a4f');
-    document.getElementById('modal-fondo').style.display='flex';
-}
-function editarFondo(id,nombre,tipo,color,cuenta,propietarioId){
-    document.getElementById('modal-fondo-titulo').textContent='Editar fondo';
-    document.getElementById('btn-fondo-submit').textContent='Guardar';
-    document.getElementById('form-fondo').action='/finanzas/distribucion/fondo/'+id+'/editar/';
-    document.getElementById('fondo-nombre').value=nombre;
-    document.getElementById('fondo-cuenta').value=cuenta;
-    document.getElementById('fondo-tipo').value=tipo;
-    document.getElementById('fondo-propietario').value=propietarioId||'';
-    selCByVal('fondo',color);
-    document.getElementById('modal-fondo').style.display='flex';
-}
-
 function setTipoR(t){
     document.getElementById('tipo_regla_input').value=t;
     document.getElementById('campo-pct').style.display=t==='porcentaje'?'block':'none';
@@ -802,21 +652,16 @@ function editarRegla(id,nombre,tipo,pct,fijo,fondoId,userId,color,soloMes){
     document.getElementById('modal-regla').style.display='flex';
 }
 
-function abrirModalSubsobre(id,nombre){
-    document.getElementById('ss-fondo-nombre').textContent=nombre;
-    document.getElementById('form-subsobre').action='/finanzas/distribucion/fondo/'+id+'/subsobre/crear/';
+function abrirModalSubsobre(){
+    document.getElementById('ss-fondo-origen').value='';
     document.getElementById('modal-subsobre').style.display='flex';
 }
-
-function abrirAsignarGastos(fondoId,fondoNombre){
-    document.getElementById('gastos-fondo-nombre').textContent=fondoNombre;
-    document.getElementById('form-gastos').action='/finanzas/distribucion/fondo/'+fondoId+'/gastos/';
-    document.querySelectorAll('#modal-gastos .gasto-check').forEach(function(label){
-        var cb=label.querySelector('input');
-        var asignado=label.getAttribute('data-fondo');
-        cb.checked=(asignado===String(fondoId));
-    });
-    document.getElementById('modal-gastos').style.display='flex';
+function prepararSubsobre(){
+    /* El fondo de origen va en la URL, no en el formulario. */
+    var origen=document.getElementById('ss-fondo-origen').value;
+    if(!origen) return false;
+    document.getElementById('form-subsobre').action='/finanzas/distribucion/fondo/'+origen+'/subsobre/crear/';
+    return true;
 }
 
 function getCsrf(){
