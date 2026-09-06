@@ -6,7 +6,10 @@ from django.shortcuts import render, redirect
 
 from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad
 from .distribucion import _neto_fuente_base, calcular_flujos
-from .views_evolucion import _delta_esperado_mes, _liquidez_patrimonio_por_mes
+from .views_evolucion import (
+    _delta_esperado_mes, _fecha_corte_mes, _liquidez_patrimonio_por_mes,
+    _saldos_liquidez_patrimonio, valor_depositos_hogar,
+)
 
 
 def _get_hogar(request):
@@ -33,29 +36,32 @@ def _datos_financieros(hogar):
         if ultimo_mes:
             break
 
+    # Liquidez y patrimonio con el MISMO criterio que Evolución y el dashboard:
+    # los depósitos son dinero disponible y cuentan como liquidez (el helper
+    # evita además contarlos dos veces si están vinculados a un fondo).
     capital_liquidez = Decimal('0')
     capital_inversiones = Decimal('0')
+    capital_depositos = Decimal('0')
     desglose_fondos = []
 
     if ultimo_mes:
         saldos = SaldoRealFondo.objects.filter(
             fondo__hogar=hogar, año=ultimo_anio, mes=ultimo_mes
         ).select_related('fondo')
+        fecha_depositos = _fecha_corte_mes(ultimo_anio, ultimo_mes)
+        capital_liquidez, patrimonio = _saldos_liquidez_patrimonio(
+            saldos, hogar=hogar, fecha_depositos=fecha_depositos,
+        )
+        capital_inversiones = patrimonio - capital_liquidez
+        capital_depositos = valor_depositos_hogar(hogar, fecha_depositos)
+
         for s in saldos:
-            if s.fondo.tipo_fondo in ('comun', 'ahorro'):
-                capital_liquidez += s.saldo
-            elif s.fondo.tipo_fondo == 'inversion':
-                capital_inversiones += s.saldo
             desglose_fondos.append({
                 'nombre': s.fondo.nombre,
                 'tipo': s.fondo.tipo_fondo,
                 'saldo': float(s.saldo),
                 'color': s.fondo.color,
             })
-        fondos_con_saldo = {s.fondo_id for s in saldos}
-        for f in FondoFamiliar.objects.filter(hogar=hogar, tipo_fondo='inversion', activo=True):
-            if f.id not in fondos_con_saldo and f.valor_cartera:
-                capital_inversiones += Decimal(str(f.valor_cartera))
 
     # Ingresos netos mensuales RECURRENTES (base, sin pagas extras ni variables del mes)
     ingresos_netos = Decimal('0')
@@ -114,6 +120,7 @@ def _datos_financieros(hogar):
     sim_data = {
         'capital_liquidez': round(float(capital_liquidez), 2),
         'capital_inversiones': round(float(capital_inversiones), 2),
+        'capital_depositos': round(float(capital_depositos), 2),
         'ingresos_netos_mensuales': round(float(ingresos_netos), 2),
         # gastos_fijos_mensuales = TOTAL de gastos (retrocompat: se usa para el colchón)
         'gastos_fijos_mensuales': round(float(gastos_totales), 2),
@@ -130,6 +137,7 @@ def _datos_financieros(hogar):
     return {
         'capital_liquidez': capital_liquidez,
         'capital_inversiones': capital_inversiones,
+        'capital_depositos': capital_depositos,
         'ingresos_netos_mensuales': ingresos_netos,
         'gastos_fijos_mensuales': gastos_totales,
         'libre_mensual': libre,

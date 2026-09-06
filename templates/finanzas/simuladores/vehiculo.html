@@ -81,8 +81,11 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
                 <h2>Tu situación actual</h2>
                 <div class="ctx-grid">
                     <div class="ctx-item">
-                        <div class="lbl">Liquidez (cuentas)</div>
+                        <div class="lbl">Liquidez disponible</div>
                         <div class="val" style="color:var(--info);">€{{ capital_liquidez|floatformat:0 }}</div>
+                        {% if capital_depositos %}
+                        <div style="font-size:0.7rem;color:var(--muted);margin-top:2px;">incluye €{{ capital_depositos|floatformat:0 }} en depósitos</div>
+                        {% endif %}
                     </div>
                     <div class="ctx-item">
                         <div class="lbl">Libre mensual</div>

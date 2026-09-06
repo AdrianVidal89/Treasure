@@ -1288,3 +1288,72 @@ class FormularioEditarIngresoTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(
             FuenteIngreso.objects.get(hogar=self.hogar, nombre='Nómina').num_pagas, 14)
+
+
+class SimuladorLiquidezTests(TestCase):
+    """El simulador tiene que ver el mismo dinero disponible que el resto de la
+    app: un depósito es liquidez, no algo aparte."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, SaldoRealFondo
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        self.hoy = datetime.date.today()
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        SaldoRealFondo.objects.create(
+            fondo=self.fondo, año=self.hoy.year, mes=self.hoy.month, saldo=Decimal('20000'))
+
+    def _deposito(self, importe, fondo=None):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito', tipo='DEPOSITO', fondo=fondo,
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(self.hoy.year, 1, 1), tipo='COMPRA',
+            cantidad=Decimal(importe), precio_unitario=Decimal('1'))
+        return dep
+
+    def _liquidez(self):
+        resp = self.client.get(reverse('finanzas:simulador_vivienda'))
+        self.assertEqual(resp.status_code, 200)
+        return resp.context['capital_liquidez']
+
+    def test_sin_depositos_la_liquidez_es_el_saldo_de_los_fondos(self):
+        self.assertEqual(self._liquidez(), Decimal('20000'))
+
+    def test_el_deposito_cuenta_como_liquidez_disponible(self):
+        self._deposito('15000')
+        self.assertEqual(self._liquidez(), Decimal('35000.00'))
+
+    def test_un_deposito_vinculado_a_un_fondo_no_se_cuenta_dos_veces(self):
+        self._deposito('15000', fondo=self.fondo)
+        self.assertEqual(self._liquidez(), Decimal('15000.00'))
+
+    def test_la_pantalla_dice_cuanto_de_eso_son_depositos(self):
+        self._deposito('15000')
+        resp = self.client.get(reverse('finanzas:simulador_vivienda'))
+        self.assertEqual(resp.context['capital_depositos'], Decimal('15000.00'))
+        self.assertContains(resp, 'en depósitos')
+
+    def test_el_simulador_y_evolucion_dan_la_misma_liquidez(self):
+        from .views_evolucion import _fecha_corte_mes, _saldos_liquidez_patrimonio
+        from .models import SaldoRealFondo
+
+        self._deposito('15000')
+        saldos = SaldoRealFondo.objects.filter(fondo__hogar=self.hogar)
+        evo, _ = _saldos_liquidez_patrimonio(
+            saldos, hogar=self.hogar,
+            fecha_depositos=_fecha_corte_mes(self.hoy.year, self.hoy.month))
+        self.assertEqual(self._liquidez(), evo)
+
+    def test_el_simulador_de_vehiculo_usa_el_mismo_criterio(self):
+        self._deposito('15000')
+        resp = self.client.get(reverse('finanzas:simulador_vehiculo'))
+        self.assertEqual(resp.context['capital_liquidez'], Decimal('35000.00'))
