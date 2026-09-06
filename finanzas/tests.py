@@ -1371,3 +1371,76 @@ class RitmoRealEnLaVistaTests(TestCase):
         cierre = CierreMensual.objects.get(
             hogar=self.hogar, año=self.hoy.year, mes=mes_cerrado)
         self.assertEqual(cierre.ingreso_previsto, Decimal('3000'))
+
+
+class FuentesDeDatosSimuladorTests(TestCase):
+    """El simulador de vivienda puede trabajar con el presupuesto o con lo que
+    de verdad pasa cada mes (medias, medianas y último mes cerrado)."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, FuenteIngreso, SaldoRealFondo
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+
+        self.hoy = datetime.date.today()
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('36000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+
+    def _con_saldos(self, ahorro_mensual):
+        from .models import SaldoRealFondo
+        for mes in range(1, self.hoy.month + 1):
+            SaldoRealFondo.objects.update_or_create(
+                fondo=self.fondo, año=self.hoy.year, mes=mes,
+                defaults={'saldo': Decimal(ahorro_mensual) * mes})
+
+    def _fuentes(self):
+        from .views_simuladores import _datos_financieros, _fuentes_de_datos
+        datos = _datos_financieros(self.hogar)
+        return _fuentes_de_datos(self.hogar, datos['sim_data'])
+
+    def test_el_presupuesto_siempre_esta_disponible(self):
+        fuentes = self._fuentes()
+        self.assertTrue(fuentes['presupuesto']['disponible'])
+        self.assertEqual(fuentes['presupuesto']['ingresos'], 3000)
+
+    def test_sin_saldos_registrados_las_fuentes_reales_no_se_pueden_elegir(self):
+        fuentes = self._fuentes()
+        for clave in ('media', 'mediana', 'ultimo'):
+            self.assertFalse(fuentes[clave]['disponible'], clave)
+
+    def test_con_saldos_el_gasto_real_es_el_ingreso_menos_lo_ahorrado(self):
+        if self.hoy.month < 3:
+            self.skipTest('Hacen falta al menos dos meses cerrados')
+        self._con_saldos(500)  # ahorra 500 €/mes de liquidez
+
+        fuentes = self._fuentes()
+        for clave in ('media', 'mediana', 'ultimo'):
+            self.assertTrue(fuentes[clave]['disponible'], clave)
+            self.assertEqual(fuentes[clave]['ingresos'], 3000)
+            self.assertEqual(fuentes[clave]['ahorro'], 500)
+            self.assertEqual(fuentes[clave]['gastos'], 2500)
+
+    def test_las_fuentes_reales_llegan_a_la_pantalla(self):
+        if self.hoy.month < 3:
+            self.skipTest('Hacen falta al menos dos meses cerrados')
+        self._con_saldos(500)
+
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:simulador_vivienda'))
+
+        self.assertEqual(resp.status_code, 200)
+        fuentes = resp.context['sim_data']['fuentes']
+        self.assertEqual(sorted(fuentes), ['media', 'mediana', 'presupuesto', 'ultimo'])
+        # Los gastos recurrentes de la vivienda viajan como sugerencias editables.
+        claves = [r['clave'] for r in resp.context['sim_data']['recurrentes']]
+        self.assertEqual(claves, ['comunidad', 'seguro', 'ibi', 'mantenimiento'])
