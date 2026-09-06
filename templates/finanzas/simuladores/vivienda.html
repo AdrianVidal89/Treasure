@@ -17,6 +17,10 @@
     <!-- ═══ TU SITUACIÓN ═══════════════════════════════════════════════════ -->
     <div class="card glass-panel">
         <h2>Tu situación</h2>
+        <p class="hint" style="margin:-8px 0 12px;">Con qué cifras simular: lo que dice tu presupuesto, o lo que
+           de verdad entra y sale cada mes según los saldos que registras en Evolución.</p>
+        <div class="tabs tabs-sm" id="tabs-fuente"></div>
+        <p class="hint" id="fuente-detalle" style="margin:-6px 0 14px;"></p>
         <div class="ctx-grid">
             <div class="ctx-item">
                 <div class="lbl">Liquidez disponible</div>
@@ -29,12 +33,16 @@
                 <div class="ctx-sub">no se cuentan como capital</div>
             </div>
             <div class="ctx-item">
-                <div class="lbl">Ingresos netos/mes</div>
-                <div class="val" style="color:var(--success);">€{{ ingresos_netos_mensuales|floatformat:0 }}</div>
+                <div class="lbl">Ingresos/mes</div>
+                <div class="val" style="color:var(--success);" id="ctx-ingresos">—</div>
+            </div>
+            <div class="ctx-item">
+                <div class="lbl">Gastos/mes</div>
+                <div class="val" style="color:var(--danger);" id="ctx-gastos">—</div>
             </div>
             <div class="ctx-item">
                 <div class="lbl">Libre mensual</div>
-                <div class="val" style="color:var(--warning);">€{{ libre_mensual|floatformat:0 }}</div>
+                <div class="val" style="color:var(--warning);" id="ctx-libre">—</div>
                 <div class="ctx-sub">tras gastos actuales</div>
             </div>
         </div>
@@ -166,14 +174,12 @@
             <!-- COSTE DE VIVIR AHÍ -->
             <div class="card glass-panel">
                 <h2>Coste de vivir ahí</h2>
-                <p class="hint" style="margin-top:-8px;">Aparte de la cuota. Es lo que separa «puedo pagar la hipoteca» de «puedo permitirme la casa».</p>
-                <div class="campo-fila">
-                    <div class="campo"><label>Comunidad (€/mes)</label><input type="number" id="in-comunidad" step="5" min="0"></div>
-                    <div class="campo"><label>Seguro hogar (€/año)</label><input type="number" id="in-seguro" step="10" min="0"></div>
-                </div>
-                <div class="campo-fila">
-                    <div class="campo"><label>IBI (% del valor/año)</label><input type="number" id="in-ibi" step="0.05" min="0"></div>
-                    <div class="campo"><label>Mantenimiento (% del valor/año)</label><input type="number" id="in-mantenimiento" step="0.1" min="0"></div>
+                <p class="hint" style="margin-top:-8px;">Aparte de la cuota. Es lo que separa «puedo pagar la hipoteca» de «puedo permitirme la casa».
+                   Se sugiere a partir del precio; si sabes lo que cuesta de verdad esta vivienda, escríbelo y manda tu cifra.</p>
+                <div class="rec-lista" id="rec-lista"></div>
+                <div class="fila total" style="display:flex;justify-content:space-between;gap:12px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:0.85rem;">
+                    <span style="color:var(--muted);">Total al mes</span>
+                    <strong id="rec-total" style="color:var(--warning);font-variant-numeric:tabular-nums;">—</strong>
                 </div>
             </div>
         </div>
@@ -227,7 +233,13 @@
 
             <!-- COSTE MENSUAL REAL -->
             <div class="card glass-panel">
-                <h2>Tu mes, después de comprar</h2>
+                <h2>Coste total de la vivienda</h2>
+                <div class="headline">
+                    <div class="lbl">Lo que te cuesta cada mes vivir ahí</div>
+                    <div class="val" id="r-coste-total">—</div>
+                    <div class="sub" id="r-coste-total-sub"></div>
+                </div>
+                <p class="hint" style="margin:14px 0 6px;font-weight:600;color:var(--text-color);">Tu mes, después de comprar</p>
                 <div class="tabla-mini" id="tabla-mes"></div>
                 <div id="veredicto-mes" class="aviso" style="display:none;"></div>
             </div>
@@ -277,10 +289,6 @@
     <div class="card glass-panel">
         <div class="proy-head">
             <h2 style="margin:0;">¿Cuándo llego?</h2>
-            <div class="tabs tabs-sm" id="tabs-ahorro">
-                <button type="button" data-ahorro="estimado" class="tab activa">Ahorro presupuestado</button>
-                <button type="button" data-ahorro="real" class="tab">Ahorro real</button>
-            </div>
         </div>
         <div id="cuando-llego" class="rvb-resultado"></div>
         <div class="chart-wrap">
@@ -393,6 +401,15 @@
 .chart-wrap { overflow-x: auto; }
 .chart-wrap svg { width: 100%; min-width: 480px; height: auto; }
 .proy-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+
+.rec-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--surface-2); }
+.rec-row:last-child { border-bottom: none; }
+.rec-nombre { flex: 1; min-width: 0; font-size: 0.85rem; color: var(--text-color); }
+.rec-hint { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+.rec-hint button { border: none; background: none; padding: 0; margin-left: 6px; font: inherit; color: var(--info); cursor: pointer; text-decoration: underline; }
+.rec-input { width: 104px; flex-shrink: 0; padding: 8px 10px; background: var(--input-bg); border: 1px solid var(--border-strong); color: var(--text-color); border-radius: 9px; font-size: 0.88rem; text-align: right; font-variant-numeric: tabular-nums; }
+.rec-input:focus { outline: none; border-color: var(--primary-color); }
+.rec-input.manual { border-color: var(--info); }
 </style>
 
 <script src="{% static 'js/hipoteca.js' %}"></script>
@@ -406,15 +423,27 @@ const DEF   = D_SIM.defaults;
 const H     = window.Hipoteca;
 
 const LIQUIDEZ = D_SIM.capital_liquidez;
-const INGRESOS = D_SIM.ingresos_netos_mensuales;
-const LIBRE    = D_SIM.libre_mensual;
-const GASTOS   = D_SIM.gastos_fijos_mensuales;
-const AHORRO_EST  = D_SIM.ahorro_mensual_estimado;
-const AHORRO_REAL = D_SIM.ahorro_mensual_real;
+const FUENTES  = D_SIM.fuentes;
+
+/* Con qué cifras se simula. El presupuesto dice lo que DEBERÍA pasar cada mes;
+   las fuentes reales (media, mediana y último mes cerrado) dicen lo que pasa,
+   sacadas del análisis de ritmo de Evolución. La eleccion manda en todo: el
+   ratio de endeudamiento, el techo, el test de estrés, el margen que queda
+   tras comprar y cuánto tardas en reunir el capital. */
+let fuenteActual = 'presupuesto';
+let INGRESOS = 0, GASTOS = 0, LIBRE = 0, AHORRO = 0;
+
+function aplicarFuente() {
+    const f = FUENTES[fuenteActual] || FUENTES.presupuesto;
+    INGRESOS = f.ingresos;
+    GASTOS   = f.gastos;
+    LIBRE    = f.ingresos - f.gastos;
+    AHORRO   = f.ahorro;
+    return f;
+}
 
 let baseMode = 'ingresos';
 let modalidad = 'fijo';
-let modoAhorro = 'estimado';
 
 const $ = function (id) { return document.getElementById(id); };
 const fmt = function (n) { return '€' + Math.round(n).toLocaleString('es-ES'); };
@@ -429,13 +458,112 @@ const pct = function (n) { return n.toLocaleString('es-ES', {minimumFractionDigi
         if (c.codigo === 'MD') o.selected = true;
         sel.appendChild(o);
     });
-    $('in-comunidad').value      = DEF.comunidad_mensual;
-    $('in-seguro').value         = DEF.seguro_anual;
-    $('in-ibi').value            = DEF.ibi_pct;
-    $('in-mantenimiento').value  = DEF.mantenimiento_pct;
     $('in-otras-cuotas').value   = D_SIM.otras_cuotas || 0;
     $('in-alquiler').value       = D_SIM.alquiler_actual || 0;
 })();
+
+// ── Selector de fuente de datos ─────────────────────────────────────────────
+function construirSelectorFuentes() {
+    const bar = $('tabs-fuente');
+    ['presupuesto', 'media', 'mediana', 'ultimo'].forEach(function (clave) {
+        const f = FUENTES[clave];
+        if (!f) return;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'tab' + (clave === fuenteActual ? ' activa' : '');
+        btn.textContent = f.etiqueta;
+        btn.dataset.fuente = clave;
+        if (!f.disponible) {
+            btn.disabled = true;
+            btn.style.opacity = '0.4';
+            btn.style.cursor = 'not-allowed';
+            btn.title = f.detalle;
+        } else {
+            btn.addEventListener('click', function () {
+                fuenteActual = clave;
+                document.querySelectorAll('#tabs-fuente .tab').forEach(function (x) {
+                    x.classList.toggle('activa', x.dataset.fuente === clave);
+                });
+                actualizar();
+            });
+        }
+        bar.appendChild(btn);
+    });
+}
+
+/* ── Coste de vivir ahí ──────────────────────────────────────────────────────
+   Se sugiere en €/mes a partir del precio y de los valores de partida de
+   hipoteca.py (una sola verdad), pero cualquiera se puede sustituir por la
+   cifra real de la vivienda: a partir de ahí manda la del usuario y deja de
+   seguir al precio. Por dentro se sigue trabajando en porcentaje del valor,
+   que es lo que hace crecer el IBI y el mantenimiento cuando la casa se
+   revaloriza en la comparación con el alquiler. */
+const RECURRENTES = [
+    {clave: 'comunidad', etiqueta: 'Comunidad', base: 'fijo'},
+    {clave: 'seguro', etiqueta: 'Seguro de hogar', base: 'fijo'},
+    {clave: 'ibi', etiqueta: 'IBI', base: 'pct'},
+    {clave: 'mantenimiento', etiqueta: 'Mantenimiento (provisión)', base: 'pct'},
+];
+
+function sugerenciaRec(clave, precio) {
+    if (clave === 'comunidad') return DEF.comunidad_mensual;
+    if (clave === 'seguro') return DEF.seguro_anual / 12;
+    if (clave === 'ibi') return precio * DEF.ibi_pct / 100 / 12;
+    return precio * DEF.mantenimiento_pct / 100 / 12;
+}
+
+function detalleRec(clave) {
+    if (clave === 'comunidad') return fmt(DEF.comunidad_mensual) + '/mes de partida';
+    if (clave === 'seguro') return fmt(DEF.seguro_anual) + '/año';
+    if (clave === 'ibi') return DEF.ibi_pct.toString().replace('.', ',') + ' % del valor al año';
+    return DEF.mantenimiento_pct.toString().replace('.', ',') + ' % del valor al año';
+}
+
+function construirRecurrentes() {
+    const cont = $('rec-lista');
+    cont.innerHTML = RECURRENTES.map(function (r) {
+        return '<div class="rec-row">' +
+            '<div class="rec-nombre">' + r.etiqueta +
+            '<span class="rec-hint" id="hint-' + r.clave + '"></span></div>' +
+            '<input type="number" class="rec-input" id="rec-' + r.clave + '" min="0" step="5" ' +
+            'aria-label="' + r.etiqueta + ', euros al mes">' +
+            '</div>';
+    }).join('');
+    cont.addEventListener('input', function (e) {
+        if (!e.target.classList.contains('rec-input')) return;
+        e.target.dataset.manual = '1';
+        actualizar();
+    });
+    cont.addEventListener('click', function (e) {
+        const clave = e.target.dataset && e.target.dataset.reset;
+        if (!clave) return;
+        $('rec-' + clave).dataset.manual = '0';
+        actualizar();
+    });
+}
+
+function valorRec(clave, precio) {
+    const input = $('rec-' + clave);
+    if (input && input.dataset.manual === '1') return parseFloat(input.value) || 0;
+    return sugerenciaRec(clave, precio);
+}
+
+function pintarRecurrentes(precio) {
+    let total = 0;
+    RECURRENTES.forEach(function (r) {
+        const input = $('rec-' + r.clave);
+        const manual = input.dataset.manual === '1';
+        const valor = valorRec(r.clave, precio);
+        if (!manual) input.value = Math.round(valor);
+        input.classList.toggle('manual', manual);
+        $('hint-' + r.clave).innerHTML = manual
+            ? 'Tu cifra · sugerido ' + fmt(sugerenciaRec(r.clave, precio)) +
+              ' <button type="button" data-reset="' + r.clave + '">usar sugerido</button>'
+            : 'Sugerido: ' + detalleRec(r.clave);
+        total += valor;
+    });
+    $('rec-total').textContent = fmt(total);
+}
 
 function ccaaActual() {
     const cod = $('in-ccaa').value;
@@ -454,11 +582,15 @@ function configHipoteca(euriborDelta) {
 }
 
 function paramsRecurrentes() {
+    // De vuelta al modelo del motor: el IBI y el mantenimiento como % del valor
+    // (así crecen con la casa), el seguro al año y la comunidad al mes.
+    const precio = parseFloat($('sl-precio').value) || 0;
+    const aPct = function (mensual) { return precio > 0 ? mensual * 12 / precio * 100 : 0; };
     return {
-        mantenimientoPct: parseFloat($('in-mantenimiento').value) || 0,
-        ibiPct: parseFloat($('in-ibi').value) || 0,
-        seguroAnual: parseFloat($('in-seguro').value) || 0,
-        comunidadMensual: parseFloat($('in-comunidad').value) || 0,
+        mantenimientoPct: aPct(valorRec('mantenimiento', precio)),
+        ibiPct: aPct(valorRec('ibi', precio)),
+        seguroAnual: valorRec('seguro', precio) * 12,
+        comunidadMensual: valorRec('comunidad', precio),
     };
 }
 
@@ -483,6 +615,13 @@ function tablaHTML(filas) {
 let ESTADO = {};
 
 function actualizar() {
+    const f = aplicarFuente();
+    $('fuente-detalle').textContent = f.detalle;
+    $('ctx-ingresos').textContent = fmt(INGRESOS);
+    $('ctx-gastos').textContent   = fmt(GASTOS);
+    $('ctx-libre').textContent    = fmt(LIBRE);
+    $('ctx-libre').style.color    = LIBRE < 0 ? 'var(--danger)' : 'var(--warning)';
+
     const precio   = parseFloat($('sl-precio').value);
     const entradaMin = parseFloat($('sl-entrada').value);
     const plazo    = parseInt($('sl-plazo').value);
@@ -493,6 +632,8 @@ function actualizar() {
     const ccaa     = ccaaActual();
     const obraNueva = $('in-obra').value === '1';
     const joven    = $('in-joven').checked;
+
+    pintarRecurrentes(precio);
 
     // Etiquetas
     $('lbl-precio').textContent  = fmt(precio);
@@ -579,7 +720,7 @@ function actualizar() {
 
     const av = $('falta-capital');
     if (!capitalOk) {
-        const meses = H.mesesHastaReunir(falta, modoAhorro === 'real' && AHORRO_REAL ? AHORRO_REAL : AHORRO_EST);
+        const meses = H.mesesHastaReunir(falta, AHORRO);
         av.style.display = 'block';
         av.innerHTML = '<strong>Te faltan ' + fmt(falta) + '.</strong> ' +
             (meses === null ? 'Con tu ahorro actual no llegas: hay que ahorrar más o bajar el precio.'
@@ -646,6 +787,11 @@ function render_mes() {
     const costeTotal = E.cuotaHoy + rec.total;
     const libreDespues = LIBRE + alquiler - costeTotal;
 
+    $('r-coste-total').textContent = fmt(costeTotal) + '/mes';
+    $('r-coste-total-sub').textContent =
+        'Cuota de ' + fmt(E.cuotaHoy) + ' más ' + fmt(rec.total) + ' de comunidad, IBI, seguro y ' +
+        'mantenimiento. En los ' + E.plazo + ' años de hipoteca, ' + fmt(costeTotal * 12 * E.plazo) + '.';
+
     $('tabla-mes').innerHTML = tablaHTML([
         {k: 'Cuota de la hipoteca', v: fmt(E.cuotaHoy)},
         {k: 'Comunidad', v: fmt(rec.comunidad)},
@@ -661,17 +807,19 @@ function render_mes() {
 
     const v = $('veredicto-mes');
     v.style.display = 'block';
+    const segun = ' Según ' + (FUENTES[fuenteActual] || FUENTES.presupuesto).etiqueta.toLowerCase() + '.';
     if (libreDespues < 0) {
         v.className = 'aviso aviso-danger';
         v.innerHTML = '<strong>No cuadra:</strong> te faltarían ' + fmt(-libreDespues) +
-            ' al mes. La cuota sola engaña; lo que aprieta es la cuota más todo lo demás.';
+            ' al mes. La cuota sola engaña; lo que aprieta es la cuota más todo lo demás.' + segun;
     } else if (libreDespues < costeTotal * 0.25) {
         v.className = 'aviso aviso-warn';
         v.innerHTML = '<strong>Muy justo:</strong> te quedarían ' + fmt(libreDespues) +
-            ' al mes de margen. Un imprevisto se lo come.';
+            ' al mes de margen. Un imprevisto se lo come.' + segun;
     } else {
         v.className = 'aviso aviso-ok';
-        v.innerHTML = '<strong>Cuadra:</strong> te quedarían ' + fmt(libreDespues) + ' al mes de margen.';
+        v.innerHTML = '<strong>Cuadra:</strong> te quedarían ' + fmt(libreDespues) +
+            ' al mes de margen.' + segun;
     }
 }
 
@@ -738,13 +886,13 @@ function render_amortizacion() {
 // ── ¿Cuándo llego? ──────────────────────────────────────────────────────────
 function render_cuando_llego() {
     const E = ESTADO;
-    const ahorro = (modoAhorro === 'real' && AHORRO_REAL !== null && AHORRO_REAL !== undefined)
-        ? AHORRO_REAL : AHORRO_EST;
+    const ahorro = Math.max(0, AHORRO);
+    const f = FUENTES[fuenteActual] || FUENTES.presupuesto;
 
-    $('proy-info').textContent = (modoAhorro === 'real' && (AHORRO_REAL === null || AHORRO_REAL === undefined))
-        ? 'No hay meses suficientes en Evolución para medir tu ahorro real; se proyecta con el presupuestado.'
-        : 'Ahorro ' + (modoAhorro === 'real' ? 'real medido en Evolución' : 'presupuestado') + ': ' +
-          fmt(ahorro) + '/mes · ' + fmt(ahorro * 12) + '/año.';
+    $('proy-info').textContent = ahorro > 0
+        ? 'Ahorro según ' + f.etiqueta.toLowerCase() + ' (' + f.detalle.toLowerCase() + '): ' +
+          fmt(ahorro) + '/mes · ' + fmt(ahorro * 12) + '/año.'
+        : 'Con ' + f.etiqueta.toLowerCase() + ' no queda ahorro que proyectar: la capacidad de compra se queda plana.';
 
     const meses = H.mesesHastaReunir(E.falta, ahorro);
     $('cuando-llego').innerHTML = E.falta <= 0
@@ -896,20 +1044,11 @@ document.querySelectorAll('#tabs-base .tab').forEach(function (b) {
         actualizar();
     });
 });
-document.querySelectorAll('#tabs-ahorro .tab').forEach(function (b) {
-    b.addEventListener('click', function () {
-        modoAhorro = b.dataset.ahorro;
-        document.querySelectorAll('#tabs-ahorro .tab').forEach(function (x) { x.classList.remove('activa'); });
-        b.classList.add('activa');
-        actualizar();
-    });
-});
-
 ['sl-precio','sl-entrada','sl-plazo','sl-max-pct','sl-tipo-fijo','sl-años-fijos'].forEach(function (id) {
     $(id).addEventListener('input', actualizar);
 });
 ['in-ccaa','in-obra','in-joven','in-euribor','in-diferencial','in-otras-cuotas','in-colchon',
- 'in-comunidad','in-seguro','in-ibi','in-mantenimiento','in-alquiler','in-subida-alquiler',
+ 'in-alquiler','in-subida-alquiler',
  'in-revalorizacion','in-rentabilidad','in-amortizacion','in-amort-modo'].forEach(function (id) {
     $(id).addEventListener('input', actualizar);
     $(id).addEventListener('change', actualizar);
@@ -918,6 +1057,8 @@ document.querySelectorAll('.prop-check').forEach(function (c) {
     c.addEventListener('change', actualizar);
 });
 
+construirSelectorFuentes();
+construirRecurrentes();
 actualizar();
 })();
 </script>

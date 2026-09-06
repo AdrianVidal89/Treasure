@@ -189,6 +189,100 @@ def _datos_financieros(hogar):
     }
 
 
+MESES_NOMBRES_SIM = [
+    '', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+]
+
+
+def _fuentes_de_datos(hogar, sim_data):
+    """Con qué cifras simular.
+
+    El presupuesto dice lo que DEBERÍA pasar cada mes; Evolución sabe lo que
+    pasa de verdad (ingresos reales, y el gasto que sale de restarles lo
+    ahorrado). Un simulador que solo mira el plan contesta a "¿me lo puedo
+    permitir si cumplo el presupuesto?", que no es la pregunta.
+
+    Devuelve las cuatro lecturas entre las que se puede elegir: el presupuesto,
+    la media real, la mediana real (el mes típico, que no mueve un bonus ni una
+    derrama) y el último mes cerrado. Las reales salen del análisis de ritmo de
+    Evolución en su lectura de LIQUIDEZ: lo que va a inversión sale de la
+    cuenta, así que cuenta como salida. Para "¿cuánto me queda al mes si compro
+    esto?" esa es la lectura prudente.
+    """
+    from .views_evolucion import (_flujos_por_mes, _calcular_resumen,
+                                  _datos_reales_por_mes, _analizar_ritmo)
+
+    def fuente(clave, etiqueta, detalle, ingresos, gastos, ahorro,
+               desglose=None, disponible=True):
+        return {
+            'clave': clave,
+            'etiqueta': etiqueta,
+            'detalle': detalle,
+            'disponible': bool(disponible),
+            'ingresos': round(float(ingresos or 0), 2),
+            'gastos': round(float(gastos or 0), 2),
+            'ahorro': round(float(ahorro or 0), 2),
+            'desglose': desglose,
+        }
+
+    fuentes = {
+        'presupuesto': fuente(
+            'presupuesto', 'Presupuesto', 'Lo que dice tu plan de ingresos y gastos',
+            sim_data['ingresos_netos_mensuales'],
+            sim_data['gastos_totales_mensuales'],
+            sim_data['ahorro_mensual_estimado'],
+            desglose=[
+                {'etiqueta': 'Gastos fijos', 'importe': sim_data['gastos_desg_fijos']},
+                {'etiqueta': 'Gastos variables', 'importe': sim_data['gastos_desg_variables']},
+                {'etiqueta': 'Gastos anuales (prorrateados)', 'importe': sim_data['gastos_desg_anuales']},
+            ],
+        ),
+    }
+
+    # Lo real: el año en curso, y si todavía no da para medias (enero, febrero),
+    # el anterior, que sí tiene meses cerrados.
+    hoy = datetime.date.today()
+    liquidez, año_datos = None, None
+    for año in (hoy.year, hoy.year - 1):
+        flujos = _flujos_por_mes(hogar, año)
+        resumen = _calcular_resumen(hogar, año, flujos)
+        datos_por_mes = _datos_reales_por_mes(hogar, año, resumen)
+        analisis = _analizar_ritmo(año, datos_por_mes, flujos, resumen)
+        if analisis['liquidez']['n_meses']:
+            liquidez, año_datos = analisis['liquidez'], año
+            break
+
+    if liquidez is None:
+        sin_datos = 'Necesitas dos meses seguidos con saldo registrado en Evolución'
+        for clave, etiqueta in (('media', 'Media real'), ('mediana', 'Mediana real'),
+                                ('ultimo', 'Último mes cerrado')):
+            fuentes[clave] = fuente(clave, etiqueta, sin_datos, 0, 0, 0, disponible=False)
+        return fuentes
+
+    n = liquidez['n_meses']
+    plural = 'mes cerrado' if n == 1 else 'meses cerrados'
+    fuentes['media'] = fuente(
+        'media', 'Media real', f'Media de {n} {plural} de {año_datos}',
+        liquidez['real']['ingreso']['media'],
+        liquidez['real']['gasto']['media'],
+        liquidez['real']['ahorro']['media'],
+    )
+    fuentes['mediana'] = fuente(
+        'mediana', 'Mediana real', f'Tu mes típico, sobre {n} {plural} de {año_datos}',
+        liquidez['real']['ingreso']['mediana'],
+        liquidez['real']['gasto']['mediana'],
+        liquidez['real']['ahorro']['mediana'],
+    )
+    ultimo = liquidez['meses'][-1]
+    fuentes['ultimo'] = fuente(
+        'ultimo', 'Último mes cerrado',
+        f"Lo que pasó en {MESES_NOMBRES_SIM[ultimo['mes']]} de {año_datos}",
+        ultimo['ingreso'], ultimo['gasto'], ultimo['ahorro'],
+    )
+    return fuentes
+
+
 @login_required
 def simulador_vivienda(request):
     profile, hogar = _get_hogar(request)
@@ -196,6 +290,10 @@ def simulador_vivienda(request):
         return redirect('dashboard')
 
     datos = _datos_financieros(hogar)
+    datos['sim_data'] = {
+        **datos['sim_data'],
+        'fuentes': _fuentes_de_datos(hogar, datos['sim_data']),
+    }
     propiedades_data = [
         p.calcular_neto_venta()
         for p in Propiedad.objects.filter(hogar=hogar, activo=True)
