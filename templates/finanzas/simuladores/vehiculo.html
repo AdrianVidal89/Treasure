@@ -20,7 +20,8 @@
 .control-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
 .control-label { font-size: 0.82rem; color: var(--muted); }
 .control-value { font-size: 1rem; font-weight: 700; color: var(--primary-color); font-variant-numeric: tabular-nums; }
-input[type=range] { -webkit-appearance: none; width: 100%; height: 5px; background: var(--border-strong); border-radius: 3px; outline: none; cursor: pointer; }
+/* margin:0 — el margen por defecto de los range desborda su contenedor. */
+input[type=range] { -webkit-appearance: none; width: 100%; margin: 0; box-sizing: border-box; height: 5px; background: var(--border-strong); border-radius: 3px; outline: none; cursor: pointer; }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary-color); cursor: pointer; box-shadow: 0 1px 2px rgba(28,35,33,.06); }
 
 .ctx-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }

@@ -1357,3 +1357,173 @@ class SimuladorLiquidezTests(TestCase):
         self._deposito('15000')
         resp = self.client.get(reverse('finanzas:simulador_vehiculo'))
         self.assertEqual(resp.context['capital_liquidez'], Decimal('35000.00'))
+
+
+class GastosCompraViviendaTests(TestCase):
+    """Los impuestos de comprar cambian por comunidad y por tipo de vivienda;
+    el simulador tiene que reflejarlo, no aplicar un porcentaje único."""
+
+    def test_segunda_mano_aplica_el_itp_de_la_comunidad(self):
+        from .hipoteca import gastos_compra
+
+        madrid = gastos_compra(300000, ccaa='MD')
+        cataluña = gastos_compra(300000, ccaa='CT')
+        self.assertEqual(madrid['impuestos'], Decimal('18000').__float__())   # 6 %
+        self.assertEqual(cataluña['impuestos'], 30000.0)                      # 10 %
+        self.assertGreater(cataluña['total'], madrid['total'])
+
+    def test_obra_nueva_paga_iva_mas_ajd(self):
+        from .hipoteca import gastos_compra
+
+        g = gastos_compra(300000, ccaa='MD', obra_nueva=True)
+        self.assertEqual(g['impuestos'], 300000 * (10 + 0.75) / 100)
+        self.assertIn('IVA', g['impuesto_nombre'])
+
+    def test_la_bonificacion_joven_baja_el_impuesto(self):
+        from .hipoteca import gastos_compra
+
+        normal = gastos_compra(200000, ccaa='CT')
+        joven = gastos_compra(200000, ccaa='CT', joven=True)
+        self.assertLess(joven['impuestos'], normal['impuestos'])
+
+    def test_los_gastos_fijos_tienen_suelo_y_techo(self):
+        from .hipoteca import gastos_compra, NOTARIA_MIN, NOTARIA_MAX
+
+        barata = gastos_compra(60000, ccaa='MD')
+        cara = gastos_compra(2000000, ccaa='MD')
+        self.assertEqual(barata['notaria'], NOTARIA_MIN)
+        self.assertEqual(cara['notaria'], NOTARIA_MAX)
+
+    def test_precio_cero_no_revienta(self):
+        from .hipoteca import gastos_compra
+
+        g = gastos_compra(0)
+        self.assertEqual(g['total'], 0)
+        self.assertEqual(g['total_pct'], 0)
+
+    def test_una_comunidad_desconocida_cae_en_madrid(self):
+        from .hipoteca import gastos_compra
+
+        self.assertEqual(gastos_compra(200000, ccaa='XX')['impuestos'],
+                         gastos_compra(200000, ccaa='MD')['impuestos'])
+
+    def test_la_tabla_tiene_las_17_comunidades_y_datos_completos(self):
+        from .hipoteca import tabla_ccaa
+
+        tabla = tabla_ccaa()
+        self.assertEqual(len(tabla), 17)
+        for c in tabla:
+            with self.subTest(ccaa=c['nombre']):
+                self.assertTrue(0 < c['itp'] <= 13)
+                self.assertTrue(0 < c['ajd'] <= 2)
+                self.assertLessEqual(c['itp_joven'], c['itp'])
+
+
+class CalculoHipotecaTests(TestCase):
+    """La cuota y su inversa: si estas dos no cuadran, no cuadra nada."""
+
+    def test_cuota_de_libro(self):
+        from .hipoteca import cuota_mensual
+
+        # 200.000 € al 3 % a 30 años son 843,21 €/mes
+        self.assertAlmostEqual(cuota_mensual(200000, 3, 30), 843.21, places=2)
+
+    def test_sin_intereses_la_cuota_es_el_capital_entre_los_meses(self):
+        from .hipoteca import cuota_mensual
+
+        self.assertAlmostEqual(cuota_mensual(120000, 0, 10), 1000.0, places=2)
+
+    def test_el_capital_maximo_es_la_inversa_de_la_cuota(self):
+        from .hipoteca import capital_maximo, cuota_mensual
+
+        cuota = cuota_mensual(250000, 3.5, 25)
+        self.assertAlmostEqual(capital_maximo(cuota, 3.5, 25), 250000, places=0)
+
+    def test_los_casos_vacios_dan_cero_y_no_dividen_por_cero(self):
+        from .hipoteca import capital_maximo, cuota_mensual
+
+        self.assertEqual(cuota_mensual(0, 3, 30), 0)
+        self.assertEqual(cuota_mensual(100000, 3, 0), 0)
+        self.assertEqual(capital_maximo(0, 3, 30), 0)
+
+    def test_el_coste_de_tener_la_vivienda_suma_sus_partes(self):
+        from .hipoteca import coste_recurrente_mensual
+
+        c = coste_recurrente_mensual(300000)
+        self.assertAlmostEqual(
+            c['total'], c['mantenimiento'] + c['ibi'] + c['seguro'] + c['comunidad'], places=2)
+        # 1 % de 300.000 al año son 250 €/mes de provisión de mantenimiento
+        self.assertAlmostEqual(c['mantenimiento'], 250.0, places=2)
+
+
+class SimuladorViviendaContextoTests(TestCase):
+    """El simulador tiene que llegar con lo que la app ya sabe del hogar."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import CategoriaGasto, FondoFamiliar, PartidaGasto, SaldoRealFondo
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        hoy = datetime.date.today()
+        fondo = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        SaldoRealFondo.objects.create(fondo=fondo, año=hoy.year, mes=hoy.month, saldo=Decimal('50000'))
+        self.cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Vivienda', tipo='fijo')
+
+    def _sim(self):
+        resp = self.client.get(reverse('finanzas:simulador_vivienda'))
+        self.assertEqual(resp.status_code, 200)
+        return resp.context['sim_data']
+
+    def test_detecta_el_alquiler_que_se_paga_hoy(self):
+        from .models import PartidaGasto
+
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.cat, nombre='Alquiler piso Sevilla',
+            importe=Decimal('950'), periodicidad='mensual', activo=True)
+        self.assertEqual(self._sim()['alquiler_actual'], 950.0)
+
+    def test_suma_las_cuotas_de_prestamos_para_el_ratio(self):
+        from .models import PartidaGasto
+
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.cat, nombre='Préstamo coche',
+            importe=Decimal('220'), periodicidad='mensual', activo=True)
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.cat, nombre='Supermercado',
+            importe=Decimal('400'), periodicidad='mensual', activo=True)
+        self.assertEqual(self._sim()['otras_cuotas'], 220.0)
+
+    def test_avisa_de_los_depositos_que_vencen_despues(self):
+        hoy = datetime.date.today()
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito a plazo', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual',
+            deposito_fecha_liquidacion=hoy + datetime.timedelta(days=400))
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=hoy - datetime.timedelta(days=30), tipo='COMPRA',
+            cantidad=Decimal('10000'), precio_unitario=Decimal('1'))
+
+        atados = self._sim()['depositos_atados']
+        self.assertEqual(len(atados), 1)
+        self.assertEqual(atados[0]['nombre'], 'Depósito a plazo')
+
+    def test_un_deposito_sin_vencimiento_no_genera_aviso(self):
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depósito abierto', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date.today(), tipo='COMPRA',
+            cantidad=Decimal('5000'), precio_unitario=Decimal('1'))
+        self.assertEqual(self._sim()['depositos_atados'], [])
+
+    def test_lleva_la_tabla_de_impuestos_y_los_valores_por_defecto(self):
+        sim = self._sim()
+        self.assertEqual(len(sim['ccaa']), 17)
+        self.assertIn('mantenimiento_pct', sim['defaults'])
+        self.assertIn('iva_obra_nueva', sim['defaults'])
