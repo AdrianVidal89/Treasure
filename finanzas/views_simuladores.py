@@ -120,19 +120,25 @@ def _datos_financieros(hogar):
             ahorro_mensual_real = crecimiento / intervalos
 
     # ── Datos que la app ya sabe y que el simulador debe usar ───────────────
-    # Alquiler que se paga hoy: sirve para comparar comprar con seguir de
-    # alquiler. Se busca por nombre porque no hay un tipo de gasto "alquiler".
+    # De las partidas de gasto salen dos cosas, y conviene no confundirlas:
+    #
+    #   · el ALQUILER que se paga hoy, que no es deuda y además se deja de
+    #     pagar al comprar (se busca por nombre: no hay un tipo "alquiler");
+    #   · las CUOTAS de préstamos que ya se pagan, que sí cuentan para el ratio
+    #     de endeudamiento, porque el banco no mira la hipoteca sola. Se cogen
+    #     de la categoría «Hipoteca / Alquiler», que es donde el hogar las
+    #     apunta, y de cualquier partida que se llame como un préstamo (por si
+    #     está suelta en otra categoría).
+    PALABRAS_PRESTAMO = ('hipoteca', 'préstamo', 'prestamo', 'crédito', 'credito',
+                         'financiación', 'financiacion')
     alquiler_actual = Decimal('0')
-    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True):
-        if 'alquiler' in p.nombre.lower():
-            alquiler_actual += p.importe_mensual
-
-    # Cuotas de préstamos que ya se pagan: cuentan para el ratio de
-    # endeudamiento, que es como mira el banco (la hipoteca NO va sola).
     otras_cuotas = Decimal('0')
-    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True):
+    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
         nombre = p.nombre.lower()
-        if any(x in nombre for x in ('hipoteca', 'préstamo', 'prestamo', 'crédito', 'credito')):
+        categoria = (p.categoria.nombre if p.categoria else '').lower()
+        if 'alquiler' in nombre:
+            alquiler_actual += p.importe_mensual
+        elif 'hipoteca' in categoria or any(x in nombre for x in PALABRAS_PRESTAMO):
             otras_cuotas += p.importe_mensual
 
     # Depósitos que vencen después de hoy: el dinero está, pero atado. Para una

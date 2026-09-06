@@ -1499,6 +1499,45 @@ class SimuladorViviendaContextoTests(TestCase):
             importe=Decimal('400'), periodicidad='mensual', activo=True)
         self.assertEqual(self._sim()['otras_cuotas'], 220.0)
 
+    def test_la_categoria_hipoteca_alquiler_ya_cuenta_como_cuota(self):
+        """Donde el hogar apunta sus préstamos es en esa categoría: el ratio
+        tiene que mirar ahí, no solo el nombre de la partida."""
+        from .models import CategoriaGasto, PartidaGasto
+
+        cat_hipoteca = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Hipoteca / Alquiler', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat_hipoteca, nombre='Cuota banco',
+            importe=Decimal('640'), periodicidad='mensual', activo=True)
+
+        self.assertEqual(self._sim()['otras_cuotas'], 640.0)
+
+    def test_el_alquiler_de_esa_categoria_no_es_una_cuota(self):
+        """El alquiler no es deuda, y además es lo que dejas de pagar al
+        comprar: cuenta como alquiler, nunca como cuota del ratio."""
+        from .models import CategoriaGasto, PartidaGasto
+
+        cat_hipoteca = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Hipoteca / Alquiler', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat_hipoteca, nombre='Alquiler piso',
+            importe=Decimal('900'), periodicidad='mensual', activo=True)
+
+        datos = self._sim()
+        self.assertEqual(datos['alquiler_actual'], 900.0)
+        self.assertEqual(datos['otras_cuotas'], 0.0)
+
+    def test_una_partida_no_se_cuenta_dos_veces(self):
+        from .models import CategoriaGasto, PartidaGasto
+
+        cat_hipoteca = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Hipoteca / Alquiler', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat_hipoteca, nombre='Hipoteca piso',
+            importe=Decimal('700'), periodicidad='mensual', activo=True)
+
+        self.assertEqual(self._sim()['otras_cuotas'], 700.0)
+
     def test_avisa_de_los_depositos_que_vencen_despues(self):
         hoy = datetime.date.today()
         dep = Inversion.objects.create(
