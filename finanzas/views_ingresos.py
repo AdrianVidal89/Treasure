@@ -8,6 +8,20 @@ from .models import FuenteIngreso, DestinoIngreso
 from .fiscal import calcular_neto_anual
 
 
+def _num_pagas_de(request):
+    """Número de pagas del formulario.
+
+    El selector ofrece "Personalizado...", que se envía como `num_pagas=custom`;
+    en ese caso el número real viene en el campo de al lado. Sin esto, elegir
+    esa opción reventaba al guardar (int('custom'))."""
+    valor = (request.POST.get('num_pagas') or '').strip()
+    if valor == 'custom':
+        valor = (request.POST.get('num_pagas_custom') or '').strip()
+    try:
+        return max(1, int(valor))
+    except (TypeError, ValueError):
+        return 12
+
 @login_required
 def listar_ingresos(request):
     profile = getattr(request.user, 'userprofile', None)
@@ -139,7 +153,7 @@ def crear_ingreso(request):
         importe_declarado = request.POST.get('importe_declarado')
         es_bruto = request.POST.get('es_bruto') == 'true'
         pais_fiscal = request.POST.get('pais_fiscal', 'ES')
-        num_pagas = int(request.POST.get('num_pagas', 12))
+        num_pagas = _num_pagas_de(request)
         meses_pagas_extras = request.POST.get('meses_pagas_extras', '6,12')
         periodicidad = request.POST.get('periodicidad', 'mensual')
         meses_cobro_list = request.POST.getlist('meses_cobro')
@@ -201,7 +215,7 @@ def editar_ingreso(request, ingreso_id):
         fuente.importe_declarado = Decimal(request.POST.get('importe_declarado', '0'))
         fuente.es_bruto = request.POST.get('es_bruto') == 'true'
         fuente.pais_fiscal = request.POST.get('pais_fiscal', 'ES')
-        fuente.num_pagas = int(request.POST.get('num_pagas', 12))
+        fuente.num_pagas = _num_pagas_de(request)
         fuente.meses_pagas_extras = request.POST.get('meses_pagas_extras', '6,12')
         fuente.periodicidad = request.POST.get('periodicidad', 'mensual')
         meses_cobro_list = request.POST.getlist('meses_cobro')

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load l10n %}
 {% block title %}Editar Ingreso - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -64,7 +65,7 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
                 <div class="form-group">
                     <label id="label-importe">Importe (€)</label>
-                    <input type="number" name="importe_declarado" id="importe_declarado" step="0.01" min="0" value="{{ fuente.importe_declarado }}"
+                    <input type="number" name="importe_declarado" id="importe_declarado" step="0.01" min="0" value="{{ fuente.importe_declarado|unlocalize }}"
                            style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;" required>
                 </div>
                 <div class="form-group">
@@ -87,10 +88,11 @@
                         <option value="custom" {% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}selected{% endif %}>Personalizado...</option>
                     </select>
                 </div>
-                <div id="bloque-pagas-custom" style="display: {% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}block{% else %}none{% endif %};"></div>
+                <div id="bloque-pagas-custom" style="display: {% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}block{% else %}none{% endif %};">
                     <div class="form-group">
                         <label>Número de pagas personalizado</label>
-                        value="{% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}{{ fuente.num_pagas }}{% endif %}"
+                        <input type="number" name="num_pagas_custom" id="num_pagas_custom" min="12" max="20" placeholder="Ej: 16"
+                               value="{% if fuente.num_pagas != 12 and fuente.num_pagas != 14 and fuente.num_pagas != 15 %}{{ fuente.num_pagas|unlocalize }}{% endif %}"
                                style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;">
                     </div>
                 </div>
@@ -169,7 +171,7 @@
                 <div class="form-group">
                     <label>% de variabilidad estimada</label>
                     <input type="number" name="porcentaje_variabilidad" id="porcentaje_variabilidad"
-                           step="0.1" min="0" max="200" value="{{ fuente.porcentaje_variabilidad }}"
+                           step="0.1" min="0" max="200" value="{{ fuente.porcentaje_variabilidad|unlocalize }}"
                            style="width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--input-bg); color: var(--text-color); font-size: 15px; box-sizing: border-box;">
                     <small style="color: var(--muted);">Para guardias, comisiones, bonos...</small>
                 </div>

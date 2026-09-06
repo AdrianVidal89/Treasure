@@ -4,9 +4,15 @@ from decimal import Decimal
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 
-from .models import FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad
+from .models import (
+    FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad, Inversion,
+)
+from . import hipoteca
 from .distribucion import _neto_fuente_base, calcular_flujos
-from .views_evolucion import _delta_esperado_mes, _liquidez_patrimonio_por_mes
+from .views_evolucion import (
+    _delta_esperado_mes, _fecha_corte_mes, _liquidez_patrimonio_por_mes,
+    _saldos_liquidez_patrimonio, valor_depositos_hogar,
+)
 
 
 def _get_hogar(request):
@@ -33,29 +39,32 @@ def _datos_financieros(hogar):
         if ultimo_mes:
             break
 
+    # Liquidez y patrimonio con el MISMO criterio que Evolución y el dashboard:
+    # los depósitos son dinero disponible y cuentan como liquidez (el helper
+    # evita además contarlos dos veces si están vinculados a un fondo).
     capital_liquidez = Decimal('0')
     capital_inversiones = Decimal('0')
+    capital_depositos = Decimal('0')
     desglose_fondos = []
 
     if ultimo_mes:
         saldos = SaldoRealFondo.objects.filter(
             fondo__hogar=hogar, año=ultimo_anio, mes=ultimo_mes
         ).select_related('fondo')
+        fecha_depositos = _fecha_corte_mes(ultimo_anio, ultimo_mes)
+        capital_liquidez, patrimonio = _saldos_liquidez_patrimonio(
+            saldos, hogar=hogar, fecha_depositos=fecha_depositos,
+        )
+        capital_inversiones = patrimonio - capital_liquidez
+        capital_depositos = valor_depositos_hogar(hogar, fecha_depositos)
+
         for s in saldos:
-            if s.fondo.tipo_fondo in ('comun', 'ahorro'):
-                capital_liquidez += s.saldo
-            elif s.fondo.tipo_fondo == 'inversion':
-                capital_inversiones += s.saldo
             desglose_fondos.append({
                 'nombre': s.fondo.nombre,
                 'tipo': s.fondo.tipo_fondo,
                 'saldo': float(s.saldo),
                 'color': s.fondo.color,
             })
-        fondos_con_saldo = {s.fondo_id for s in saldos}
-        for f in FondoFamiliar.objects.filter(hogar=hogar, tipo_fondo='inversion', activo=True):
-            if f.id not in fondos_con_saldo and f.valor_cartera:
-                capital_inversiones += Decimal(str(f.valor_cartera))
 
     # Ingresos netos mensuales RECURRENTES (base, sin pagas extras ni variables del mes)
     ingresos_netos = Decimal('0')
@@ -110,10 +119,41 @@ def _datos_financieros(hogar):
             crecimiento = datos_liq[ultimo_mes_liq][0] - datos_liq[primer_mes][0]
             ahorro_mensual_real = crecimiento / intervalos
 
+    # ── Datos que la app ya sabe y que el simulador debe usar ───────────────
+    # Alquiler que se paga hoy: sirve para comparar comprar con seguir de
+    # alquiler. Se busca por nombre porque no hay un tipo de gasto "alquiler".
+    alquiler_actual = Decimal('0')
+    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True):
+        if 'alquiler' in p.nombre.lower():
+            alquiler_actual += p.importe_mensual
+
+    # Cuotas de préstamos que ya se pagan: cuentan para el ratio de
+    # endeudamiento, que es como mira el banco (la hipoteca NO va sola).
+    otras_cuotas = Decimal('0')
+    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True):
+        nombre = p.nombre.lower()
+        if any(x in nombre for x in ('hipoteca', 'préstamo', 'prestamo', 'crédito', 'credito')):
+            otras_cuotas += p.importe_mensual
+
+    # Depósitos que vencen después de hoy: el dinero está, pero atado. Para una
+    # entrada a corto plazo conviene saberlo.
+    depositos_atados = []
+    for dep in (Inversion.objects
+                .filter(usuario__userprofile__hogar=hogar, tipo='DEPOSITO')
+                .prefetch_related('movimientos')):
+        venc = dep.deposito_fecha_liquidacion
+        if venc and venc > hoy:
+            depositos_atados.append({
+                'nombre': dep.nombre,
+                'valor': round(float(dep.deposito_estado()['valor']), 2),
+                'vence': venc.strftime('%d/%m/%Y'),
+            })
+
     # Pasar como dict Python: json_script lo serializa de forma segura (sin problemas de locale)
     sim_data = {
         'capital_liquidez': round(float(capital_liquidez), 2),
         'capital_inversiones': round(float(capital_inversiones), 2),
+        'capital_depositos': round(float(capital_depositos), 2),
         'ingresos_netos_mensuales': round(float(ingresos_netos), 2),
         # gastos_fijos_mensuales = TOTAL de gastos (retrocompat: se usa para el colchón)
         'gastos_fijos_mensuales': round(float(gastos_totales), 2),
@@ -125,11 +165,20 @@ def _datos_financieros(hogar):
         'ahorro_mensual_estimado': round(float(ahorro_mensual_estimado), 2),
         'ahorro_mensual_real': (round(float(ahorro_mensual_real), 2)
                                 if ahorro_mensual_real is not None else None),
+        'alquiler_actual': round(float(alquiler_actual), 2),
+        'otras_cuotas': round(float(otras_cuotas), 2),
+        'depositos_atados': depositos_atados,
+        'ccaa': hipoteca.tabla_ccaa(),
+        'defaults': hipoteca.defaults_para_js(),
     }
 
     return {
         'capital_liquidez': capital_liquidez,
         'capital_inversiones': capital_inversiones,
+        'capital_depositos': capital_depositos,
+        'alquiler_actual': alquiler_actual,
+        'otras_cuotas': otras_cuotas,
+        'depositos_atados': depositos_atados,
         'ingresos_netos_mensuales': ingresos_netos,
         'gastos_fijos_mensuales': gastos_totales,
         'libre_mensual': libre,
