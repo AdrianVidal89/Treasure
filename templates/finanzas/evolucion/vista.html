@@ -65,6 +65,59 @@
 .evo-tooltip .tt-esp { color: var(--muted); }
 .evo-chart-empty { padding: 40px 10px; text-align: center; color: var(--muted); font-size: 0.85rem; }
 
+/* Ritmo real (medias/medianas vs presupuesto) y proyección */
+.evo-analisis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 32px; align-items: start; }
+.evo-analisis-panel { padding: 22px; }
+.evo-rent { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); white-space: nowrap; }
+.evo-rent select { background: var(--app-bg); border: 1px solid var(--border-strong); color: var(--text-color); border-radius: 8px; padding: 7px 10px; font-size: 0.78rem; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.mini-tabla { width: 100%; border-collapse: collapse; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.mini-tabla th { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); text-align: right; padding: 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.mini-tabla td { padding: 11px 6px; text-align: right; white-space: nowrap; border-bottom: 1px solid color-mix(in srgb, var(--text-color) 6%, transparent); }
+.mini-tabla th:first-child, .mini-tabla td:first-child { text-align: left; }
+.mini-tabla tbody tr:last-child td { border-bottom: none; }
+.mini-tabla .concepto { font-weight: 600; color: var(--text-color); }
+.mini-tabla .plan { color: var(--muted); }
+.mini-tabla .destacado { color: var(--primary-color); font-weight: 700; }
+.mini-tabla-wrap { overflow-x: auto; }
+.desvio-pct { display: block; font-size: 0.64rem; opacity: 0.75; }
+.ritmo-sub { font-size: 0.64rem; font-weight: 500; text-transform: none; letter-spacing: 0; opacity: 0.8; display: block; }
+.evo-tasa { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 0.78rem; color: var(--muted); }
+.evo-tasa strong { color: var(--text-color); }
+
+/* Recomendaciones sobre el presupuesto */
+.evo-avisos { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.evo-aviso { display: flex; gap: 9px; align-items: flex-start; font-size: 0.78rem; line-height: 1.4; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); border-left-width: 3px; background: color-mix(in srgb, var(--app-bg) 60%, transparent); }
+.evo-aviso .icon { flex-shrink: 0; margin-top: 1px; }
+.evo-aviso--ok { border-left-color: var(--success); }
+.evo-aviso--ok .icon { color: var(--success); }
+.evo-aviso--aviso { border-left-color: var(--warning); }
+.evo-aviso--aviso .icon { color: var(--warning); }
+.evo-aviso--info { border-left-color: var(--info); }
+.evo-aviso--info .icon { color: var(--info); }
+
+/* Detalle mes a mes (plegado por defecto: el resumen es lo que importa) */
+.evo-detalle { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.evo-detalle > summary { list-style: none; cursor: pointer; font-size: 0.75rem; font-weight: 600; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.evo-detalle > summary::-webkit-details-marker { display: none; }
+.evo-detalle > summary::after { content: '⌄'; transition: transform var(--ease); }
+.evo-detalle[open] > summary::after { transform: rotate(180deg); }
+.evo-detalle > summary:hover { color: var(--text-color); }
+.evo-detalle .mini-tabla { margin-top: 10px; }
+.evo-analisis-vacio { font-size: 0.82rem; color: var(--muted); line-height: 1.5; margin: 8px 0 0; }
+@media (max-width: 560px) {
+    /* En móvil las tablas se aprietan para que el desvío —la columna que dice
+       si hay que corregir el presupuesto— entre sin tener que desplazarlas. */
+    .evo-analisis-panel { padding: 18px 14px; }
+    .mini-tabla { font-size: 0.74rem; }
+    .mini-tabla th { font-size: 0.56rem; }
+    .mini-tabla th, .mini-tabla td { padding: 8px 3px; }
+    /* El nombre del escenario puede partirse en dos líneas: lo que no puede
+       quedarse fuera son los años de la proyección. */
+    .mini-tabla td:first-child { white-space: normal; }
+}
+.evo-analisis-nota { font-size: 0.72rem; color: var(--muted); line-height: 1.45; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.evo-analisis-nota strong { color: var(--text-color); }
+
 /* Tabla (se usa solo para la sección de Inmuebles) */
 .evo-table-wrap { overflow-x: auto; border-radius: var(--radius-xl); background: var(--app-bg); border: 1px solid var(--border); }
 .evo-table { border-collapse: collapse; width: 100%; min-width: max-content; font-size: 0.82rem; }
@@ -253,8 +306,8 @@
                 <p class="evo-chart-sub">Ahorro acumulado desde inicio de año. Línea gris discontinua: lo previsto según tu presupuesto. Línea verde: lo que realmente llevas ahorrado.</p>
             </div>
             <div class="evo-chart-toggle" role="tablist">
-                <button type="button" class="evo-toggle-btn active" data-metrica="liquidez">Liquidez actual</button>
-                <button type="button" class="evo-toggle-btn" data-metrica="patrimonio">Patrimonio financiero</button>
+                <button type="button" class="evo-toggle-btn active" data-metrica="liquidez">Liquidez</button>
+                <button type="button" class="evo-toggle-btn" data-metrica="patrimonio">Patrimonio</button>
             </div>
         </div>
         <div class="evo-chart-body">
@@ -267,6 +320,48 @@
         </div>
     </div>
     {{ grafico|json_script:"evo-chart-data" }}
+
+    <!-- RITMO REAL (medias y medianas) Y PROYECCIÓN A LARGO PLAZO -->
+    <div class="evo-analisis-grid">
+        <div class="glass-panel evo-analisis-panel">
+            <div class="evo-chart-head">
+                <div>
+                    <h3>Tu ritmo real vs. el presupuesto</h3>
+                    <p class="evo-chart-sub">
+                        Lo que de verdad entra, sale y queda cada mes según tus saldos, frente a
+                        lo que el presupuesto decía para esos mismos meses.
+                        <span class="js-ritmo-meses"></span>
+                    </p>
+                </div>
+                <div class="evo-chart-toggle" role="tablist">
+                    <button type="button" class="evo-toggle-btn active" data-metrica="liquidez">Liquidez</button>
+                    <button type="button" class="evo-toggle-btn" data-metrica="patrimonio">Patrimonio</button>
+                </div>
+            </div>
+            <div id="evo-ritmo-cuerpo"></div>
+        </div>
+
+        <div class="glass-panel evo-analisis-panel">
+            <div class="evo-chart-head">
+                <div>
+                    <h3>Dónde estarías a este ritmo</h3>
+                    <p class="evo-chart-sub js-proy-base"></p>
+                </div>
+                <label class="evo-rent">
+                    Rentabilidad
+                    <select id="evo-rentabilidad">
+                        <option value="0" selected>0 % · solo ahorro</option>
+                        <option value="0.02">2 % anual</option>
+                        <option value="0.04">4 % anual</option>
+                        <option value="0.06">6 % anual</option>
+                        <option value="0.08">8 % anual</option>
+                    </select>
+                </label>
+            </div>
+            <div id="evo-proyeccion-cuerpo"></div>
+        </div>
+    </div>
+    {{ analisis|json_script:"evo-analisis-data" }}
 
     <!-- TARJETAS MENSUALES (acordeón, un fondo/depósito por fila, clic para editar) -->
     <div class="evo-months-list">
@@ -746,6 +841,11 @@ function refrescarEstado(estado) {
         datosGrafico = estado.grafico;
         renderGrafico();
     }
+    if (estado.analisis) {
+        datosAnalisis = estado.analisis;
+        renderRitmo();
+        renderProyeccion();
+    }
 }
 
 /* ============================================================
@@ -942,14 +1042,211 @@ function renderGrafico() {
     });
 }
 
-document.querySelectorAll('.evo-toggle-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.evo-toggle-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        metricaActual = btn.dataset.metrica;
-        renderGrafico();
+/* La métrica (liquidez / patrimonio) es de la página entera: el gráfico, el
+   ritmo real y la proyección hablan siempre de lo mismo, se pulse el selector
+   que se pulse. */
+function cambiarMetrica(metrica) {
+    metricaActual = metrica;
+    document.querySelectorAll('.evo-toggle-btn').forEach((b) => {
+        b.classList.toggle('active', b.dataset.metrica === metrica);
     });
+    renderGrafico();
+    renderRitmo();
+    renderProyeccion();
+}
+
+document.querySelectorAll('.evo-toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => cambiarMetrica(btn.dataset.metrica));
 });
+
+/* ============================================================
+   RITMO REAL Y PROYECCIONES
+   El servidor manda ya calculadas las medias, medianas y
+   desviaciones frente al presupuesto de los meses cerrados
+   (ver finanzas/analisis_evolucion.py). Aquí solo se pintan,
+   y se recalcula la proyección cuando cambia la rentabilidad
+   estimada, que es lo único que decide el usuario en vivo.
+   ============================================================ */
+
+let datosAnalisis = JSON.parse(document.getElementById('evo-analisis-data').textContent);
+let rentabilidadAnual = 0;
+
+const MESES_CORTOS = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const NOMBRE_METRICA = {liquidez: 'liquidez', patrimonio: 'patrimonio financiero'};
+const ICONO_AVISO = {ok: '#i-check', aviso: '#i-alert', info: '#i-info'};
+/* [etiqueta, clave, subir es mejor] */
+const CONCEPTOS = [
+    ['Ingresos', 'ingreso', true],
+    ['Gastos', 'gasto', false],
+    ['Ahorro', 'ahorro', true],
+];
+
+function euroOpc(v) {
+    return (v === null || v === undefined) ? '—' : euro0(v);
+}
+
+function euroFirmado(v) {
+    if (v === null || v === undefined) return '—';
+    return (v >= 0 ? '+' : '−') + euro0(Math.abs(v));
+}
+
+function claseDesvio(valor, mejorSiSube) {
+    if (valor === null || valor === undefined || Math.abs(valor) < 1) return 'neu';
+    return (valor > 0) === mejorSiSube ? 'pos' : 'neg';
+}
+
+function celdaDesvio(desvio, presupuesto, mejorSiSube) {
+    if (desvio === null || desvio === undefined) return '<td class="neu">—</td>';
+    let pct = '';
+    if (presupuesto) {
+        const p = Math.round(desvio / presupuesto * 100);
+        pct = '<span class="desvio-pct">' + (p >= 0 ? '+' : '−') + Math.abs(p) + ' %</span>';
+    }
+    return '<td class="' + claseDesvio(desvio, mejorSiSube) + '">' + euroFirmado(desvio) + pct + '</td>';
+}
+
+function renderRitmo() {
+    const cont = document.getElementById('evo-ritmo-cuerpo');
+    const nota = document.querySelector('.js-ritmo-meses');
+    if (!cont) return;
+
+    const a = (datosAnalisis || {})[metricaActual];
+    if (!a || !a.n_meses) {
+        if (nota) nota.textContent = '';
+        cont.innerHTML = '<p class="evo-analisis-vacio">Todavía no hay meses que medir. ' +
+            'Con el saldo de dos meses seguidos ya cerrados aparece aquí tu ritmo real: ' +
+            'cuánto ingresas, cuánto gastas y cuánto queda de verdad cada mes.</p>';
+        return;
+    }
+    if (nota) {
+        nota.textContent = 'Sobre ' + a.n_meses + (a.n_meses === 1 ? ' mes cerrado.' : ' meses cerrados.');
+    }
+
+    let filas = '';
+    CONCEPTOS.forEach((c) => {
+        const etiqueta = c[0], clave = c[1], mejorSiSube = c[2];
+        const real = a.real[clave], prev = a.presupuesto[clave], d = a.desvio[clave];
+        filas += '<tr>' +
+            '<td class="concepto">' + etiqueta + '</td>' +
+            '<td>' + euroOpc(real.media) + '</td>' +
+            '<td>' + euroOpc(real.mediana) + '</td>' +
+            '<td class="plan">' + euroOpc(prev) + '</td>' +
+            celdaDesvio(d.media, prev, mejorSiSube) +
+            '</tr>';
+    });
+
+    let tasa = '';
+    if (a.tasa_ahorro.real !== null && a.tasa_ahorro.real !== undefined) {
+        tasa = '<div class="evo-tasa">Tasa de ahorro real <strong>' +
+            a.tasa_ahorro.real.toLocaleString('es-ES') + ' %</strong>';
+        if (a.tasa_ahorro.presupuesto !== null && a.tasa_ahorro.presupuesto !== undefined) {
+            tasa += ' · presupuestada ' + a.tasa_ahorro.presupuesto.toLocaleString('es-ES') + ' %';
+        }
+        tasa += '</div>';
+    }
+
+    const avisos = (a.avisos || []).map((av) =>
+        '<div class="evo-aviso evo-aviso--' + av.tono + '">' +
+        '<svg class="icon"><use href="' + ICONO_AVISO[av.tono] + '"/></svg>' +
+        '<span>' + av.texto + '</span></div>').join('');
+
+    const detalle = (a.meses || []).map((m) =>
+        '<tr>' +
+        '<td class="concepto">' + MESES_CORTOS[m.mes] + '</td>' +
+        '<td>' + euroOpc(m.ingreso) + '</td>' +
+        '<td>' + euroOpc(m.gasto) + '</td>' +
+        '<td>' + euroOpc(m.ahorro) + '</td>' +
+        '<td class="' + claseDesvio(m.ahorro - m.ahorro_prev, true) + '">' +
+        euroFirmado(m.ahorro - m.ahorro_prev) + '</td>' +
+        '</tr>').join('');
+
+    cont.innerHTML =
+        '<div class="mini-tabla-wrap"><table class="mini-tabla">' +
+        '<thead><tr><th></th><th>Media<span class="ritmo-sub">al mes</span></th>' +
+        '<th>Mediana<span class="ritmo-sub">mes típico</span></th>' +
+        '<th>Presupuesto<span class="ritmo-sub">al mes</span></th>' +
+        '<th>Desvío<span class="ritmo-sub">media vs. plan</span></th></tr></thead>' +
+        '<tbody>' + filas + '</tbody></table></div>' +
+        tasa +
+        (avisos ? '<div class="evo-avisos">' + avisos + '</div>' : '') +
+        '<details class="evo-detalle"><summary>Detalle mes a mes</summary>' +
+        '<div class="mini-tabla-wrap"><table class="mini-tabla">' +
+        '<thead><tr><th>Mes</th><th>Ingresos</th><th>Gastos</th><th>Ahorro</th>' +
+        '<th>vs. plan</th></tr></thead><tbody>' + detalle + '</tbody></table></div></details>';
+}
+
+/* Mismo cálculo que `proyectar` en analisis_evolucion.py: el capital de hoy
+   más una aportación mensual constante, capitalizando al mes. */
+function proyectarJS(base, ahorroMensual, años, rentabilidad) {
+    const n = 12 * años;
+    if (!rentabilidad) return base + ahorroMensual * n;
+    const r = Math.pow(1 + rentabilidad, 1 / 12) - 1;
+    const factor = Math.pow(1 + r, n);
+    return base * factor + ahorroMensual * (factor - 1) / r;
+}
+
+function renderProyeccion() {
+    const cont = document.getElementById('evo-proyeccion-cuerpo');
+    const sub = document.querySelector('.js-proy-base');
+    if (!cont) return;
+
+    const a = (datosAnalisis || {})[metricaActual];
+    const horizontes = (datosAnalisis && datosAnalisis.horizontes) || [1, 2, 5, 10];
+    if (!a) return;
+
+    if (sub) {
+        sub.textContent = 'Partiendo de ' + euroOpc(a.base) + ' de ' +
+            NOMBRE_METRICA[metricaActual] + ' hoy y manteniendo el ritmo de ahorro que llevas.';
+    }
+
+    if (!a.escenarios || !a.escenarios.length) {
+        cont.innerHTML = '<p class="evo-analisis-vacio">La proyección necesita saber a qué ritmo ahorras. ' +
+            'En cuanto haya dos meses seguidos con saldo registrado, aquí verás dónde estarías ' +
+            'dentro de 1, 2, 5 y 10 años.</p>';
+        return;
+    }
+
+    const cabecera = '<th>Ritmo</th>' + horizontes.map((h) =>
+        '<th>' + h + (h === 1 ? ' año' : ' años') + '</th>').join('');
+
+    const filas = a.escenarios.map((esc) => {
+        const celdas = horizontes.map((h) => {
+            const valor = proyectarJS(a.base, esc.ahorro_mensual, h, rentabilidadAnual);
+            const clase = (esc.clave === 'media' && h === horizontes[horizontes.length - 1]) ? ' class="destacado"' : '';
+            return '<td' + clase + '>' + euro0(valor) + '</td>';
+        }).join('');
+        const plan = esc.clave === 'presupuesto' ? ' class="plan"' : '';
+        return '<tr' + plan + '><td class="concepto">' + esc.etiqueta +
+            '<span class="ritmo-sub">' + euro0(esc.ahorro_mensual) + ' al mes</span></td>' +
+            celdas + '</tr>';
+    }).join('');
+
+    const real = a.escenarios.find((e) => e.clave === 'media');
+    const plan = a.escenarios.find((e) => e.clave === 'presupuesto');
+    let comparativa = '';
+    if (real && plan) {
+        const h = horizontes[horizontes.length - 1];
+        const dif = proyectarJS(a.base, real.ahorro_mensual, h, rentabilidadAnual) -
+                    proyectarJS(a.base, plan.ahorro_mensual, h, rentabilidadAnual);
+        comparativa = 'A ' + h + ' años, tu ritmo real deja <strong>' + euro0(Math.abs(dif)) +
+            (dif >= 0 ? '</strong> más' : '</strong> menos') + ' que cumplir el presupuesto al pie de la letra. ';
+    }
+
+    cont.innerHTML =
+        '<div class="mini-tabla-wrap"><table class="mini-tabla">' +
+        '<thead><tr>' + cabecera + '</tr></thead>' +
+        '<tbody>' + filas + '</tbody></table></div>' +
+        '<p class="evo-analisis-nota">' + comparativa +
+        'No cuenta inmuebles ni más revalorización que la que elijas arriba.</p>';
+}
+
+const selectorRentabilidad = document.getElementById('evo-rentabilidad');
+if (selectorRentabilidad) {
+    selectorRentabilidad.addEventListener('change', () => {
+        rentabilidadAnual = parseFloat(selectorRentabilidad.value) || 0;
+        renderProyeccion();
+    });
+}
 
 let _resizeTimer = null;
 window.addEventListener('resize', () => {
@@ -958,5 +1255,7 @@ window.addEventListener('resize', () => {
 });
 
 renderGrafico();
+renderRitmo();
+renderProyeccion();
 </script>
 {% endblock %}

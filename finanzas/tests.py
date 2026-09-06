@@ -1,7 +1,7 @@
 import datetime
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.contrib.auth.models import User
 
@@ -1185,3 +1185,189 @@ class FondosEnGestionTests(TestCase):
         quietos = self.client.get(
             reverse('finanzas:vista_distribucion')).context['fondos_quietos']
         self.assertEqual([f.id for f in quietos], [self.otro.id])
+
+
+class RitmoRealTests(SimpleTestCase):
+    """El ritmo real del año: lo ahorrado sale de los saldos (no se estima) y
+    el gasto real de restárselo al ingreso. Sobre esa serie, media y mediana
+    frente a lo que decía el presupuesto de esos mismos meses."""
+
+    HOY = datetime.date(2026, 9, 6)  # septiembre: enero..agosto son meses cerrados
+    AÑO = 2026
+
+    def _flujo(self, ingreso='3000', gastos='2000', inversion='0', presupuestado=None):
+        return {
+            'ingreso_base_hogar': Decimal(ingreso),
+            'ingreso_base_puro_hogar': Decimal(presupuestado if presupuestado is not None else ingreso),
+            'total_gastos_all': Decimal(gastos),
+            'total_inversion': Decimal(inversion),
+        }
+
+    def _analizar(self, saldos, flujos=None):
+        """`saldos`: {mes: saldo}. El mismo valor sirve de liquidez y de
+        patrimonio salvo que un test necesite distinguirlos."""
+        from .analisis_evolucion import analizar
+        datos = {m: (Decimal(str(v)), Decimal(str(v))) for m, v in saldos.items()}
+        flujos = flujos or {m: self._flujo() for m in range(1, 13)}
+        ultimo = Decimal(str(saldos[max(saldos)]))
+        return analizar(datos, flujos, self.AÑO,
+                        base_liquidez=ultimo, base_patrimonio=ultimo, hoy=self.HOY)
+
+    def test_el_gasto_real_es_el_ingreso_menos_lo_ahorrado(self):
+        # Ahorra 1.000 € al mes con 3.000 € de ingreso → gasta 2.000 €.
+        analisis = self._analizar({m: 1000 * m for m in range(1, 9)})['liquidez']
+        self.assertEqual(analisis['n_meses'], 7)  # enero no: le falta el mes anterior
+        self.assertAlmostEqual(analisis['real']['ahorro']['media'], 1000)
+        self.assertAlmostEqual(analisis['real']['gasto']['media'], 2000)
+        self.assertAlmostEqual(analisis['real']['ingreso']['media'], 3000)
+
+    def test_la_mediana_no_se_mueve_por_un_mes_excepcional(self):
+        # Un mes con una derrama de 3.000 € dispara la media, no la mediana.
+        saldos = {m: 500 * (m - 1) for m in range(1, 9)}
+        for m in range(6, 9):
+            saldos[m] -= 3000
+        analisis = self._analizar(saldos)['liquidez']
+
+        self.assertAlmostEqual(analisis['real']['gasto']['mediana'], 2500)
+        self.assertGreater(analisis['real']['gasto']['media'],
+                           analisis['real']['gasto']['mediana'])
+
+    def test_el_mes_en_curso_no_entra_en_las_medias(self):
+        """Septiembre está a medias: ni ha entrado todo el ingreso ni ha
+        terminado el gasto. Contarlo ensuciaría media y mediana."""
+        saldos = {m: 1000 * m for m in range(1, 9)}
+        sin_mes_curso = self._analizar(saldos)['liquidez']
+
+        saldos[9] = saldos[8] + 90000  # una venta a mitad de septiembre
+        con_mes_curso = self._analizar(saldos)['liquidez']
+
+        self.assertEqual(con_mes_curso['n_meses'], sin_mes_curso['n_meses'])
+        self.assertAlmostEqual(con_mes_curso['real']['ahorro']['media'],
+                               sin_mes_curso['real']['ahorro']['media'])
+
+    def test_un_mes_sin_saldo_no_inventa_un_ritmo(self):
+        """Sin el saldo de abril, la diferencia mayo − marzo abarcaría dos
+        meses: ni abril ni mayo cuentan como ritmo mensual."""
+        saldos = {m: 1000 * m for m in range(1, 9) if m != 4}
+        analisis = self._analizar(saldos)['liquidez']
+
+        self.assertEqual([f['mes'] for f in analisis['meses']], [2, 3, 6, 7, 8])
+        self.assertAlmostEqual(analisis['real']['ahorro']['media'], 1000)
+
+    def test_el_desvio_compara_con_el_presupuesto_de_esos_meses(self):
+        # Presupuesta 2.000 € de gasto y ahorra 500 € al mes → gasta 2.500 €.
+        analisis = self._analizar({m: 500 * m for m in range(1, 9)})['liquidez']
+
+        self.assertAlmostEqual(analisis['presupuesto']['gasto'], 2000)
+        self.assertAlmostEqual(analisis['desvio']['gasto']['media'], 500)
+        self.assertAlmostEqual(analisis['desvio']['ahorro']['media'], -500)
+        self.assertTrue(any(a['tono'] == 'aviso' for a in analisis['avisos']))
+
+    def test_un_presupuesto_que_cuadra_no_pide_correcciones(self):
+        analisis = self._analizar({m: 1000 * m for m in range(1, 9)})['liquidez']
+        self.assertEqual([a['tono'] for a in analisis['avisos']], ['ok'])
+
+    def test_lo_que_va_a_inversion_es_gasto_para_la_liquidez_pero_no_para_el_patrimonio(self):
+        flujos = {m: self._flujo(gastos='1700', inversion='300') for m in range(1, 13)}
+        analisis = self._analizar({m: 1000 * m for m in range(1, 9)}, flujos)
+
+        self.assertAlmostEqual(analisis['liquidez']['presupuesto']['gasto'], 2000)
+        self.assertAlmostEqual(analisis['patrimonio']['presupuesto']['gasto'], 1700)
+
+    def test_el_ingreso_presupuestado_no_incluye_los_extras_del_mes(self):
+        """Cobrar un bonus no significa que el presupuesto contara con él: el
+        plan es la nómina base, y la diferencia es justo lo que hay que ver."""
+        flujos = {m: self._flujo(ingreso='3500', presupuestado='3000') for m in range(1, 13)}
+        analisis = self._analizar({m: 1000 * m for m in range(1, 9)}, flujos)['liquidez']
+
+        self.assertAlmostEqual(analisis['presupuesto']['ingreso'], 3000)
+        self.assertAlmostEqual(analisis['desvio']['ingreso']['media'], 500)
+
+    def test_sin_dos_meses_seguidos_no_hay_ritmo_que_medir(self):
+        analisis = self._analizar({1: 1000})['liquidez']
+        self.assertEqual(analisis['n_meses'], 0)
+        self.assertEqual(analisis['escenarios'], [])
+        self.assertIsNone(analisis['real']['ahorro']['media'])
+
+    def test_la_proyeccion_sin_rentabilidad_es_el_ahorro_acumulado(self):
+        from .analisis_evolucion import proyectar
+        self.assertAlmostEqual(proyectar(10000, 500, 10), 10000 + 500 * 120)
+
+    def test_la_rentabilidad_solo_suma_sobre_el_ahorro_puro(self):
+        from .analisis_evolucion import proyectar
+        sin_interes = proyectar(10000, 500, 10)
+        con_interes = proyectar(10000, 500, 10, rentabilidad_anual=0.05)
+        self.assertGreater(con_interes, sin_interes)
+
+    def test_hay_proyeccion_a_1_2_5_y_10_años_para_cada_ritmo(self):
+        analisis = self._analizar({m: 1000 * m for m in range(1, 9)})['liquidez']
+        claves = [e['clave'] for e in analisis['escenarios']]
+        self.assertEqual(claves, ['media', 'mediana', 'presupuesto'])
+        for escenario in analisis['escenarios']:
+            self.assertEqual(sorted(escenario['valores']), ['1', '10', '2', '5'])
+        # Al ritmo real (1.000 €/mes) desde 8.000 € → 8.000 + 12.000 en un año.
+        self.assertAlmostEqual(analisis['escenarios'][0]['valores']['1'], 20000)
+
+
+class RitmoRealEnLaVistaTests(TestCase):
+    """El análisis viaja a la pantalla y se recalcula al guardar un saldo."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, FuenteIngreso, SaldoRealFondo
+
+        self.user = User.objects.create_user('adri', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+
+        self.hoy = datetime.date.today()
+        self.fondo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        for mes in range(1, self.hoy.month + 1):
+            SaldoRealFondo.objects.create(
+                fondo=self.fondo, año=self.hoy.year, mes=mes,
+                saldo=Decimal('1000') * mes)
+
+        FuenteIngreso.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre='Nómina', tipo='fijo',
+            modo_entrada='anual', importe_declarado=Decimal('36000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+
+    def test_la_vista_trae_el_ritmo_y_las_proyecciones(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:vista_evolucion'))
+
+        self.assertEqual(resp.status_code, 200)
+        analisis = resp.context['analisis']
+        self.assertEqual(analisis['horizontes'], [1, 2, 5, 10])
+        self.assertIn('liquidez', analisis)
+        self.assertIn('patrimonio', analisis)
+        self.assertContains(resp, 'evo-analisis-data')
+
+    def test_guardar_un_saldo_devuelve_el_ritmo_recalculado(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            reverse('finanzas:registrar_saldo_fondo'),
+            {'fondo_id': self.fondo.id, 'mes': self.hoy.month,
+             'año': self.hoy.year, 'saldo': '99000'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('analisis', resp.json()['estado'])
+
+    def test_el_cierre_guarda_tambien_lo_que_estaba_presupuestado(self):
+        """Sin esto, 'lo presupuestado originalmente' se recalcularía con la
+        configuración de hoy y la comparación no diría nada."""
+        from .cierres import congelar_mes
+        from .models import CierreMensual
+        mes_cerrado = self.hoy.month - 1
+        if not mes_cerrado:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+
+        congelar_mes(self.hogar, self.hoy.year, mes_cerrado)
+        cierre = CierreMensual.objects.get(
+            hogar=self.hogar, año=self.hoy.year, mes=mes_cerrado)
+        self.assertEqual(cierre.ingreso_previsto, Decimal('3000'))

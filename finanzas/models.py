@@ -1163,6 +1163,10 @@ class CierreMensual(models.Model):
         help_text='Importe que ese mes salió hacia fondos de ahorro.')
     libre = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
         help_text='Dinero que quedó libre ese mes, sin asignar a ningún fondo.')
+    ingreso_previsto = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Ingreso base presupuestado para ese mes (sin ajustes ni extras), '
+                  'tal y como estaba al cerrarlo. Es el "según el plan" con el que se '
+                  'compara lo que de verdad entró.')
     congelado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 

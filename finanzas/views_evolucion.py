@@ -244,7 +244,31 @@ def _calcular_resumen(hogar, año, flujos_por_mes):
     }
 
 
-def _serie_evolucion(hogar, año, flujos_por_mes, resumen):
+def _datos_reales_por_mes(hogar, año, resumen):
+    """Los saldos reales del año tal y como deben leerse en pantalla: los que
+    hay registrados, con el último mes sustituido por su valor enriquecido (el
+    que ya calculó el resumen con precio de mercado y depósitos), para que la
+    tarjeta, el gráfico y el análisis de ritmo digan exactamente lo mismo."""
+    datos_por_mes = _liquidez_patrimonio_por_mes(hogar, año)
+    if resumen['ultimo_mes_con_datos']:
+        datos_por_mes[resumen['ultimo_mes_con_datos']] = (
+            resumen['liquidez_actual'], resumen['patrimonio_financiero_actual']
+        )
+    return datos_por_mes
+
+
+def _analizar_ritmo(año, datos_por_mes, flujos_por_mes, resumen):
+    """Medias, medianas y proyecciones a partir de lo real (ver
+    `analisis_evolucion.py`)."""
+    from .analisis_evolucion import analizar
+    return analizar(
+        datos_por_mes, flujos_por_mes, año,
+        base_liquidez=resumen['liquidez_actual'],
+        base_patrimonio=resumen['patrimonio_financiero_actual'],
+    )
+
+
+def _serie_evolucion(hogar, año, flujos_por_mes, resumen, datos_por_mes=None):
     """Construye las series para el gráfico en términos de AHORRO ACUMULADO
     desde el mes base (normalmente enero), no de patrimonio absoluto.
 
@@ -256,11 +280,8 @@ def _serie_evolucion(hogar, año, flujos_por_mes, resumen):
 
     Cada serie incluye además el valor absoluto correspondiente (para tooltips)
     y `esperado_anual`, el ahorro previsto para el año completo (tope del eje)."""
-    datos_por_mes = _liquidez_patrimonio_por_mes(hogar, año)
-    if resumen['ultimo_mes_con_datos']:
-        datos_por_mes[resumen['ultimo_mes_con_datos']] = (
-            resumen['liquidez_actual'], resumen['patrimonio_financiero_actual']
-        )
+    if datos_por_mes is None:
+        datos_por_mes = _datos_reales_por_mes(hogar, año, resumen)
 
     mes_base = resumen['mes_base']
 
@@ -435,7 +456,7 @@ def _construir_tabla(hogar, año, flujos_por_mes):
     return fondos, filas
 
 
-def _estado_json(resumen, filas, grafico):
+def _estado_json(resumen, filas, grafico, analisis):
     """Serializa el estado recalculado para refrescar la vista sin recargar."""
     def f(valor):
         return float(valor) if valor is not None else None
@@ -465,15 +486,18 @@ def _estado_json(resumen, filas, grafico):
             for fila in filas
         },
         'grafico': grafico,
+        'analisis': analisis,
     }
 
 
 def _calcular_estado_json(hogar, año):
     flujos_por_mes = _flujos_por_mes(hogar, año)
     resumen = _calcular_resumen(hogar, año, flujos_por_mes)
+    datos_por_mes = _datos_reales_por_mes(hogar, año, resumen)
     _, filas = _construir_tabla(hogar, año, flujos_por_mes)
-    grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen)
-    return _estado_json(resumen, filas, grafico)
+    grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen, datos_por_mes)
+    analisis = _analizar_ritmo(año, datos_por_mes, flujos_por_mes, resumen)
+    return _estado_json(resumen, filas, grafico, analisis)
 
 
 def _construir_tabla_propiedades(hogar, año):
@@ -530,9 +554,11 @@ def vista_evolucion(request):
 
     flujos_por_mes = _flujos_por_mes(hogar, año)
     resumen = _calcular_resumen(hogar, año, flujos_por_mes)
+    datos_por_mes = _datos_reales_por_mes(hogar, año, resumen)
     fondos, filas = _construir_tabla(hogar, año, flujos_por_mes)
     propiedades, filas_propiedades = _construir_tabla_propiedades(hogar, año)
-    grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen)
+    grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen, datos_por_mes)
+    analisis = _analizar_ritmo(año, datos_por_mes, flujos_por_mes, resumen)
     años_disponibles = [hoy.year - 1, hoy.year, hoy.year + 1]
 
     return render(request, 'finanzas/evolucion/vista.html', {
@@ -544,6 +570,7 @@ def vista_evolucion(request):
         'propiedades': propiedades,
         'filas_propiedades': filas_propiedades,
         'grafico': grafico,
+        'analisis': analisis,
         'año_actual': año,
         'años': años_disponibles,
     })

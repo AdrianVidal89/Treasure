@@ -29,6 +29,7 @@ from .models import CierreMensual
 # resto de claves siguen siendo en vivo: no forman parte del registro.
 CAMPOS_CONGELADOS = {
     'ingreso': 'ingreso_base_hogar',
+    'ingreso_previsto': 'ingreso_base_puro_hogar',
     'gastos': 'total_gastos_all',
     'inversion': 'total_inversion',
     'ahorro': 'total_ahorro',
