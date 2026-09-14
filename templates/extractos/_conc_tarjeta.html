@@ -1,0 +1,18 @@
+{% load custom_filters %}
+{% comment %}
+Una de las tres cifras del resumen. Lo REAL manda (es el número grande) y lo
+presupuestado va debajo como referencia: la pregunta que se trae uno aquí es
+«cuánto ha sido», no «cuánto había dicho que sería».
+{% endcomment %}
+<div class="conc-tarjeta">
+    <div class="conc-tarjeta-titulo">{{ titulo }}</div>
+    <div class="conc-tarjeta-real {% if real < 0 %}text-negative{% endif %}">{{ real|euro }}</div>
+    <div class="conc-tarjeta-pie">
+        <span>presupuestado <strong>{{ declarado|euro }}</strong></span>
+        {% if mostrar_dif %}
+        <span class="conc-dif {% if mas_es_mejor %}{% if diferencia < 0 %}text-negative{% else %}text-positive{% endif %}{% else %}{% if diferencia > 0 %}text-negative{% else %}text-positive{% endif %}{% endif %}">
+            {% if diferencia > 0 %}+{% endif %}{{ diferencia|euro }}
+        </span>
+        {% endif %}
+    </div>
+</div>

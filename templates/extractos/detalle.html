@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load extractos_nav %}
 
 {% block title %}{{ extracto.nombre_banco|default:"Extracto" }} · Treasure{% endblock %}
 
@@ -13,8 +14,10 @@
                 · {{ extracto.num_movimientos }} movimientos
             </div>
         </div>
-        <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+        <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">← Todos los extractos</a>
     </div>
+
+    {% extractos_nav 'movimientos' %}
 
     {% if messages %}
         {% for message in messages %}

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load custom_filters %}
+{% load extractos_nav %}
 
 {% block title %}Extractos bancarios · Treasure{% endblock %}
 
@@ -8,20 +9,11 @@
     <div class="page-header">
         <div>
             <h1><svg class="icon icon-lg page-title-icon"><use href="#i-statements"/></svg> Extractos bancarios</h1>
-            <div class="page-sub">Vista global de todos tus movimientos importados. Filtra por año, mes o categoría, y edítalos aquí mismo.</div>
-        </div>
-        <div class="toolbar">
-            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
-                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
-            </a>
-            <a href="{% url 'extractos:conciliacion' %}" class="btn btn-secondary">
-                <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
-            </a>
-            <a href="{% url 'extractos:subir' %}" class="btn btn-primary">
-                <svg class="icon"><use href="#i-upload"/></svg> Importar CSV / Excel
-            </a>
+            <div class="page-sub">Todos tus movimientos importados, mes a mes.</div>
         </div>
     </div>
+
+    {% extractos_nav 'movimientos' %}
 
     {% if messages %}
         {% for message in messages %}
@@ -61,8 +53,8 @@
                             {% if e.periodo_inicio %}{{ e.periodo_inicio|date:"d/m/Y" }} – {{ e.periodo_fin|date:"d/m/Y" }}{% else %}—{% endif %}
                         </td>
                         <td class="num">{{ e.num_movimientos }}</td>
-                        <td class="num text-positive">{{ e.total_ingresos|floatformat:2|intcomma }} €</td>
-                        <td class="num text-negative">{{ e.total_gastos|floatformat:2|intcomma }} €</td>
+                        <td class="num text-positive">{{ e.total_ingresos|euro }}</td>
+                        <td class="num text-negative">{{ e.total_gastos|euro }}</td>
                         <td class="num">{{ e.fecha_importacion|date:"d/m/Y H:i" }}</td>
                         <td>
                             <form method="post" action="{% url 'extractos:eliminar' e.pk %}" onsubmit="return confirm('¿Eliminar este extracto y sus movimientos?');" style="display:inline;">

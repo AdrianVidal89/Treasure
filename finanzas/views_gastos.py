@@ -5,9 +5,10 @@ from django.db.models import Count
 from decimal import Decimal
 
 from .models import (
-    CategoriaGasto, PartidaGasto, MESES_CHOICES, PERIODICIDAD_GASTO_CHOICES,
-    COMPUTO_CHOICES, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPO_GASTO_CHOICES, TIPOS_GASTO,
-    computo_por_defecto,
+    CategoriaGasto, CategoriaPredefinidaDescartada, PartidaGasto, MESES_CHOICES,
+    PERIODICIDAD_GASTO_CHOICES, COMPUTO_CHOICES, COMPUTO_NEUTRO, ETIQUETAS_TIPO,
+    ORDEN_TIPOS,
+    TIPO_GASTO_CHOICES, TIPOS_GASTO, computo_por_defecto,
 )
 
 
@@ -63,13 +64,23 @@ TIPOS_CORREGIDOS = {
     'Tecnologia / Software': 'discrecional',
 }
 
+NOMBRES_PREDEFINIDOS = {nombre for _, nombre in CATEGORIAS_PREDEFINIDAS}
+
 CATEGORIA_TRASPASO = 'Traspaso entre cuentas'
 CATEGORIA_DEVOLUCIONES = 'Devoluciones'
 CATEGORIA_OTROS_INGRESOS = 'Otros ingresos'
 
 
 def _crear_categorias_predefinidas(hogar):
+    # Las que el hogar ha eliminado no se vuelven a crear: sin esto, «eliminar»
+    # una categoría de fábrica duraba hasta la siguiente visita.
+    descartadas = set(
+        CategoriaPredefinidaDescartada.objects
+        .filter(hogar=hogar).values_list('nombre', flat=True)
+    )
     for tipo, nombre in CATEGORIAS_PREDEFINIDAS:
+        if nombre in descartadas:
+            continue
         # Ojo: el get_or_create busca por nombre SIN filtrar por `activo`. Es
         # deliberado: una predefinida que el usuario ha archivado no debe
         # resucitar en la siguiente visita.
@@ -421,6 +432,12 @@ def crear_categoria(request):
     if not _computo_valido(computo):
         computo = computo_por_defecto(tipo)
 
+    # Volver a crear una categoría que se había descartado la resucita de
+    # verdad: la lápida solo existe para que no reaparezca sola.
+    CategoriaPredefinidaDescartada.objects.filter(
+        hogar=profile.hogar, nombre=nombre,
+    ).delete()
+
     categoria, creada = CategoriaGasto.objects.get_or_create(
         hogar=profile.hogar, nombre=nombre,
         defaults={'tipo': tipo, 'computo': computo, 'es_predefinida': False},
@@ -464,6 +481,17 @@ def editar_categoria(request, categoria_id):
         return _volver_a_categorias(request)
     if not _computo_valido(computo):
         messages.error(request, "El cómputo indicado no existe.")
+        return _volver_a_categorias(request)
+
+    # Una categoría con gasto presupuestado no puede ser neutra: se concilia
+    # contra el presupuesto, y «no cuenta» dejaría esa partida comparándose
+    # eternamente contra cero.
+    if computo == COMPUTO_NEUTRO and categoria.partidas.filter(activo=True).exists():
+        messages.error(
+            request,
+            f"«{categoria.nombre}» tiene gasto presupuestado, así que no puede ser "
+            "neutra. Quita sus gastos declarados primero o elige otro cómputo.",
+        )
         return _volver_a_categorias(request)
 
     choque = CategoriaGasto.objects.filter(
@@ -547,6 +575,7 @@ def eliminar_categoria(request, categoria_id):
         return _volver_a_categorias(request)
 
     nombre = categoria.nombre
+    era_predefinida = categoria.es_predefinida or nombre in NOMBRES_PREDEFINIDOS
     movidos = 0
     if destino:
         movidos = categoria.partidas.update(categoria=destino)
@@ -567,6 +596,9 @@ def eliminar_categoria(request, categoria_id):
     # categorizar (la FK es SET_NULL); se avisa para que no sea una sorpresa.
     huerfanos = categoria.movimientos_bancarios.count()
     categoria.delete()
+
+    if era_predefinida:
+        CategoriaPredefinidaDescartada.objects.get_or_create(hogar=hogar, nombre=nombre)
 
     detalle = []
     if movidos:

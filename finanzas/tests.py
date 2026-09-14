@@ -1991,3 +1991,43 @@ class CategoriasCrudTests(TestCase):
             'volver_a': 'https://example.com/phishing',
         })
         self.assertRedirects(respuesta, reverse('finanzas:listar_categorias'))
+
+    def test_eliminar_una_predefinida_la_elimina_de_verdad(self):
+        """Las de fábrica se recreaban en cada visita, así que borrarlas no
+        servía de nada: reaparecían solas."""
+        from finanzas.models import CategoriaGasto
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        cat = self._categoria('Gimnasio')
+        self.client.post(reverse('finanzas:eliminar_categoria', args=[cat.id]))
+        _crear_categorias_predefinidas(self.hogar)
+
+        self.assertFalse(
+            CategoriaGasto.objects.filter(hogar=self.hogar, nombre='Gimnasio').exists()
+        )
+
+    def test_volver_a_crearla_a_mano_la_recupera(self):
+        cat = self._categoria('Gimnasio')
+        self.client.post(reverse('finanzas:eliminar_categoria', args=[cat.id]))
+        self.client.post(reverse('finanzas:crear_categoria'), {
+            'nombre': 'Gimnasio', 'tipo': 'fijo', 'computo': 'resta',
+        })
+
+        self.assertEqual(self._categoria('Gimnasio').tipo, 'fijo')
+        # Y ya no vuelve a desaparecer en la siguiente visita.
+        self.client.get(reverse('finanzas:listar_categorias'))
+        self.assertEqual(self._categoria('Gimnasio').tipo, 'fijo')
+
+    def test_una_categoria_con_gasto_declarado_no_puede_ser_neutra(self):
+        from finanzas.models import PartidaGasto
+
+        cat = self._categoria('Gimnasio')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Cuota', importe=Decimal('30'),
+        )
+        self.client.post(reverse('finanzas:editar_categoria', args=[cat.id]), {
+            'nombre': 'Gimnasio', 'tipo': 'fijo', 'computo': 'neutro',
+        })
+
+        cat.refresh_from_db()
+        self.assertEqual(cat.computo, 'resta')

@@ -1,5 +1,7 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load custom_filters %}
+{% load l10n %}
+{% load extractos_nav %}
 
 {% block title %}Conciliación · Treasure{% endblock %}
 
@@ -8,17 +10,13 @@
     <div class="page-header">
         <div>
             <h1><svg class="icon icon-lg page-title-icon"><use href="#i-distribution"/></svg> Conciliación</h1>
-            <div class="page-sub">Lo <strong>presupuestado</strong> frente a lo <strong>observado</strong> en tus extractos, por bloque del presupuesto (media mensual sobre {{ num_meses }} mes(es)).</div>
-        </div>
-        <div class="toolbar">
-            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
-                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
-            </a>
-            <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
+            <div class="page-sub">Lo que has <strong>presupuestado</strong> frente a lo que de verdad ha pasado por el banco.</div>
         </div>
     </div>
 
-    {% if not hay_datos %}
+    {% extractos_nav 'conciliacion' %}
+
+    {% if not hay_movimientos %}
     <div class="empty-state">
         <svg class="icon icon-xl empty-icon"><use href="#i-distribution"/></svg>
         <h3>Sin movimientos que conciliar</h3>
@@ -27,117 +25,155 @@
     </div>
     {% else %}
 
-    <!-- RESUMEN: ingreso, gasto y ahorro, presupuestado vs real -->
-    <div class="table-scroll">
-        <table class="table conc-resumen">
-            <thead>
-                <tr>
-                    <th></th>
-                    <th class="num">Presupuestado / mes</th>
-                    <th class="num">Real / mes</th>
-                    <th class="num">Diferencia</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><strong>Ingresos</strong></td>
-                    <td class="num">{{ ingreso_declarado|floatformat:2|intcomma }} €</td>
-                    <td class="num">{{ ingreso_observado|floatformat:2|intcomma }} €</td>
-                    <td class="num {% if ingreso_diferencia < 0 %}text-negative{% else %}text-positive{% endif %}">{{ ingreso_diferencia|floatformat:2|intcomma }} €</td>
-                </tr>
-                <tr>
-                    <td><strong>Gastos</strong></td>
-                    <td class="num">{{ total_declarado|floatformat:2|intcomma }} €</td>
-                    <td class="num">{{ total_observado|floatformat:2|intcomma }} €</td>
-                    <td class="num {% if total_diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ total_diferencia|floatformat:2|intcomma }} €</td>
-                </tr>
-                <tr class="conc-ahorro">
-                    <td><strong>Capacidad de ahorro</strong></td>
-                    <td class="num">{{ ahorro_declarado|floatformat:2|intcomma }} €</td>
-                    <td class="num">{{ ahorro_observado|floatformat:2|intcomma }} €</td>
-                    <td class="num text-muted">ingresos &minus; gastos</td>
-                </tr>
-            </tbody>
-        </table>
-    </div>
+    <!-- PERIODO -->
+    <form method="get" class="conc-bar">
+        <span class="conc-bar-lbl">Periodo</span>
+        <select name="anio" onchange="this.form.submit()" aria-label="Año">
+            <option value="all" {% if periodo.anio_sel == 'all' %}selected{% endif %}>Todos los años</option>
+            {% for a in periodo.anios_disponibles %}
+            <option value="{{ a }}" {% if periodo.anio_sel == a|stringformat:'s' %}selected{% endif %}>{{ a }}</option>
+            {% endfor %}
+        </select>
+        <select name="mes" onchange="this.form.submit()" aria-label="Mes">
+            <option value="all" {% if periodo.mes_sel == 'all' %}selected{% endif %}>Todo el año</option>
+            {% for m in periodo.meses_disponibles %}
+            <option value="{{ m.valor }}" {% if periodo.mes_sel == m.valor %}selected{% endif %}>{{ m.etiqueta }}</option>
+            {% endfor %}
+        </select>
+        <span class="conc-bar-nota">
+            {% if periodo.es_mes %}
+                Cifras reales <strong>de {{ periodo.etiqueta }}</strong>, contra el presupuesto mensual.
+            {% else %}
+                <strong>Media mensual</strong> sobre {{ num_meses }} mes{{ num_meses|pluralize:"es" }} con datos.
+            {% endif %}
+        </span>
+    </form>
 
-    <!-- DETALLE POR BLOQUE DEL PRESUPUESTO -->
-    {% for b in bloques %}
-    <div class="conc-bloque">
-        <div class="conc-bloque-head" style="border-left-color: {{ b.color }};">
-            <span class="conc-bloque-nombre" style="color: {{ b.color }};">{{ b.etiqueta }}</span>
-            <span class="conc-bloque-cifras">
-                <span class="text-muted">presupuestado</span> <strong>{{ b.declarado|floatformat:2|intcomma }} €</strong>
-                <span class="text-muted">· real</span> <strong>{{ b.observado|floatformat:2|intcomma }} €</strong>
-                <span class="conc-dif {% if b.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{% if b.diferencia > 0 %}+{% endif %}{{ b.diferencia|floatformat:2|intcomma }} €</span>
-            </span>
-        </div>
-        <div class="table-scroll">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Categoría</th>
-                        <th class="num">Presupuestado / mes</th>
-                        <th class="num">Real / mes</th>
-                        <th class="num">Diferencia</th>
-                        <th style="width:120px;">Ejecución</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for f in b.filas %}
-                    <tr>
-                        <td>{{ f.categoria }}</td>
-                        <td class="num">{{ f.declarado|floatformat:2|intcomma }} €</td>
-                        <td class="num">{{ f.observado|floatformat:2|intcomma }} €</td>
-                        <td class="num {% if f.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{{ f.diferencia|floatformat:2|intcomma }} €</td>
-                        <td>
-                            <div class="recon-bar" title="{{ f.pct }}% de lo presupuestado"><span style="width:{% if f.pct > 100 %}100{% else %}{{ f.pct }}{% endif %}%;{% if f.pct > 100 %}background:var(--danger);{% else %}background:{{ b.color }};{% endif %}"></span></div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr class="conc-subtotal">
-                        <td><strong>Total {{ b.etiqueta }}</strong></td>
-                        <td class="num"><strong>{{ b.declarado|floatformat:2|intcomma }} €</strong></td>
-                        <td class="num"><strong>{{ b.observado|floatformat:2|intcomma }} €</strong></td>
-                        <td class="num {% if b.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}"><strong>{{ b.diferencia|floatformat:2|intcomma }} €</strong></td>
-                        <td></td>
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
+    {% if not hay_datos %}
+    <div class="conc-vacio">
+        <p>No hay movimientos en {{ periodo.etiqueta }}.</p>
+        <a href="{% url 'extractos:conciliacion' %}?anio=all&mes=all" class="btn btn-secondary">Ver todo el histórico</a>
     </div>
-    {% endfor %}
+    {% else %}
+
+    <!-- LAS TRES CIFRAS -->
+    <div class="conc-resumen">
+        {% include "extractos/_conc_tarjeta.html" with titulo="Ingresos" declarado=ingreso_declarado real=ingreso_observado diferencia=ingreso_diferencia mostrar_dif=1 mas_es_mejor=1 %}
+        {% include "extractos/_conc_tarjeta.html" with titulo="Gastos" declarado=total_declarado real=total_observado diferencia=total_diferencia mostrar_dif=1 mas_es_mejor=0 %}
+        {% include "extractos/_conc_tarjeta.html" with titulo="Capacidad de ahorro" declarado=ahorro_declarado real=ahorro_observado mostrar_dif=0 mas_es_mejor=1 %}
+    </div>
 
     {% if sin_categorizar_importe %}
     <div class="conc-aviso">
-        <svg class="icon"><use href="#i-info"/></svg>
-        <span>Hay <strong>{{ sin_categorizar_importe|floatformat:2|intcomma }} €/mes</strong> de gasto sin categorizar que no entra en ningún bloque, así que la comparación se queda corta por ese importe.</span>
-        <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar ahora</a>
+        <svg class="icon"><use href="#i-alert"/></svg>
+        <span><strong>{{ sin_categorizar_importe|euro }}</strong> de gasto sin categorizar no entra en ningún bloque: la comparación se queda corta por ese importe.</span>
+        <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar</a>
     </div>
     {% endif %}
-    {% endif %}
+
+    <!-- DETALLE POR BLOQUE -->
+    {% for b in bloques %}
+    <details class="conc-bloque" {% if forloop.first %}open{% endif %}>
+        <summary style="--bc: {{ b.color }};">
+            <span class="conc-bloque-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+            <span class="conc-bloque-nombre">{{ b.etiqueta }}</span>
+            <span class="conc-bloque-barra" title="{{ b.pct }}% de lo presupuestado">
+                <i style="width:{% if b.pct > 100 %}100{% else %}{{ b.pct|unlocalize }}{% endif %}%;background:{% if b.diferencia > 0 %}var(--danger){% else %}{{ b.color }}{% endif %};"></i>
+            </span>
+            <span class="conc-bloque-cifras">
+                <strong>{{ b.observado|euro:0 }}</strong>
+                <span class="text-muted">de {{ b.declarado|euro:0 }}</span>
+                <span class="conc-dif {% if b.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{% if b.diferencia > 0 %}+{% endif %}{{ b.diferencia|euro:0 }}</span>
+            </span>
+        </summary>
+
+        <div class="conc-filas">
+            {% for f in b.filas %}
+            <div class="conc-fila">
+                <span class="conc-fila-cat">{{ f.categoria }}</span>
+                <span class="conc-fila-barra" title="{{ f.pct }}% de lo presupuestado">
+                    <i style="width:{% if f.pct > 100 %}100{% else %}{{ f.pct|unlocalize }}{% endif %}%;background:{% if f.diferencia > 0 %}var(--danger){% else %}{{ b.color }}{% endif %};"></i>
+                </span>
+                <span class="conc-fila-real">{{ f.observado|euro }}</span>
+                <span class="conc-fila-decl text-muted">de {{ f.declarado|euro }}</span>
+                <span class="conc-fila-dif {% if f.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{% if f.diferencia > 0 %}+{% endif %}{{ f.diferencia|euro }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+    {% empty %}
+    <div class="conc-vacio">
+        <p>Todavía no hay nada que comparar: declara gastos en el presupuesto o categoriza tus movimientos.</p>
+        <a href="{% url 'finanzas:listar_gastos' %}" class="btn btn-secondary">Ir a Gastos</a>
+    </div>
+    {% endfor %}
+
+    {% endif %}{# hay_datos #}
+    {% endif %}{# hay_movimientos #}
 </div>
 
 <style>
-.conc-resumen tbody td { font-size:0.9rem; }
-.conc-resumen tr.conc-ahorro td { border-top:2px solid var(--border-strong); font-size:0.95rem; }
-.conc-bloque { margin-top:26px; }
-.conc-bloque-head {
-    display:flex; justify-content:space-between; align-items:baseline; gap:14px; flex-wrap:wrap;
-    border-left:4px solid; padding:6px 0 6px 12px; margin-bottom:10px;
+.conc-bar {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:22px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 14px;
 }
-.conc-bloque-nombre { font-weight:700; font-size:1rem; text-transform:uppercase; letter-spacing:.03em; }
-.conc-bloque-cifras { font-size:0.82rem; display:flex; gap:6px; align-items:baseline; flex-wrap:wrap; }
-.conc-dif { font-weight:700; margin-left:6px; }
-tr.conc-subtotal td { border-top:1px solid var(--border-strong); background:var(--app-bg); }
+.conc-bar-lbl { font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+.conc-bar select {
+    background:var(--app-bg); color:var(--text-color); border:1px solid var(--border);
+    border-radius:8px; padding:8px 11px; font-size:0.84rem;
+}
+.conc-bar-nota { font-size:0.78rem; color:var(--muted); margin-left:auto; }
+
+.conc-resumen { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:14px; margin-bottom:22px; }
+.conc-tarjeta { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px 20px; }
+.conc-tarjeta-titulo { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.conc-tarjeta-real { font-size:1.6rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.25; }
+.conc-tarjeta-pie { display:flex; align-items:baseline; gap:8px; font-size:0.78rem; color:var(--muted); flex-wrap:wrap; }
+.conc-tarjeta-pie strong { font-variant-numeric:tabular-nums; }
+
+.conc-bloque { background:var(--surface); border:1px solid var(--border); border-radius:14px; margin-bottom:10px; overflow:hidden; }
+.conc-bloque > summary {
+    list-style:none; cursor:pointer; display:grid; align-items:center; gap:14px;
+    grid-template-columns:18px minmax(110px,auto) minmax(60px,1fr) auto; padding:14px 18px;
+    border-left:4px solid var(--bc);
+}
+.conc-bloque > summary::-webkit-details-marker { display:none; }
+.conc-bloque > summary:hover { background:color-mix(in srgb, var(--primary-color) 4%, transparent); }
+.conc-bloque-chevron { display:flex; color:var(--muted); transition:transform .2s; }
+.conc-bloque[open] .conc-bloque-chevron { transform:rotate(90deg); }
+.conc-bloque-nombre { font-weight:700; font-size:0.92rem; }
+.conc-bloque-barra, .conc-fila-barra { height:8px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.conc-bloque-barra i, .conc-fila-barra i { display:block; height:100%; border-radius:999px; }
+.conc-bloque-cifras { display:flex; align-items:baseline; gap:8px; font-size:0.84rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.conc-dif { font-weight:700; }
+
+.conc-filas { border-top:1px solid var(--border); }
+.conc-fila {
+    display:grid; grid-template-columns:minmax(120px,1.4fr) minmax(60px,1fr) auto auto auto;
+    gap:12px; align-items:center; padding:10px 18px 10px 36px; font-size:0.83rem;
+    border-bottom:1px solid var(--border);
+}
+.conc-fila:last-child { border-bottom:none; }
+.conc-fila-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.conc-fila-real, .conc-fila-decl, .conc-fila-dif { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.conc-fila-real { font-weight:700; }
+.conc-fila-dif { font-weight:700; min-width:82px; text-align:right; }
+@media (max-width:640px){
+    .conc-bloque > summary { grid-template-columns:18px 1fr; }
+    .conc-bloque-barra { display:none; }
+    .conc-bloque-cifras { grid-column:1 / -1; padding-left:32px; }
+    .conc-fila { grid-template-columns:1fr auto; padding-left:18px; }
+    .conc-fila-barra, .conc-fila-decl { display:none; }
+}
+
 .conc-aviso {
-    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:22px;
-    background:color-mix(in srgb, var(--primary-color) 8%, transparent);
-    border:1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
-    border-radius:10px; padding:11px 14px; font-size:0.85rem;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px;
+    background:color-mix(in srgb, var(--danger) 8%, transparent);
+    border:1px solid color-mix(in srgb, var(--danger) 25%, transparent);
+    border-radius:10px; padding:11px 14px; font-size:0.84rem;
 }
 .conc-aviso .btn { margin-left:auto; }
+.conc-vacio { text-align:center; padding:32px; color:var(--muted); border:1px dashed var(--border-strong); border-radius:14px; }
+.conc-vacio p { margin:0 0 12px; font-style:italic; }
 </style>
 {% endblock %}

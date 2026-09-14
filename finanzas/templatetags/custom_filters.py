@@ -1,3 +1,5 @@
+from decimal import Decimal, InvalidOperation
+
 from django import template
 
 register = template.Library()
@@ -8,6 +10,29 @@ def get_item(dictionary, key):
     if dictionary is None:
         return None
     return dictionary.get(key)
+
+
+@register.filter
+def euro(valor, decimales=2):
+    """Importe en euros con formato español: 2.514,99 €.
+
+    La combinación habitual en estas plantillas (`floatformat:2|intcomma`)
+    produce «2,514,99 €»: floatformat ya localiza la coma decimal e intcomma
+    vuelve a meter comas como separador de miles. Aquí se formatea de una vez.
+    """
+    try:
+        numero = Decimal(str(valor))
+    except (InvalidOperation, TypeError, ValueError):
+        return valor
+    try:
+        decimales = int(decimales)
+    except (TypeError, ValueError):
+        decimales = 2
+    texto = f"{numero:,.{decimales}f}"
+    # Se le da la vuelta a los separadores anglosajones: en español el punto
+    # agrupa los miles y la coma marca los decimales.
+    texto = texto.replace(',', '\u00a7').replace('.', ',').replace('\u00a7', '.')
+    return f"{texto} \u20ac"
 
 
 # ---------------------------------------------------------------------------

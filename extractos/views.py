@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -430,6 +431,19 @@ _PALETA = [
 ]
 
 
+def _etiqueta_periodo(anio_sel, mes_sel):
+    """«Julio 2026», «2026» o «Todo el histórico»: el resumen necesita decir de
+    qué periodo habla, o las cifras no significan nada."""
+    mes = _entero_o_none(mes_sel)
+    anio = _entero_o_none(anio_sel)
+    if mes is not None and 1 <= mes <= 12:
+        nombre_mes = MESES_ES[mes]
+        return f"{nombre_mes} {anio}" if anio else f"{nombre_mes} (todos los años)"
+    if anio:
+        return str(anio)
+    return "Todo el histórico"
+
+
 def _panel_context(hogar, todos, request):
     """Construye el panel de análisis de movimientos (KPIs, donut, ingresos vs
     gastos, filtros año/mes/categoría y listado agrupado por mes) que comparten
@@ -445,6 +459,10 @@ def _panel_context(hogar, todos, request):
     anio_sel = request.GET.get('anio', 'all')
     mes_sel = request.GET.get('mes', 'all')
     cat_sel = request.GET.get('categoria', 'all')
+    # Buscador libre: con cientos de apuntes, encontrar «ese recibo raro» a ojo
+    # es lo que hace que la pantalla se sienta un muro de números.
+    busqueda = (request.GET.get('q') or '').strip()
+    busqueda_norm = normalizar_texto(busqueda)
     # Los movimientos neutros (traspasos entre cuentas propias y cualquier otra
     # categoría marcada como neutra) siguen apareciendo en el listado, pero se
     # pueden ocultar porque no aportan nada al análisis de gasto.
@@ -462,6 +480,10 @@ def _panel_context(hogar, todos, request):
                 if m.categoria_id is not None:
                     return False
             elif str(m.categoria_id) != cat_sel:
+                return False
+        if busqueda_norm:
+            texto = f"{m.comercio or ''} {normalizar_texto(m.concepto)}"
+            if busqueda_norm not in texto:
                 return False
         return True
 
@@ -568,13 +590,18 @@ def _panel_context(hogar, todos, request):
         'mes_sel': mes_sel,
         'cat_sel': cat_sel,
         'ver_traspasos': ver_traspasos,
+        'busqueda': busqueda,
+        'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
+        'colores_tipo': COLOR_TIPO,
         'num_traspasos': sum(1 for m in todos if m.es_neutro),
         'kpi_traspaso_neto': traspaso_neto,
         'traspasos_cuadran': traspaso_neto == 0 and bool(traspasos),
         'bloques': bloques,
         'categorias_hogar': categorias_hogar,
         'bloques_categorias': _categorias_por_bloque(hogar),
-        'hay_filtro': anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all',
+        'hay_filtro': (
+            anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all' or bool(busqueda)
+        ),
     }
 
 
@@ -653,24 +680,30 @@ def actualizar_movimiento(request, pk):
 
 
 def _sugerencia_similares(hogar, mov):
-    """Cuántos movimientos del mismo comercio quedarían por cambiar, en el mes
-    del movimiento y en total.
+    """Cuántos movimientos cambiarían al aplicar este criterio al comercio, en
+    el mes del movimiento y en total.
+
+    Se cuenta con el MISMO criterio con el que luego se aplica (`_encajan`), o
+    los números del aviso no cuadrarían con lo que acaba pasando: «MERCADONA
+    SEVILLA NERVION» también encaja en el patrón «mercadona sevilla».
 
     Se cuentan también los que ya tienen OTRA categoría: cuando se corrige un
     comercio, lo normal es querer corregir todo lo que se clasificó mal antes,
     no solo lo que quedó en blanco."""
-    similares = MovimientoBancario.objects.filter(
-        hogar=hogar, comercio=mov.comercio, es_traspaso=False,
-    ).exclude(pk=mov.pk).exclude(categoria_id=mov.categoria_id)
+    similares = [
+        m for m in _encajan(hogar, mov.comercio, incluir_categorizados=True)
+        if m.pk != mov.pk and m.categoria_id != mov.categoria_id
+    ]
 
-    n_total = similares.count()
+    n_total = len(similares)
     if not n_total:
         return None
 
-    n_mes = similares.filter(
-        fecha__year=mov.fecha.year, fecha__month=mov.fecha.month,
-    ).count()
-    n_ya_clasificados = similares.filter(categoria__isnull=False).count()
+    n_mes = sum(
+        1 for m in similares
+        if m.fecha.year == mov.fecha.year and m.fecha.month == mov.fecha.month
+    )
+    n_ya_clasificados = sum(1 for m in similares if m.categoria_id)
 
     return {
         'patron': mov.comercio,
@@ -707,6 +740,62 @@ def eliminar_movimiento(request, pk):
     return JsonResponse({'ok': True})
 
 
+def _periodo_conciliacion(request, movimientos):
+    """Periodo que se está conciliando, a partir de los filtros de la URL.
+
+    Por defecto se abre en el ÚLTIMO MES CON DATOS: comparar el presupuesto
+    contra una media de doce meses esconde justo lo que se quiere ver, que es
+    si este mes se ha ido de madre. La media sigue disponible eligiendo «todos».
+    """
+    meses_con_datos = sorted({(m.fecha.year, m.fecha.month) for m in movimientos}, reverse=True)
+    anios = sorted({anio for anio, _ in meses_con_datos}, reverse=True)
+
+    anio_sel = request.GET.get('anio')
+    mes_sel = request.GET.get('mes')
+    if anio_sel is None and mes_sel is None and meses_con_datos:
+        anio_sel, mes_sel = (str(v) for v in meses_con_datos[0])
+    anio_sel = anio_sel or 'all'
+    mes_sel = mes_sel or 'all'
+
+    anio = _entero_o_none(anio_sel)
+    mes = _entero_o_none(mes_sel)
+    if mes is not None and not 1 <= mes <= 12:
+        mes, mes_sel = None, 'all'
+
+    def dentro(m):
+        if anio is not None and m.fecha.year != anio:
+            return False
+        if mes is not None and m.fecha.month != mes:
+            return False
+        return True
+
+    del_periodo = [m for m in movimientos if dentro(m)]
+    meses_periodo = {(m.fecha.year, m.fecha.month) for m in del_periodo}
+    # Un mes concreto se enseña tal cual; varios meses, en media mensual, que es
+    # la única forma de compararlos con un presupuesto que es mensual.
+    es_mes = anio is not None and mes is not None
+
+    if es_mes:
+        etiqueta = f"{MESES_ES[mes]} {anio}"
+    elif anio is not None:
+        etiqueta = f"{anio}"
+    else:
+        etiqueta = "Todo el histórico"
+
+    return {
+        'movimientos': del_periodo,
+        'num_meses': 1 if es_mes else max(len(meses_periodo), 1),
+        'es_mes': es_mes,
+        'etiqueta': etiqueta,
+        'anio_sel': anio_sel,
+        'mes_sel': mes_sel,
+        'anios_disponibles': anios,
+        'meses_disponibles': [
+            {'valor': str(n), 'etiqueta': MESES_ES[n]} for n in range(1, 13)
+        ],
+    }
+
+
 @login_required
 def conciliacion(request):
     """Cruza los movimientos observados (gasto) contra lo declarado en Gastos."""
@@ -715,18 +804,19 @@ def conciliacion(request):
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return redirect('dashboard')
 
+    _crear_categorias_predefinidas(hogar)
+
     # Se descartan los movimientos neutros (traspasos entre cuentas propias y
     # categorías marcadas como neutras): no son gasto ni ingreso, así que no
     # tienen nada contra lo que compararse en el presupuesto.
-    movimientos = [
+    todos = [
         m for m in MovimientoBancario.objects.filter(hogar=hogar).select_related('categoria')
         if not m.es_neutro
     ]
+    periodo = _periodo_conciliacion(request, todos)
+    movimientos = periodo['movimientos']
     gastos = [m for m in movimientos if m.cuenta_como_gasto]
-
-    # Nº de meses distintos con datos, para pasar lo observado a media mensual.
-    meses = {(m.fecha.year, m.fecha.month) for m in movimientos}
-    num_meses = max(len(meses), 1)
+    num_meses = periodo['num_meses']
 
     # Observado por categoría (gasto absoluto, media mensual).
     observado = defaultdict(lambda: Decimal('0'))
@@ -742,9 +832,14 @@ def conciliacion(request):
     # Discrecionales), que es la comparación que de verdad interesa: la
     # categoría concreta se conserva como detalle dentro de cada bloque.
     por_bloque = {}
-    categorias = CategoriaGasto.objects.filter(
-        hogar=hogar, activo=True, tipo__in=TIPOS_GASTO,
-    ).exclude(computo=COMPUTO_NEUTRO).prefetch_related('partidas')
+    # Toda categoría con gasto DECLARADO entra en la comparación, sea cual sea
+    # su bloque o su cómputo: si se ha presupuestado, se concilia. El filtro por
+    # bloque solo decide qué categorías sin presupuesto se cuelan por tener
+    # gasto observado.
+    categorias = CategoriaGasto.objects.filter(hogar=hogar).filter(
+        Q(partidas__activo=True)
+        | Q(activo=True, tipo__in=TIPOS_GASTO) & ~Q(computo=COMPUTO_NEUTRO)
+    ).distinct().prefetch_related('partidas')
     total_declarado = Decimal('0')
     total_observado = Decimal('0')
 
@@ -794,6 +889,7 @@ def conciliacion(request):
 
     return render(request, 'extractos/conciliacion.html', {
         'bloques': bloques,
+        'periodo': periodo,
         'num_meses': num_meses,
         'sin_categorizar_importe': sin_cat / num_meses if sin_cat else Decimal('0'),
         'total_declarado': total_declarado,
@@ -805,6 +901,7 @@ def conciliacion(request):
         'ahorro_declarado': ingreso_declarado - total_declarado,
         'ahorro_observado': ingreso_observado - total_observado,
         'hay_datos': bool(movimientos),
+        'hay_movimientos': bool(todos),
     })
 
 
@@ -847,20 +944,21 @@ def _categorias_por_bloque(hogar):
     ]
 
 
-def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False,
-                    anio=None, mes=None):
-    """Asigna `categoria` a los movimientos del hogar cuyo comercio o concepto
-    contenga `patron`. Devuelve cuántos ha actualizado.
+def _encajan(hogar, patron, incluir_categorizados=False, anio=None, mes=None):
+    """Movimientos del hogar cuyo comercio o concepto contiene `patron`.
 
-    Por defecto solo toca lo que está sin categorizar, para que aprender una
+    Es el criterio ÚNICO de «este movimiento es de ese comercio»: lo usan tanto
+    el aviso que cuenta cuántos hay como la aplicación que los cambia, para que
+    el número que se ofrece sea exactamente el que acaba cambiando.
+
+    Por defecto solo mira lo que está sin categorizar, para que aprender una
     regla nueva no pise clasificaciones que el usuario ya había dado por buenas.
-
-    Con `anio` y `mes` el cambio se acota a ese mes: es el caso de quien está
-    revisando un mes concreto y no quiere tocar el histórico.
+    Con `anio` y `mes` se acota a ese mes: el caso de quien revisa un mes
+    concreto y no quiere tocar el histórico.
     """
     patron = normalizar_texto(patron)
     if not patron:
-        return 0
+        return []
 
     candidatos = MovimientoBancario.objects.filter(hogar=hogar, es_traspaso=False)
     if not incluir_categorizados:
@@ -870,9 +968,19 @@ def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False,
 
     # El filtrado va en Python porque hay que comparar contra el texto
     # normalizado (sin acentos ni signos), que no es lo que hay en la columna.
-    ids = [
-        m.id for m in candidatos.only('id', 'comercio', 'concepto')
+    return [
+        m for m in candidatos.only('id', 'comercio', 'concepto', 'fecha', 'categoria')
         if patron in (m.comercio or '') or patron in normalizar_texto(m.concepto)
+    ]
+
+
+def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False,
+                    anio=None, mes=None):
+    """Asigna `categoria` a los movimientos que encajan con `patron`.
+    Devuelve cuántos ha actualizado."""
+    ids = [
+        m.id for m in _encajan(hogar, patron, incluir_categorizados, anio, mes)
+        if m.categoria_id != categoria.id
     ]
     if not ids:
         return 0
@@ -982,6 +1090,27 @@ def aprender_regla(request):
 
     incluir = request.POST.get('incluir_categorizados') == '1'
 
+    # «Solo recordar»: crea la regla sin tocar ningún movimiento. Es el segundo
+    # paso del aviso del listado — primero se aplica el cambio con el alcance
+    # elegido y después se pregunta si además debe quedar así para siempre.
+    if request.POST.get('accion') == 'solo_regla':
+        for patron in patrones:
+            ReglaCategorizacion.objects.update_or_create(
+                hogar=hogar, patron=patron,
+                defaults={'categoria': categoria, 'origen': 'manual', 'activo': True},
+            )
+        if es_ajax:
+            return JsonResponse({
+                'ok': True, 'aplicados': 0,
+                'categoria': categoria.nombre, 'recordada': True,
+            })
+        messages.success(
+            request,
+            f"«{categoria.nombre}» se aplicará automáticamente a este comercio "
+            "en las próximas importaciones.",
+        )
+        return redirect('extractos:sin_categorizar')
+
     # Alcance del cambio. 'mes' lo acota al mes que se está revisando; por
     # defecto se aplica a todo el histórico, que es lo que hacía siempre.
     solo_mes = request.POST.get('ambito') == 'mes'
@@ -993,9 +1122,10 @@ def aprender_regla(request):
         messages.error(request, "No se ha podido identificar el mes a corregir.")
         return redirect('extractos:sin_categorizar')
 
-    # Un cambio acotado a un mes no se recuerda salvo que se pida: convertirlo
-    # en regla permanente reclasificaría también las próximas importaciones,
-    # que es justo lo que ese alcance quiere evitar.
+    # Aplicar y recordar son decisiones distintas: el listado aplica primero y
+    # pregunta después si además debe quedarse como regla. La pantalla de «Sin
+    # categorizar», donde nombrar el comercio ES la acción, sigue recordando por
+    # defecto.
     recordar = request.POST.get('recordar', '0' if solo_mes else '1') == '1'
 
     aplicados = 0

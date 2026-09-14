@@ -744,6 +744,62 @@ class AprendizajeTests(TestCase):
             ReglaCategorizacion.objects.filter(hogar=self.hogar, patron='malacabeza').exists()
         )
 
+    def test_lo_que_se_ofrece_es_lo_que_se_cambia(self):
+        """El aviso contaba comercios idénticos pero el cambio se aplica por
+        patrón: ofrecía «2» y cambiaba 3, porque «MALACABEZA CENTRO» también
+        contiene el patrón."""
+        objetivo = self.crear_movimiento('Malacabeza')
+        self.crear_movimiento('Malacabeza')
+        self.crear_movimiento('MALACABEZA CENTRO')
+
+        respuesta = self.client.post(
+            reverse('extractos:actualizar_movimiento', args=[objetivo.id]),
+            {'categoria_id': self.ocio.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        ofrecidos = respuesta.json()['sugerencia']['n_similares']
+
+        aplicados = self.client.post(reverse('extractos:aprender_regla'), {
+            'patron': 'malacabeza', 'categoria_id': self.ocio.id,
+            'incluir_categorizados': '1', 'ambito': 'todos', 'recordar': '0',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()['aplicados']
+
+        self.assertEqual(ofrecidos, 2)
+        self.assertEqual(aplicados, ofrecidos)
+
+    def test_recordar_despues_crea_la_regla_sin_tocar_movimientos(self):
+        """Aplicar y recordar son dos decisiones: el listado aplica primero y
+        pregunta después si además debe quedarse así para siempre."""
+        alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        otro = self.crear_movimiento('Malacabeza')
+        otro.categoria = alimentacion
+        otro.save()
+
+        respuesta = self.client.post(reverse('extractos:aprender_regla'), {
+            'patron': 'malacabeza', 'categoria_id': self.ocio.id, 'accion': 'solo_regla',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        datos = respuesta.json()
+        self.assertTrue(datos['recordada'])
+        self.assertEqual(datos['aplicados'], 0)
+        self.assertTrue(
+            ReglaCategorizacion.objects.filter(
+                hogar=self.hogar, patron='malacabeza', categoria=self.ocio,
+            ).exists()
+        )
+        # Crear la regla no reclasifica nada por su cuenta.
+        otro.refresh_from_db()
+        self.assertEqual(otro.categoria, alimentacion)
+
+    def test_aplicar_desde_el_listado_no_recuerda_por_su_cuenta(self):
+        self.crear_movimiento('Malacabeza')
+        self.client.post(reverse('extractos:aprender_regla'), {
+            'patron': 'malacabeza', 'categoria_id': self.ocio.id,
+            'ambito': 'todos', 'incluir_categorizados': '1', 'recordar': '0',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertFalse(ReglaCategorizacion.objects.filter(hogar=self.hogar).exists())
+
     def test_un_mes_invalido_no_aplica_nada(self):
         self.crear_movimiento('Malacabeza')
         respuesta = self.client.post(reverse('extractos:aprender_regla'), {
@@ -867,10 +923,6 @@ class ComputoDeCategoriaTests(TestCase):
         cat = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gimnasio')
         cat.computo = 'neutro'
         cat.save(update_fields=['computo'])
-        PartidaGasto.objects.create(
-            hogar=self.hogar, categoria=cat, nombre='Cuota', importe=Decimal('30'),
-            periodicidad='mensual',
-        )
         alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
         PartidaGasto.objects.create(
             hogar=self.hogar, categoria=alimentacion, nombre='Super',
@@ -891,3 +943,142 @@ class ComputoDeCategoriaTests(TestCase):
         self.assertEqual(panel['kpi_gastos'], Decimal('-40'))
         self.assertEqual(panel['kpi_ingresos'], Decimal('15'))
         self.assertEqual(panel['kpi_sin_categorizar'], 2)
+
+
+class ConciliacionPorMesTests(TestCase):
+    """La conciliación se mira mes a mes: comparar el presupuesto contra la
+    media de todo el histórico esconde justo lo que interesa ver."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.alimentacion, nombre='Super',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+
+    def gasto(self, importe, fecha, categoria=None):
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=fecha,
+            concepto=f'Compra {fecha}', importe=Decimal(importe),
+            categoria=categoria or self.alimentacion,
+        )
+
+    def test_por_defecto_se_abre_en_el_ultimo_mes_con_datos(self):
+        self.gasto('-300', date(2026, 6, 10))
+        self.gasto('-500', date(2026, 7, 10))
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+
+        self.assertEqual(respuesta.context['periodo']['etiqueta'], 'Julio 2026')
+        self.assertTrue(respuesta.context['periodo']['es_mes'])
+        self.assertEqual(respuesta.context['total_observado'], Decimal('500'))
+        self.assertEqual(respuesta.context['total_declarado'], Decimal('400'))
+
+    def test_se_puede_mirar_otro_mes(self):
+        self.gasto('-300', date(2026, 6, 10))
+        self.gasto('-500', date(2026, 7, 10))
+
+        respuesta = self.client.get(
+            reverse('extractos:conciliacion'), {'anio': '2026', 'mes': '6'},
+        )
+        self.assertEqual(respuesta.context['periodo']['etiqueta'], 'Junio 2026')
+        self.assertEqual(respuesta.context['total_observado'], Decimal('300'))
+
+    def test_todos_los_meses_siguen_dando_la_media(self):
+        self.gasto('-300', date(2026, 6, 10))
+        self.gasto('-500', date(2026, 7, 10))
+
+        respuesta = self.client.get(
+            reverse('extractos:conciliacion'), {'anio': 'all', 'mes': 'all'},
+        )
+        self.assertFalse(respuesta.context['periodo']['es_mes'])
+        self.assertEqual(respuesta.context['num_meses'], 2)
+        self.assertEqual(respuesta.context['total_observado'], Decimal('400'))
+
+    def test_un_anio_entero_promedia_solo_sus_meses(self):
+        self.gasto('-300', date(2025, 12, 10))
+        self.gasto('-500', date(2026, 7, 10))
+        self.gasto('-100', date(2026, 8, 10))
+
+        respuesta = self.client.get(
+            reverse('extractos:conciliacion'), {'anio': '2026', 'mes': 'all'},
+        )
+        self.assertEqual(respuesta.context['num_meses'], 2)
+        self.assertEqual(respuesta.context['total_observado'], Decimal('300'))
+
+    def test_los_ingresos_tambien_son_los_del_mes(self):
+        nomina = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Nomina')
+        self.gasto('2000', date(2026, 6, 25), categoria=nomina)
+        self.gasto('3000', date(2026, 7, 25), categoria=nomina)
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+        self.assertEqual(respuesta.context['ingreso_observado'], Decimal('3000'))
+
+    def test_una_categoria_declarada_se_concilia_aunque_este_archivada(self):
+        """Si hay presupuesto declarado, la fila tiene que salir: si no,
+        desaparece gasto comprometido de la comparación sin decir nada."""
+        gimnasio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gimnasio')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=gimnasio, nombre='Cuota',
+            importe=Decimal('30'), periodicidad='mensual',
+        )
+        gimnasio.activo = False
+        gimnasio.save(update_fields=['activo'])
+        self.gasto('-500', date(2026, 7, 10))
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+
+        categorias = [
+            f['categoria'] for b in respuesta.context['bloques'] for f in b['filas']
+        ]
+        self.assertIn('Gimnasio', categorias)
+        self.assertEqual(respuesta.context['total_declarado'], Decimal('430'))
+
+
+class PanelBuscadorTests(TestCase):
+    """El buscador libre del panel: con cientos de apuntes, dar con «ese recibo
+    raro» a ojo es lo que convierte la pantalla en un muro de números."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        for dia, concepto in enumerate(['MERCADONA SEVILLA', 'Recibo Endesa', 'Steam'], 1):
+            MovimientoBancario.objects.create(
+                extracto=extracto, hogar=self.hogar, fecha=date(2026, 7, dia),
+                concepto=concepto, importe=Decimal('-10.00'),
+            )
+        self.client.force_login(self.user)
+
+    def panel(self, **params):
+        return self.client.get(reverse('extractos:listar'), params).context['panel']
+
+    def test_busca_sin_distinguir_mayusculas_ni_acentos(self):
+        self.assertEqual(self.panel(q='mercadona')['kpi_num'], 1)
+        self.assertEqual(self.panel(q='ENDÉSA')['kpi_num'], 1)
+
+    def test_una_busqueda_sin_resultados_no_rompe_el_panel(self):
+        panel = self.panel(q='no existe esto')
+        self.assertEqual(panel['kpi_num'], 0)
+        self.assertEqual(panel['grupos'], [])
+        self.assertTrue(panel['hay_filtro'])
+
+    def test_sin_busqueda_estan_todos(self):
+        self.assertEqual(self.panel()['kpi_num'], 3)
+        self.assertEqual(self.panel()['periodo_etiqueta'], 'Todo el histórico')
+
+    def test_la_etiqueta_del_periodo_sigue_al_filtro(self):
+        self.assertEqual(self.panel(anio='2026', mes='7')['periodo_etiqueta'], 'Julio 2026')
+        self.assertEqual(self.panel(anio='2026')['periodo_etiqueta'], '2026')
