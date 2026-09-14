@@ -4,6 +4,8 @@ from decimal import Decimal, InvalidOperation
 from django.contrib.auth.models import User
 from django.db import models
 
+from finanzas.models import ImputableAActivo
+
 from .normalizacion import normalizar_comercio, normalizar_texto
 
 
@@ -141,8 +143,12 @@ class Etiqueta(models.Model):
         return cls.PALETA[cls.objects.filter(hogar=hogar).count() % len(cls.PALETA)]
 
 
-class MovimientoBancario(models.Model):
-    """Un apunte observado en el extracto. Se cruza con los datos declarados."""
+class MovimientoBancario(ImputableAActivo):
+    """Un apunte observado en el extracto. Se cruza con los datos declarados.
+
+    Hereda de `ImputableAActivo` para poder decir «esta factura es del coche»:
+    es lo que permite comparar el mantenimiento declarado de un activo con el
+    que de verdad ha pasado por el banco."""
 
     ESTADO_CHOICES = [
         ('sin_categorizar', 'Sin categorizar'),

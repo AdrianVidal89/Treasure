@@ -1,0 +1,113 @@
+{% comment %}
+Alta y edición comparten modal: los campos son los mismos y mantener dos
+formularios solo garantiza que acaben diciendo cosas distintas.
+{% endcomment %}
+<div id="modal-vehiculo" class="modal-overlay">
+    <div class="modal-box">
+        <h2 id="modal-vehiculo-titulo">Nuevo vehículo</h2>
+        <form method="post" id="form-vehiculo" action="{% url 'finanzas:crear_vehiculo' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Nombre</label>
+                <input type="text" name="nombre" id="veh-nombre" placeholder="Ej: Golf de Ana" maxlength="120" required>
+            </div>
+            <div class="form-fila">
+                <div class="form-group">
+                    <label>Tipo</label>
+                    <select name="tipo" id="veh-tipo">
+                        {% for valor, etiqueta in tipos %}<option value="{{ valor }}">{{ etiqueta }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Color</label>
+                    <input type="color" name="color" id="veh-color" value="#2c5f7a">
+                </div>
+            </div>
+            <div class="form-fila">
+                <div class="form-group">
+                    <label>Marca y modelo</label>
+                    <input type="text" name="marca_modelo" id="veh-marca" maxlength="120">
+                </div>
+                <div class="form-group">
+                    <label>Matrícula</label>
+                    <input type="text" name="matricula" id="veh-matricula" maxlength="20">
+                </div>
+            </div>
+            <div class="form-fila">
+                <div class="form-group">
+                    <label>Fecha de compra</label>
+                    <input type="date" name="fecha_compra" id="veh-fecha">
+                </div>
+                <div class="form-group">
+                    <label>Precio de compra</label>
+                    <input type="text" name="precio_compra" id="veh-precio" inputmode="decimal" placeholder="18000">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Valor actual estimado</label>
+                <input type="text" name="valor_actual" id="veh-valor" inputmode="decimal" placeholder="12000">
+                <small>Con la fecha y el precio de compra se puede estimar lo que se deprecia al año, que es dinero aunque no pase por el banco.</small>
+            </div>
+            <div class="form-group">
+                <label>Notas</label>
+                <input type="text" name="notas" id="veh-notas" maxlength="300">
+            </div>
+            <div class="modal-btns">
+                <button type="submit" class="btn btn-primary" id="veh-submit">Crear</button>
+                <button type="button" class="btn btn-secondary" onclick="cerrarVehiculo()">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+#modal-vehiculo .form-fila { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+#modal-vehiculo small { display:block; margin-top:5px; font-size:0.72rem; color:var(--muted); line-height:1.4; }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:2000; align-items:center; justify-content:center; padding:20px; }
+.modal-box { background:var(--surface); border:1px solid var(--primary-color); border-radius:20px; padding:30px; max-width:520px; width:100%; box-sizing:border-box; max-height:90vh; overflow-y:auto; }
+.modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.15rem; }
+.modal-box .form-group { margin-bottom:14px; }
+.modal-box label { display:block; font-size:0.82rem; color:var(--muted); margin-bottom:5px; }
+.modal-box input[type="text"], .modal-box input[type="date"], .modal-box select {
+    width:100%; padding:11px 13px; border:1px solid var(--border-strong); border-radius:10px;
+    background:var(--app-bg); color:var(--text-color); box-sizing:border-box; font-size:0.92rem;
+}
+.modal-box input[type="color"] { width:100%; height:43px; background:var(--app-bg); border:1px solid var(--border-strong); border-radius:10px; padding:3px; }
+.modal-btns { display:flex; gap:12px; margin-top:18px; }
+</style>
+
+<script>
+function cerrarVehiculo() { document.getElementById('modal-vehiculo').style.display = 'none'; }
+
+function nuevoVehiculo() {
+    var form = document.getElementById('form-vehiculo');
+    form.reset();
+    form.action = "{% url 'finanzas:crear_vehiculo' %}";
+    document.getElementById('modal-vehiculo-titulo').textContent = 'Nuevo vehículo';
+    document.getElementById('veh-submit').textContent = 'Crear';
+    document.getElementById('modal-vehiculo').style.display = 'flex';
+    document.getElementById('veh-nombre').focus();
+}
+
+function editarVehiculo(datos) {
+    var form = document.getElementById('form-vehiculo');
+    form.action = '/finanzas/vehiculos/' + datos.id + '/guardar/';
+    document.getElementById('modal-vehiculo-titulo').textContent = 'Editar vehículo';
+    document.getElementById('veh-submit').textContent = 'Guardar';
+    document.getElementById('veh-nombre').value = datos.nombre || '';
+    document.getElementById('veh-tipo').value = datos.tipo || 'coche';
+    document.getElementById('veh-color').value = datos.color || '#2c5f7a';
+    document.getElementById('veh-marca').value = datos.marca || '';
+    document.getElementById('veh-matricula').value = datos.matricula || '';
+    document.getElementById('veh-fecha').value = datos.fecha || '';
+    document.getElementById('veh-precio').value = datos.precio || '';
+    document.getElementById('veh-valor').value = datos.valor || '';
+    document.getElementById('veh-notas').value = datos.notas || '';
+    document.getElementById('modal-vehiculo').style.display = 'flex';
+}
+
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrarVehiculo(); });
+document.getElementById('modal-vehiculo').addEventListener('click', function (e) {
+    if (e.target === this) cerrarVehiculo();
+});
+</script>

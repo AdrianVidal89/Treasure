@@ -1405,3 +1405,100 @@ class EtiquetasTests(TestCase):
 
         self.assertEqual(panel['kpi_num'], 1)
         self.assertEqual(panel['bloque_etiqueta'], 'Discrecionales')
+
+
+class ImputacionAActivosTests(TestCase):
+    """Marcar movimientos como gasto de un vehículo o una propiedad: es lo que
+    da la pata REAL de «cuánto me cuesta el coche»."""
+
+    def setUp(self):
+        from finanzas.models import Vehiculo
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Golf')
+        self.mov = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 3, 5),
+            concepto='REPSOL E.S. 4021', importe=Decimal('-60'),
+        )
+
+    def imputar(self, mov, clave):
+        return self.client.post(
+            reverse('extractos:imputar_movimiento', args=[mov.id]), {'activo': clave},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_imputar_un_movimiento_a_un_vehiculo(self):
+        respuesta = self.imputar(self.mov, self.coche.clave_activo)
+
+        self.assertTrue(respuesta.json()['ok'])
+        self.mov.refresh_from_db()
+        self.assertEqual(self.mov.vehiculo, self.coche)
+        self.assertEqual(self.mov.clave_activo, self.coche.clave_activo)
+
+    def test_un_activo_de_otro_hogar_se_rechaza(self):
+        from finanzas.models import Vehiculo
+
+        ajeno = Vehiculo.objects.create(
+            hogar=Hogar.objects.create(nombre='Otro'), nombre='Ajeno',
+        )
+        respuesta = self.imputar(self.mov, ajeno.clave_activo)
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.mov.refresh_from_db()
+        self.assertIsNone(self.mov.vehiculo_id)
+
+    def test_desimputar_lo_deja_sin_activo(self):
+        self.imputar(self.mov, self.coche.clave_activo)
+        self.imputar(self.mov, '')
+
+        self.mov.refresh_from_db()
+        self.assertIsNone(self.mov.vehiculo_id)
+        self.assertEqual(self.mov.clave_activo, '')
+
+    def test_ofrece_imputar_el_resto_del_comercio(self):
+        for dia in (7, 9):
+            MovimientoBancario.objects.create(
+                extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 3, dia),
+                concepto='REPSOL E.S. 4021', importe=Decimal('-55'),
+            )
+        sugerencia = self.imputar(self.mov, self.coche.clave_activo).json()['sugerencia']
+        self.assertEqual(sugerencia['n_similares'], 2)
+
+        respuesta = self.client.post(reverse('extractos:imputar_comercio'), {
+            'activo': self.coche.clave_activo, 'comercio': self.mov.comercio,
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertEqual(respuesta.json()['aplicados'], 3)
+        self.assertEqual(
+            MovimientoBancario.objects.filter(vehiculo=self.coche).count(), 3,
+        )
+
+    def test_el_listado_se_puede_filtrar_por_activo(self):
+        self.imputar(self.mov, self.coche.clave_activo)
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 3, 11),
+            concepto='Compra semanal', importe=Decimal('-40'),
+        )
+        panel = self.client.get(
+            reverse('extractos:listar'), {'activo': self.coche.clave_activo},
+        ).context['panel']
+
+        self.assertEqual(panel['kpi_num'], 1)
+
+    def test_lo_imputado_llega_a_la_ficha_del_vehiculo(self):
+        """El recorrido completo: marco el gasto en extractos y aparece en el
+        coste real del coche."""
+        from finanzas import costes_activo
+
+        self.imputar(self.mov, self.coche.clave_activo)
+        ficha = costes_activo.costes(self.coche, 2026)
+
+        self.assertEqual(ficha['real_anual'], Decimal('60'))
+        self.assertEqual(ficha['num_movimientos'], 1)

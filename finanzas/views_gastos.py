@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.db.models import Count
 from decimal import Decimal
 
+from . import costes_activo
 from .models import (
     CategoriaGasto, CategoriaPredefinidaDescartada, PartidaGasto, MESES_CHOICES,
     PERIODICIDAD_GASTO_CHOICES, COMPUTO_CHOICES, COMPUTO_NEUTRO, ETIQUETAS_TIPO,
@@ -252,7 +253,7 @@ def crear_partida(request):
             messages.error(request, "Nombre e importe son obligatorios.")
         else:
             categoria = get_object_or_404(CategoriaGasto, id=categoria_id, hogar=hogar)
-            PartidaGasto.objects.create(
+            partida = PartidaGasto(
                 hogar=hogar,
                 categoria=categoria,
                 nombre=nombre,
@@ -261,6 +262,12 @@ def crear_partida(request):
                 mes_pago=int(mes_pago) if mes_pago else None,
                 responsable_id=int(responsable_id) if responsable_id else None,
             )
+            # Imputación a un vehículo o una propiedad: es lo que después
+            # permite saber lo que cuesta mantenerlos.
+            costes_activo.asignar(
+                partida, costes_activo.resolver(hogar, request.POST.get('activo') or ''),
+            )
+            partida.save()
             messages.success(request, f"Gasto '{nombre}' creado.")
             return redirect(f'/finanzas/gastos/?open={categoria.id}')
 
@@ -270,6 +277,7 @@ def crear_partida(request):
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,
+        'grupos_activos': costes_activo.opciones(hogar),
     })
 
 
@@ -296,6 +304,9 @@ def editar_partida(request, partida_id):
         partida.mes_pago = int(mes_pago) if mes_pago else None
         responsable_id = request.POST.get('responsable_id')
         partida.responsable_id = int(responsable_id) if responsable_id else None
+        costes_activo.asignar(
+            partida, costes_activo.resolver(hogar, request.POST.get('activo') or ''),
+        )
         partida.save()
         messages.success(request, f"Gasto '{partida.nombre}' actualizado.")
         return redirect(f'/finanzas/gastos/?open={partida.categoria_id}')
@@ -307,6 +318,7 @@ def editar_partida(request, partida_id):
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,
+        'grupos_activos': costes_activo.opciones(hogar),
     })
 
 

@@ -9,6 +9,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
+from finanzas import costes_activo
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
 from finanzas.parsing import leer_tabla
 from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
@@ -465,6 +466,7 @@ def _panel_context(hogar, todos, request):
     # conciliación («enséñame los movimientos que hay detrás de esta cifra»).
     bloque_sel = request.GET.get('bloque', '')
     etiqueta_sel = request.GET.get('etiqueta', '')
+    activo_sel = request.GET.get('activo', '')
     # Buscador libre: con cientos de apuntes, encontrar «ese recibo raro» a ojo
     # es lo que hace que la pantalla se sienta un muro de números.
     busqueda = (request.GET.get('q') or '').strip()
@@ -494,6 +496,8 @@ def _panel_context(hogar, todos, request):
         if etiqueta_sel:
             if etiqueta_sel not in {str(e.id) for e in m.etiquetas.all()}:
                 return False
+        if activo_sel and m.clave_activo != activo_sel:
+            return False
         if busqueda_norm:
             texto = f"{m.comercio or ''} {normalizar_texto(m.concepto)}"
             if busqueda_norm not in texto:
@@ -608,6 +612,8 @@ def _panel_context(hogar, todos, request):
         'bloque_etiqueta': ETIQUETAS_TIPO.get(bloque_sel, 'Sin categorizar') if bloque_sel else '',
         'etiqueta_sel': etiqueta_sel,
         'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
+        'activo_sel': activo_sel,
+        'grupos_activos': costes_activo.opciones(hogar),
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'colores_tipo': COLOR_TIPO,
         'num_traspasos': sum(1 for m in todos if m.es_neutro),
@@ -619,6 +625,7 @@ def _panel_context(hogar, todos, request):
         'hay_filtro': (
             anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all'
             or bool(busqueda) or bool(bloque_sel) or bool(etiqueta_sel)
+            or bool(activo_sel)
         ),
     }
 
@@ -1080,6 +1087,71 @@ def etiquetar_comercio(request):
         mov.etiquetas.add(etiqueta)
         aplicados += 1
     return JsonResponse({'ok': True, 'aplicados': aplicados, 'etiqueta': etiqueta.nombre})
+
+
+@login_required
+def imputar_movimiento(request, pk):
+    """Marca un movimiento como gasto de un vehículo o de una propiedad.
+
+    Es la pata REAL de «cuánto me cuesta el coche»: sin esto, la ficha del
+    vehículo solo sabría lo presupuestado."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+    clave = request.POST.get('activo') or ''
+    activo = costes_activo.resolver(hogar, clave)
+    if clave and not activo:
+        return JsonResponse({'ok': False, 'error': 'activo_invalido'}, status=400)
+
+    costes_activo.asignar(mov, activo)
+    mov.save(update_fields=['vehiculo', 'propiedad'])
+
+    # Mismo patrón que categorías y etiquetas: los gastos de un coche vienen
+    # casi siempre del mismo puñado de comercios, así que se ofrece aplicarlo a
+    # todos de una vez en vez de apunte a apunte.
+    similares = 0
+    if activo and mov.comercio:
+        campo = 'vehiculo' if clave.startswith('vehiculo') else 'propiedad'
+        similares = MovimientoBancario.objects.filter(
+            hogar=hogar, comercio=mov.comercio,
+        ).exclude(pk=mov.pk).exclude(**{campo: activo}).count()
+
+    return JsonResponse({
+        'ok': True,
+        'activo': str(activo) if activo else None,
+        'clave': clave if activo else '',
+        'sugerencia': {
+            'clave': clave, 'nombre': str(activo),
+            'comercio': mov.comercio, 'n_similares': similares,
+        } if similares else None,
+    })
+
+
+@login_required
+def imputar_comercio(request):
+    """Imputa al mismo activo todos los movimientos de un comercio."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    activo = costes_activo.resolver(hogar, request.POST.get('activo') or '')
+    comercio = (request.POST.get('comercio') or '').strip()
+    if not activo or not comercio:
+        return JsonResponse({'ok': False, 'error': 'datos_incompletos'}, status=400)
+
+    aplicados = 0
+    for mov in MovimientoBancario.objects.filter(hogar=hogar, comercio=comercio):
+        costes_activo.asignar(mov, activo)
+        mov.save(update_fields=['vehiculo', 'propiedad'])
+        aplicados += 1
+
+    return JsonResponse({'ok': True, 'aplicados': aplicados, 'activo': str(activo)})
 
 
 @login_required

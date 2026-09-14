@@ -8,6 +8,7 @@ from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 from . import views_evolucion
 from . import views_simuladores
 from . import views_propiedades
+from . import views_vehiculos
 from . import views_hacienda
 
 app_name = 'finanzas'
@@ -83,6 +84,15 @@ urlpatterns = [
     path('categorias/<int:categoria_id>/editar/', views_gastos.editar_categoria, name='editar_categoria'),
     path('categorias/<int:categoria_id>/archivar/', views_gastos.archivar_categoria, name='archivar_categoria'),
     path('categorias/<int:categoria_id>/eliminar/', views_gastos.eliminar_categoria, name='eliminar_categoria'),
+
+    # ── Vehículos ─────────────────────────────────────────────────────────
+    path('vehiculos/', views_vehiculos.listar_vehiculos, name='listar_vehiculos'),
+    path('vehiculos/guardar/', views_vehiculos.guardar_vehiculo, name='crear_vehiculo'),
+    path('vehiculos/<int:vehiculo_id>/', views_vehiculos.detalle_vehiculo, name='detalle_vehiculo'),
+    path('vehiculos/<int:vehiculo_id>/guardar/', views_vehiculos.guardar_vehiculo, name='editar_vehiculo'),
+    path('vehiculos/<int:vehiculo_id>/archivar/', views_vehiculos.archivar_vehiculo, name='archivar_vehiculo'),
+    path('vehiculos/<int:vehiculo_id>/eliminar/', views_vehiculos.eliminar_vehiculo, name='eliminar_vehiculo'),
+    path('activos/imputar-partida/', views_vehiculos.imputar_partida, name='imputar_partida'),
 
     # ── Distribución ──────────────────────────────────────────────────────
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),

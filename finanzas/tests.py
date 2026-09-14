@@ -2031,3 +2031,298 @@ class CategoriasCrudTests(TestCase):
 
         cat.refresh_from_db()
         self.assertEqual(cat.computo, 'resta')
+
+
+class CostesDeActivoTests(TestCase):
+    """Lo que cuesta mantener un vehículo o una propiedad: lo declarado frente
+    a lo que de verdad ha pasado por el banco."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.models import Vehiculo
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+        from extractos.models import ExtractoBancario
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('conductor', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Golf')
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+
+    def _categoria(self, nombre):
+        from finanzas.models import CategoriaGasto
+        return CategoriaGasto.objects.get(hogar=self.hogar, nombre=nombre)
+
+    def declarar(self, nombre, importe, periodicidad='mensual', categoria='Gasolina', activo=None):
+        from finanzas.models import PartidaGasto
+        from finanzas import costes_activo
+
+        partida = PartidaGasto(
+            hogar=self.hogar, categoria=self._categoria(categoria), nombre=nombre,
+            importe=Decimal(importe), periodicidad=periodicidad,
+        )
+        costes_activo.asignar(partida, activo if activo is not None else self.coche)
+        partida.save()
+        return partida
+
+    def pagar(self, concepto, importe, mes=3, dia=5, anio=2026, categoria='Gasolina', activo='mismo'):
+        from extractos.models import MovimientoBancario
+        from finanzas import costes_activo
+
+        mov = MovimientoBancario(
+            extracto=self.extracto, hogar=self.hogar, fecha=datetime.date(anio, mes, dia),
+            concepto=concepto, importe=Decimal(importe),
+            categoria=self._categoria(categoria) if categoria else None,
+        )
+        costes_activo.asignar(mov, self.coche if activo == 'mismo' else activo)
+        mov.save()
+        return mov
+
+    def ficha(self, anio=2026):
+        from finanzas import costes_activo
+        return costes_activo.costes(self.coche, anio)
+
+    def test_el_teorico_prorratea_las_periodicidades(self):
+        self.declarar('Gasolina', '80')                        # 80/mes
+        self.declarar('Seguro', '360', 'anual', 'Seguro coche')  # 30/mes
+        f = self.ficha()
+
+        self.assertEqual(f['teorico_mensual'], Decimal('110'))
+        self.assertEqual(f['teorico_anual'], Decimal('1320'))
+
+    def test_el_real_sale_de_los_movimientos_imputados(self):
+        self.declarar('Gasolina', '80')
+        self.pagar('Repsol', '-65', mes=1)
+        self.pagar('Repsol', '-70', mes=2)
+        f = self.ficha()
+
+        self.assertEqual(f['real_anual'], Decimal('135'))
+        self.assertEqual(f['num_movimientos'], 2)
+        # La media mensual se calcula sobre los meses con gasto, no sobre doce:
+        # si no, un coche estrenado en diciembre parecería baratísimo.
+        self.assertEqual(f['meses_con_datos'], 2)
+        self.assertEqual(f['real_mensual'], Decimal('67.5'))
+
+    def test_la_barra_mide_lo_gastado_contra_el_presupuesto_anual(self):
+        self.declarar('Gasolina', '100')  # 1.200 al año
+        self.pagar('Repsol', '-600', mes=1)
+        self.assertEqual(self.ficha()['pct_ejecucion'], 50)
+
+        self.pagar('Taller', '-900', mes=2)
+        f = self.ficha()
+        self.assertEqual(f['pct_ejecucion'], 125)
+        self.assertEqual(f['diferencia_anual'], Decimal('300'))
+
+    def test_sin_presupuesto_declarado_no_hay_porcentaje(self):
+        self.pagar('Repsol', '-65')
+        self.assertIsNone(self.ficha()['pct_ejecucion'])
+
+    def test_no_se_cuela_el_gasto_de_otro_activo(self):
+        from finanzas.models import Vehiculo
+
+        otro = Vehiculo.objects.create(hogar=self.hogar, nombre='Moto')
+        self.declarar('Gasolina Golf', '80')
+        self.declarar('Gasolina moto', '30', activo=otro)
+        self.pagar('Repsol Golf', '-65')
+        self.pagar('Repsol moto', '-20', activo=otro)
+
+        f = self.ficha()
+        self.assertEqual(f['teorico_mensual'], Decimal('80'))
+        self.assertEqual(f['real_anual'], Decimal('65'))
+
+    def test_reimputar_no_deja_el_gasto_contado_dos_veces(self):
+        """Los dos campos se limpian siempre: sin eso, mover un gasto del coche
+        a la casa lo dejaría contado en ambos."""
+        from finanzas import costes_activo
+        from finanzas.models import Propiedad
+
+        casa = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=datetime.date(2020, 1, 1),
+            precio_compra=Decimal('100000'), valor_actual=Decimal('120000'),
+        )
+        mov = self.pagar('Repsol', '-65')
+        costes_activo.asignar(mov, casa)
+        mov.save()
+
+        self.assertEqual(self.ficha()['real_anual'], Decimal('0'))
+        self.assertEqual(costes_activo.costes(casa, 2026)['real_anual'], Decimal('65'))
+
+    def test_solo_cuenta_el_gasto_del_anio_mirado(self):
+        self.pagar('Repsol', '-65', anio=2025)
+        self.pagar('Repsol', '-70', anio=2026)
+
+        self.assertEqual(self.ficha(2026)['real_anual'], Decimal('70'))
+        self.assertEqual(self.ficha(2025)['real_anual'], Decimal('65'))
+
+    def test_un_ingreso_imputado_no_cuenta_como_coste(self):
+        """Vender una rueda no es un gasto del coche."""
+        self.pagar('Venta de ruedas', '150', categoria='Otros ingresos')
+        self.pagar('Repsol', '-65')
+        self.assertEqual(self.ficha()['real_anual'], Decimal('65'))
+
+    def test_el_desglose_por_categoria_cruza_declarado_y_real(self):
+        self.declarar('Gasolina', '100')
+        self.pagar('Repsol', '-1500', mes=1)
+        fila = self.ficha()['por_categoria'][0]
+
+        self.assertEqual(fila['categoria'], 'Gasolina')
+        self.assertEqual(fila['declarado_anual'], Decimal('1200'))
+        self.assertEqual(fila['real_anual'], Decimal('1500'))
+        self.assertEqual(fila['diferencia'], Decimal('300'))
+
+    def test_el_ritmo_del_anio_pone_el_porcentaje_en_contexto(self):
+        """Un 76% del presupuesto en marzo y en diciembre no son lo mismo."""
+        from finanzas import costes_activo
+
+        hoy = datetime.date.today()
+        self.assertEqual(costes_activo.costes(self.coche, hoy.year - 1)['pct_transcurrido'], 100)
+        self.assertEqual(costes_activo.costes(self.coche, hoy.year + 1)['pct_transcurrido'], 0)
+        self.assertEqual(
+            costes_activo.costes(self.coche, hoy.year)['pct_transcurrido'],
+            int(hoy.month / 12 * 100),
+        )
+
+    def test_resolver_no_acepta_activos_de_otro_hogar(self):
+        from core.models import Hogar
+        from finanzas import costes_activo
+        from finanzas.models import Vehiculo
+
+        ajeno = Vehiculo.objects.create(
+            hogar=Hogar.objects.create(nombre='Otro'), nombre='Ajeno',
+        )
+        self.assertIsNone(costes_activo.resolver(self.hogar, ajeno.clave_activo))
+        self.assertIsNone(costes_activo.resolver(self.hogar, 'vehiculo:inventado'))
+        self.assertIsNone(costes_activo.resolver(self.hogar, 'otracosa:1'))
+        self.assertEqual(costes_activo.resolver(self.hogar, self.coche.clave_activo), self.coche)
+
+
+class VehiculosVistaTests(TestCase):
+    """Las pantallas de vehículos."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('conductor', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+    def crear(self, **datos):
+        datos.setdefault('nombre', 'Golf')
+        datos.setdefault('tipo', 'coche')
+        return self.client.post(reverse('finanzas:crear_vehiculo'), datos)
+
+    def test_crear_y_editar_un_vehiculo(self):
+        from finanzas.models import Vehiculo
+
+        self.crear(marca_modelo='VW Golf 1.6', matricula='1234 ABC', precio_compra='18.000')
+        coche = Vehiculo.objects.get()
+        self.assertEqual(coche.matricula, '1234 ABC')
+        self.assertEqual(coche.precio_compra, Decimal('18000'))
+
+        self.client.post(reverse('finanzas:editar_vehiculo', args=[coche.id]), {
+            'nombre': 'Golf de Ana', 'tipo': 'coche',
+        })
+        coche.refresh_from_db()
+        self.assertEqual(coche.nombre, 'Golf de Ana')
+
+    def test_un_tipo_inventado_cae_a_coche(self):
+        from finanzas.models import Vehiculo
+
+        self.crear(tipo='submarino')
+        self.assertEqual(Vehiculo.objects.get().tipo, 'coche')
+
+    def test_archivar_no_borra_y_eliminar_no_se_lleva_los_gastos(self):
+        from finanzas import costes_activo
+        from finanzas.models import CategoriaGasto, PartidaGasto, Vehiculo
+
+        self.crear()
+        coche = Vehiculo.objects.get()
+        partida = PartidaGasto(
+            hogar=self.hogar, categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gasolina'),
+            nombre='Gasolina', importe=Decimal('80'),
+        )
+        costes_activo.asignar(partida, coche)
+        partida.save()
+
+        self.client.post(reverse('finanzas:archivar_vehiculo', args=[coche.id]))
+        coche.refresh_from_db()
+        self.assertFalse(coche.activo)
+
+        self.client.post(reverse('finanzas:eliminar_vehiculo', args=[coche.id]))
+        self.assertFalse(Vehiculo.objects.exists())
+        partida.refresh_from_db()
+        self.assertIsNone(partida.vehiculo_id)
+        self.assertEqual(partida.nombre, 'Gasolina')
+
+    def test_la_pantalla_lista_los_vehiculos_con_sus_costes(self):
+        self.crear()
+        respuesta = self.client.get(reverse('finanzas:listar_vehiculos'))
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(len(respuesta.context['fichas']), 1)
+
+    def test_imputar_una_partida_desde_la_ficha(self):
+        from finanzas.models import CategoriaGasto, PartidaGasto, Vehiculo
+
+        self.crear()
+        coche = Vehiculo.objects.get()
+        partida = PartidaGasto.objects.create(
+            hogar=self.hogar, nombre='Seguro', importe=Decimal('360'), periodicidad='anual',
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='Seguro coche'),
+        )
+        self.client.post(reverse('finanzas:imputar_partida'), {
+            'partida_id': partida.id, 'activo': coche.clave_activo,
+        })
+
+        partida.refresh_from_db()
+        self.assertEqual(partida.vehiculo, coche)
+
+        # Y quitarla deja el gasto sin activo.
+        self.client.post(reverse('finanzas:imputar_partida'), {
+            'partida_id': partida.id, 'activo': '',
+        })
+        partida.refresh_from_db()
+        self.assertIsNone(partida.vehiculo_id)
+
+    def test_la_depreciacion_solo_sale_con_los_datos_necesarios(self):
+        from finanzas.models import Vehiculo
+
+        sin_datos = Vehiculo.objects.create(hogar=self.hogar, nombre='Sin datos')
+        self.assertIsNone(sin_datos.depreciacion_anual)
+
+        con_datos = Vehiculo.objects.create(
+            hogar=self.hogar, nombre='Con datos',
+            fecha_compra=datetime.date.today() - datetime.timedelta(days=730),
+            precio_compra=Decimal('20000'), valor_actual=Decimal('14000'),
+        )
+        self.assertAlmostEqual(float(con_datos.depreciacion_anual), 3000, delta=20)
+
+
+class ParseDecimalMilesTests(SimpleTestCase):
+    """El punto como separador de miles.
+
+    «18.000» en un formulario español son dieciocho mil, no dieciocho: el
+    importe de compra de un coche se quedaba en 18 € al guardarlo."""
+
+    def test_el_punto_de_miles_no_se_lee_como_decimal(self):
+        from finanzas.parsing import parse_decimal
+
+        self.assertEqual(parse_decimal('18.000'), Decimal('18000'))
+        self.assertEqual(parse_decimal('1.234.567'), Decimal('1234567'))
+
+    def test_los_decimales_de_verdad_siguen_siendo_decimales(self):
+        from finanzas.parsing import parse_decimal
+
+        self.assertEqual(parse_decimal('18.50'), Decimal('18.50'))
+        self.assertEqual(parse_decimal('9,30'), Decimal('9.30'))
+        self.assertEqual(parse_decimal('18.000,50'), Decimal('18000.50'))
+        self.assertEqual(parse_decimal('1,842.50'), Decimal('1842.50'))
+        self.assertEqual(parse_decimal('0.00'), Decimal('0.00'))

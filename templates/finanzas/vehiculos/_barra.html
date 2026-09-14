@@ -1,0 +1,38 @@
+{% load custom_filters %}
+{% load l10n %}
+{% comment %}
+La barra de ejecución: cuánto del presupuesto anual del activo llevas gastado.
+Se pasa de 100% en rojo, porque pasarse es justo lo que hay que ver.
+{% endcomment %}
+<div class="act-barra" title="{{ f.real_anual|euro }} de {{ f.teorico_anual|euro }} presupuestados">
+    {% if f.pct_ejecucion == None %}
+    <div class="act-barra-track"><i class="sin-presupuesto" style="width:100%;"></i></div>
+    <span class="act-barra-txt">sin presupuesto declarado</span>
+    {% else %}
+    <div class="act-barra-track">
+        <i class="{% if f.pct_ejecucion > 100 %}pasado{% endif %}"
+           style="width:{% if f.pct_ejecucion > 100 %}100{% else %}{{ f.pct_ejecucion|unlocalize }}{% endif %}%;"></i>
+        {% if f.pct_transcurrido < 100 %}
+        <span class="act-barra-marca" style="left:{{ f.pct_transcurrido|unlocalize }}%;"
+              title="A estas alturas del año deberías llevar el {{ f.pct_transcurrido }}%"></span>
+        {% endif %}
+    </div>
+    <span class="act-barra-txt">
+        <strong>{{ f.pct_ejecucion }}%</strong> del presupuesto anual
+        {% if f.pct_ejecucion > 100 %}· te has pasado {{ f.diferencia_anual|euro:0 }}
+        {% elif f.pct_transcurrido < 100 %}· a estas alturas tocaría el {{ f.pct_transcurrido }}%{% endif %}
+    </span>
+    {% endif %}
+</div>
+
+<style>
+/* Los estilos viven aquí, con el parcial: cuando estaban en las pantallas que
+   lo incluyen, bastaba olvidarlos en una para que la barra fuese invisible. */
+.act-barra { margin-top:4px; }
+.act-barra-track { position:relative; height:10px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.act-barra-track i { display:block; height:100%; border-radius:999px; background:var(--vc, var(--primary-color)); transition:width .6s ease; }
+.act-barra-track i.pasado { background:var(--danger); }
+.act-barra-track i.sin-presupuesto { background:repeating-linear-gradient(90deg, var(--border-strong) 0 6px, transparent 6px 12px); }
+.act-barra-marca { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text-color); opacity:.45; }
+.act-barra-txt { display:block; font-size:0.72rem; color:var(--muted); margin-top:5px; }
+</style>

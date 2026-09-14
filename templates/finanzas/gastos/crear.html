@@ -101,6 +101,25 @@
                 </select>
             </div>
 
+
+            <!-- Imputación a un activo -->
+            <div class="form-group">
+                <label>¿Es de un vehículo o de una propiedad?</label>
+                <select name="activo">
+                    <option value="">— No, es un gasto general del hogar —</option>
+                    {% for g in grupos_activos %}{% if g.opciones %}
+                    <optgroup label="{{ g.etiqueta }}">
+                        {% for o in g.opciones %}
+                        <option value="{{ o.clave }}">{{ o.nombre }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endif %}{% endfor %}
+                </select>
+                <small style="display:block;margin-top:6px;font-size:0.75rem;color:var(--muted);">
+                    Imputarlo deja este gasto contado en la ficha de ese activo, para saber
+                    lo que cuesta mantenerlo.
+                </small>
+            </div>
             <div id="bloque-mes-pago" style="display: none;">
                 <div class="form-group">
                     <label>Mes de pago principal</label>

@@ -1,11 +1,13 @@
 import datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 
-from .models import Propiedad, HistorialPropiedad
+from . import costes_activo
+from .models import PartidaGasto, Propiedad, HistorialPropiedad
 
 MESES_NOMBRES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
                  'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -29,10 +31,28 @@ def listar_propiedades(request):
     total_deuda = sum(p.deuda_hipotecaria for p in propiedades)
     total_neto = total_valor - total_deuda
 
+    # Una propiedad no solo vale dinero: cuesta dinero. El coste de tenerla
+    # (IBI, comunidad, seguro, derramas) es tan parte de la foto como su valor.
+    anio = _anio_elegido(request)
     propiedades_con_venta = [
-        {'propiedad': p, 'neto_venta': p.calcular_neto_venta()}
+        {
+            'propiedad': p,
+            'neto_venta': p.calcular_neto_venta(),
+            'costes': costes_activo.costes(p, anio),
+        }
         for p in propiedades
     ]
+    total_coste_anual = sum(
+        (d['costes']['real_anual'] for d in propiedades_con_venta), Decimal('0'),
+    )
+    total_coste_teorico = sum(
+        (d['costes']['teorico_anual'] for d in propiedades_con_venta), Decimal('0'),
+    )
+    anios_disponibles = sorted(
+        {a for d in propiedades_con_venta for a in d['costes']['anios_con_datos']}
+        | {date.today().year, anio},
+        reverse=True,
+    )
 
     return render(request, 'finanzas/propiedades/listar.html', {
         'hogar': hogar,
@@ -40,7 +60,21 @@ def listar_propiedades(request):
         'total_valor': total_valor,
         'total_deuda': total_deuda,
         'total_neto': total_neto,
+        'anio': anio,
+        'anios_disponibles': anios_disponibles,
+        'total_coste_anual': total_coste_anual,
+        'total_coste_teorico': total_coste_teorico,
+        'sin_imputar': PartidaGasto.objects.filter(
+            hogar=hogar, activo=True, vehiculo__isnull=True, propiedad__isnull=True,
+        ).select_related('categoria'),
     })
+
+
+def _anio_elegido(request):
+    try:
+        return int(request.GET.get('anio'))
+    except (TypeError, ValueError):
+        return date.today().year
 
 
 @login_required

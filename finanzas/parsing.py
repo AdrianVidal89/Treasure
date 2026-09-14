@@ -45,6 +45,15 @@ def parse_decimal(s):
             s = s.replace(',', '')   # miles: "1,842" → "1842"
         else:
             s = s.replace(',', '.')  # decimal europeo: "9,30" → "9.30"
+    elif '.' in s:
+        # Mismo criterio que con la coma, por simetría: en formato español el
+        # punto agrupa los miles, así que «18.000» son dieciocho mil y no
+        # dieciocho. Un importe de 18 € con céntimos se escribe «18,00».
+        partes = s.split('.')
+        if len(partes) == 2 and len(partes[1]) == 3 and partes[1].isdigit():
+            s = s.replace('.', '')   # miles: "18.000" → "18000"
+        elif len(partes) > 2 and all(len(t) == 3 and t.isdigit() for t in partes[1:]):
+            s = s.replace('.', '')   # miles repetidos: "1.234.567"
     try:
         valor = Decimal(s)
     except InvalidOperation:
