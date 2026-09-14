@@ -70,7 +70,7 @@ def opciones(hogar):
         {
             'etiqueta': 'Propiedades',
             'opciones': [
-                {'clave': f'propiedad:{p.pk}', 'nombre': p.nombre}
+                {'clave': p.clave_activo, 'nombre': p.nombre}
                 for p in Propiedad.objects.filter(hogar=hogar, activo=True)
             ],
         },
@@ -109,15 +109,39 @@ def _movimientos(activo):
     )
 
 
+def _fuentes(activo):
+    """Ingresos declarados que pertenecen al activo (el alquiler de ese piso)."""
+    from .models import FuenteIngreso
+
+    campo = 'vehiculo' if clave(activo).startswith('vehiculo') else 'propiedad'
+    return FuenteIngreso.objects.filter(activo=True, **{campo: activo})
+
+
 def costes(activo, anio):
-    """Coste declarado y coste real del activo en un año.
+    """Balance del activo en un año: lo que cuesta y lo que deja.
+
+    Un piso alquilado no es solo gasto: si el alquiler está imputado a él, la
+    pregunta deja de ser «cuánto me cuesta» y pasa a ser «cuánto me renta», que
+    es la que de verdad importa. Por eso el mismo cálculo devuelve las dos
+    patas y su neto.
 
     `pct_ejecucion` es la barra que se va llenando: cuánto del presupuesto anual
     llevas gastado. Puede pasar de 100 (y entonces interesa verlo).
     """
+    from .distribucion import _neto_fuente_base
+
     partidas = list(_partidas(activo))
-    movimientos = [m for m in _movimientos(activo) if m.cuenta_como_gasto]
+    todos = list(_movimientos(activo))
+    movimientos = [m for m in todos if m.cuenta_como_gasto]
     del_anio = [m for m in movimientos if m.fecha.year == anio]
+
+    # --- Lo que deja ---
+    fuentes = list(_fuentes(activo))
+    ingreso_mensual = sum((_neto_fuente_base(f)[0] for f in fuentes), Decimal('0'))
+    ingresos_reales = [
+        m for m in todos if m.cuenta_como_ingreso and m.fecha.year == anio
+    ]
+    ingreso_real_anual = sum((m.importe for m in ingresos_reales), Decimal('0'))
 
     teorico_mensual = sum((p.importe_mensual for p in partidas), Decimal('0'))
     teorico_anual = sum((p.importe_anual for p in partidas), Decimal('0'))
@@ -136,6 +160,18 @@ def costes(activo, anio):
         'clave': clave(activo),
         'anio': anio,
         'partidas': partidas,
+
+        'fuentes': fuentes,
+        'ingreso_mensual': ingreso_mensual,
+        'ingreso_anual': ingreso_mensual * 12,
+        'ingreso_real_anual': ingreso_real_anual,
+        'movimientos_ingreso': sorted(ingresos_reales, key=lambda m: m.fecha, reverse=True),
+        # El neto es la cifra que decide si el activo suma o resta. Se calcula
+        # con lo REAL de los dos lados: comparar lo declarado de uno con lo
+        # real del otro daría un número que no es de nadie.
+        'neto_real_anual': ingreso_real_anual - real_anual,
+        'neto_declarado_anual': ingreso_mensual * 12 - teorico_anual,
+        'renta': bool(fuentes) or bool(ingresos_reales),
         'num_partidas': len(partidas),
         'num_movimientos': len(del_anio),
         'teorico_mensual': teorico_mensual,
@@ -226,4 +262,6 @@ def resumen(activos, anio):
         'teorico_mensual': sum((f['teorico_mensual'] for f in fichas), Decimal('0')),
         'teorico_anual': sum((f['teorico_anual'] for f in fichas), Decimal('0')),
         'real_anual': sum((f['real_anual'] for f in fichas), Decimal('0')),
+        'ingreso_real_anual': sum((f['ingreso_real_anual'] for f in fichas), Decimal('0')),
+        'neto_real_anual': sum((f['neto_real_anual'] for f in fichas), Decimal('0')),
     }

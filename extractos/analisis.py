@@ -112,6 +112,7 @@ def analizar_mes(movimientos, anio, mes, bloque=None, categoria_id=None,
         'hay_referencia': hay_referencia,
         'meses_referencia': num_referencia,
         'puente': _puente(del_mes, previos, num_referencia) if hay_referencia else [],
+        'bloques': _por_bloque(del_mes, previos, num_referencia),
         'categorias': _por_categoria(del_mes, previos, num_referencia),
         'comercios': _por_comercio(del_mes, previos, meses_con_datos),
         'etiquetas': _por_etiqueta(del_mes),
@@ -163,6 +164,59 @@ def _puente(del_mes, previos, num_referencia):
 
 def _nombre_categoria(movimiento):
     return movimiento.categoria.nombre if movimiento.categoria else 'Sin categorizar'
+
+
+def _por_bloque(del_mes, previos, num_referencia):
+    """El gasto del mes por los cuatro pilares del presupuesto, con sus
+    categorías dentro.
+
+    Es la lectura principal: el presupuesto se declara en fijos, anuales,
+    variables y discrecionales, así que lo observado tiene que poder leerse en
+    esos mismos términos para poder conciliar uno con otro. El detalle por
+    categoría vive dentro de su bloque, no al lado."""
+    from finanzas.models import ETIQUETAS_TIPO, ORDEN_TIPOS
+
+    actual = defaultdict(lambda: {'importe': Decimal('0'), 'categorias': {}})
+    for m in del_mes:
+        tipo = m.categoria.tipo if m.categoria else 'sin'
+        datos = actual[tipo]
+        datos['importe'] += -m.importe
+        cat = datos['categorias'].setdefault(
+            _nombre_categoria(m),
+            {'nombre': _nombre_categoria(m), 'id': m.categoria_id,
+             'importe': Decimal('0'), 'num': 0},
+        )
+        cat['importe'] += -m.importe
+        cat['num'] += 1
+
+    historico = defaultdict(lambda: Decimal('0'))
+    for m in previos:
+        historico[m.categoria.tipo if m.categoria else 'sin'] += -m.importe
+
+    total = sum((d['importe'] for d in actual.values()), Decimal('0'))
+
+    filas = []
+    for tipo in list(ORDEN_TIPOS) + ['sin']:
+        datos = actual.get(tipo)
+        if not datos or datos['importe'] <= 0:
+            continue
+        importe = datos['importe']
+        media = historico[tipo] / num_referencia if num_referencia else Decimal('0')
+        categorias = sorted(
+            datos['categorias'].values(), key=lambda c: c['importe'], reverse=True,
+        )
+        for c in categorias:
+            c['pct_bloque'] = float(c['importe'] / importe * 100) if importe else 0
+        filas.append({
+            'tipo': tipo,
+            'etiqueta': ETIQUETAS_TIPO.get(tipo, 'Sin categorizar'),
+            'importe': importe,
+            'media': media,
+            'desviacion': importe - media,
+            'pct': float(importe / total * 100) if total else 0,
+            'categorias': categorias,
+        })
+    return filas
 
 
 def _por_categoria(del_mes, previos, num_referencia):

@@ -2541,3 +2541,103 @@ class PantallasSeRenderizanTests(TestCase):
         partida = PartidaGasto.objects.first()
         respuesta = self.client.get(reverse('finanzas:editar_partida', args=[partida.id]))
         self.assertEqual(respuesta.status_code, 200)
+
+
+class BalanceDeUnaPropiedadTests(TestCase):
+    """Un piso alquilado no es solo gasto. Con el alquiler imputado a él, la
+    pregunta pasa de «cuánto me cuesta» a «cuánto me renta»."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from extractos.models import ExtractoBancario
+        from finanzas.models import Propiedad
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('casero', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso en alquiler', fecha_compra=datetime.date(2019, 1, 1),
+            precio_compra=Decimal('150000'), valor_actual=Decimal('180000'),
+        )
+
+    def movimiento(self, concepto, importe, categoria, dia, activo=None):
+        from extractos.models import MovimientoBancario
+        from finanzas import costes_activo
+        from finanzas.models import CategoriaGasto
+
+        mov = MovimientoBancario(
+            extracto=self.extracto, hogar=self.hogar, fecha=datetime.date(2026, 3, dia),
+            concepto=concepto, importe=Decimal(importe),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria),
+        )
+        costes_activo.asignar(mov, activo if activo is not None else self.piso)
+        mov.save()
+        return mov
+
+    def test_el_alquiler_imputado_balancea_lo_que_cuesta(self):
+        from finanzas import costes_activo
+
+        self.movimiento('IBI', '-520', 'IBI', 5)
+        self.movimiento('Comunidad', '-180', 'Comunidad', 6)
+        self.movimiento('Alquiler marzo', '900', 'Otros ingresos', 1)
+
+        ficha = costes_activo.costes(self.piso, 2026)
+
+        self.assertEqual(ficha['real_anual'], Decimal('700'))
+        self.assertEqual(ficha['ingreso_real_anual'], Decimal('900'))
+        self.assertEqual(ficha['neto_real_anual'], Decimal('200'))
+        self.assertTrue(ficha['renta'])
+
+    def test_sin_ingresos_imputados_sigue_siendo_solo_coste(self):
+        from finanzas import costes_activo
+
+        self.movimiento('IBI', '-520', 'IBI', 5)
+        ficha = costes_activo.costes(self.piso, 2026)
+
+        self.assertFalse(ficha['renta'])
+        self.assertEqual(ficha['neto_real_anual'], Decimal('-520'))
+
+    def test_el_ingreso_declarado_se_imputa_desde_el_formulario(self):
+        from finanzas.models import FuenteIngreso
+
+        self.client.post(reverse('finanzas:crear_ingreso'), {
+            'usuario_id': self.user.id, 'nombre': 'Alquiler del piso',
+            'tipo': 'fijo', 'modo_entrada': 'anual', 'importe_declarado': '10800',
+            'pais_fiscal': 'ES', 'num_pagas': '12',
+            'activo': self.piso.clave_activo,
+        })
+        fuente = FuenteIngreso.objects.get(nombre='Alquiler del piso')
+        self.assertEqual(fuente.propiedad, self.piso)
+        self.assertEqual(fuente.clave_activo, self.piso.clave_activo)
+
+    def test_el_ingreso_declarado_llega_a_la_ficha(self):
+        from finanzas import costes_activo
+        from finanzas.models import FuenteIngreso
+
+        fuente = FuenteIngreso(
+            usuario=self.user, hogar=self.hogar, nombre='Alquiler',
+            modo_entrada='anual', importe_declarado=Decimal('10800'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        costes_activo.asignar(fuente, self.piso)
+        fuente.save()
+
+        ficha = costes_activo.costes(self.piso, 2026)
+        self.assertEqual(ficha['ingreso_mensual'], Decimal('900'))
+        self.assertEqual(ficha['ingreso_anual'], Decimal('10800'))
+        self.assertEqual([f.nombre for f in ficha['fuentes']], ['Alquiler'])
+
+    def test_la_pantalla_enseña_el_desglose(self):
+        self.movimiento('IBI', '-520', 'IBI', 5)
+        respuesta = self.client.get(reverse('finanzas:listar_propiedades'))
+
+        ficha = respuesta.context['propiedades_con_venta'][0]['costes']
+        self.assertEqual(ficha['real_anual'], Decimal('520'))
+        self.assertEqual([c['categoria'] for c in ficha['por_categoria']], ['IBI'])
+        self.assertContains(respuesta, 'Ver desglose')

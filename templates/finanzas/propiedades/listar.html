@@ -27,6 +27,22 @@
 .coste-cifras .k { display:block; font-size:0.68rem; color:var(--muted); }
 .coste-val { display:block; font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; }
 .coste-val small { font-size:0.68rem; font-weight:600; color:var(--muted); }
+.coste-balance { display:grid; grid-template-columns:auto 1fr auto 1fr; gap:6px 10px; align-items:baseline; margin-top:10px; }
+.coste-balance-val { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.95rem; }
+.coste-detalle { margin-top:10px; }
+.coste-detalle > summary { cursor:pointer; font-size:0.76rem; color:var(--muted); }
+.coste-detalle > summary:hover { color:var(--primary-color); }
+.coste-tabla { margin-top:8px; }
+.coste-sub { font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin:12px 0 5px; }
+.coste-fila { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:baseline;
+    font-size:0.76rem; padding:4px 0; border-bottom:1px solid var(--border); }
+.coste-fila:last-child { border-bottom:none; }
+.coste-fila.cabecera { font-size:0.64rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+.coste-fila .num { font-variant-numeric:tabular-nums; text-align:right; min-width:62px; }
+.coste-fila em { font-style:normal; color:var(--muted); font-size:0.68rem; }
+.coste-quitar { background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.95rem; line-height:1; padding:0 3px; }
+.coste-quitar:hover { color:var(--danger); }
+.coste-vacio { font-size:0.76rem; color:var(--muted); font-style:italic; margin:10px 0 0; }
 .coste-acciones { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; }
 .coste-imputar { display:flex; gap:6px; flex:1; min-width:0; }
 .coste-imputar select { flex:1; min-width:0; background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:0.74rem; }
@@ -150,6 +166,89 @@
                         </div>
                     </div>
                     {% include "finanzas/vehiculos/_barra.html" %}
+
+                    {% if f.renta %}
+                    <div class="coste-balance">
+                        <span class="k">Ingresa</span>
+                        <span class="coste-balance-val text-positive">{{ f.ingreso_real_anual|euro:0 }}</span>
+                        <span class="k">Neto {{ anio }}</span>
+                        <span class="coste-balance-val {% if f.neto_real_anual < 0 %}text-negative{% else %}text-positive{% endif %}">
+                            {% if f.neto_real_anual > 0 %}+{% endif %}{{ f.neto_real_anual|euro:0 }}
+                        </span>
+                    </div>
+                    {% endif %}
+
+                    <!-- El desglose: por qué cuesta lo que cuesta. -->
+                    <details class="coste-detalle">
+                        <summary>Ver desglose</summary>
+
+                        {% if f.por_categoria %}
+                        <div class="coste-tabla">
+                            <div class="coste-fila cabecera">
+                                <span>Categoría</span><span class="num">Real</span><span class="num">Declarado</span>
+                            </div>
+                            {% for c in f.por_categoria %}
+                            <div class="coste-fila">
+                                <span>{{ c.categoria }}</span>
+                                <span class="num">{{ c.real_anual|euro:0 }}</span>
+                                <span class="num text-muted">{{ c.declarado_anual|euro:0 }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+
+                        {% if f.partidas %}
+                        <div class="coste-sub">Gastos declarados</div>
+                        {% for pa in f.partidas %}
+                        <div class="coste-fila">
+                            <span>{{ pa.nombre }} <em>{{ pa.get_periodicidad_display|lower }}</em></span>
+                            <span class="num">{{ pa.importe_mensual|euro }}/mes</span>
+                            <span class="num">
+                                <form method="post" action="{% url 'finanzas:imputar_partida' %}" style="display:inline;">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="partida_id" value="{{ pa.id }}">
+                                    <input type="hidden" name="activo" value="">
+                                    <input type="hidden" name="volver_a" value="{{ request.get_full_path }}">
+                                    <button type="submit" class="coste-quitar" title="Quitar de esta propiedad">×</button>
+                                </form>
+                            </span>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if f.fuentes %}
+                        <div class="coste-sub">Ingresos imputados</div>
+                        {% for fu in f.fuentes %}
+                        <div class="coste-fila">
+                            <span>{{ fu.nombre }}</span>
+                            <span class="num text-positive" colspan="2">declarado</span>
+                            <span class="num"></span>
+                        </div>
+                        {% endfor %}
+                        {% endif %}
+
+                        {% if f.movimientos %}
+                        <div class="coste-sub">Movimientos de {{ anio }}</div>
+                        {% for m in f.movimientos|slice:":12" %}
+                        <div class="coste-fila">
+                            <span>{{ m.fecha|date:"d/m" }} · {{ m.concepto|truncatechars:34 }}</span>
+                            <span class="num text-negative">{{ m.importe|euro }}</span>
+                            <span class="num text-muted">{{ m.categoria.nombre|default:"—"|truncatechars:14 }}</span>
+                        </div>
+                        {% endfor %}
+                        {% if f.movimientos|length > 12 %}
+                        <div class="coste-fila"><span class="text-muted">…y {{ f.movimientos|length|add:"-12" }} más</span></div>
+                        {% endif %}
+                        {% endif %}
+
+                        {% if not f.por_categoria and not f.partidas %}
+                        <p class="coste-vacio">
+                            Nada imputado todavía. Añade gastos declarados aquí abajo, o marca sus
+                            movimientos en <a href="{% url 'extractos:listar' %}">Extractos</a>.
+                        </p>
+                        {% endif %}
+                    </details>
+
                     <div class="coste-acciones">
                         {% if sin_imputar %}
                         <form method="post" action="{% url 'finanzas:imputar_partida' %}" class="coste-imputar">

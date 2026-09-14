@@ -123,53 +123,68 @@ para no competir con los tres que de verdad importan.
     <a href="{% url 'extractos:conciliacion' %}" class="ext-chip">Comparar con el presupuesto →</a>
 </div>
 
-<!-- ══════════ EN QUÉ SE VA ══════════ -->
-{% if panel.donut %}
+<!-- ══════════ EN QUÉ SE VA: LOS CUATRO PILARES ══════════ -->
+{% if panel.bloques %}
 <section class="glass-panel ext-gasto">
     <div class="ext-gasto-head">
-        <h3>En qué se va</h3>
+        <div>
+            <h3>En qué se va</h3>
+            <span class="ext-gasto-nota">por los bloques con los que declaras el presupuesto · abre uno para ver su reparto</span>
+        </div>
         <span class="ext-gasto-total">{{ panel.donut_total|euro:0 }}</span>
     </div>
 
     <div class="ext-gasto-grid">
         <div class="ext-donut-wrap">
-            <svg id="ext-donut" viewBox="0 0 200 200" width="170" height="170" aria-label="Distribución de gasto por categoría"></svg>
+            <svg id="ext-donut" viewBox="0 0 200 200" width="170" height="170" aria-label="Gasto por bloque del presupuesto"></svg>
             <div class="ext-donut-center">
-                <span class="ext-donut-total">{{ panel.donut|length }}</span>
-                <span class="ext-donut-sub">categorías</span>
+                <span class="ext-donut-total">{{ panel.bloques|length }}</span>
+                <span class="ext-donut-sub">bloques</span>
             </div>
         </div>
 
-        <ul class="ext-cats">
-            {% for d in panel.donut %}
-            <li class="ext-cat-fila">
-                <span class="ext-cat-dot" style="background:{{ d.color }};"></span>
-                <span class="ext-cat-nombre">{{ d.nombre }}</span>
-                <span class="ext-cat-barra"><i style="width:{{ d.pct|unlocalize }}%;background:{{ d.color }};"></i></span>
-                <span class="ext-cat-cifra">{{ d.importe|euro:0 }}</span>
-                <span class="ext-cat-pct">{{ d.pct }}%</span>
-            </li>
+        <div class="ext-pilares">
+            {% for b in panel.bloques %}
+            <details class="ext-pilar" style="--bc:{{ b.color }};">
+                <summary>
+                    <span class="ext-pilar-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+                    <span class="ext-pilar-nombre">{{ b.etiqueta }}</span>
+                    <span class="ext-pilar-barra"><i style="width:{{ b.pct|unlocalize }}%;"></i></span>
+                    <span class="ext-pilar-cifra">{{ b.importe|euro:0 }}</span>
+                    <span class="ext-pilar-pct">{{ b.pct }}%</span>
+                </summary>
+
+                <div class="ext-pilar-detalle">
+                    {% for c in b.categorias %}
+                    <div class="ext-cat-fila">
+                        <span class="ext-cat-nombre">{{ c.nombre }} <em>{{ c.num }}</em></span>
+                        <span class="ext-cat-barra"><i style="width:{{ c.pct_bloque|unlocalize }}%;background:{{ b.color }};"></i></span>
+                        <span class="ext-cat-cifra">{{ c.importe|euro:0 }}</span>
+                        <span class="ext-cat-pct">{{ c.pct_bloque }}%</span>
+                        {% if c.id %}
+                        <select class="ext-bloque-select" data-categoria-id="{{ c.id }}"
+                                title="Mover «{{ c.nombre }}» a otro bloque del presupuesto">
+                            {% for t in panel.tipos_bloque %}
+                            <option value="{{ t.valor }}" {% if t.valor == b.tipo %}selected{% endif %}>{{ t.etiqueta }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <a class="ext-cat-clasificar" href="{% url 'extractos:sin_categorizar' %}">clasificar →</a>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </details>
             {% endfor %}
-        </ul>
+        </div>
     </div>
 
-    {% if panel.bloques %}
-    <div class="ext-bloques">
-        <div class="ext-bloques-barra">
-            {% for b in panel.bloques %}
-            <span style="width:{{ b.pct|unlocalize }}%;background:{{ b.color }};" title="{{ b.etiqueta }}: {{ b.importe|euro }} ({{ b.pct }}%)"></span>
-            {% endfor %}
-        </div>
-        <div class="ext-bloques-leyenda">
-            {% for b in panel.bloques %}
-            <span class="ext-bloque-item">
-                <i style="background:{{ b.color }};"></i>{{ b.etiqueta }}
-                <strong>{{ b.pct }}%</strong>
-            </span>
-            {% endfor %}
-        </div>
+    <div class="ext-pilares-pie">
+        ¿Una categoría está en el bloque que no toca? Cámbiala en el desplegable de su fila:
+        es lo que hace que esto cuadre con
+        <a href="{% url 'extractos:conciliacion' %}">la conciliación</a> y con
+        <a href="{% url 'finanzas:listar_gastos' %}">el presupuesto</a>.
     </div>
-    {% endif %}
 </section>
 {% endif %}
 
@@ -346,7 +361,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-gasto-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .ext-gasto-head h3 { margin:0; font-size:1rem; }
 .ext-gasto-total { font-size:1.15rem; font-weight:800; font-variant-numeric:tabular-nums; }
-.ext-gasto-grid { display:grid; grid-template-columns:170px 1fr; gap:26px; align-items:center; }
+.ext-gasto-grid { display:grid; grid-template-columns:170px 1fr; gap:26px; align-items:start; }
 @media (max-width:720px){ .ext-gasto-grid { grid-template-columns:1fr; gap:18px; } .ext-donut-wrap { margin:0 auto; } }
 .ext-donut-wrap { position:relative; width:170px; height:170px; }
 .ext-donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
@@ -354,23 +369,46 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-donut-sub { font-size:0.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
 #ext-donut path { transition:opacity .15s; }
 #ext-donut path:hover { opacity:.75; }
-.ext-cats { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:9px; max-height:230px; overflow-y:auto; }
-.ext-cat-fila { display:grid; grid-template-columns:10px minmax(90px,1.4fr) 2fr auto 42px; gap:10px; align-items:center; font-size:0.81rem; }
-.ext-cat-dot { width:10px; height:10px; border-radius:3px; }
+.ext-gasto-nota { display:block; font-size:0.74rem; color:var(--muted); margin-top:3px; }
+
+/* Los cuatro pilares: la vista principal. Cada uno se abre y enseña su reparto. */
+.ext-pilares { display:flex; flex-direction:column; gap:7px; }
+.ext-pilar { border:1px solid var(--border); border-left:3px solid var(--bc); border-radius:10px; overflow:hidden; }
+.ext-pilar > summary {
+    list-style:none; cursor:pointer; display:grid; align-items:center; gap:10px;
+    grid-template-columns:16px minmax(100px,1.1fr) 1.6fr auto 46px; padding:10px 13px;
+}
+.ext-pilar > summary::-webkit-details-marker { display:none; }
+.ext-pilar > summary:hover { background:color-mix(in srgb, var(--bc) 7%, transparent); }
+.ext-pilar-chevron { display:flex; color:var(--muted); transition:transform .2s; }
+.ext-pilar[open] .ext-pilar-chevron { transform:rotate(90deg); }
+.ext-pilar-nombre { font-weight:700; font-size:0.86rem; }
+.ext-pilar-barra { height:8px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.ext-pilar-barra i { display:block; height:100%; border-radius:999px; background:var(--bc); }
+.ext-pilar-cifra { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.9rem; }
+.ext-pilar-pct { font-variant-numeric:tabular-nums; color:var(--muted); text-align:right; font-size:0.8rem; }
+.ext-pilar-detalle { border-top:1px solid var(--border); padding:10px 13px 12px 29px; display:flex; flex-direction:column; gap:8px; }
+
+.ext-cat-fila { display:grid; grid-template-columns:minmax(90px,1.2fr) 1.4fr auto 42px auto; gap:10px; align-items:center; font-size:0.79rem; }
 .ext-cat-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ext-cat-nombre em { font-style:normal; color:var(--muted); font-size:0.7rem; }
 .ext-cat-barra { height:6px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
 .ext-cat-barra i { display:block; height:100%; border-radius:999px; }
 .ext-cat-cifra { font-variant-numeric:tabular-nums; font-weight:700; }
 .ext-cat-pct { font-variant-numeric:tabular-nums; color:var(--muted); text-align:right; }
-@media (max-width:520px){ .ext-cat-fila { grid-template-columns:10px 1fr auto; } .ext-cat-barra, .ext-cat-pct { display:none; } }
-
-.ext-bloques { margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
-.ext-bloques-barra { display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--app-bg); }
-.ext-bloques-barra span { display:block; }
-.ext-bloques-leyenda { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; font-size:0.76rem; color:var(--muted); }
-.ext-bloque-item { display:flex; align-items:center; gap:5px; }
-.ext-bloque-item i { width:9px; height:9px; border-radius:3px; display:inline-block; }
-.ext-bloque-item strong { color:var(--text-color); }
+.ext-cat-clasificar { font-size:0.72rem; white-space:nowrap; }
+.ext-bloque-select {
+    background:transparent; border:1px dashed var(--border-strong); color:var(--muted);
+    font-size:0.67rem; padding:1px 5px; border-radius:7px; cursor:pointer; max-width:120px;
+}
+.ext-bloque-select:hover, .ext-bloque-select:focus { border-color:var(--primary-color); color:var(--primary-color); }
+.ext-pilares-pie { margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:0.75rem; color:var(--muted); }
+@media (max-width:640px){
+    .ext-pilar > summary { grid-template-columns:16px 1fr auto; }
+    .ext-pilar-barra, .ext-pilar-pct { display:none; }
+    .ext-cat-fila { grid-template-columns:1fr auto; }
+    .ext-cat-barra, .ext-cat-pct, .ext-bloque-select { display:none; }
+}
 
 /* ── Movimientos ────────────────────────────────────────────────────── */
 .ext-mov-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:0 0 12px; }
@@ -934,6 +972,27 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
                 sel.classList.toggle('puesto', !!data.partida_id);
                 var fila = filaDe(movId);
                 if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
+            }).catch(function(){});
+        });
+    });
+
+    /* ---- Mover una categoría de pilar ----
+       El bloque es lo que hace conciliable lo observado con el presupuesto, y
+       el sitio natural para corregirlo es justo donde ves que está mal. */
+    var URL_BLOQUE = "{% url 'finanzas:cambiar_bloque_categoria' %}";
+
+    document.querySelectorAll('.ext-bloque-select').forEach(function(sel) {
+        sel.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); });
+        sel.addEventListener('change', function() {
+            var body = new URLSearchParams();
+            body.set('categoria_id', sel.dataset.categoriaId);
+            body.set('tipo', sel.value);
+            fetch(URL_BLOQUE, {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+                body: body.toString()
+            }).then(function(r){ return r.json(); }).then(function(data){
+                if (data.ok) window.location.reload();
             }).catch(function(){});
         });
     });

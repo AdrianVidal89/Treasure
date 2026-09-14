@@ -669,7 +669,57 @@ MESES_CHOICES = [
 ]
 
 
-class FuenteIngreso(models.Model):
+class ImputableAActivo(models.Model):
+    """Gasto que pertenece a un activo concreto: esta casa, este coche.
+
+    Es lo que permite responder «¿cuánto me cuesta tener el coche?», que la
+    categoría sola no contesta: el seguro, la ITV y la gasolina caen en bloques
+    distintos del presupuesto y, con dos coches, ni siquiera se distinguen entre
+    sí.
+
+    Son dos claves foráneas y no una relación genérica porque el activo se
+    consulta y se agrega constantemente (totales por vehículo, por propiedad) y
+    las genéricas no dejan hacer `select_related` ni agregados directos. A
+    cambio, un tercer tipo de activo exigiría un tercer campo; cuando llegue,
+    ese será el momento de generalizar, no antes.
+    """
+
+    propiedad = models.ForeignKey(
+        'finanzas.Propiedad', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='%(class)s_imputados',
+        help_text='Propiedad a la que pertenece este gasto.',
+    )
+    vehiculo = models.ForeignKey(
+        'finanzas.Vehiculo', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='%(class)s_imputados',
+        help_text='Vehículo al que pertenece este gasto.',
+    )
+
+    class Meta:
+        abstract = True
+
+    @property
+    def activo_imputado(self):
+        """El activo al que se imputa, sea del tipo que sea (o None)."""
+        return self.vehiculo or self.propiedad
+
+    @property
+    def clave_activo(self):
+        """Identificador único para los selectores: «vehiculo:3», «propiedad:1»."""
+        if self.vehiculo_id:
+            return f'vehiculo:{self.vehiculo_id}'
+        if self.propiedad_id:
+            return f'propiedad:{self.propiedad_id}'
+        return ''
+
+
+class FuenteIngreso(ImputableAActivo):
+    """Una fuente de ingreso del hogar.
+
+    Puede imputarse a un activo (el alquiler ES de ese piso): así la ficha de
+    la propiedad no solo dice lo que cuesta, sino lo que deja."""
+
+
     TIPO_CHOICES = [('fijo', 'Fijo'), ('variable', 'Variable estimado')]
     MODO_ENTRADA_CHOICES = [('anual', 'Declaro el total anual'), ('periodo', 'Declaro por periodo')]
     REPARTO_CHOICES = [(12, '12 pagas'), (14, '14 pagas (extras en junio y diciembre)'), (15, '15 pagas')]
@@ -931,50 +981,6 @@ class CategoriaGasto(models.Model):
             return ORDEN_TIPOS.index(self.tipo)
         except ValueError:
             return len(ORDEN_TIPOS)
-
-
-class ImputableAActivo(models.Model):
-    """Gasto que pertenece a un activo concreto: esta casa, este coche.
-
-    Es lo que permite responder «¿cuánto me cuesta tener el coche?», que la
-    categoría sola no contesta: el seguro, la ITV y la gasolina caen en bloques
-    distintos del presupuesto y, con dos coches, ni siquiera se distinguen entre
-    sí.
-
-    Son dos claves foráneas y no una relación genérica porque el activo se
-    consulta y se agrega constantemente (totales por vehículo, por propiedad) y
-    las genéricas no dejan hacer `select_related` ni agregados directos. A
-    cambio, un tercer tipo de activo exigiría un tercer campo; cuando llegue,
-    ese será el momento de generalizar, no antes.
-    """
-
-    propiedad = models.ForeignKey(
-        'finanzas.Propiedad', on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='%(class)s_imputados',
-        help_text='Propiedad a la que pertenece este gasto.',
-    )
-    vehiculo = models.ForeignKey(
-        'finanzas.Vehiculo', on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='%(class)s_imputados',
-        help_text='Vehículo al que pertenece este gasto.',
-    )
-
-    class Meta:
-        abstract = True
-
-    @property
-    def activo_imputado(self):
-        """El activo al que se imputa, sea del tipo que sea (o None)."""
-        return self.vehiculo or self.propiedad
-
-    @property
-    def clave_activo(self):
-        """Identificador único para los selectores: «vehiculo:3», «propiedad:1»."""
-        if self.vehiculo_id:
-            return f'vehiculo:{self.vehiculo_id}'
-        if self.propiedad_id:
-            return f'propiedad:{self.propiedad_id}'
-        return ''
 
 
 class PartidaGasto(ImputableAActivo):
@@ -1440,6 +1446,12 @@ class Propiedad(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.get_tipo_display()})"
+
+    @property
+    def clave_activo(self):
+        """Identificador para los selectores de imputación, igual que en
+        Vehiculo: un solo desplegable en toda la interfaz."""
+        return f'propiedad:{self.pk}'
 
     @property
     def patrimonio_neto(self):

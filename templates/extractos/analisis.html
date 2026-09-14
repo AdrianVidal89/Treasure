@@ -72,6 +72,43 @@
         {% endif %}
     </section>
 
+    <!-- LOS CUATRO PILARES -->
+    {% if a.bloques %}
+    <section class="glass-panel an-card">
+        <div class="an-card-head">
+            <h3>Por bloque del presupuesto</h3>
+            <span class="an-card-nota">abre uno para ver cómo se repartió</span>
+        </div>
+        <div class="an-pilares">
+            {% for b in a.bloques %}
+            <details class="an-pilar" style="--bc:{{ colores_tipo|get_item:b.tipo }};">
+                <summary>
+                    <span class="an-pilar-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+                    <span class="an-pilar-nombre">{{ b.etiqueta }}</span>
+                    <span class="an-pilar-barra"><i style="width:{{ b.pct|unlocalize }}%;"></i></span>
+                    <span class="an-pilar-cifra">{{ b.importe|euro:0 }}</span>
+                    {% if a.hay_referencia %}
+                    <span class="an-pilar-dif {% if b.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
+                        {% if b.desviacion > 0 %}+{% endif %}{{ b.desviacion|euro:0 }}
+                    </span>
+                    {% endif %}
+                </summary>
+                <div class="an-pilar-detalle">
+                    {% for c in b.categorias %}
+                    <a class="an-fila" {% if c.id %}href="{% url 'extractos:analisis' %}?anio={{ a.anio }}&mes={{ a.mes }}&categoria={{ c.id }}"{% endif %}>
+                        <span class="an-punto" style="background:{{ colores_tipo|get_item:b.tipo }};"></span>
+                        <span class="an-fila-nombre">{{ c.nombre }} <em>{{ c.num }}</em></span>
+                        <span class="an-fila-barra"><i style="width:{{ c.pct_bloque|unlocalize }}%;background:{{ colores_tipo|get_item:b.tipo }};"></i></span>
+                        <span class="an-fila-total">{{ c.importe|euro:0 }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </details>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
     <!-- QUÉ LO EXPLICA -->
     {% if a.puente %}
     <section class="glass-panel an-card">
@@ -98,29 +135,7 @@
     {% endif %}
 
     <!-- DE QUÉ ESTÁ HECHO EL MES -->
-    <div class="an-grid">
-        <section class="glass-panel an-card">
-            <div class="an-card-head"><h3>Por categoría</h3></div>
-            <div class="an-lista">
-                {% for c in a.categorias %}
-                <a class="an-fila" href="{% url 'extractos:analisis' %}?anio={{ a.anio }}&mes={{ a.mes }}&categoria={{ c.id }}"
-                   title="Analizar solo {{ c.nombre }}">
-                    <span class="an-punto" style="background:{{ colores_tipo|get_item:c.tipo }};"></span>
-                    <span class="an-fila-nombre">{{ c.nombre }} <em>{{ c.num }}</em></span>
-                    <span class="an-fila-barra"><i style="width:{{ c.pct|unlocalize }}%;background:{{ colores_tipo|get_item:c.tipo }};"></i></span>
-                    <span class="an-fila-total">{{ c.total|euro:0 }}</span>
-                    {% if a.hay_referencia %}
-                    <span class="an-fila-dif {% if c.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
-                        {% if c.desviacion > 0 %}+{% endif %}{{ c.desviacion|euro:0 }}
-                    </span>
-                    {% endif %}
-                </a>
-                {% empty %}
-                <p class="an-vacio">No hay gasto en este ámbito.</p>
-                {% endfor %}
-            </div>
-        </section>
-
+    <div class="an-grid una">
         <section class="glass-panel an-card">
             <div class="an-card-head">
                 <h3>Por comercio</h3>
@@ -237,6 +252,29 @@
 .an-card-head h3 { margin:0; font-size:1rem; }
 .an-card-nota { font-size:0.75rem; color:var(--muted); }
 .an-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+.an-grid.una { grid-template-columns:1fr; }
+
+/* Pilares: la lectura principal, con su reparto dentro. */
+.an-pilares { display:flex; flex-direction:column; gap:7px; }
+.an-pilar { border:1px solid var(--border); border-left:3px solid var(--bc); border-radius:10px; overflow:hidden; }
+.an-pilar > summary {
+    list-style:none; cursor:pointer; display:grid; align-items:center; gap:10px;
+    grid-template-columns:16px minmax(110px,1.1fr) 1.6fr auto auto; padding:11px 13px;
+}
+.an-pilar > summary::-webkit-details-marker { display:none; }
+.an-pilar > summary:hover { background:color-mix(in srgb, var(--bc) 7%, transparent); }
+.an-pilar-chevron { display:flex; color:var(--muted); transition:transform .2s; }
+.an-pilar[open] .an-pilar-chevron { transform:rotate(90deg); }
+.an-pilar-nombre { font-weight:700; font-size:0.87rem; }
+.an-pilar-barra { height:8px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.an-pilar-barra i { display:block; height:100%; border-radius:999px; background:var(--bc); }
+.an-pilar-cifra { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.92rem; }
+.an-pilar-dif { font-variant-numeric:tabular-nums; font-size:0.78rem; font-weight:700; min-width:64px; text-align:right; }
+.an-pilar-detalle { border-top:1px solid var(--border); padding:10px 13px 12px 29px; display:flex; flex-direction:column; gap:8px; }
+@media (max-width:640px){
+    .an-pilar > summary { grid-template-columns:16px 1fr auto; }
+    .an-pilar-barra { display:none; }
+}
 @media (max-width:860px){ .an-grid { grid-template-columns:1fr; } }
 .an-vacio { color:var(--muted); font-size:0.83rem; font-style:italic; margin:0; }
 

@@ -212,6 +212,25 @@
                 </div>
             </div>
 
+
+            <!-- Imputación a un activo -->
+            <div class="form-group">
+                <label>¿Este ingreso viene de una propiedad o un vehículo?</label>
+                <select name="activo">
+                    <option value="">— No, es un ingreso general —</option>
+                    {% for g in grupos_activos %}{% if g.opciones %}
+                    <optgroup label="{{ g.etiqueta }}">
+                        {% for o in g.opciones %}
+                        <option value="{{ o.clave }}" {% if fuente.clave_activo == o.clave %}selected{% endif %}>{{ o.nombre }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endif %}{% endfor %}
+                </select>
+                <div style="font-size: 0.78rem; color: var(--muted); margin-top: 6px;">
+                    El alquiler de un piso imputado a esa propiedad permite ver en Propiedades
+                    lo que cuesta <strong>y</strong> lo que deja: el neto, que es la cifra que decide.
+                </div>
+            </div>
             <!-- Simulador fiscal -->
             <div id="simulador-fiscal" style="display: none; background: var(--app-bg); border: 1px solid var(--primary-color); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
                 <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-color); margin-bottom: 12px;">Simulación fiscal en tiempo real</div>

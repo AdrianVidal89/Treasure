@@ -519,49 +519,68 @@ def _panel_context(hogar, todos, request):
     traspasos = [m for m in movimientos if m.es_neutro]
     traspaso_neto = sum((m.importe for m in traspasos), Decimal('0'))
 
-    # --- Donut: gasto por categoría (valores absolutos) ---
-    # Un abono dentro de una categoría de gasto (una devolución de Amazon) resta
-    # de su propia categoría en vez de contarse como ingreso, así que el total
-    # del bloque es el gasto neto de esa categoría.
-    por_categoria = defaultdict(lambda: Decimal('0'))
+    # --- El gasto, por los CUATRO PILARES del presupuesto ---
+    # Es la vista principal, no un añadido: el presupuesto se declara en fijos,
+    # anuales, variables y discrecionales, así que lo observado tiene que
+    # leerse en esos mismos términos o no hay forma de conciliar uno con otro.
+    # Las categorías quedan dentro de su bloque, para abrir y ver el reparto.
+    #
+    # Un abono dentro de una categoría de gasto (una devolución) resta de su
+    # propia categoría, así que el total del bloque es su gasto neto.
+    por_bloque = defaultdict(lambda: {'importe': Decimal('0'), 'categorias': {}})
     for m in reales:
-        if m.cuenta_como_gasto:
-            nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
-            por_categoria[nombre] += -m.importe
-    cat_ordenadas = sorted(
-        ((nombre, importe) for nombre, importe in por_categoria.items() if importe > 0),
-        key=lambda kv: kv[1], reverse=True,
-    )
-    total_gasto_abs = sum((v for _, v in cat_ordenadas), Decimal('0'))
+        if not m.cuenta_como_gasto:
+            continue
+        tipo = m.categoria.tipo if m.categoria else 'sin'
+        nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
+        datos = por_bloque[tipo]
+        datos['importe'] += -m.importe
+        cat = datos['categorias'].setdefault(
+            nombre, {'id': m.categoria_id, 'nombre': nombre,
+                     'importe': Decimal('0'), 'num': 0},
+        )
+        cat['importe'] += -m.importe
+        cat['num'] += 1
 
-    # --- Desglose por categoría superior (los bloques del presupuesto) ---
-    por_tipo = defaultdict(lambda: Decimal('0'))
-    for m in reales:
-        if m.cuenta_como_gasto:
-            tipo = m.categoria.tipo if m.categoria else 'sin'
-            por_tipo[tipo] += -m.importe
+    total_gasto_abs = sum(
+        (d['importe'] for d in por_bloque.values() if d['importe'] > 0), Decimal('0'),
+    )
+
     bloques = []
     for tipo in list(ORDEN_TIPOS) + ['sin']:
-        if por_tipo.get(tipo, Decimal('0')) <= 0:
+        datos = por_bloque.get(tipo)
+        if not datos or datos['importe'] <= 0:
             continue
-        importe = por_tipo[tipo]
+        importe = datos['importe']
+        categorias = sorted(
+            (c for c in datos['categorias'].values() if c['importe'] > 0),
+            key=lambda c: c['importe'], reverse=True,
+        )
+        for c in categorias:
+            c['pct_bloque'] = round(float(c['importe'] / importe * 100), 1) if importe else 0
+            c['pct_total'] = round(float(c['importe'] / total_gasto_abs * 100), 1) if total_gasto_abs else 0
         bloques.append({
             'tipo': tipo,
             'etiqueta': ETIQUETAS_TIPO.get(tipo, 'Sin categorizar'),
             'importe': importe,
             'pct': round(float(importe / total_gasto_abs * 100), 1) if total_gasto_abs else 0,
             'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
+            'categorias': categorias,
+            'num_categorias': len(categorias),
         })
 
-    donut = []
-    for i, (nombre, importe) in enumerate(cat_ordenadas):
-        pct = float(importe / total_gasto_abs * 100) if total_gasto_abs else 0
-        donut.append({
-            'nombre': nombre,
-            'importe': float(importe),
-            'pct': round(pct, 1),
-            'color': '#9aa5a0' if nombre == 'Sin categorizar' else _PALETA[i % len(_PALETA)],
-        })
+    # El donut se pinta por BLOQUE, no por categoría: con quince categorías era
+    # una rueda de colores ilegible que no coincidía con ninguna otra cifra de
+    # la pantalla.
+    donut = [
+        {
+            'nombre': b['etiqueta'],
+            'importe': float(b['importe']),
+            'pct': b['pct'],
+            'color': b['color'],
+        }
+        for b in bloques
+    ]
 
     # --- Agrupación por mes (para el listado) ---
     grupos_mes = defaultdict(lambda: {
@@ -620,6 +639,9 @@ def _panel_context(hogar, todos, request):
         ).exclude(periodicidad='mensual').select_related('categoria'),
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'colores_tipo': COLOR_TIPO,
+        'tipos_bloque': [
+            {'valor': t, 'etiqueta': ETIQUETAS_TIPO.get(t, t)} for t in ORDEN_TIPOS
+        ],
         'num_traspasos': sum(1 for m in todos if m.es_neutro),
         'kpi_traspaso_neto': traspaso_neto,
         'traspasos_cuadran': traspaso_neto == 0 and bool(traspasos),
