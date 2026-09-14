@@ -1822,3 +1822,172 @@ class FuentesDeDatosSimuladorTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         fuentes = resp.context['sim_data']['fuentes']
         self.assertEqual(sorted(fuentes), ['media', 'mediana', 'presupuesto', 'ultimo'])
+
+
+class CategoriasCrudTests(TestCase):
+    """Gestión de categorías: crearlas, editarlas, archivarlas y borrarlas.
+
+    Las categorías son la pieza común de gastos, ingresos y movimientos del
+    extracto, así que tocarlas no puede llevarse por delante ni el presupuesto
+    declarado ni lo ya clasificado sin decirlo.
+    """
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('categorizador', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+    def _categoria(self, nombre):
+        from finanzas.models import CategoriaGasto
+        return CategoriaGasto.objects.get(hogar=self.hogar, nombre=nombre)
+
+    def test_las_predefinidas_nacen_con_el_computo_de_su_bloque(self):
+        self.assertEqual(self._categoria('Traspaso entre cuentas').computo, 'neutro')
+        self.assertEqual(self._categoria('Nomina').computo, 'suma')
+        self.assertEqual(self._categoria('Alimentacion').computo, 'resta')
+
+    def test_crear_categoria_con_computo_propio(self):
+        self.client.post(reverse('finanzas:crear_categoria'), {
+            'nombre': 'Pago tarjeta', 'tipo': 'variable', 'computo': 'neutro',
+        })
+        cat = self._categoria('Pago tarjeta')
+        self.assertEqual(cat.tipo, 'variable')
+        self.assertEqual(cat.computo, 'neutro')
+        self.assertFalse(cat.es_predefinida)
+
+    def test_un_computo_invalido_cae_al_del_bloque(self):
+        self.client.post(reverse('finanzas:crear_categoria'), {
+            'nombre': 'Mascotas', 'tipo': 'variable', 'computo': 'inventado',
+        })
+        self.assertEqual(self._categoria('Mascotas').computo, 'resta')
+
+    def test_editar_renombra_y_cambia_bloque_y_computo(self):
+        cat = self._categoria('Ocio')
+        self.client.post(reverse('finanzas:editar_categoria', args=[cat.id]), {
+            'nombre': 'Ocio y cultura', 'tipo': 'variable', 'computo': 'neutro',
+        })
+        cat.refresh_from_db()
+        self.assertEqual(cat.nombre, 'Ocio y cultura')
+        self.assertEqual(cat.tipo, 'variable')
+        self.assertEqual(cat.computo, 'neutro')
+
+    def test_no_se_puede_renombrar_a_una_categoria_que_ya_existe(self):
+        cat = self._categoria('Ocio')
+        self.client.post(reverse('finanzas:editar_categoria', args=[cat.id]), {
+            'nombre': 'Ropa', 'tipo': 'discrecional', 'computo': 'resta',
+        })
+        cat.refresh_from_db()
+        self.assertEqual(cat.nombre, 'Ocio')
+
+    def test_archivar_saca_la_categoria_sin_borrar_nada(self):
+        from finanzas.models import CategoriaGasto, PartidaGasto
+
+        cat = self._categoria('Gimnasio')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Cuota', importe=Decimal('30'),
+        )
+        self.client.post(reverse('finanzas:archivar_categoria', args=[cat.id]))
+
+        cat.refresh_from_db()
+        self.assertFalse(cat.activo)
+        self.assertEqual(cat.partidas.count(), 1)
+        self.assertTrue(CategoriaGasto.objects.filter(pk=cat.pk).exists())
+
+    def test_una_predefinida_archivada_no_resucita(self):
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        cat = self._categoria('Gimnasio')
+        self.client.post(reverse('finanzas:archivar_categoria', args=[cat.id]))
+        _crear_categorias_predefinidas(self.hogar)
+
+        cat.refresh_from_db()
+        self.assertFalse(cat.activo)
+
+    def test_no_se_borra_una_categoria_con_gasto_declarado_sin_destino(self):
+        from finanzas.models import CategoriaGasto, PartidaGasto
+
+        cat = self._categoria('Gimnasio')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Cuota', importe=Decimal('30'),
+        )
+        self.client.post(reverse('finanzas:eliminar_categoria', args=[cat.id]))
+
+        self.assertTrue(CategoriaGasto.objects.filter(pk=cat.pk).exists())
+        self.assertEqual(PartidaGasto.objects.filter(categoria=cat).count(), 1)
+
+    def test_borrar_reasignando_mueve_partidas_movimientos_y_reglas(self):
+        from datetime import date
+
+        from extractos.models import ExtractoBancario, MovimientoBancario, ReglaCategorizacion
+        from finanzas.models import CategoriaGasto, PartidaGasto
+
+        origen = self._categoria('Gimnasio')
+        destino = self._categoria('Salud / Farmacia')
+        partida = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=origen, nombre='Cuota', importe=Decimal('30'),
+        )
+        extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        mov = MovimientoBancario.objects.create(
+            extracto=extracto, hogar=self.hogar, fecha=date(2026, 7, 1),
+            concepto='Cuota gimnasio', importe=Decimal('-30'), categoria=origen,
+        )
+        regla = ReglaCategorizacion.objects.create(
+            hogar=self.hogar, patron='gimnasio', categoria=origen,
+        )
+
+        self.client.post(reverse('finanzas:eliminar_categoria', args=[origen.id]), {
+            'reasignar_a': destino.id,
+        })
+
+        self.assertFalse(CategoriaGasto.objects.filter(pk=origen.pk).exists())
+        partida.refresh_from_db(); mov.refresh_from_db(); regla.refresh_from_db()
+        self.assertEqual(partida.categoria, destino)
+        self.assertEqual(mov.categoria, destino)
+        self.assertEqual(regla.categoria, destino)
+
+    def test_borrar_sin_destino_deja_los_movimientos_sin_categorizar(self):
+        from datetime import date
+
+        from extractos.models import ExtractoBancario, MovimientoBancario
+        from finanzas.models import CategoriaGasto
+
+        cat = self._categoria('Gimnasio')
+        extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        mov = MovimientoBancario.objects.create(
+            extracto=extracto, hogar=self.hogar, fecha=date(2026, 7, 1),
+            concepto='Cuota gimnasio', importe=Decimal('-30'), categoria=cat,
+        )
+
+        self.client.post(reverse('finanzas:eliminar_categoria', args=[cat.id]))
+
+        self.assertFalse(CategoriaGasto.objects.filter(pk=cat.pk).exists())
+        mov.refresh_from_db()
+        self.assertIsNone(mov.categoria)
+
+    def test_la_pantalla_lista_las_categorias_por_bloque(self):
+        respuesta = self.client.get(reverse('finanzas:listar_categorias'))
+        self.assertEqual(respuesta.status_code, 200)
+        etiquetas = [b['etiqueta'] for b in respuesta.context['bloques']]
+        self.assertEqual(etiquetas[0], 'Fijos')
+        self.assertIn('Traspasos', etiquetas)
+
+    def test_crear_desde_el_presupuesto_devuelve_al_presupuesto(self):
+        respuesta = self.client.post(reverse('finanzas:crear_categoria'), {
+            'nombre': 'Mascotas', 'tipo': 'variable', 'computo': 'resta',
+            'volver_a': reverse('finanzas:listar_gastos'),
+        })
+        self.assertRedirects(respuesta, reverse('finanzas:listar_gastos'))
+
+    def test_no_se_admite_un_destino_de_vuelta_externo(self):
+        respuesta = self.client.post(reverse('finanzas:crear_categoria'), {
+            'nombre': 'Mascotas', 'tipo': 'variable', 'computo': 'resta',
+            'volver_a': 'https://example.com/phishing',
+        })
+        self.assertRedirects(respuesta, reverse('finanzas:listar_categorias'))

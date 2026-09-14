@@ -167,6 +167,41 @@ class MovimientoBancario(models.Model):
     def es_ingreso(self):
         return self.importe is not None and self.importe >= 0
 
+    @property
+    def computo(self):
+        """Cómo entra este movimiento en los totales: 'resta' (gasto), 'suma'
+        (ingreso) o 'neutro' (ni una cosa ni la otra).
+
+        Manda la categoría, porque es donde el usuario declara su criterio: un
+        traspaso entre cuentas propias, el pago de la tarjeta o un reintegro
+        salen en negativo pero no son gasto. Solo cuando el movimiento no tiene
+        categoría se cae al signo del importe, que es lo único que se sabe."""
+        from finanzas.models import COMPUTO_NEUTRO, COMPUTO_RESTA, COMPUTO_SUMA
+
+        if self.es_traspaso:
+            return COMPUTO_NEUTRO
+        if self.categoria_id and self.categoria:
+            return self.categoria.computo
+        return COMPUTO_SUMA if self.es_ingreso else COMPUTO_RESTA
+
+    @property
+    def es_neutro(self):
+        from finanzas.models import COMPUTO_NEUTRO
+
+        return self.computo == COMPUTO_NEUTRO
+
+    @property
+    def cuenta_como_gasto(self):
+        from finanzas.models import COMPUTO_RESTA
+
+        return self.computo == COMPUTO_RESTA
+
+    @property
+    def cuenta_como_ingreso(self):
+        from finanzas.models import COMPUTO_SUMA
+
+        return self.computo == COMPUTO_SUMA
+
     @staticmethod
     def _importe_canonico(valor):
         """Importe con exactamente dos decimales para el hash.

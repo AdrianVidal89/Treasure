@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
 from finanzas.parsing import leer_tabla
-from finanzas.models import ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
+from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
 from .categorizacion import categorizar_lote
@@ -445,12 +445,13 @@ def _panel_context(hogar, todos, request):
     anio_sel = request.GET.get('anio', 'all')
     mes_sel = request.GET.get('mes', 'all')
     cat_sel = request.GET.get('categoria', 'all')
-    # Los traspasos siguen apareciendo en el listado (tienen su categoría), pero
-    # se pueden ocultar porque no aportan nada al análisis de gasto.
+    # Los movimientos neutros (traspasos entre cuentas propias y cualquier otra
+    # categoría marcada como neutra) siguen apareciendo en el listado, pero se
+    # pueden ocultar porque no aportan nada al análisis de gasto.
     ver_traspasos = request.GET.get('traspasos') != '0'
 
     def pasa_filtro(m):
-        if m.es_traspaso and not ver_traspasos:
+        if m.es_neutro and not ver_traspasos:
             return False
         if anio_sel != 'all' and str(m.fecha.year) != anio_sel:
             return False
@@ -467,34 +468,41 @@ def _panel_context(hogar, todos, request):
     movimientos = [m for m in todos if pasa_filtro(m)]
 
     # --- KPIs sobre el conjunto filtrado ---
-    # Los traspasos entre cuentas propias se cuentan aparte: al cargar las dos
-    # cuentas su neto es cero, y mezclarlos con el ingreso o el gasto real
-    # inflaría ambos por el mismo importe.
-    reales = [m for m in movimientos if not m.es_traspaso]
-    ingresos = sum((m.importe for m in reales if m.importe >= 0), Decimal('0'))
-    gastos = sum((m.importe for m in reales if m.importe < 0), Decimal('0'))
-    sin_categorizar = sum(1 for m in movimientos if not m.categoria_id and not m.es_traspaso)
-    traspasos = [m for m in movimientos if m.es_traspaso]
+    # Quién suma, quién resta y quién no cuenta lo dice el cómputo de la
+    # categoría, no el signo del importe: los traspasos entre cuentas propias
+    # (y cualquier categoría marcada como neutra) salen en negativo pero no son
+    # gasto, y sumarlos inflaba el gasto del mes.
+    reales = [m for m in movimientos if not m.es_neutro]
+    ingresos = sum((m.importe for m in reales if m.cuenta_como_ingreso), Decimal('0'))
+    gastos = sum((m.importe for m in reales if m.cuenta_como_gasto), Decimal('0'))
+    sin_categorizar = sum(1 for m in movimientos if not m.categoria_id and not m.es_neutro)
+    traspasos = [m for m in movimientos if m.es_neutro]
     traspaso_neto = sum((m.importe for m in traspasos), Decimal('0'))
 
     # --- Donut: gasto por categoría (valores absolutos) ---
+    # Un abono dentro de una categoría de gasto (una devolución de Amazon) resta
+    # de su propia categoría en vez de contarse como ingreso, así que el total
+    # del bloque es el gasto neto de esa categoría.
     por_categoria = defaultdict(lambda: Decimal('0'))
     for m in reales:
-        if m.importe < 0:
+        if m.cuenta_como_gasto:
             nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
             por_categoria[nombre] += -m.importe
-    cat_ordenadas = sorted(por_categoria.items(), key=lambda kv: kv[1], reverse=True)
+    cat_ordenadas = sorted(
+        ((nombre, importe) for nombre, importe in por_categoria.items() if importe > 0),
+        key=lambda kv: kv[1], reverse=True,
+    )
     total_gasto_abs = sum((v for _, v in cat_ordenadas), Decimal('0'))
 
     # --- Desglose por categoría superior (los bloques del presupuesto) ---
     por_tipo = defaultdict(lambda: Decimal('0'))
     for m in reales:
-        if m.importe < 0:
+        if m.cuenta_como_gasto:
             tipo = m.categoria.tipo if m.categoria else 'sin'
             por_tipo[tipo] += -m.importe
     bloques = []
     for tipo in list(ORDEN_TIPOS) + ['sin']:
-        if tipo not in por_tipo:
+        if por_tipo.get(tipo, Decimal('0')) <= 0:
             continue
         importe = por_tipo[tipo]
         bloques.append({
@@ -516,11 +524,18 @@ def _panel_context(hogar, todos, request):
         })
 
     # --- Agrupación por mes (para el listado) ---
-    grupos_mes = defaultdict(lambda: {'movimientos': [], 'ingresos': Decimal('0'), 'gastos': Decimal('0')})
+    grupos_mes = defaultdict(lambda: {
+        'movimientos': [], 'ingresos': Decimal('0'),
+        'gastos': Decimal('0'), 'neutro': Decimal('0'),
+    })
     for m in movimientos:
         g = grupos_mes[(m.fecha.year, m.fecha.month)]
         g['movimientos'].append(m)
-        if m.importe >= 0:
+        # Mismo criterio que los KPIs: manda el cómputo de la categoría, para
+        # que el neto del mes no cuente los traspasos como gasto.
+        if m.es_neutro:
+            g['neutro'] += m.importe
+        elif m.cuenta_como_ingreso:
             g['ingresos'] += m.importe
         else:
             g['gastos'] += m.importe
@@ -531,6 +546,7 @@ def _panel_context(hogar, todos, request):
             'etiqueta': f"{MESES_ES[mes]} {anio}",
             'ingresos': datos['ingresos'],
             'gastos': datos['gastos'],
+            'neutro': datos['neutro'],
             'neto': datos['ingresos'] + datos['gastos'],
             'movimientos': datos['movimientos'],
         })
@@ -552,7 +568,7 @@ def _panel_context(hogar, todos, request):
         'mes_sel': mes_sel,
         'cat_sel': cat_sel,
         'ver_traspasos': ver_traspasos,
-        'num_traspasos': sum(1 for m in todos if m.es_traspaso),
+        'num_traspasos': sum(1 for m in todos if m.es_neutro),
         'kpi_traspaso_neto': traspaso_neto,
         'traspasos_cuadran': traspaso_neto == 0 and bool(traspasos),
         'bloques': bloques,
@@ -628,24 +644,49 @@ def actualizar_movimiento(request, pk):
     }
 
     # Al asignar categoría a mano, ofrecer aplicar el mismo criterio a los
-    # movimientos similares y recordarlo como regla. Solo se ofrece: la regla no
-    # se crea hasta que el usuario lo confirma.
+    # movimientos del mismo comercio. Solo se ofrece: nada se aplica ni se
+    # recuerda hasta que el usuario elige el alcance.
     if mov.categoria_id and mov.comercio:
-        similares = MovimientoBancario.objects.filter(
-            hogar=hogar, comercio=mov.comercio, categoria__isnull=True,
-            es_traspaso=False,
-        ).exclude(pk=mov.pk).count()
-        ya_existe = ReglaCategorizacion.objects.filter(
-            hogar=hogar, patron=mov.comercio, categoria=mov.categoria, activo=True,
-        ).exists()
-        if similares and not ya_existe:
-            respuesta['sugerencia'] = {
-                'patron': mov.comercio,
-                'categoria_id': mov.categoria_id,
-                'n_similares': similares,
-            }
+        respuesta['sugerencia'] = _sugerencia_similares(hogar, mov)
 
     return JsonResponse(respuesta)
+
+
+def _sugerencia_similares(hogar, mov):
+    """Cuántos movimientos del mismo comercio quedarían por cambiar, en el mes
+    del movimiento y en total.
+
+    Se cuentan también los que ya tienen OTRA categoría: cuando se corrige un
+    comercio, lo normal es querer corregir todo lo que se clasificó mal antes,
+    no solo lo que quedó en blanco."""
+    similares = MovimientoBancario.objects.filter(
+        hogar=hogar, comercio=mov.comercio, es_traspaso=False,
+    ).exclude(pk=mov.pk).exclude(categoria_id=mov.categoria_id)
+
+    n_total = similares.count()
+    if not n_total:
+        return None
+
+    n_mes = similares.filter(
+        fecha__year=mov.fecha.year, fecha__month=mov.fecha.month,
+    ).count()
+    n_ya_clasificados = similares.filter(categoria__isnull=False).count()
+
+    return {
+        'patron': mov.comercio,
+        'categoria_id': mov.categoria_id,
+        'categoria': mov.categoria.nombre if mov.categoria else '',
+        'n_similares': n_total,
+        'n_mes': n_mes,
+        'n_ya_clasificados': n_ya_clasificados,
+        'anio': mov.fecha.year,
+        'mes': mov.fecha.month,
+        'etiqueta_mes': f"{MESES_ES[mov.fecha.month]} {mov.fecha.year}",
+        # Si ya existe la regla, no tiene sentido volver a ofrecer recordarla.
+        'ya_hay_regla': ReglaCategorizacion.objects.filter(
+            hogar=hogar, patron=mov.comercio, categoria=mov.categoria, activo=True,
+        ).exists(),
+    }
 
 
 @login_required
@@ -674,11 +715,14 @@ def conciliacion(request):
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return redirect('dashboard')
 
-    movimientos = list(
-        MovimientoBancario.objects.filter(hogar=hogar, es_traspaso=False)
-        .select_related('categoria')
-    )
-    gastos = [m for m in movimientos if m.importe < 0]
+    # Se descartan los movimientos neutros (traspasos entre cuentas propias y
+    # categorías marcadas como neutras): no son gasto ni ingreso, así que no
+    # tienen nada contra lo que compararse en el presupuesto.
+    movimientos = [
+        m for m in MovimientoBancario.objects.filter(hogar=hogar).select_related('categoria')
+        if not m.es_neutro
+    ]
+    gastos = [m for m in movimientos if m.cuenta_como_gasto]
 
     # Nº de meses distintos con datos, para pasar lo observado a media mensual.
     meses = {(m.fecha.year, m.fecha.month) for m in movimientos}
@@ -700,7 +744,7 @@ def conciliacion(request):
     por_bloque = {}
     categorias = CategoriaGasto.objects.filter(
         hogar=hogar, activo=True, tipo__in=TIPOS_GASTO,
-    ).prefetch_related('partidas')
+    ).exclude(computo=COMPUTO_NEUTRO).prefetch_related('partidas')
     total_declarado = Decimal('0')
     total_observado = Decimal('0')
 
@@ -744,7 +788,7 @@ def conciliacion(request):
 
     # --- Ingresos: observado en el banco frente a lo declarado en FuenteIngreso ---
     ingreso_observado = sum(
-        (m.importe for m in movimientos if m.importe >= 0), Decimal('0'),
+        (m.importe for m in movimientos if m.cuenta_como_ingreso), Decimal('0'),
     ) / num_meses
     ingreso_declarado = _ingreso_declarado_mensual(hogar)
 
@@ -803,12 +847,16 @@ def _categorias_por_bloque(hogar):
     ]
 
 
-def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False):
+def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False,
+                    anio=None, mes=None):
     """Asigna `categoria` a los movimientos del hogar cuyo comercio o concepto
     contenga `patron`. Devuelve cuántos ha actualizado.
 
     Por defecto solo toca lo que está sin categorizar, para que aprender una
     regla nueva no pise clasificaciones que el usuario ya había dado por buenas.
+
+    Con `anio` y `mes` el cambio se acota a ese mes: es el caso de quien está
+    revisando un mes concreto y no quiere tocar el histórico.
     """
     patron = normalizar_texto(patron)
     if not patron:
@@ -817,6 +865,8 @@ def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False):
     candidatos = MovimientoBancario.objects.filter(hogar=hogar, es_traspaso=False)
     if not incluir_categorizados:
         candidatos = candidatos.filter(categoria__isnull=True)
+    if anio and mes:
+        candidatos = candidatos.filter(fecha__year=anio, fecha__month=mes)
 
     # El filtrado va en Python porque hay que comparar contra el texto
     # normalizado (sin acentos ni signos), que no es lo que hay en la columna.
@@ -831,6 +881,13 @@ def _aplicar_patron(hogar, patron, categoria, incluir_categorizados=False):
         categoria=categoria, estado_categorizacion='por_regla',
     )
     return len(ids)
+
+
+def _entero_o_none(valor):
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return None
 
 
 @login_required
@@ -924,21 +981,42 @@ def aprender_regla(request):
         return redirect('extractos:sin_categorizar')
 
     incluir = request.POST.get('incluir_categorizados') == '1'
+
+    # Alcance del cambio. 'mes' lo acota al mes que se está revisando; por
+    # defecto se aplica a todo el histórico, que es lo que hacía siempre.
+    solo_mes = request.POST.get('ambito') == 'mes'
+    anio = _entero_o_none(request.POST.get('anio')) if solo_mes else None
+    mes = _entero_o_none(request.POST.get('mes')) if solo_mes else None
+    if solo_mes and not (anio and mes):
+        if es_ajax:
+            return JsonResponse({'ok': False, 'error': 'mes_invalido'}, status=400)
+        messages.error(request, "No se ha podido identificar el mes a corregir.")
+        return redirect('extractos:sin_categorizar')
+
+    # Un cambio acotado a un mes no se recuerda salvo que se pida: convertirlo
+    # en regla permanente reclasificaría también las próximas importaciones,
+    # que es justo lo que ese alcance quiere evitar.
+    recordar = request.POST.get('recordar', '0' if solo_mes else '1') == '1'
+
     aplicados = 0
     for patron in patrones:
-        ReglaCategorizacion.objects.update_or_create(
-            hogar=hogar, patron=patron,
-            defaults={'categoria': categoria, 'origen': 'manual', 'activo': True},
-        )
-        aplicados += _aplicar_patron(hogar, patron, categoria, incluir)
+        if recordar:
+            ReglaCategorizacion.objects.update_or_create(
+                hogar=hogar, patron=patron,
+                defaults={'categoria': categoria, 'origen': 'manual', 'activo': True},
+            )
+        aplicados += _aplicar_patron(hogar, patron, categoria, incluir, anio, mes)
 
     if es_ajax:
-        return JsonResponse({'ok': True, 'aplicados': aplicados, 'categoria': categoria.nombre})
+        return JsonResponse({
+            'ok': True, 'aplicados': aplicados,
+            'categoria': categoria.nombre, 'recordada': recordar,
+        })
 
     messages.success(
         request,
-        f"{aplicados} movimiento(s) categorizados como «{categoria.nombre}». "
-        "Se aplicará automáticamente en las próximas importaciones."
+        f"{aplicados} movimiento(s) categorizados como «{categoria.nombre}»."
+        + (" Se aplicará automáticamente en las próximas importaciones." if recordar else "")
     )
     return redirect('extractos:sin_categorizar')
 

@@ -78,6 +78,12 @@ urlpatterns = [
     path('gastos/<int:partida_id>/eliminar/', views_gastos.eliminar_partida, name='eliminar_partida'),
     path('gastos/categoria/crear/', views_gastos.crear_categoria, name='crear_categoria'),
 
+    # ── Categorías (gastos, ingresos y movimientos) ───────────────────────
+    path('categorias/', views_gastos.listar_categorias, name='listar_categorias'),
+    path('categorias/<int:categoria_id>/editar/', views_gastos.editar_categoria, name='editar_categoria'),
+    path('categorias/<int:categoria_id>/archivar/', views_gastos.archivar_categoria, name='archivar_categoria'),
+    path('categorias/<int:categoria_id>/eliminar/', views_gastos.eliminar_categoria, name='eliminar_categoria'),
+
     # ── Distribución ──────────────────────────────────────────────────────
     path('distribucion/', views_distribucion.vista_distribucion, name='vista_distribucion'),
     path('distribucion/resumen-anual/', views_distribucion.vista_resumen_anual, name='resumen_anual'),

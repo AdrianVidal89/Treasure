@@ -256,6 +256,7 @@
     <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; align-items: center;">
         <a href="{% url 'finanzas:crear_partida' %}" class="btn btn-primary"> Nuevo gasto</a>
         <button onclick="document.getElementById('modal-categoria').style.display='flex'" class="btn btn-secondary"> Nueva categoria</button>
+        <a href="{% url 'finanzas:listar_categorias' %}" class="btn btn-ghost">Gestionar categorías</a>
         <div class="vista-toggle" style="margin-left:auto;">
             <a href="?vista=categoria" class="vista-toggle-btn {% if vista != 'miembro' %}active{% endif %}">Por categoría</a>
             <a href="?vista=miembro" class="vista-toggle-btn {% if vista == 'miembro' %}active{% endif %}">Por miembro</a>
@@ -507,18 +508,28 @@
         <h2> Nueva categoria</h2>
         <form method="post" action="{% url 'finanzas:crear_categoria' %}">
             {% csrf_token %}
+            <input type="hidden" name="volver_a" value="{% url 'finanzas:listar_gastos' %}">
             <div class="form-group">
                 <label>Nombre</label>
                 <input type="text" name="nombre" placeholder="Ej: Mascotas, Educacion..." required>
             </div>
             <div class="form-group">
                 <label>Bloque del presupuesto</label>
-                <select name="tipo">
+                <select name="tipo" id="nueva-cat-tipo">
                     <option value="fijo">Fijo</option>
                     <option value="anual">Anual (provision)</option>
                     <option value="variable" selected>Variable</option>
                     <option value="discrecional">Discrecional</option>
                     <option value="ingreso">Ingreso</option>
+                    <option value="traspaso">Traspaso entre cuentas</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Cómputo</label>
+                <select name="computo" id="nueva-cat-computo">
+                    <option value="resta" selected>Resta (cuenta como gasto)</option>
+                    <option value="suma">Suma (cuenta como ingreso)</option>
+                    <option value="neutro">Neutra (no cuenta ni como gasto ni como ingreso)</option>
                 </select>
             </div>
             <div class="modal-btns">
@@ -533,6 +544,22 @@
 function toggleCard(card) {
     card.classList.toggle('open');
 }
+
+// El cómputo habitual del bloque elegido se propone solo; sigue siendo editable.
+(function () {
+    var COMPUTO_POR_TIPO = {
+        fijo: 'resta', anual: 'resta', variable: 'resta',
+        discrecional: 'resta', ingreso: 'suma', traspaso: 'neutro'
+    };
+    var tipo = document.getElementById('nueva-cat-tipo');
+    var computo = document.getElementById('nueva-cat-computo');
+    if (tipo && computo) {
+        tipo.addEventListener('change', function () {
+            var sugerido = COMPUTO_POR_TIPO[this.value];
+            if (sugerido) computo.value = sugerido;
+        });
+    }
+})();
 
 // Auto-dismiss messages
 document.addEventListener('DOMContentLoaded', function() {

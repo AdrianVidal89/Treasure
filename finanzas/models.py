@@ -823,6 +823,44 @@ ETIQUETAS_TIPO = {
     'traspaso': 'Traspasos',
 }
 
+# Mientras el `tipo` dice en qué BLOQUE DEL PRESUPUESTO cae una categoría, el
+# `computo` dice CÓMO ENTRA EN LOS TOTALES del análisis de movimientos: si lo
+# que cae en ella se cuenta como gasto, como ingreso o no se cuenta.
+#
+# Sin esto, el análisis solo miraba el signo del importe, así que un traspaso
+# entre cuentas propias (o cualquier movimiento que no es gasto real: un
+# reintegro, el pago de la tarjeta...) engordaba el gasto del mes.
+COMPUTO_RESTA = 'resta'
+COMPUTO_SUMA = 'suma'
+COMPUTO_NEUTRO = 'neutro'
+
+COMPUTO_CHOICES = [
+    (COMPUTO_RESTA, 'Resta (cuenta como gasto)'),
+    (COMPUTO_SUMA, 'Suma (cuenta como ingreso)'),
+    (COMPUTO_NEUTRO, 'Neutra (no cuenta ni como gasto ni como ingreso)'),
+]
+
+ETIQUETAS_COMPUTO = {
+    COMPUTO_RESTA: 'Resta',
+    COMPUTO_SUMA: 'Suma',
+    COMPUTO_NEUTRO: 'Neutra',
+}
+
+# Cómputo que le corresponde a cada bloque mientras el usuario no diga otra
+# cosa. Es solo el valor de partida: el cómputo es editable por categoría.
+COMPUTO_POR_TIPO = {
+    'fijo': COMPUTO_RESTA,
+    'anual': COMPUTO_RESTA,
+    'variable': COMPUTO_RESTA,
+    'discrecional': COMPUTO_RESTA,
+    'ingreso': COMPUTO_SUMA,
+    'traspaso': COMPUTO_NEUTRO,
+}
+
+
+def computo_por_defecto(tipo):
+    return COMPUTO_POR_TIPO.get(tipo, COMPUTO_RESTA)
+
 PERIODICIDAD_GASTO_CHOICES = [
     ('mensual', 'Mensual'), ('bimensual', 'Bimensual'),
     ('trimestral', 'Trimestral'), ('semestral', 'Semestral'), ('anual', 'Anual'),
@@ -833,6 +871,11 @@ class CategoriaGasto(models.Model):
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='categorias_gasto')
     nombre = models.CharField(max_length=100)
     tipo = models.CharField(max_length=20, choices=TIPO_GASTO_CHOICES)
+    computo = models.CharField(
+        max_length=10, choices=COMPUTO_CHOICES, default=COMPUTO_RESTA,
+        help_text='Cómo entran sus movimientos en los totales: restan (gasto), '
+                  'suman (ingreso) o son neutros (ni una cosa ni la otra).',
+    )
     es_predefinida = models.BooleanField(default=False)
     activo = models.BooleanField(default=True)
 
@@ -846,6 +889,16 @@ class CategoriaGasto(models.Model):
     @property
     def es_gasto(self):
         return self.tipo in TIPOS_GASTO
+
+    @property
+    def es_neutra(self):
+        """No entra en los totales: traspasos entre cuentas propias y
+        cualquier otra categoría que el usuario haya marcado como neutra."""
+        return self.computo == COMPUTO_NEUTRO
+
+    @property
+    def etiqueta_computo(self):
+        return ETIQUETAS_COMPUTO.get(self.computo, self.computo)
 
     @property
     def orden_tipo(self):

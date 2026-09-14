@@ -659,3 +659,235 @@ class AprendizajeTests(TestCase):
         })
         regla.refresh_from_db()
         self.assertFalse(regla.activo)
+
+    def test_la_sugerencia_cuenta_tambien_los_ya_clasificados_y_acota_el_mes(self):
+        """Corregir un comercio suele querer decir corregir también lo que se
+        clasificó mal antes, no solo lo que quedó en blanco."""
+        alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        objetivo = self.crear_movimiento('Malacabeza')
+        mal = self.crear_movimiento('Malacabeza')
+        mal.categoria = alimentacion
+        mal.estado_categorizacion = 'manual'
+        mal.save()
+        # Uno del mes anterior: cuenta en el total pero no en el mes revisado.
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 6, 15),
+            concepto='Malacabeza', importe=Decimal('-18.00'),
+        )
+
+        respuesta = self.client.post(
+            reverse('extractos:actualizar_movimiento', args=[objetivo.id]),
+            {'categoria_id': self.ocio.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        sugerencia = respuesta.json()['sugerencia']
+
+        self.assertEqual(sugerencia['n_similares'], 2)
+        self.assertEqual(sugerencia['n_mes'], 1)
+        self.assertEqual(sugerencia['n_ya_clasificados'], 1)
+        self.assertEqual(sugerencia['etiqueta_mes'], 'Julio 2026')
+        self.assertEqual(sugerencia['categoria'], 'Ocio')
+
+    def test_no_se_sugiere_nada_cuando_no_queda_ningun_similar_por_cambiar(self):
+        solo = self.crear_movimiento('Malacabeza')
+        respuesta = self.client.post(
+            reverse('extractos:actualizar_movimiento', args=[solo.id]),
+            {'categoria_id': self.ocio.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertIsNone(respuesta.json()['sugerencia'])
+
+    def test_aplicar_solo_al_mes_no_toca_el_resto_ni_crea_regla(self):
+        julio = self.crear_movimiento('Malacabeza')
+        junio = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 6, 15),
+            concepto='Malacabeza', importe=Decimal('-18.00'),
+        )
+
+        respuesta = self.client.post(reverse('extractos:aprender_regla'), {
+            'patron': 'malacabeza', 'categoria_id': self.ocio.id,
+            'incluir_categorizados': '1', 'ambito': 'mes', 'anio': 2026, 'mes': 7,
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        datos = respuesta.json()
+        self.assertTrue(datos['ok'])
+        self.assertEqual(datos['aplicados'], 1)
+        self.assertFalse(datos['recordada'])
+
+        julio.refresh_from_db(); junio.refresh_from_db()
+        self.assertEqual(julio.categoria, self.ocio)
+        self.assertIsNone(junio.categoria)
+        # Acotar a un mes no puede dejar una regla que recategorice el futuro.
+        self.assertFalse(ReglaCategorizacion.objects.filter(hogar=self.hogar).exists())
+
+    def test_aplicar_a_todos_reclasifica_tambien_lo_ya_categorizado(self):
+        alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        mal = self.crear_movimiento('Malacabeza')
+        mal.categoria = alimentacion
+        mal.estado_categorizacion = 'manual'
+        mal.save()
+        junio = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 6, 15),
+            concepto='Malacabeza', importe=Decimal('-18.00'),
+        )
+
+        respuesta = self.client.post(reverse('extractos:aprender_regla'), {
+            'patron': 'malacabeza', 'categoria_id': self.ocio.id,
+            'incluir_categorizados': '1', 'ambito': 'todos',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertTrue(respuesta.json()['recordada'])
+        mal.refresh_from_db(); junio.refresh_from_db()
+        self.assertEqual(mal.categoria, self.ocio)
+        self.assertEqual(junio.categoria, self.ocio)
+        self.assertTrue(
+            ReglaCategorizacion.objects.filter(hogar=self.hogar, patron='malacabeza').exists()
+        )
+
+    def test_un_mes_invalido_no_aplica_nada(self):
+        self.crear_movimiento('Malacabeza')
+        respuesta = self.client.post(reverse('extractos:aprender_regla'), {
+            'patron': 'malacabeza', 'categoria_id': self.ocio.id, 'ambito': 'mes',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(
+            MovimientoBancario.objects.filter(hogar=self.hogar, categoria__isnull=False).count(), 0,
+        )
+
+
+class ComputoDeCategoriaTests(TestCase):
+    """El cómputo de la categoría (resta / suma / neutra) es lo que decide cómo
+    entra cada movimiento en los totales.
+
+    Antes mandaba el signo del importe, así que un traspaso a otra cuenta propia
+    —o el pago de la tarjeta— se sumaba al gasto del mes aunque tuviera su
+    categoría de traspaso puesta.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self._dia = 0
+
+    def movimiento(self, concepto, importe, categoria=None, es_traspaso=False):
+        self._dia += 1
+        cat = (
+            CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria)
+            if categoria else None
+        )
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 7, self._dia),
+            concepto=concepto, importe=Decimal(importe), categoria=cat,
+            es_traspaso=es_traspaso,
+        )
+
+    def panel(self):
+        todos = list(
+            MovimientoBancario.objects.filter(hogar=self.hogar).select_related('categoria')
+        )
+        return _panel_context(self.hogar, todos, RequestFactory().get('/'))
+
+    def test_un_traspaso_categorizado_no_suma_al_gasto(self):
+        """El caso que motivó el cambio: el traspaso trae su categoría puesta
+        pero no viene marcado como traspaso interno (lo clasificó el usuario)."""
+        self.movimiento('Compra semanal', '-100', 'Alimentacion')
+        self.movimiento('A mi cuenta de ahorro', '-500', 'Traspaso entre cuentas')
+
+        panel = self.panel()
+        self.assertEqual(panel['kpi_gastos'], Decimal('-100'))
+        self.assertEqual(panel['kpi_traspaso_neto'], Decimal('-500'))
+        self.assertEqual(
+            [b['etiqueta'] for b in panel['bloques']], ['Variables'],
+        )
+        self.assertEqual([d['nombre'] for d in panel['donut']], ['Alimentacion'])
+
+    def test_una_categoria_propia_marcada_como_neutra_tampoco_cuenta(self):
+        cat = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Pago tarjeta', tipo='variable', computo='neutro',
+        )
+        self.movimiento('Compra semanal', '-100', 'Alimentacion')
+        mov = self.movimiento('Liquidacion tarjeta', '-320')
+        mov.categoria = cat
+        mov.save()
+
+        panel = self.panel()
+        self.assertEqual(panel['kpi_gastos'], Decimal('-100'))
+        self.assertEqual(panel['num_traspasos'], 1)
+
+    def test_un_ingreso_no_deja_de_serlo_por_su_categoria(self):
+        self.movimiento('Nomina julio', '2000', 'Nomina')
+        self.movimiento('Compra semanal', '-100', 'Alimentacion')
+
+        panel = self.panel()
+        self.assertEqual(panel['kpi_ingresos'], Decimal('2000'))
+        self.assertEqual(panel['kpi_neto'], Decimal('1900'))
+
+    def test_un_abono_en_una_categoria_de_gasto_resta_de_esa_categoria(self):
+        """Una devolución dentro de una categoría de gasto no es un ingreso: es
+        gasto que vuelve, así que baja el total de su propia categoría."""
+        self.movimiento('Zapatillas', '-80', 'Ropa')
+        self.movimiento('Devolucion zapatillas', '30', 'Ropa')
+
+        panel = self.panel()
+        self.assertEqual(panel['kpi_gastos'], Decimal('-50'))
+        self.assertEqual(panel['kpi_ingresos'], Decimal('0'))
+        self.assertEqual(panel['donut'][0]['importe'], 50.0)
+
+    def test_el_neto_del_mes_ignora_los_movimientos_neutros(self):
+        self.movimiento('Nomina julio', '2000', 'Nomina')
+        self.movimiento('Compra semanal', '-100', 'Alimentacion')
+        self.movimiento('A mi cuenta de ahorro', '-500', 'Traspaso entre cuentas')
+
+        grupo = self.panel()['grupos'][0]
+        self.assertEqual(grupo['ingresos'], Decimal('2000'))
+        self.assertEqual(grupo['gastos'], Decimal('-100'))
+        self.assertEqual(grupo['neutro'], Decimal('-500'))
+        self.assertEqual(grupo['neto'], Decimal('1900'))
+
+    def test_ocultar_los_neutros_los_saca_del_listado(self):
+        self.movimiento('Compra semanal', '-100', 'Alimentacion')
+        self.movimiento('A mi cuenta de ahorro', '-500', 'Traspaso entre cuentas')
+
+        todos = list(
+            MovimientoBancario.objects.filter(hogar=self.hogar).select_related('categoria')
+        )
+        panel = _panel_context(
+            self.hogar, todos, RequestFactory().get('/', {'traspasos': '0'}),
+        )
+        self.assertEqual(panel['kpi_num'], 1)
+
+    def test_la_conciliacion_ignora_las_categorias_neutras(self):
+        cat = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gimnasio')
+        cat.computo = 'neutro'
+        cat.save(update_fields=['computo'])
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Cuota', importe=Decimal('30'),
+            periodicidad='mensual',
+        )
+        alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=alimentacion, nombre='Super',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+        self.movimiento('Compra semanal', '-380', 'Alimentacion')
+        self.movimiento('Cuota gimnasio', '-30', 'Gimnasio')
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+        self.assertEqual(respuesta.context['total_observado'], Decimal('380'))
+        self.assertEqual(respuesta.context['total_declarado'], Decimal('400'))
+
+    def test_sin_categoria_sigue_mandando_el_signo(self):
+        self.movimiento('Comercio desconocido', '-40')
+        self.movimiento('Abono desconocido', '15')
+
+        panel = self.panel()
+        self.assertEqual(panel['kpi_gastos'], Decimal('-40'))
+        self.assertEqual(panel['kpi_ingresos'], Decimal('15'))
+        self.assertEqual(panel['kpi_sin_categorizar'], 2)

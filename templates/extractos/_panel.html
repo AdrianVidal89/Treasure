@@ -37,7 +37,7 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
     </div>
     {% if panel.num_traspasos %}
     <div class="ext-filtro">
-        <label>Traspasos internos</label>
+        <label title="Traspasos entre cuentas propias y categorías marcadas como neutras.">Movimientos neutros</label>
         <select name="traspasos" onchange="this.form.submit()">
             <option value="1" {% if panel.ver_traspasos %}selected{% endif %}>Mostrar ({{ panel.num_traspasos }})</option>
             <option value="0" {% if not panel.ver_traspasos %}selected{% endif %}>Ocultar</option>
@@ -80,11 +80,11 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
         <span class="stat-tile-valor num {% if panel.kpi_sin_categorizar %}text-negative{% endif %}">{{ panel.kpi_sin_categorizar }}</span>
     </div>
     {% if panel.num_traspasos %}
-    <div class="card stat-tile" title="Movimientos entre tus propias cuentas. No son ingreso ni gasto: si has cargado las dos cuentas, su neto debe ser cero.">
-        <span class="stat-tile-label">Traspasos (neto)</span>
+    <div class="card stat-tile" title="Traspasos entre tus propias cuentas y categorías marcadas como neutras. No son ingreso ni gasto, así que no entran en los totales de arriba. Si has cargado las dos cuentas de un traspaso, su neto debe ser cero.">
+        <span class="stat-tile-label">Neutros (neto)</span>
         <span class="stat-tile-valor num {% if panel.traspasos_cuadran %}text-positive{% else %}text-muted{% endif %}">{{ panel.kpi_traspaso_neto|floatformat:2|intcomma }} €</span>
         <span style="font-size:0.65rem;color:var(--muted);">
-            {% if panel.traspasos_cuadran %}cuadran: ambas cuentas cargadas{% else %}{{ panel.num_traspasos }} mov. · falta el otro lado{% endif %}
+            {% if panel.traspasos_cuadran %}cuadran: ambas cuentas cargadas{% else %}{{ panel.num_traspasos }} mov. · fuera de ingresos y gastos{% endif %}
         </span>
     </div>
     {% endif %}
@@ -176,6 +176,7 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
         <span class="ext-mes-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
         <span class="ext-mes-nombre">{{ grupo.etiqueta }}</span>
         <span class="ext-mes-count">{{ grupo.movimientos|length }} mov.</span>
+        {% if grupo.neutro %}<span class="ext-mes-neutro" title="Movimientos neutros del mes: no entran en el neto.">neutro {{ grupo.neutro|floatformat:2|intcomma }} €</span>{% endif %}
         <span class="ext-mes-neto group-total {% if grupo.neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ grupo.neto|floatformat:2|intcomma }} €</span>
     </summary>
     <div class="table-scroll">
@@ -185,9 +186,9 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
             </thead>
             <tbody>
                 {% for m in grupo.movimientos %}
-                <tr data-mov-id="{{ m.id }}"{% if m.es_traspaso %} class="ext-traspaso"{% endif %}>
+                <tr data-mov-id="{{ m.id }}"{% if m.es_neutro %} class="ext-traspaso"{% endif %}>
                     <td class="num ext-fecha">{{ m.fecha|date:"d/m/Y" }}</td>
-                    <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{% if m.es_traspaso %}<span class="badge badge-info ext-badge-traspaso">Traspaso</span> {% endif %}{{ m.concepto }}</td>
+                    <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{% if m.es_traspaso %}<span class="badge badge-info ext-badge-traspaso" title="Traspaso entre cuentas propias">Traspaso</span> {% elif m.es_neutro %}<span class="badge badge-info ext-badge-traspaso" title="Su categoría es neutra: no cuenta como gasto ni como ingreso">Neutro</span> {% endif %}{{ m.concepto }}</td>
                     <td class="ext-cat-cell">
                         <select class="ext-cat-select" data-mov-id="{{ m.id }}">
                             <option value="" {% if not m.categoria_id %}selected{% endif %}>— Sin categorizar —</option>
@@ -270,6 +271,7 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
 .ext-mes-grupo[open] .ext-mes-chevron { transform:rotate(90deg); }
 .ext-mes-nombre { font-weight:700; color:var(--text-color); font-size:0.95rem; }
 .ext-mes-count { font-size:0.72rem; color:var(--muted); background:var(--app-bg); padding:2px 9px; border-radius:999px; }
+.ext-mes-neutro { font-size:0.7rem; color:var(--muted); font-variant-numeric:tabular-nums; }
 .ext-mes-neto { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
 .ext-mes-grupo .table-scroll { border-top:1px solid var(--border); }
 .ext-cat-select { background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:5px 8px; font-size:0.78rem; max-width:180px; }
@@ -309,7 +311,10 @@ tr.ext-sugerencia td {
     background:color-mix(in srgb, var(--primary-color) 10%, transparent);
     padding:10px 14px; font-size:0.83rem;
 }
-tr.ext-sugerencia .btn { margin-left:10px; padding:5px 12px; font-size:0.78rem; }
+tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
+.ext-sugerencia-caja { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.ext-sugerencia-texto { margin-right:auto; }
+.ext-sugerencia-btns { display:flex; gap:8px; flex-wrap:wrap; }
 </style>
 
 <script>
@@ -383,9 +388,11 @@ tr.ext-sugerencia .btn { margin-left:10px; padding:5px 12px; font-size:0.78rem; 
     }
 
     /* ---- Aprender del comercio ----
-       Al categorizar a mano, el servidor dice cuántos movimientos parecidos hay
-       sin clasificar. Se ofrece aplicarlo a todos y recordarlo; la regla NO se
-       crea hasta que el usuario dice que sí. */
+       Al categorizar a mano, el servidor dice cuántos movimientos del mismo
+       comercio quedan con otra categoría, en ese mes y en total. Se pregunta
+       hasta dónde llega el cambio: solo este, el mes que se está revisando o
+       todo el histórico (que además se recuerda para futuras importaciones).
+       Nada se aplica hasta que el usuario elige. */
     var URL_APRENDER = "{% url 'extractos:aprender_regla' %}";
 
     function quitarAviso() {
@@ -393,53 +400,88 @@ tr.ext-sugerencia .btn { margin-left:10px; padding:5px 12px; font-size:0.78rem; 
         if (previo) previo.remove();
     }
 
+    function plural(n, singular, plural_) {
+        return n + ' ' + (n === 1 ? singular : plural_);
+    }
+
     function mostrarSugerencia(fila, sug) {
         quitarAviso();
-        var celdas = fila.children.length;
         var aviso = document.createElement('tr');
         aviso.className = 'ext-sugerencia';
         var td = document.createElement('td');
-        td.colSpan = celdas;
+        td.colSpan = fila.children.length;
 
         var texto = document.createElement('span');
-        texto.textContent = '¿Aplicar «' + sug.patron + '» a ' + sug.n_similares +
-            ' movimiento' + (sug.n_similares === 1 ? '' : 's') + ' similar' +
-            (sug.n_similares === 1 ? '' : 'es') + ' y recordarlo para las próximas importaciones?';
+        texto.className = 'ext-sugerencia-texto';
+        texto.textContent = 'Hay ' + plural(sug.n_similares, 'movimiento más', 'movimientos más') +
+            ' de «' + sug.patron + '»' +
+            (sug.n_ya_clasificados ? ' (' + sug.n_ya_clasificados + ' con otra categoría)' : '') +
+            '. ¿Aplicar «' + sug.categoria + '» también a ellos?';
 
-        var si = document.createElement('button');
-        si.type = 'button';
-        si.className = 'btn btn-primary btn-sm';
-        si.textContent = 'Sí, aplicar';
-        si.addEventListener('click', function() {
-            si.disabled = true;
+        var acciones = document.createElement('span');
+        acciones.className = 'ext-sugerencia-btns';
+
+        function aplicar(boton, ambito) {
+            boton.disabled = true;
             var body = new URLSearchParams();
             body.set('patron', sug.patron);
             body.set('categoria_id', sug.categoria_id);
+            body.set('incluir_categorizados', '1');
+            body.set('ambito', ambito);
+            if (ambito === 'mes') {
+                body.set('anio', sug.anio);
+                body.set('mes', sug.mes);
+            }
             fetch(URL_APRENDER, {
                 method: 'POST',
                 headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
                 body: body.toString()
             }).then(function(r){ return r.json(); }).then(function(data){
                 if (data.ok) {
-                    texto.textContent = data.aplicados + ' movimiento(s) categorizados como «' + data.categoria + '». Recargando…';
-                    si.remove();
-                    no.remove();
+                    texto.textContent = data.aplicados + ' movimiento(s) categorizados como «' +
+                        data.categoria + '»' +
+                        (data.recordada ? ', y se recordará en las próximas importaciones' : '') +
+                        '. Recargando…';
+                    acciones.remove();
                     setTimeout(function(){ window.location.reload(); }, 900);
                 } else {
-                    si.disabled = false;
+                    boton.disabled = false;
                 }
-            }).catch(function(){ si.disabled = false; });
-        });
+            }).catch(function(){ boton.disabled = false; });
+        }
+
+        if (sug.n_mes) {
+            var soloMes = document.createElement('button');
+            soloMes.type = 'button';
+            soloMes.className = 'btn btn-secondary btn-sm';
+            soloMes.textContent = 'Solo ' + sug.etiqueta_mes + ' (' + sug.n_mes + ')';
+            soloMes.title = 'Cambia únicamente los de ese mes; no se recuerda para el futuro.';
+            soloMes.addEventListener('click', function(){ aplicar(soloMes, 'mes'); });
+            acciones.appendChild(soloMes);
+        }
+
+        var todos = document.createElement('button');
+        todos.type = 'button';
+        todos.className = 'btn btn-primary btn-sm';
+        todos.textContent = 'Todos (' + sug.n_similares + ')';
+        todos.title = sug.ya_hay_regla
+            ? 'Cambia todo el histórico de este comercio.'
+            : 'Cambia todo el histórico y lo recuerda para las próximas importaciones.';
+        todos.addEventListener('click', function(){ aplicar(todos, 'todos'); });
+        acciones.appendChild(todos);
 
         var no = document.createElement('button');
         no.type = 'button';
         no.className = 'btn btn-ghost btn-sm';
-        no.textContent = 'No, solo este';
+        no.textContent = 'Solo este';
         no.addEventListener('click', quitarAviso);
+        acciones.appendChild(no);
 
-        td.appendChild(texto);
-        td.appendChild(si);
-        td.appendChild(no);
+        var caja = document.createElement('div');
+        caja.className = 'ext-sugerencia-caja';
+        caja.appendChild(texto);
+        caja.appendChild(acciones);
+        td.appendChild(caja);
         aviso.appendChild(td);
         fila.parentNode.insertBefore(aviso, fila.nextSibling);
     }
