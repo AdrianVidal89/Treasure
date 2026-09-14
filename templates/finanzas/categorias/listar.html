@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+
+{% block title %}Categorías — Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+
+<!-- ===== CABECERA ===== -->
+<div class="cat-head">
+    <div>
+        <h2 style="margin:0;"><span class="title-gradient">Categorías</span></h2>
+        <p class="cat-sub">
+            La misma lista sirve para el presupuesto de
+            <a href="{% url 'finanzas:listar_gastos' %}">Gastos</a> y para clasificar los
+            movimientos de <a href="{% url 'extractos:listar' %}">Extractos</a>.
+            El <strong>bloque</strong> dice dónde se agrupa; el <strong>cómputo</strong>,
+            si lo que cae en ella resta (gasto), suma (ingreso) o no cuenta
+            (traspasos entre tus cuentas, pagos de tarjeta…).
+        </p>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="abrirModalCategoria()">＋ Nueva categoría</button>
+</div>
+
+{% for msg in messages %}
+<div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
+{% endfor %}
+
+<div class="cat-resumen">
+    <span><strong>{{ total_categorias }}</strong> categoría{{ total_categorias|pluralize:"s" }} activa{{ total_categorias|pluralize:"s" }}</span>
+    {% if total_archivadas %}<span class="text-muted">· {{ total_archivadas }} archivada{{ total_archivadas|pluralize:"s" }}</span>{% endif %}
+</div>
+
+{% for bloque in bloques %}
+<div class="cat-bloque">
+    <div class="cat-bloque-titulo">{{ bloque.etiqueta }}</div>
+    <div class="table-scroll">
+        <table class="table cat-table">
+            <thead>
+                <tr>
+                    <th>Categoría</th>
+                    <th>Cómputo</th>
+                    <th class="num">Gastos declarados</th>
+                    <th class="num">Movimientos</th>
+                    <th class="num">Reglas</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in bloque.categorias %}
+                <tr {% if not c.activo %}class="cat-archivada"{% endif %}>
+                    <td>
+                        {{ c.nombre }}
+                        {% if not c.activo %}<span class="badge badge-muted">Archivada</span>{% endif %}
+                    </td>
+                    <td><span class="cat-computo cat-computo-{{ c.computo }}">{{ c.etiqueta_computo }}</span></td>
+                    <td class="num">{{ c.num_partidas }}</td>
+                    <td class="num">{{ c.num_movimientos }}</td>
+                    <td class="num">{{ c.num_reglas }}</td>
+                    <td class="num cat-acciones">
+                        <button type="button" class="r-btn" title="Editar categoría"
+                                data-editar="{{ c.id }}" data-nombre="{{ c.nombre }}"
+                                data-tipo="{{ c.tipo }}" data-computo="{{ c.computo }}">
+                            <svg class="icon"><use href="#i-edit"/></svg>
+                        </button>
+                        <form method="post" action="{% url 'finanzas:archivar_categoria' c.id %}" style="display:inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="cat-mini-btn" title="{% if c.activo %}Archivar: deja de ofrecerse, sin tocar el historial{% else %}Reactivar{% endif %}">
+                                {% if c.activo %}Archivar{% else %}Reactivar{% endif %}
+                            </button>
+                        </form>
+                        <button type="button" class="r-btn" title="Eliminar categoría"
+                                data-eliminar="{{ c.id }}" data-nombre="{{ c.nombre }}"
+                                data-partidas="{{ c.num_partidas }}" data-movimientos="{{ c.num_movimientos }}">
+                            <svg class="icon"><use href="#i-trash"/></svg>
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% empty %}
+<p class="text-muted">Todavía no hay categorías.</p>
+{% endfor %}
+
+</div>
+
+<!-- MODAL CREAR / EDITAR -->
+<div id="modal-categoria" class="modal-overlay">
+    <div class="modal-box">
+        <h2 id="modal-categoria-titulo">Nueva categoría</h2>
+        <form method="post" action="{% url 'finanzas:crear_categoria' %}" id="form-categoria">
+            {% csrf_token %}
+            <input type="hidden" name="volver_a" value="{{ request.get_full_path }}">
+            <div class="form-group">
+                <label>Nombre</label>
+                <input type="text" name="nombre" id="cat-nombre" placeholder="Ej: Mascotas, Educación…" required>
+            </div>
+            <div class="form-group">
+                <label>Bloque</label>
+                <select name="tipo" id="cat-tipo">
+                    {% for t in tipos %}
+                    <option value="{{ t.valor }}" {% if t.valor == 'variable' %}selected{% endif %}>{{ t.etiqueta }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Cómputo</label>
+                <select name="computo" id="cat-computo">
+                    {% for valor, etiqueta in computos %}
+                    <option value="{{ valor }}">{{ etiqueta }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted">
+                    Las neutras no entran en los totales de ingresos ni de gastos del análisis
+                    de extractos, ni en la conciliación con el presupuesto.
+                </small>
+            </div>
+            <div class="modal-btns">
+                <button type="submit" class="btn btn-primary" id="cat-submit">Crear</button>
+                <button type="button" class="btn btn-secondary" onclick="cerrarModalCategoria()">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- MODAL ELIMINAR -->
+<div id="modal-eliminar" class="modal-overlay">
+    <div class="modal-box">
+        <h2>Eliminar categoría</h2>
+        <form method="post" id="form-eliminar">
+            {% csrf_token %}
+            <input type="hidden" name="volver_a" value="{{ request.get_full_path }}">
+            <p id="eliminar-texto"></p>
+            <div class="form-group">
+                <label>Mover antes su contenido a</label>
+                <select name="reasignar_a" id="eliminar-destino">
+                    <option value="">— No mover nada —</option>
+                    {% for c in categorias_destino %}
+                    <option value="{{ c.id }}" data-cat-id="{{ c.id }}">{{ c.nombre }}</option>
+                    {% endfor %}
+                </select>
+                <small class="text-muted">
+                    Si no mueves nada, los movimientos ya clasificados se quedan sin categorizar
+                    y las reglas aprendidas de esta categoría se pierden.
+                </small>
+            </div>
+            <div class="modal-btns">
+                <button type="submit" class="btn btn-danger">Eliminar</button>
+                <button type="button" class="btn btn-secondary" onclick="cerrarModalEliminar()">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+/* Modales y avisos: mismo lenguaje visual que el resto del módulo de gastos. */
+.modal-overlay {
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,0.75); z-index:2000; align-items:center; justify-content:center;
+    padding:20px; box-sizing:border-box;
+}
+.modal-box {
+    background:var(--surface); border:1px solid var(--primary-color); border-radius:20px;
+    padding:36px; box-shadow:0 1px 2px rgba(28,35,33,.06); max-width:460px; width:100%;
+    max-height:90vh; overflow-y:auto; box-sizing:border-box;
+}
+.modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.2rem; }
+.modal-box .form-group { margin-bottom:18px; }
+.modal-box label { display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px; }
+.modal-box select, .modal-box input[type="text"] {
+    width:100%; padding:14px 16px; border:1px solid var(--border-strong); border-radius:10px;
+    background:var(--app-bg); color:var(--text-color); font-size:1rem; box-sizing:border-box;
+}
+.modal-box select:focus, .modal-box input:focus { outline:none; border-color:var(--primary-color); }
+.modal-btns { display:flex; gap:12px; margin-top:20px; }
+.msg-toast {
+    background:var(--surface); border-left:3px solid var(--primary-color);
+    padding:12px 16px; border-radius:8px; margin-bottom:16px; color:var(--text-color);
+}
+
+.cat-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:8px; }
+.cat-sub { color:var(--muted); font-size:0.85rem; max-width:70ch; margin:6px 0 0; }
+.cat-resumen { display:flex; gap:8px; font-size:0.85rem; margin:14px 0 18px; }
+.cat-bloque { margin-bottom:22px; }
+.cat-bloque-titulo { font-size:0.72rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+.cat-table td, .cat-table th { vertical-align:middle; }
+.cat-acciones { white-space:nowrap; display:flex; gap:6px; justify-content:flex-end; align-items:center; }
+.cat-mini-btn { background:var(--app-bg); border:1px solid var(--border-strong); color:var(--muted); font-size:0.7rem; font-weight:600; padding:5px 10px; border-radius:8px; cursor:pointer; }
+.cat-mini-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
+tr.cat-archivada td { opacity:.55; }
+.cat-computo { font-size:0.72rem; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+.cat-computo-resta { background:color-mix(in srgb, var(--danger) 14%, transparent); color:var(--danger); }
+.cat-computo-suma { background:color-mix(in srgb, var(--success) 14%, transparent); color:var(--success); }
+.cat-computo-neutro { background:color-mix(in srgb, var(--muted) 20%, transparent); color:var(--muted); }
+#modal-categoria small, #modal-eliminar small { display:block; margin-top:6px; font-size:0.72rem; line-height:1.4; }
+</style>
+
+<script>
+(function () {
+    var URL_CREAR = "{% url 'finanzas:crear_categoria' %}";
+    var URL_EDITAR = "/finanzas/categorias/__ID__/editar/";
+    var URL_ELIMINAR = "/finanzas/categorias/__ID__/eliminar/";
+
+    var modal = document.getElementById('modal-categoria');
+    var form = document.getElementById('form-categoria');
+    var modalEliminar = document.getElementById('modal-eliminar');
+    var formEliminar = document.getElementById('form-eliminar');
+
+    window.abrirModalCategoria = function () {
+        document.getElementById('modal-categoria-titulo').textContent = 'Nueva categoría';
+        document.getElementById('cat-submit').textContent = 'Crear';
+        form.action = URL_CREAR;
+        form.reset();
+        modal.style.display = 'flex';
+        document.getElementById('cat-nombre').focus();
+    };
+    window.cerrarModalCategoria = function () { modal.style.display = 'none'; };
+    window.cerrarModalEliminar = function () { modalEliminar.style.display = 'none'; };
+
+    document.querySelectorAll('[data-editar]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('modal-categoria-titulo').textContent = 'Editar categoría';
+            document.getElementById('cat-submit').textContent = 'Guardar';
+            form.action = URL_EDITAR.replace('__ID__', btn.dataset.editar);
+            document.getElementById('cat-nombre').value = btn.dataset.nombre;
+            document.getElementById('cat-tipo').value = btn.dataset.tipo;
+            document.getElementById('cat-computo').value = btn.dataset.computo;
+            modal.style.display = 'flex';
+            document.getElementById('cat-nombre').focus();
+        });
+    });
+
+    /* Al cambiar de bloque se propone el cómputo habitual de ese bloque, pero
+       sin imponerlo: la última palabra es del usuario. */
+    var COMPUTO_POR_TIPO = {
+        fijo: 'resta', anual: 'resta', variable: 'resta',
+        discrecional: 'resta', ingreso: 'suma', traspaso: 'neutro'
+    };
+    document.getElementById('cat-tipo').addEventListener('change', function () {
+        var sugerido = COMPUTO_POR_TIPO[this.value];
+        if (sugerido) document.getElementById('cat-computo').value = sugerido;
+    });
+
+    document.querySelectorAll('[data-eliminar]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            formEliminar.action = URL_ELIMINAR.replace('__ID__', btn.dataset.eliminar);
+            var partidas = parseInt(btn.dataset.partidas, 10) || 0;
+            var movimientos = parseInt(btn.dataset.movimientos, 10) || 0;
+            var texto = '¿Eliminar «' + btn.dataset.nombre + '»?';
+            if (partidas || movimientos) {
+                texto += ' Tiene ' + partidas + ' gasto(s) declarado(s) y ' +
+                         movimientos + ' movimiento(s) clasificado(s).';
+            }
+            if (partidas) {
+                texto += ' Para no perder el presupuesto hay que moverlos a otra categoría.';
+            }
+            document.getElementById('eliminar-texto').textContent = texto;
+            /* La propia categoría no puede ser su destino. */
+            document.querySelectorAll('#eliminar-destino option').forEach(function (op) {
+                op.hidden = op.dataset.catId === btn.dataset.eliminar;
+            });
+            document.getElementById('eliminar-destino').value = '';
+            modalEliminar.style.display = 'flex';
+        });
+    });
+
+    [modal, modalEliminar].forEach(function (m) {
+        m.addEventListener('click', function (e) { if (e.target === m) m.style.display = 'none'; });
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { cerrarModalCategoria(); cerrarModalEliminar(); }
+    });
+
+    document.querySelectorAll('.msg-toast').forEach(function (el) {
+        setTimeout(function () { el.remove(); }, 4000);
+    });
+})();
+</script>
+{% endblock %}
