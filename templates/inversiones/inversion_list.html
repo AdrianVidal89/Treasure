@@ -152,16 +152,6 @@
         </div>
     </div>
 
-    {% if messages %}
-        {% for message in messages %}
-        <div style="background: var(--surface); border-left: 3px solid var(--primary-color);
-                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
-                    font-size: 0.85rem; color: var(--text-color);">
-            {{ message }}
-        </div>
-        {% endfor %}
-    {% endif %}
-
     <!-- KPIs -->
     <div class="inv-kpi-grid">
         <div class="inv-kpi" style="border-color: color-mix(in srgb, var(--primary-color) 27%, transparent);">

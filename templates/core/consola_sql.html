@@ -23,10 +23,6 @@
         No se admiten varias sentencias a la vez ni cambios de estructura (DROP, ALTER…).
     </div>
 
-    {% for msg in messages %}
-    <div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
-    {% endfor %}
-
     <!-- ===== CONSULTA ===== -->
     <form method="post" class="sql-form">
         {% csrf_token %}

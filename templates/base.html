@@ -286,12 +286,50 @@
     {% endwith %}
     {% endif %}
 
+    {% comment %}
+    Los mensajes se pintan AQUÍ, una sola vez para toda la app. Cuando cada
+    plantilla decidía si mostrarlos, cualquier aviso emitido antes de un
+    redirect a una pantalla que no los pintaba —el dashboard, por ejemplo— se
+    quedaba en la cola de sesión y reaparecía días después en otra pantalla:
+    de ahí el «Necesitas pertenecer a un hogar» a un usuario que sí tiene uno.
+    {% endcomment %}
+    {% if messages %}
+    <div class="app-mensajes">
+        {% for message in messages %}
+        <div class="app-mensaje {{ message.tags }}">
+            <span>{{ message }}</span>
+            <button type="button" class="app-mensaje-cerrar" aria-label="Cerrar">&times;</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     {% block content %}
     {% endblock %}
 
     {% if request.user.is_authenticated and not hide_navbar %}
     </main>
     {% endif %}
+
+    <style>
+    .app-mensajes { margin:0 auto 18px; max-width:1200px; padding:0 20px; display:flex; flex-direction:column; gap:8px; }
+    .app-mensaje {
+        display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:10px;
+        font-size:0.86rem; background:var(--surface); border:1px solid var(--border);
+        border-left:3px solid var(--primary-color); color:var(--text-color);
+    }
+    .app-mensaje.error { border-left-color:var(--danger); }
+    .app-mensaje.warning { border-left-color:var(--warning); }
+    .app-mensaje.success { border-left-color:var(--success); }
+    .app-mensaje span { flex:1; }
+    .app-mensaje-cerrar { background:none; border:none; color:var(--muted); font-size:1.15rem; line-height:1; cursor:pointer; padding:0 4px; }
+    .app-mensaje-cerrar:hover { color:var(--text-color); }
+    </style>
+    <script>
+    document.querySelectorAll('.app-mensaje-cerrar').forEach(function (b) {
+        b.addEventListener('click', function () { b.closest('.app-mensaje').remove(); });
+    });
+    </script>
 
 
     <script>

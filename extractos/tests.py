@@ -27,7 +27,7 @@ from .normalizacion import (
     contiene_patron, es_traspaso_interno, normalizar_comercio, normalizar_texto,
 )
 from .parser import analizar_extracto
-from .views import _importar_analizados, _panel_context
+from .views import _importar_analizados, _marcar_duplicados, _panel_context
 
 FIXTURES = Path(__file__).resolve().parent / 'tests_fixtures'
 
@@ -533,6 +533,89 @@ class DuplicadosTests(TestCase):
         self.assertEqual(respuesta.context['total_nuevos'], total / 2)
         self.assertEqual(respuesta.context['total_duplicados'], total / 2)
 
+    def _analizado(self, nombre, filas):
+        """Un extracto sintético: (dia, concepto, importe, saldo)."""
+        return {
+            'nombre': nombre,
+            'resultado': {
+                'movimientos': [{
+                    'fecha': f'2026-08-{dia:02d}', 'concepto': concepto,
+                    'concepto_raw': concepto, 'importe': Decimal(importe),
+                    'saldo': Decimal(saldo) if saldo is not None else None,
+                } for dia, concepto, importe, saldo in filas],
+                'filas_error': [], 'filas_omitidas': [],
+            },
+        }
+
+    def _revisar_analizado(self, analizado):
+        """Pasa un extracto sintético por el marcado de duplicados de la revisión."""
+        _marcar_duplicados(self.hogar, [analizado])
+        return analizado['resultado']['movimientos']
+
+    def test_reimportar_el_mes_a_medias_solo_trae_lo_nuevo(self):
+        """El caso real: se importa agosto a mitad de mes para ver cómo va y se
+        vuelve a importar más adelante con el mes más completo. Lo ya guardado
+        se marca como duplicado y solo entran los apuntes nuevos."""
+        primeros = [
+            (1, 'Supermercado Dia', '-42.10', '1000.00'),
+            (3, 'Gasolinera Repsol', '-60.00', '940.00'),
+        ]
+        _importar_analizados(
+            self.hogar, self.user, 'Banco', None, [self._analizado('agosto.csv', primeros)],
+        )
+        self.assertEqual(MovimientoBancario.objects.filter(hogar=self.hogar).count(), 2)
+
+        mes_completo = primeros + [
+            (12, 'Farmacia Ronda', '-14.00', '926.00'),
+            (20, 'Restaurante La Plaza', '-35.50', '890.50'),
+        ]
+        segundo = self._analizado('agosto.csv', mes_completo)
+
+        # Lo que ve el usuario en la pantalla de revisión antes de confirmar.
+        movs = self._revisar_analizado(segundo)
+        self.assertEqual([m['ya_existe'] for m in movs], [True, True, False, False])
+
+        totales = _importar_analizados(
+            self.hogar, self.user, 'Banco', None, [segundo],
+        )
+        self.assertEqual(totales['total_creados'], 2)
+        self.assertEqual(totales['total_duplicados'], 2)
+        self.assertEqual(MovimientoBancario.objects.filter(hogar=self.hogar).count(), 4)
+
+    def test_el_tercer_intento_del_mismo_mes_no_duplica_nada(self):
+        """Reimportar el mes ya completo no crea nada: ni un extracto vacío."""
+        filas = [
+            (1, 'Supermercado Dia', '-42.10', '1000.00'),
+            (3, 'Gasolinera Repsol', '-60.00', '940.00'),
+        ]
+        for _ in range(3):
+            _importar_analizados(
+                self.hogar, self.user, 'Banco', None, [self._analizado('agosto.csv', filas)],
+            )
+
+        self.assertEqual(MovimientoBancario.objects.filter(hogar=self.hogar).count(), 2)
+        self.assertEqual(ExtractoBancario.objects.filter(hogar=self.hogar).count(), 1)
+
+    def test_la_revision_no_deja_confirmar_cuando_todo_esta_repetido(self):
+        """Si no queda nada nuevo, la pantalla lo dice y el botón va deshabilitado:
+        el usuario no puede confirmar una importación que no importaría nada."""
+        primera = self._subir('caixabank.csv')
+        analizados = [{
+            'nombre': 'caixabank.csv',
+            'resultado': analizar_extracto(leer_fixture('caixabank.csv')),
+        }]
+        _importar_analizados(self.hogar, self.user, 'Banco', None, analizados)
+
+        segunda = self._subir('caixabank.csv')
+        self.assertEqual(segunda.context['total_nuevos'], 0)
+        contenido = segunda.content.decode('utf-8')
+        self.assertIn('no se volverán a importar', contenido)
+        self.assertIn('No queda nada nuevo que importar', contenido)
+        self.assertIn('Ya los tienes', contenido)
+        self.assertIn('Confirmar importación (0)', contenido)
+        self.assertIn('Ya tienes importados todos estos movimientos', contenido)
+        self.assertNotEqual(primera.context['total_nuevos'], 0)
+
 
 class AprendizajeTests(TestCase):
 
@@ -810,6 +893,83 @@ class AprendizajeTests(TestCase):
         self.assertEqual(respuesta.status_code, 400)
         self.assertEqual(
             MovimientoBancario.objects.filter(hogar=self.hogar, categoria__isnull=False).count(), 0,
+        )
+
+    def test_sin_categorizar_categoriza_todo_el_comercio_de_toda_la_app(self):
+        """Lo que se envía desde «Sin categorizar» es exactamente el formulario
+        de la plantilla: categoría + patrón, sin ámbito. Debe alcanzar a los
+        movimientos de ese comercio en CUALQUIER mes y CUALQUIER extracto —no
+        uno por uno— y dejar la regla puesta."""
+        otro_extracto = ExtractoBancario.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre_banco='Otro banco',
+        )
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 3, 4),
+            concepto='MALACABEZA SEVILLA', importe=Decimal('-12.00'),
+        )
+        MovimientoBancario.objects.create(
+            extracto=otro_extracto, hogar=self.hogar, fecha=date(2025, 11, 20),
+            concepto='Compra en Malacabeza', importe=Decimal('-31.50'),
+        )
+        MovimientoBancario.objects.create(
+            extracto=otro_extracto, hogar=self.hogar, fecha=date(2026, 8, 9),
+            concepto='malacabeza centro', importe=Decimal('-9.00'),
+        )
+        ajeno = self.crear_movimiento('Otro sitio cualquiera')
+
+        # El patrón que ofrece la plantilla es el comercio normalizado del grupo.
+        grupos = {g['comercio']: g for g in
+                  self.client.get(reverse('extractos:sin_categorizar')).context['grupos']}
+        self.assertIn('malacabeza', grupos)
+
+        respuesta = self.client.post(reverse('extractos:aprender_regla'), {
+            'categoria_id': self.ocio.id, 'patron': grupos['malacabeza']['comercio'],
+        }, follow=True)
+        self.assertEqual(respuesta.status_code, 200)
+
+        categorizados = MovimientoBancario.objects.filter(hogar=self.hogar, categoria=self.ocio)
+        self.assertEqual(categorizados.count(), 3)
+        # Cubre los dos extractos y los tres meses distintos, no solo el revisado.
+        self.assertEqual(
+            {(m.fecha.year, m.fecha.month) for m in categorizados},
+            {(2026, 3), (2025, 11), (2026, 8)},
+        )
+        self.assertEqual({m.estado_categorizacion for m in categorizados}, {'por_regla'})
+        self.assertTrue(
+            ReglaCategorizacion.objects.filter(
+                hogar=self.hogar, patron='malacabeza', categoria=self.ocio,
+                origen='manual', activo=True,
+            ).exists()
+        )
+        ajeno.refresh_from_db()
+        self.assertIsNone(ajeno.categoria)
+        # Y el grupo desaparece de la pantalla: no queda nada que repasar.
+        restantes = self.client.get(reverse('extractos:sin_categorizar')).context['grupos']
+        self.assertNotIn('malacabeza', {g['comercio'] for g in restantes})
+
+    def test_sin_categorizar_arrastra_tambien_los_comercios_parecidos_marcados(self):
+        """Los «también parecidos» viajan como patrones extra del mismo envío:
+        una sola pasada debe cubrirlos y recordarlos todos."""
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 5, 2),
+            concepto='Farmacia Ronda', importe=Decimal('-14.00'),
+        )
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 5, 3),
+            concepto='Farmacia Rondo', importe=Decimal('-8.00'),
+        )
+
+        self.client.post(reverse('extractos:aprender_regla'), {
+            'categoria_id': self.ocio.id,
+            'patron': ['farmacia ronda', 'farmacia rondo'],
+        })
+
+        self.assertEqual(
+            MovimientoBancario.objects.filter(hogar=self.hogar, categoria=self.ocio).count(), 2,
+        )
+        self.assertEqual(
+            set(ReglaCategorizacion.objects.filter(hogar=self.hogar).values_list('patron', flat=True)),
+            {'farmacia ronda', 'farmacia rondo'},
         )
 
 

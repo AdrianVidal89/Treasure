@@ -235,12 +235,6 @@
     <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;"> Presupuesto de Gastos</h1>
     <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
 
-    {% if messages %}
-        {% for message in messages %}
-        <div class="msg-toast">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-
     <!-- ═══ RESUMEN: EL TOTAL ES LA SUMA, Y SE VE ═══
          Antes el total era una tarjeta más en una fila de cinco iguales, así
          que parecía un gasto al lado de los otros. Ahora es el recipiente: la

@@ -83,12 +83,6 @@
         <a href="{% url 'finanzas:crear_propiedad' %}" class="btn btn-add">+ Añadir propiedad</a>
     </div>
 
-    {% if messages %}
-        {% for message in messages %}
-        <div style="background: var(--surface); border-left: 3px solid var(--primary-color); padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 0.85rem;">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-
     {% if propiedades_con_venta %}
 
     <div class="resumen-grid">

@@ -24,10 +24,6 @@
     </form>
 </div>
 
-{% for msg in messages %}
-<div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
-{% endfor %}
-
 {% if d.mes_cerrado %}
 <!-- Mes ya cerrado: los totales son los que quedaron registrados, no se
      recalculan con la configuración de hoy. El desglose de abajo (fondos,

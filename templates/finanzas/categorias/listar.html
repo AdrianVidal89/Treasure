@@ -24,10 +24,6 @@
 
 {% extractos_nav 'categorias' %}
 
-{% for msg in messages %}
-<div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
-{% endfor %}
-
 <div class="cat-resumen">
     <span><strong>{{ total_categorias }}</strong> categoría{{ total_categorias|pluralize:"s" }} activa{{ total_categorias|pluralize:"s" }}</span>
     {% if total_archivadas %}<span class="text-muted">· {{ total_archivadas }} archivada{{ total_archivadas|pluralize:"s" }}</span>{% endif %}
