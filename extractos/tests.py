@@ -20,8 +20,9 @@ from finanzas.models import CategoriaGasto, PartidaGasto
 from finanzas.parsing import es_excel, leer_tabla
 from finanzas.views_gastos import _crear_categorias_predefinidas
 
+from .analisis import analizar_mes
 from .categorizacion import categorizar_por_codigo
-from .models import ExtractoBancario, MovimientoBancario, ReglaCategorizacion
+from .models import Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion
 from .normalizacion import (
     contiene_patron, es_traspaso_interno, normalizar_comercio, normalizar_texto,
 )
@@ -1082,3 +1083,325 @@ class PanelBuscadorTests(TestCase):
     def test_la_etiqueta_del_periodo_sigue_al_filtro(self):
         self.assertEqual(self.panel(anio='2026', mes='7')['periodo_etiqueta'], 'Julio 2026')
         self.assertEqual(self.panel(anio='2026')['periodo_etiqueta'], '2026')
+
+
+class AnalisisDelMesTests(TestCase):
+    """El motor que responde «en qué se ha ido el mes y qué lo explica»."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+
+    def gasto(self, concepto, importe, anio, mes, dia, categoria='Restaurantes'):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(anio, mes, dia),
+            concepto=concepto, importe=Decimal(importe),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria) if categoria else None,
+        )
+
+    def analizar(self, anio=2026, mes=8, **kwargs):
+        todos = list(
+            MovimientoBancario.objects.filter(hogar=self.hogar)
+            .select_related('categoria').prefetch_related('etiquetas')
+        )
+        return analizar_mes(todos, anio, mes, **kwargs)
+
+    def _tres_meses_normales_y_un_agosto_caro(self):
+        for mes in (5, 6, 7):
+            self.gasto('Glovo pedido', '-50', 2026, mes, 5)
+            self.gasto('Mercadona', '-200', 2026, mes, 10, categoria='Alimentacion')
+        self.gasto('Glovo pedido', '-250', 2026, 8, 5)
+        self.gasto('Mercadona', '-210', 2026, 8, 10, categoria='Alimentacion')
+
+    def test_compara_contra_la_media_de_los_meses_anteriores(self):
+        self._tres_meses_normales_y_un_agosto_caro()
+        a = self.analizar()
+
+        self.assertEqual(a['total'], Decimal('460'))
+        self.assertEqual(a['media'], Decimal('250'))
+        self.assertEqual(a['desviacion'], Decimal('210'))
+        self.assertEqual(a['meses_referencia'], 3)
+        self.assertTrue(a['hay_referencia'])
+
+    def test_el_puente_señala_la_categoria_culpable(self):
+        self._tres_meses_normales_y_un_agosto_caro()
+        puente = self.analizar()['puente']
+
+        self.assertEqual(puente[0]['categoria'], 'Restaurantes')
+        self.assertEqual(puente[0]['desviacion'], Decimal('200'))
+        # Alimentación también se desvía, pero mucho menos: va detrás.
+        self.assertEqual(puente[1]['categoria'], 'Alimentacion')
+        self.assertEqual(puente[1]['desviacion'], Decimal('10'))
+
+    def test_el_puente_incluye_lo_que_baja(self):
+        """Saber que la luz ha ido a favor es parte de entender el mes."""
+        for mes in (6, 7):
+            self.gasto('Recibo luz', '-100', 2026, mes, 3, categoria='Luz')
+        self.gasto('Recibo luz', '-60', 2026, 8, 3, categoria='Luz')
+
+        puente = self.analizar()['puente']
+        self.assertEqual(puente[0]['categoria'], 'Luz')
+        self.assertEqual(puente[0]['desviacion'], Decimal('-40'))
+
+    def test_sin_meses_anteriores_no_se_inventa_una_comparacion(self):
+        self.gasto('Glovo pedido', '-250', 2026, 8, 5)
+        a = self.analizar()
+
+        self.assertFalse(a['hay_referencia'])
+        self.assertEqual(a['puente'], [])
+        self.assertEqual(a['total'], Decimal('250'))
+
+    def test_el_ranking_de_comercios_distingue_goteo_de_gasto_puntual(self):
+        for dia in (3, 6, 9, 12, 15, 18, 21, 24):
+            self.gasto('Glovo pedido', '-24', 2026, 8, dia)
+        self.gasto('La Brunilda tapas', '-190', 2026, 8, 20)
+
+        comercios = {c['comercio']: c for c in self.analizar()['comercios']}
+        glovo = comercios['glovo pedido']
+        brunilda = comercios['la brunilda tapas']
+
+        self.assertEqual(glovo['num'], 8)
+        self.assertEqual(glovo['total'], Decimal('192'))
+        self.assertEqual(glovo['ticket_medio'], Decimal('24'))
+        self.assertEqual(brunilda['num'], 1)
+        self.assertEqual(brunilda['ticket_medio'], Decimal('190'))
+        # El de mayor importe encabeza el ranking.
+        self.assertEqual(self.analizar()['comercios'][0]['comercio'], 'glovo pedido')
+
+    def test_separa_el_suelo_de_gasto_de_lo_excepcional(self):
+        for mes in (5, 6, 7):
+            self.gasto('Cuota gimnasio', '-30', 2026, mes, 2, categoria='Gimnasio')
+        self.gasto('Cuota gimnasio', '-30', 2026, 8, 2, categoria='Gimnasio')
+        self.gasto('Vuelo a Lisboa', '-180', 2026, 8, 12)
+
+        a = self.analizar()
+        self.assertEqual(a['gasto_recurrente'], Decimal('30'))
+        self.assertEqual(a['gasto_puntual'], Decimal('180'))
+
+    def test_sin_historia_nada_se_marca_como_habitual(self):
+        """Marcar «puntual» algo que solo lleva un mes importado sería mentir
+        con seguridad."""
+        self.gasto('Cuota gimnasio', '-30', 2026, 8, 2, categoria='Gimnasio')
+        a = self.analizar()
+        self.assertEqual(a['gasto_recurrente'], Decimal('0'))
+        self.assertFalse(a['comercios'][0]['recurrente'])
+
+    def test_los_gastos_hormiga_se_suman_aparte(self):
+        for dia in range(1, 11):
+            self.gasto(f'Cafe {dia}', '-2.50', 2026, 8, dia)
+        self.gasto('Cena', '-60', 2026, 8, 20)
+
+        a = self.analizar()
+        self.assertEqual(a['hormiga_num'], 10)
+        self.assertEqual(a['hormiga_total'], Decimal('25.00'))
+
+    def test_acotar_a_una_categoria_reduce_el_ambito(self):
+        self._tres_meses_normales_y_un_agosto_caro()
+        alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+
+        a = self.analizar(categoria_id=alimentacion.id)
+        self.assertEqual(a['total'], Decimal('210'))
+        self.assertEqual(a['media'], Decimal('200'))
+        self.assertEqual([c['nombre'] for c in a['categorias']], ['Alimentacion'])
+
+    def test_acotar_a_un_bloque_reduce_el_ambito(self):
+        self._tres_meses_normales_y_un_agosto_caro()
+        a = self.analizar(bloque='discrecional')
+        self.assertEqual(a['total'], Decimal('250'))
+        self.assertEqual([c['nombre'] for c in a['categorias']], ['Restaurantes'])
+
+    def test_ni_los_ingresos_ni_los_neutros_entran_en_el_analisis(self):
+        self.gasto('Nomina agosto', '2500', 2026, 8, 1, categoria='Nomina')
+        self.gasto('A mi cuenta', '-900', 2026, 8, 2, categoria='Traspaso entre cuentas')
+        self.gasto('Glovo pedido', '-24', 2026, 8, 5)
+
+        a = self.analizar()
+        self.assertEqual(a['total'], Decimal('24'))
+        self.assertEqual([c['nombre'] for c in a['categorias']], ['Restaurantes'])
+
+    def test_una_devolucion_resta_de_su_categoria(self):
+        self.gasto('Zapatillas', '-80', 2026, 8, 5, categoria='Ropa')
+        self.gasto('Devolucion zapatillas', '30', 2026, 8, 9, categoria='Ropa')
+
+        a = self.analizar()
+        self.assertEqual(a['total'], Decimal('50'))
+
+
+class AnalisisVistaTests(TestCase):
+    """La pantalla: a dónde lleva el drill-down y qué enseña."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 7, 5),
+            concepto='Cines', importe=Decimal('-20'), categoria=self.ocio,
+        )
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 8, 5),
+            concepto='Cines', importe=Decimal('-60'), categoria=self.ocio,
+        )
+
+    def test_se_abre_en_el_ultimo_mes_con_datos(self):
+        respuesta = self.client.get(reverse('extractos:analisis'))
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.context['etiqueta_mes'], 'Agosto 2026')
+        self.assertEqual(respuesta.context['a']['total'], Decimal('60'))
+
+    def test_acota_por_categoria_desde_la_url(self):
+        respuesta = self.client.get(reverse('extractos:analisis'), {
+            'anio': 2026, 'mes': 8, 'categoria': self.ocio.id,
+        })
+        self.assertEqual(respuesta.context['categoria'], self.ocio)
+        self.assertTrue(respuesta.context['hay_ambito'])
+
+    def test_una_categoria_de_otro_hogar_no_acota_nada(self):
+        otro = Hogar.objects.create(nombre='Otro')
+        ajena = CategoriaGasto.objects.create(hogar=otro, nombre='Ajena', tipo='variable')
+        respuesta = self.client.get(reverse('extractos:analisis'), {'categoria': ajena.id})
+        self.assertIsNone(respuesta.context['categoria'])
+
+    def test_un_bloque_inventado_se_ignora(self):
+        respuesta = self.client.get(reverse('extractos:analisis'), {'bloque': 'inventado'})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.context['bloque'], '')
+
+    def test_la_conciliacion_enlaza_con_el_analisis_de_cada_categoria(self):
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.ocio, nombre='Ocio',
+            importe=Decimal('40'), periodicidad='mensual',
+        )
+        respuesta = self.client.get(reverse('extractos:conciliacion'))
+        filas = [f for b in respuesta.context['bloques'] for f in b['filas']]
+        self.assertEqual(filas[0]['categoria_id'], self.ocio.id)
+        self.assertContains(respuesta, f'categoria={self.ocio.id}')
+
+
+class EtiquetasTests(TestCase):
+    """Etiquetas: el corte transversal que las categorías no pueden dar."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.mov = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 8, 5),
+            concepto='Hotel Lisboa', importe=Decimal('-240'),
+        )
+
+    def etiquetar(self, mov, **datos):
+        return self.client.post(
+            reverse('extractos:etiquetar_movimiento', args=[mov.id]), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_etiquetar_crea_la_etiqueta_si_es_nueva(self):
+        respuesta = self.etiquetar(self.mov, nombre='Vacaciones Lisboa')
+        datos = respuesta.json()
+
+        self.assertTrue(datos['ok'])
+        self.assertEqual(datos['etiquetas'][0]['nombre'], 'Vacaciones Lisboa')
+        self.assertEqual(Etiqueta.objects.filter(hogar=self.hogar).count(), 1)
+
+    def test_la_misma_etiqueta_no_se_duplica_por_mayusculas(self):
+        self.etiquetar(self.mov, nombre='Vacaciones')
+        otro = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 8, 6),
+            concepto='Cena Lisboa', importe=Decimal('-40'),
+        )
+        self.etiquetar(otro, nombre='VACACIONES')
+
+        self.assertEqual(Etiqueta.objects.filter(hogar=self.hogar).count(), 1)
+        self.assertEqual(Etiqueta.objects.get().movimientos.count(), 2)
+
+    def test_quitar_una_etiqueta_la_desvincula_sin_borrarla(self):
+        self.etiquetar(self.mov, nombre='Vacaciones')
+        etiqueta = Etiqueta.objects.get()
+        respuesta = self.etiquetar(self.mov, quitar=etiqueta.id)
+
+        self.assertEqual(respuesta.json()['etiquetas'], [])
+        self.assertTrue(Etiqueta.objects.filter(pk=etiqueta.pk).exists())
+
+    def test_ofrece_etiquetar_el_resto_del_comercio(self):
+        for dia in (6, 7):
+            MovimientoBancario.objects.create(
+                extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 8, dia),
+                concepto='Hotel Lisboa', importe=Decimal('-240'),
+            )
+        sugerencia = self.etiquetar(self.mov, nombre='Vacaciones').json()['sugerencia']
+        self.assertEqual(sugerencia['n_similares'], 2)
+
+        etiqueta = Etiqueta.objects.get()
+        respuesta = self.client.post(reverse('extractos:etiquetar_comercio'), {
+            'etiqueta_id': etiqueta.id, 'comercio': self.mov.comercio,
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertEqual(respuesta.json()['aplicados'], 2)
+        self.assertEqual(etiqueta.movimientos.count(), 3)
+
+    def test_borrar_una_etiqueta_no_toca_los_movimientos(self):
+        self.etiquetar(self.mov, nombre='Vacaciones')
+        etiqueta = Etiqueta.objects.get()
+        self.client.post(reverse('extractos:etiquetas'), {
+            'accion': 'eliminar', 'etiqueta_id': etiqueta.id,
+        })
+
+        self.assertFalse(Etiqueta.objects.exists())
+        self.mov.refresh_from_db()
+        self.assertEqual(self.mov.concepto, 'Hotel Lisboa')
+
+    def test_el_analisis_reparte_el_gasto_por_etiqueta(self):
+        self.etiquetar(self.mov, nombre='Vacaciones Lisboa')
+        todos = list(
+            MovimientoBancario.objects.filter(hogar=self.hogar)
+            .select_related('categoria').prefetch_related('etiquetas')
+        )
+        etiquetas = analizar_mes(todos, 2026, 8)['etiquetas']
+
+        self.assertEqual(etiquetas[0]['nombre'], 'Vacaciones Lisboa')
+        self.assertEqual(etiquetas[0]['total'], Decimal('240'))
+
+    def test_el_listado_se_puede_filtrar_por_etiqueta(self):
+        self.etiquetar(self.mov, nombre='Vacaciones')
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 8, 9),
+            concepto='Otra cosa', importe=Decimal('-10'),
+        )
+        etiqueta = Etiqueta.objects.get()
+
+        panel = self.client.get(
+            reverse('extractos:listar'), {'etiqueta': etiqueta.id},
+        ).context['panel']
+        self.assertEqual(panel['kpi_num'], 1)
+
+    def test_el_listado_se_puede_filtrar_por_bloque(self):
+        """Es el destino del drill-down desde la conciliación."""
+        ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 8, 9),
+            concepto='Cines', importe=Decimal('-10'), categoria=ocio,
+        )
+        panel = self.client.get(
+            reverse('extractos:listar'), {'bloque': 'discrecional'},
+        ).context['panel']
+
+        self.assertEqual(panel['kpi_num'], 1)
+        self.assertEqual(panel['bloque_etiqueta'], 'Discrecionales')

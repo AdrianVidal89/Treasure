@@ -6,6 +6,9 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
     <a href="{% url 'extractos:listar' %}" class="ext-nav-tab {% if activo == 'movimientos' %}activa{% endif %}">
         <svg class="icon"><use href="#i-statements"/></svg> Movimientos
     </a>
+    <a href="{% url 'extractos:analisis' %}" class="ext-nav-tab {% if activo == 'analisis' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-evolution"/></svg> Análisis
+    </a>
     <a href="{% url 'extractos:conciliacion' %}" class="ext-nav-tab {% if activo == 'conciliacion' %}activa{% endif %}">
         <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
     </a>
@@ -15,6 +18,9 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
     </a>
     <a href="{% url 'finanzas:listar_categorias' %}" class="ext-nav-tab {% if activo == 'categorias' %}activa{% endif %}">
         <svg class="icon"><use href="#i-tag"/></svg> Categorías
+    </a>
+    <a href="{% url 'extractos:etiquetas' %}" class="ext-nav-tab {% if activo == 'etiquetas' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-grip"/></svg> Etiquetas
     </a>
     <a href="{% url 'extractos:reglas' %}" class="ext-nav-tab {% if activo == 'reglas' %}activa{% endif %}">
         <svg class="icon"><use href="#i-refresh"/></svg> Reglas
@@ -27,13 +33,18 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
 
 <style>
 .ext-nav {
-    display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+    /* Una sola fila siempre: con siete pestañas y el botón, dejar que envuelva
+       tiraba «Importar» a una segunda línea con un hueco raro al lado. Si no
+       cabe, se desplaza en horizontal, que es lo que se espera de unas
+       pestañas. */
+    display:flex; align-items:center; gap:2px; flex-wrap:nowrap;
+    overflow-x:auto; scrollbar-width:thin;
     border-bottom:1px solid var(--border); margin:0 0 22px; padding-bottom:0;
 }
 .ext-nav-tab {
-    display:inline-flex; align-items:center; gap:7px; text-decoration:none;
-    color:var(--muted); font-size:0.86rem; font-weight:600;
-    padding:11px 14px; border-bottom:2px solid transparent; margin-bottom:-1px;
+    display:inline-flex; align-items:center; gap:6px; text-decoration:none; white-space:nowrap;
+    color:var(--muted); font-size:0.84rem; font-weight:600;
+    padding:11px 11px; border-bottom:2px solid transparent; margin-bottom:-1px;
     transition:color .15s, border-color .15s;
 }
 .ext-nav-tab:hover { color:var(--text-color); }
@@ -44,10 +55,9 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
     padding:1px 7px; border-radius:999px; line-height:1.5;
 }
 .ext-nav-badge.suave { background:var(--surface-2, var(--app-bg)); color:var(--muted); }
-.ext-nav-importar { margin-left:auto; margin-bottom:6px; }
-@media (max-width:640px) {
-    .ext-nav { gap:0; }
-    .ext-nav-tab { padding:10px; font-size:0.8rem; }
-    .ext-nav-importar { margin-left:0; width:100%; justify-content:center; }
+.ext-nav-importar { margin-left:auto; margin-bottom:6px; flex-shrink:0; }
+@media (max-width:760px) {
+    .ext-nav-tab { padding:10px 9px; font-size:0.8rem; }
+    .ext-nav-tab .icon { display:none; }
 }
 </style>
