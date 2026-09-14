@@ -1799,3 +1799,184 @@ class PilaresDelPresupuestoTests(TestCase):
         self.assertEqual([b['etiqueta'] for b in bloques], ['Variables', 'Discrecionales'])
         self.assertEqual(bloques[0]['importe'], Decimal('300'))
         self.assertEqual([c['nombre'] for c in bloques[0]['categorias']], ['Alimentacion'])
+
+
+class FueraDePresupuestoTests(TestCase):
+    """El análisis del mes contra el presupuesto declarado: qué se ha pasado
+    del límite, cuál era ese límite y cuánto fue el gasto real."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self._dia = 0
+
+    def declarar(self, categoria, importe, periodicidad='mensual'):
+        return PartidaGasto.objects.create(
+            hogar=self.hogar, nombre=f'Presupuesto {categoria}',
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria),
+            importe=Decimal(importe), periodicidad=periodicidad,
+        )
+
+    def gasto(self, categoria, importe, mes=8, concepto=None):
+        # El concepto por defecto lleva la categoría porque el comercio se
+        # deduce de él: con «Gasto 1», «Gasto 2»… todos serían el mismo
+        # comercio y el reparto habitual/puntual no distinguiría nada.
+        self._dia += 1
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, mes, self._dia),
+            concepto=concepto or f'Comercio de {categoria}', importe=Decimal(importe),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria),
+        )
+
+    def analisis(self, **params):
+        params.setdefault('anio', 2026)
+        params.setdefault('mes', 8)
+        return self.client.get(reverse('extractos:analisis'), params).context['a']
+
+    def test_solo_aparece_lo_que_se_ha_pasado(self):
+        self.declarar('Alimentacion', '400')
+        self.declarar('Ocio', '100')
+        self.gasto('Alimentacion', '-520')   # se pasa 120
+        self.gasto('Ocio', '-60')            # dentro
+
+        fuera = self.analisis()['fuera_presupuesto']
+
+        self.assertEqual([f['nombre'] for f in fuera], ['Alimentacion'])
+        self.assertEqual(fuera[0]['importe'], Decimal('520'))
+        self.assertEqual(fuera[0]['limite'], Decimal('400'))
+        self.assertEqual(fuera[0]['exceso'], Decimal('120'))
+
+    def test_se_ordena_por_lo_que_se_ha_pasado(self):
+        self.declarar('Alimentacion', '400')
+        self.declarar('Ocio', '50')
+        self.gasto('Alimentacion', '-450')   # +50
+        self.gasto('Ocio', '-250')           # +200
+
+        a = self.analisis()
+        self.assertEqual([f['nombre'] for f in a['fuera_presupuesto']], ['Ocio', 'Alimentacion'])
+        self.assertEqual(a['exceso_total'], Decimal('250'))
+
+    def test_el_gasto_anual_se_compara_prorrateado(self):
+        """Un IBI de 520 € al año son 43,33 €/mes de límite."""
+        self.declarar('IBI', '520', 'anual')
+        self.gasto('IBI', '-100')
+
+        fuera = self.analisis()['fuera_presupuesto']
+        self.assertEqual(fuera[0]['nombre'], 'IBI')
+        self.assertEqual(fuera[0]['limite'], Decimal('43.33'))
+
+    def test_lo_que_no_tiene_presupuesto_va_aparte(self):
+        """Sin límite declarado no está «fuera»: no hay con qué compararlo, y
+        decir que se ha pasado sería inventárselo."""
+        self.gasto('Restaurantes', '-300')
+
+        a = self.analisis()
+        self.assertEqual(a['fuera_presupuesto'], [])
+        self.assertEqual([f['nombre'] for f in a['sin_presupuesto']], ['Restaurantes'])
+
+    def test_los_bloques_saben_si_caben_en_el_presupuesto(self):
+        self.declarar('Alimentacion', '400')      # bloque variable
+        self.declarar('Ocio', '300')              # bloque discrecional
+        self.gasto('Alimentacion', '-500')        # variable: se pasa
+        self.gasto('Ocio', '-100')                # discrecional: cabe
+
+        bloques = {b['etiqueta']: b for b in self.analisis()['bloques']}
+        self.assertFalse(bloques['Variables']['dentro'])
+        self.assertEqual(bloques['Variables']['limite'], Decimal('400'))
+        self.assertTrue(bloques['Discrecionales']['dentro'])
+
+    def test_habitual_puntual_y_hormiga_traen_sus_movimientos(self):
+        """Saber «cuánto» sin poder ver «cuáles» obliga a salir a buscarlo."""
+        for mes in (5, 6, 7):
+            self.gasto('Suscripciones', '-14', mes=mes, concepto='Netflix')
+        self.gasto('Suscripciones', '-14', concepto='Netflix')
+        self.gasto('Ropa', '-120', concepto='Zara')
+        self.gasto('Restaurantes', '-3.50', concepto='Cafeteria Lola')
+
+        a = self.analisis()
+        self.assertEqual([m.concepto for m in a['movs_recurrentes']], ['Netflix'])
+        self.assertEqual(
+            sorted(m.concepto for m in a['movs_puntuales']), ['Cafeteria Lola', 'Zara'],
+        )
+        # «Pequeños» es un corte transversal, no un tercer grupo: Netflix es
+        # habitual Y pequeño a la vez.
+        self.assertEqual(
+            sorted(m.concepto for m in a['movs_hormiga']), ['Cafeteria Lola', 'Netflix'],
+        )
+
+    def test_el_panel_pinta_los_bloques_contra_el_presupuesto(self):
+        self.declarar('Alimentacion', '400')
+        self.gasto('Alimentacion', '-500')
+
+        panel = self.client.get(
+            reverse('extractos:listar'), {'anio': 2026, 'mes': 8},
+        ).context['panel']
+        bloque = panel['bloques'][0]
+
+        self.assertFalse(bloque['dentro'])
+        self.assertEqual(bloque['limite'], Decimal('400'))
+        self.assertEqual(bloque['categorias'][0]['limite'], Decimal('400'))
+        self.assertEqual(bloque['pct'], 100.0)   # y el peso sobre el total sigue ahí
+
+    def test_sobre_varios_meses_el_limite_se_multiplica(self):
+        """El presupuesto es mensual; si miras dos meses, el límite son dos."""
+        self.declarar('Alimentacion', '400')
+        self.gasto('Alimentacion', '-380', mes=7)
+        self.gasto('Alimentacion', '-380', mes=8)
+
+        panel = self.client.get(
+            reverse('extractos:listar'), {'anio': 2026},
+        ).context['panel']
+
+        self.assertEqual(panel['meses_periodo'], 2)
+        self.assertEqual(panel['bloques'][0]['limite'], Decimal('800'))
+        self.assertTrue(panel['bloques'][0]['dentro'])
+
+
+class NavegacionDelModuloTests(TestCase):
+    """El periodo elegido tiene que sobrevivir al cambio de pestaña."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+    def test_las_pestañas_conservan_el_mes(self):
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 8})
+        self.assertContains(respuesta, 'analisis/?anio=2026&amp;mes=8')
+        self.assertContains(respuesta, 'conciliacion/?anio=2026&amp;mes=8')
+
+    def test_sin_periodo_las_pestañas_van_limpias(self):
+        respuesta = self.client.get(reverse('extractos:listar'))
+        self.assertNotContains(respuesta, 'analisis/?anio=')
+
+    def test_todos_no_es_un_periodo(self):
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 'all', 'mes': 'all'})
+        self.assertNotContains(respuesta, 'analisis/?anio=')
+
+    def test_el_analisis_ofrece_volver_a_donde_estabas(self):
+        respuesta = self.client.get(reverse('extractos:analisis'), {
+            'anio': 2026, 'mes': 8, 'volver': 'conciliacion',
+        })
+        self.assertEqual(respuesta.context['volver_nombre'], 'Conciliación')
+        self.assertEqual(
+            respuesta.context['volver_url'], '/extractos/conciliacion/?anio=2026&mes=8',
+        )
+
+    def test_un_destino_inventado_no_pinta_boton(self):
+        """El «volver» es una lista blanca: aceptar cualquier URL sería un
+        redirector abierto."""
+        respuesta = self.client.get(reverse('extractos:analisis'), {
+            'volver': 'https://example.com/phishing',
+        })
+        self.assertEqual(respuesta.context['volver_url'], '')

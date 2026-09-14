@@ -3,13 +3,13 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
 —es donde se usan— en vez de en un menú aparte del lateral.
 {% endcomment %}
 <nav class="ext-nav">
-    <a href="{% url 'extractos:listar' %}" class="ext-nav-tab {% if activo == 'movimientos' %}activa{% endif %}">
+    <a href="{% url 'extractos:listar' %}{{ periodo }}" class="ext-nav-tab {% if activo == 'movimientos' %}activa{% endif %}">
         <svg class="icon"><use href="#i-statements"/></svg> Movimientos
     </a>
-    <a href="{% url 'extractos:analisis' %}" class="ext-nav-tab {% if activo == 'analisis' %}activa{% endif %}">
+    <a href="{% url 'extractos:analisis' %}{{ periodo }}" class="ext-nav-tab {% if activo == 'analisis' %}activa{% endif %}">
         <svg class="icon"><use href="#i-evolution"/></svg> Análisis
     </a>
-    <a href="{% url 'extractos:conciliacion' %}" class="ext-nav-tab {% if activo == 'conciliacion' %}activa{% endif %}">
+    <a href="{% url 'extractos:conciliacion' %}{{ periodo }}" class="ext-nav-tab {% if activo == 'conciliacion' %}activa{% endif %}">
         <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
     </a>
     <a href="{% url 'extractos:sin_categorizar' %}" class="ext-nav-tab {% if activo == 'sin_categorizar' %}activa{% endif %}">

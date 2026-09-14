@@ -8,8 +8,9 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
-from finanzas import costes_activo
+from finanzas import costes_activo, presupuesto
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
 from finanzas.parsing import leer_tabla
 from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
@@ -546,6 +547,13 @@ def _panel_context(hogar, todos, request):
         (d['importe'] for d in por_bloque.values() if d['importe'] > 0), Decimal('0'),
     )
 
+    # Comparar lo observado con el presupuesto: la barra en verde si cabe
+    # dentro y en rojo si no. El límite se multiplica por los meses que abarca
+    # el filtro, porque el presupuesto es mensual y lo mirado puede ser un año.
+    meses_periodo = max(len({(m.fecha.year, m.fecha.month) for m in movimientos}), 1)
+    limite_bloque = presupuesto.por_bloque(hogar)
+    limite_categoria = presupuesto.por_categoria(hogar)
+
     bloques = []
     for tipo in list(ORDEN_TIPOS) + ['sin']:
         datos = por_bloque.get(tipo)
@@ -559,6 +567,9 @@ def _panel_context(hogar, todos, request):
         for c in categorias:
             c['pct_bloque'] = round(float(c['importe'] / importe * 100), 1) if importe else 0
             c['pct_total'] = round(float(c['importe'] / total_gasto_abs * 100), 1) if total_gasto_abs else 0
+            c.update(presupuesto.estado(
+                c['importe'], limite_categoria.get(c['id'], Decimal('0')) * meses_periodo,
+            ))
         bloques.append({
             'tipo': tipo,
             'etiqueta': ETIQUETAS_TIPO.get(tipo, 'Sin categorizar'),
@@ -567,6 +578,7 @@ def _panel_context(hogar, todos, request):
             'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
             'categorias': categorias,
             'num_categorias': len(categorias),
+            **presupuesto.estado(importe, limite_bloque.get(tipo, Decimal('0')) * meses_periodo),
         })
 
     # El donut se pinta por BLOQUE, no por categoría: con quince categorías era
@@ -638,6 +650,7 @@ def _panel_context(hogar, todos, request):
             hogar=hogar, activo=True,
         ).exclude(periodicidad='mensual').select_related('categoria'),
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
+        'meses_periodo': meses_periodo,
         'colores_tipo': COLOR_TIPO,
         'tipos_bloque': [
             {'valor': t, 'etiqueta': ETIQUETAS_TIPO.get(t, t)} for t in ORDEN_TIPOS
@@ -1022,10 +1035,26 @@ def analisis(request):
         bloque=bloque or None,
         categoria_id=categoria.id if categoria else None,
         etiqueta_id=etiqueta.id if etiqueta else None,
+        limite_categoria=presupuesto.por_categoria(hogar),
+        limite_bloque=presupuesto.por_bloque(hogar),
     )
+
+    # Desde dónde se llegó, para poder volver. Es una lista blanca de destinos
+    # conocidos y no una URL libre: un «volver» que acepte cualquier dirección
+    # es un redirector abierto de manual.
+    volver = request.GET.get('volver') or ''
+    destinos = {
+        'conciliacion': ('extractos:conciliacion', 'Conciliación'),
+        'movimientos': ('extractos:listar', 'Movimientos'),
+    }
 
     meses_con_datos = sorted({(m.fecha.year, m.fecha.month) for m in todos}, reverse=True)
     return render(request, 'extractos/analisis.html', {
+        'volver_url': (
+            f"{reverse(destinos[volver][0])}?anio={anio}&mes={mes}"
+            if volver in destinos else ''
+        ),
+        'volver_nombre': destinos[volver][1] if volver in destinos else '',
         'a': datos,
         'etiqueta_mes': f"{MESES_ES[mes]} {anio}",
         'bloque': bloque,
