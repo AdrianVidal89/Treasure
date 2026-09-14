@@ -1,0 +1,25 @@
+{% load custom_filters %}
+{% comment %}
+Un grupo del reparto «habitual / puntual / pequeños», desplegable.
+Saber cuánto sin poder ver cuáles obliga a salir de la pantalla a buscarlo.
+{% endcomment %}
+<details class="an-grupo {{ clase }}">
+    <summary>
+        <span class="an-grupo-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+        <span class="an-grupo-punto"></span>
+        {{ titulo }}
+        <span class="an-grupo-nota">· {{ movimientos|length }} mov. · {{ nota }}</span>
+        <span class="an-grupo-total">{{ total|euro }}</span>
+    </summary>
+    <div class="an-grupo-lista">
+        {% for m in movimientos %}
+        <div class="an-grupo-mov">
+            <span class="an-grupo-fecha">{{ m.fecha|date:"d/m" }}</span>
+            <span class="an-grupo-concepto">{{ m.concepto }}{% if m.categoria %} · <span class="text-muted">{{ m.categoria.nombre }}</span>{% endif %}</span>
+            <span class="an-grupo-importe text-negative">{{ m.importe|euro }}</span>
+        </div>
+        {% empty %}
+        <div class="an-grupo-mov"><span class="text-muted">Nada en este grupo.</span></div>
+        {% endfor %}
+    </div>
+</details>

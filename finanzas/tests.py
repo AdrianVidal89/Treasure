@@ -2641,3 +2641,44 @@ class BalanceDeUnaPropiedadTests(TestCase):
         self.assertEqual(ficha['real_anual'], Decimal('520'))
         self.assertEqual([c['categoria'] for c in ficha['por_categoria']], ['IBI'])
         self.assertContains(respuesta, 'Ver desglose')
+
+
+class PresupuestoEstadoTests(SimpleTestCase):
+    """El estado de un gasto frente a su límite.
+
+    Las claves no pueden llamarse `pct` a secas: este dict se mezcla con el de
+    cada bloque, que ya trae su propio `pct` (el peso sobre el total), y lo
+    pisaba en silencio dejando todas las proporciones a cero."""
+
+    def test_dentro_del_limite(self):
+        from finanzas.presupuesto import estado
+
+        e = estado(Decimal('80'), Decimal('100'))
+        self.assertTrue(e['dentro'])
+        self.assertEqual(e['exceso'], Decimal('0'))
+        self.assertEqual(e['pct_gastado'], 80.0)
+        self.assertEqual(e['pct_barra'], 80.0)
+
+    def test_pasado_del_limite(self):
+        from finanzas.presupuesto import estado
+
+        e = estado(Decimal('150'), Decimal('100'))
+        self.assertFalse(e['dentro'])
+        self.assertEqual(e['exceso'], Decimal('50'))
+        # La barra se queda llena: pasarse no la alarga, la pone en rojo.
+        self.assertEqual(e['pct_barra'], 100)
+
+    def test_sin_limite_no_se_juzga(self):
+        """Sin presupuesto declarado no es que vaya bien: es que no hay con qué
+        comparar, y pintarlo verde sería afirmar algo que no se sabe."""
+        from finanzas.presupuesto import estado
+
+        e = estado(Decimal('150'), Decimal('0'))
+        self.assertIsNone(e['dentro'])
+        self.assertEqual(e['exceso'], Decimal('0'))
+
+    def test_no_pisa_el_porcentaje_del_bloque(self):
+        from finanzas.presupuesto import estado
+
+        bloque = {'pct': 42.0, **estado(Decimal('80'), Decimal('100'))}
+        self.assertEqual(bloque['pct'], 42.0)

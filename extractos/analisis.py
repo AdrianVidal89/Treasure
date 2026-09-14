@@ -62,7 +62,8 @@ def _etiqueta_comercio(movimientos):
 
 
 def analizar_mes(movimientos, anio, mes, bloque=None, categoria_id=None,
-                 etiqueta_id=None, meses_referencia=MESES_REFERENCIA):
+                 etiqueta_id=None, meses_referencia=MESES_REFERENCIA,
+                 limite_categoria=None, limite_bloque=None):
     """Analiza el gasto de un mes frente a los meses anteriores.
 
     `movimientos`: todos los del hogar (con categoría precargada). El filtrado
@@ -71,7 +72,13 @@ def analizar_mes(movimientos, anio, mes, bloque=None, categoria_id=None,
 
     `bloque` / `categoria_id` / `etiqueta_id` acotan el análisis a una parte del
     gasto, que es lo que hace útil el drill-down: mismo cálculo, menos ámbito.
+
+    `limite_categoria` / `limite_bloque` son el presupuesto mensual declarado.
+    Sin ellos el análisis solo puede compararte contigo mismo; con ellos dice
+    además si te has salido de lo que habías decidido gastar.
     """
+    limite_categoria = limite_categoria or {}
+    limite_bloque = limite_bloque or {}
     objetivo = (anio, mes)
     referencia = set(_meses_previos(objetivo, meses_referencia))
 
@@ -112,7 +119,8 @@ def analizar_mes(movimientos, anio, mes, bloque=None, categoria_id=None,
         'hay_referencia': hay_referencia,
         'meses_referencia': num_referencia,
         'puente': _puente(del_mes, previos, num_referencia) if hay_referencia else [],
-        'bloques': _por_bloque(del_mes, previos, num_referencia),
+        'bloques': _por_bloque(del_mes, previos, num_referencia, limite_bloque),
+        **_frente_al_presupuesto(del_mes, previos, num_referencia, limite_categoria),
         'categorias': _por_categoria(del_mes, previos, num_referencia),
         'comercios': _por_comercio(del_mes, previos, meses_con_datos),
         'etiquetas': _por_etiqueta(del_mes),
@@ -166,7 +174,60 @@ def _nombre_categoria(movimiento):
     return movimiento.categoria.nombre if movimiento.categoria else 'Sin categorizar'
 
 
-def _por_bloque(del_mes, previos, num_referencia):
+def _frente_al_presupuesto(del_mes, previos, num_referencia, limites):
+    """Las categorías que se han salido del presupuesto, y las que gastan sin
+    tenerlo declarado.
+
+    Solo salen las que se pasan: una lista con las veinte categorías del mes,
+    la mayoría en su sitio, no dice nada. Lo que hay que mirar es qué se ha ido,
+    cuál era el límite y cuánto ha sido de verdad.
+    """
+    from finanzas import presupuesto
+
+    actual = {}
+    for m in del_mes:
+        fila = actual.setdefault(m.categoria_id, {
+            'id': m.categoria_id, 'nombre': _nombre_categoria(m),
+            'importe': Decimal('0'), 'num': 0,
+        })
+        fila['importe'] += -m.importe
+        fila['num'] += 1
+
+    historico = defaultdict(lambda: Decimal('0'))
+    for m in previos:
+        historico[m.categoria_id] += -m.importe
+
+    fuera, sin_limite = [], []
+    for categoria_id, fila in actual.items():
+        estado = presupuesto.estado(
+            fila['importe'], limites.get(categoria_id, Decimal('0')),
+        )
+        fila = dict(
+            fila, **estado,
+            media=historico[categoria_id] / num_referencia if num_referencia else Decimal('0'),
+        )
+        if estado['dentro'] is None:
+            if fila['importe'] > 0:
+                sin_limite.append(fila)
+        elif not estado['dentro']:
+            fuera.append(fila)
+
+    fuera.sort(key=lambda f: f['exceso'], reverse=True)
+    sin_limite.sort(key=lambda f: f['importe'], reverse=True)
+
+    tope = max((f['importe'] for f in fuera), default=Decimal('0'))
+    for f in fuera:
+        f['pct_real'] = float(f['importe'] / tope * 100) if tope else 0
+        f['pct_limite'] = float(f['limite'] / tope * 100) if tope else 0
+
+    return {
+        'fuera_presupuesto': fuera,
+        'sin_presupuesto': sin_limite,
+        'exceso_total': sum((f['exceso'] for f in fuera), Decimal('0')),
+    }
+
+
+def _por_bloque(del_mes, previos, num_referencia, limites=None):
     """El gasto del mes por los cuatro pilares del presupuesto, con sus
     categorías dentro.
 
@@ -174,6 +235,7 @@ def _por_bloque(del_mes, previos, num_referencia):
     variables y discrecionales, así que lo observado tiene que poder leerse en
     esos mismos términos para poder conciliar uno con otro. El detalle por
     categoría vive dentro de su bloque, no al lado."""
+    from finanzas import presupuesto
     from finanzas.models import ETIQUETAS_TIPO, ORDEN_TIPOS
 
     actual = defaultdict(lambda: {'importe': Decimal('0'), 'categorias': {}})
@@ -215,6 +277,7 @@ def _por_bloque(del_mes, previos, num_referencia):
             'desviacion': importe - media,
             'pct': float(importe / total * 100) if total else 0,
             'categorias': categorias,
+            **presupuesto.estado(importe, (limites or {}).get(tipo, Decimal('0'))),
         })
     return filas
 
@@ -304,13 +367,23 @@ def _recurrencia(del_mes, previos, meses_con_datos):
 
     recurrente = Decimal('0')
     puntual = Decimal('0')
+    movs_recurrentes, movs_puntuales = [], []
     for m in del_mes:
         visto = len(presencia[m.comercio or 'otros'])
         if _es_recurrente(visto, meses_con_datos):
             recurrente += -m.importe
+            movs_recurrentes.append(m)
         else:
             puntual += -m.importe
-    return {'gasto_recurrente': recurrente, 'gasto_puntual': puntual}
+            movs_puntuales.append(m)
+    # Las listas viajan con los totales: «cuánto» sin «cuáles» obliga a salir de
+    # la pantalla a buscarlo a mano.
+    return {
+        'gasto_recurrente': recurrente,
+        'gasto_puntual': puntual,
+        'movs_recurrentes': sorted(movs_recurrentes, key=lambda m: m.importe),
+        'movs_puntuales': sorted(movs_puntuales, key=lambda m: m.importe),
+    }
 
 
 def _hormiga(del_mes):
@@ -320,6 +393,7 @@ def _hormiga(del_mes):
         'hormiga_total': _suma(pequenos),
         'hormiga_num': len(pequenos),
         'hormiga_umbral': UMBRAL_HORMIGA,
+        'movs_hormiga': sorted(pequenos, key=lambda m: m.importe),
     }
 
 

@@ -129,7 +129,11 @@ para no competir con los tres que de verdad importan.
     <div class="ext-gasto-head">
         <div>
             <h3>En qué se va</h3>
-            <span class="ext-gasto-nota">por los bloques con los que declaras el presupuesto · abre uno para ver su reparto</span>
+            <span class="ext-gasto-nota">
+                por los bloques con los que declaras el presupuesto · abre uno para ver su reparto ·
+                <span class="ext-leyenda-color dentro">verde</span> dentro del presupuesto,
+                <span class="ext-leyenda-color fuera">rojo</span> pasado
+            </span>
         </div>
         <span class="ext-gasto-total">{{ panel.donut_total|euro:0 }}</span>
     </div>
@@ -149,18 +153,26 @@ para no competir con los tres que de verdad importan.
                 <summary>
                     <span class="ext-pilar-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
                     <span class="ext-pilar-nombre">{{ b.etiqueta }}</span>
-                    <span class="ext-pilar-barra"><i style="width:{{ b.pct|unlocalize }}%;"></i></span>
+                    <span class="ext-pilar-barra {% if b.dentro == False %}fuera{% elif b.dentro %}dentro{% endif %}"
+                          title="{% if b.limite %}{{ b.importe|euro:0 }} de {{ b.limite|euro:0 }} presupuestados{% else %}Sin presupuesto declarado para este bloque{% endif %}">
+                        <i style="width:{{ b.pct_barra|unlocalize }}%;"></i>
+                    </span>
                     <span class="ext-pilar-cifra">{{ b.importe|euro:0 }}</span>
-                    <span class="ext-pilar-pct">{{ b.pct }}%</span>
+                    <span class="ext-pilar-limite">
+                        {% if b.limite %}de {{ b.limite|euro:0 }}{% else %}<em>sin límite</em>{% endif %}
+                    </span>
                 </summary>
 
                 <div class="ext-pilar-detalle">
                     {% for c in b.categorias %}
                     <div class="ext-cat-fila">
                         <span class="ext-cat-nombre">{{ c.nombre }} <em>{{ c.num }}</em></span>
-                        <span class="ext-cat-barra"><i style="width:{{ c.pct_bloque|unlocalize }}%;background:{{ b.color }};"></i></span>
+                        <span class="ext-cat-barra {% if c.dentro == False %}fuera{% elif c.dentro %}dentro{% endif %}"
+                              title="{% if c.limite %}{{ c.importe|euro:0 }} de {{ c.limite|euro:0 }} presupuestados{% else %}Sin presupuesto declarado{% endif %}">
+                            <i style="width:{{ c.pct_barra|unlocalize }}%;"></i>
+                        </span>
                         <span class="ext-cat-cifra">{{ c.importe|euro:0 }}</span>
-                        <span class="ext-cat-pct">{{ c.pct_bloque }}%</span>
+                        <span class="ext-cat-pct">{% if c.limite %}de {{ c.limite|euro:0 }}{% else %}{{ c.pct_bloque }}%{% endif %}</span>
                         {% if c.id %}
                         <select class="ext-bloque-select" data-categoria-id="{{ c.id }}"
                                 title="Mover «{{ c.nombre }}» a otro bloque del presupuesto">
@@ -370,26 +382,38 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 #ext-donut path { transition:opacity .15s; }
 #ext-donut path:hover { opacity:.75; }
 .ext-gasto-nota { display:block; font-size:0.74rem; color:var(--muted); margin-top:3px; }
+.ext-leyenda-color { font-weight:700; }
+.ext-leyenda-color.dentro { color:var(--success); }
+.ext-leyenda-color.fuera { color:var(--danger); }
 
 /* Los cuatro pilares: la vista principal. Cada uno se abre y enseña su reparto. */
 .ext-pilares { display:flex; flex-direction:column; gap:7px; }
 .ext-pilar { border:1px solid var(--border); border-left:3px solid var(--bc); border-radius:10px; overflow:hidden; }
 .ext-pilar > summary {
     list-style:none; cursor:pointer; display:grid; align-items:center; gap:10px;
-    grid-template-columns:16px minmax(100px,1.1fr) 1.6fr auto 46px; padding:10px 13px;
+    grid-template-columns:16px minmax(100px,1.1fr) 1.6fr auto 76px; padding:10px 13px;
 }
 .ext-pilar > summary::-webkit-details-marker { display:none; }
 .ext-pilar > summary:hover { background:color-mix(in srgb, var(--bc) 7%, transparent); }
 .ext-pilar-chevron { display:flex; color:var(--muted); transition:transform .2s; }
 .ext-pilar[open] .ext-pilar-chevron { transform:rotate(90deg); }
 .ext-pilar-nombre { font-weight:700; font-size:0.86rem; }
+/* La barra dice si cabe en el presupuesto: verde sí, rojo no. Sin presupuesto
+   declarado se queda del color del bloque, porque no hay nada que juzgar. */
 .ext-pilar-barra { height:8px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
-.ext-pilar-barra i { display:block; height:100%; border-radius:999px; background:var(--bc); }
+.ext-pilar-barra i { display:block; height:100%; border-radius:999px; }
+.ext-pilar-barra.dentro i, .ext-cat-barra.dentro i { background:var(--success); }
+.ext-pilar-barra.fuera i, .ext-cat-barra.fuera i { background:var(--danger); }
+/* Sin presupuesto declarado: gris. Pintarla del color del bloque —verde en
+   Variables— la haría parecer «dentro del presupuesto» sin haberlo declarado. */
+.ext-cat-barra i { background:#9aa5a0; }
+.ext-pilar-barra i { background:#9aa5a0; }
 .ext-pilar-cifra { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.9rem; }
-.ext-pilar-pct { font-variant-numeric:tabular-nums; color:var(--muted); text-align:right; font-size:0.8rem; }
+.ext-pilar-limite { font-variant-numeric:tabular-nums; color:var(--muted); text-align:right; font-size:0.76rem; white-space:nowrap; }
+.ext-pilar-limite em { font-style:italic; opacity:.75; }
 .ext-pilar-detalle { border-top:1px solid var(--border); padding:10px 13px 12px 29px; display:flex; flex-direction:column; gap:8px; }
 
-.ext-cat-fila { display:grid; grid-template-columns:minmax(90px,1.2fr) 1.4fr auto 42px auto; gap:10px; align-items:center; font-size:0.79rem; }
+.ext-cat-fila { display:grid; grid-template-columns:minmax(90px,1.2fr) 1.4fr auto 76px auto; gap:10px; align-items:center; font-size:0.79rem; }
 .ext-cat-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ext-cat-nombre em { font-style:normal; color:var(--muted); font-size:0.7rem; }
 .ext-cat-barra { height:6px; background:var(--app-bg); border-radius:999px; overflow:hidden; }

@@ -16,6 +16,10 @@
 
     {% extractos_nav 'analisis' %}
 
+    {% if volver_url %}
+    <a href="{{ volver_url }}" class="an-volver">← Volver a {{ volver_nombre }}</a>
+    {% endif %}
+
     {% if not hay_movimientos %}
     <div class="empty-state">
         <svg class="icon icon-xl empty-icon"><use href="#i-evolution"/></svg>
@@ -77,7 +81,11 @@
     <section class="glass-panel an-card">
         <div class="an-card-head">
             <h3>Por bloque del presupuesto</h3>
-            <span class="an-card-nota">abre uno para ver cómo se repartió</span>
+            <span class="an-card-nota">
+                abre uno para ver cómo se repartió ·
+                <span class="an-leyenda-color dentro">verde</span> dentro del presupuesto,
+                <span class="an-leyenda-color fuera">rojo</span> pasado
+            </span>
         </div>
         <div class="an-pilares">
             {% for b in a.bloques %}
@@ -85,17 +93,18 @@
                 <summary>
                     <span class="an-pilar-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
                     <span class="an-pilar-nombre">{{ b.etiqueta }}</span>
-                    <span class="an-pilar-barra"><i style="width:{{ b.pct|unlocalize }}%;"></i></span>
-                    <span class="an-pilar-cifra">{{ b.importe|euro:0 }}</span>
-                    {% if a.hay_referencia %}
-                    <span class="an-pilar-dif {% if b.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
-                        {% if b.desviacion > 0 %}+{% endif %}{{ b.desviacion|euro:0 }}
+                    <span class="an-pilar-barra {% if b.dentro == False %}fuera{% elif b.dentro %}dentro{% endif %}"
+                          title="{% if b.limite %}{{ b.importe|euro:0 }} de {{ b.limite|euro:0 }} presupuestados{% else %}Sin presupuesto declarado{% endif %}">
+                        <i style="width:{{ b.pct_barra|unlocalize }}%;"></i>
                     </span>
-                    {% endif %}
+                    <span class="an-pilar-cifra">{{ b.importe|euro:0 }}</span>
+                    <span class="an-pilar-limite">
+                        {% if b.limite %}de {{ b.limite|euro:0 }}{% else %}<em>sin límite</em>{% endif %}
+                    </span>
                 </summary>
                 <div class="an-pilar-detalle">
                     {% for c in b.categorias %}
-                    <a class="an-fila" {% if c.id %}href="{% url 'extractos:analisis' %}?anio={{ a.anio }}&mes={{ a.mes }}&categoria={{ c.id }}"{% endif %}>
+                    <a class="an-fila" {% if c.id %}href="{% url 'extractos:analisis' %}?anio={{ a.anio }}&mes={{ a.mes }}&categoria={{ c.id }}{% if volver_url %}&volver={{ request.GET.volver }}{% endif %}"{% endif %}>
                         <span class="an-punto" style="background:{{ colores_tipo|get_item:b.tipo }};"></span>
                         <span class="an-fila-nombre">{{ c.nombre }} <em>{{ c.num }}</em></span>
                         <span class="an-fila-barra"><i style="width:{{ c.pct_bloque|unlocalize }}%;background:{{ colores_tipo|get_item:b.tipo }};"></i></span>
@@ -109,30 +118,62 @@
     </section>
     {% endif %}
 
-    <!-- QUÉ LO EXPLICA -->
-    {% if a.puente %}
+    <!-- FUERA DE PRESUPUESTO -->
     <section class="glass-panel an-card">
         <div class="an-card-head">
-            <h3>Qué explica la diferencia</h3>
-            <span class="an-card-nota">contra tu media, no contra el presupuesto</span>
+            <h3>Fuera de presupuesto</h3>
+            <span class="an-card-nota">solo lo que se ha pasado del límite que declaraste</span>
         </div>
-        <div class="an-puente">
-            {% for f in a.puente %}
-            <div class="an-puente-fila">
-                <span class="an-puente-cat">{{ f.categoria }}</span>
-                <span class="an-puente-pista">
-                    <i class="{% if f.desviacion > 0 %}sube{% else %}baja{% endif %}"
-                       style="width:{{ f.pct|unlocalize }}%;"></i>
+
+        {% if a.fuera_presupuesto %}
+        <div class="an-fuera">
+            {% for f in a.fuera_presupuesto %}
+            <div class="an-fuera-fila">
+                <span class="an-fuera-cat">
+                    {{ f.nombre }} <em>{{ f.num }} mov.</em>
                 </span>
-                <span class="an-puente-dif {% if f.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
-                    {% if f.desviacion > 0 %}+{% endif %}{{ f.desviacion|euro:0 }}
+                <span class="an-fuera-pista" title="Límite {{ f.limite|euro:0 }} · real {{ f.importe|euro:0 }}">
+                    <i class="real" style="width:{{ f.pct_real|unlocalize }}%;"></i>
+                    <span class="an-fuera-limite" style="left:{{ f.pct_limite|unlocalize }}%;"></span>
                 </span>
-                <span class="an-puente-detalle">{{ f.actual|euro:0 }} vs {{ f.media|euro:0 }}</span>
+                <span class="an-fuera-cifras">
+                    <strong>{{ f.importe|euro:0 }}</strong>
+                    <span class="text-muted">de {{ f.limite|euro:0 }}</span>
+                </span>
+                <span class="an-fuera-exceso text-negative">+{{ f.exceso|euro:0 }}</span>
             </div>
             {% endfor %}
         </div>
+        <div class="an-fuera-total">
+            Te has pasado <strong class="text-negative">{{ a.exceso_total|euro }}</strong> del presupuesto
+            en {{ a.fuera_presupuesto|length }} categoría{{ a.fuera_presupuesto|length|pluralize:"s" }}.
+            <span class="an-fuera-leyenda"><i></i> la marca es el límite declarado</span>
+        </div>
+        {% else %}
+        <p class="an-vacio">
+            Nada se ha salido del presupuesto {% if a.sin_presupuesto %}de lo que tiene límite declarado{% endif %}.
+        </p>
+        {% endif %}
+
+        {% if a.sin_presupuesto %}
+        <details class="an-sin-presupuesto">
+            <summary>{{ a.sin_presupuesto|length }} categoría{{ a.sin_presupuesto|length|pluralize:"s" }} con gasto y sin presupuesto declarado</summary>
+            <div class="an-sin-lista">
+                {% for f in a.sin_presupuesto %}
+                <div class="an-sin-fila">
+                    <span>{{ f.nombre }} <em>{{ f.num }} mov.</em></span>
+                    <span class="num">{{ f.importe|euro:0 }}</span>
+                    <a href="{% url 'finanzas:crear_partida' %}">declarar →</a>
+                </div>
+                {% endfor %}
+            </div>
+            <p class="an-sin-nota">
+                Sin límite declarado no hay nada contra lo que compararlas: aparecen aquí para
+                que no pasen desapercibidas, no porque estén mal.
+            </p>
+        </details>
+        {% endif %}
     </section>
-    {% endif %}
 
     <!-- DE QUÉ ESTÁ HECHO EL MES -->
     <div class="an-grid una">
@@ -169,7 +210,10 @@
     <section class="glass-panel an-card">
         <div class="an-card-head">
             <h3>Cuánto de esto volverá a pasar</h3>
-            <span class="an-card-nota">tu suelo de gasto frente a lo excepcional</span>
+            <span class="an-card-nota">
+                tu suelo de gasto frente a lo excepcional · los «pequeños» cruzan los otros dos,
+                no son un tercer grupo
+            </span>
         </div>
         <div class="an-reparto">
             <div class="an-reparto-barra">
@@ -178,13 +222,12 @@
                 <span class="puntual" style="width:{% widthratio a.gasto_puntual a.total 100 %}%;" title="Puntual: {{ a.gasto_puntual|euro }}"></span>
                 {% endif %}
             </div>
-            <div class="an-reparto-pie">
-                <span><i class="habitual"></i> Habitual <strong>{{ a.gasto_recurrente|euro }}</strong></span>
-                <span><i class="puntual"></i> Puntual <strong>{{ a.gasto_puntual|euro }}</strong></span>
+
+            <div class="an-reparto-grupos">
+                {% include "extractos/_grupo_movimientos.html" with clase="habitual" titulo="Habitual" total=a.gasto_recurrente movimientos=a.movs_recurrentes nota="vuelve casi todos los meses" %}
+                {% include "extractos/_grupo_movimientos.html" with clase="puntual" titulo="Puntual" total=a.gasto_puntual movimientos=a.movs_puntuales nota="no es habitual en tus meses anteriores" %}
                 {% if a.hormiga_num %}
-                <span class="an-hormiga" title="Gastos sueltos por debajo de {{ a.hormiga_umbral|euro:0 }}. Cada uno es despreciable; juntos no.">
-                    🐜 {{ a.hormiga_num }} gastos pequeños <strong>{{ a.hormiga_total|euro }}</strong>
-                </span>
+                {% include "extractos/_grupo_movimientos.html" with clase="hormiga" titulo="Gastos pequeños" total=a.hormiga_total movimientos=a.movs_hormiga nota="sueltos por debajo de 20 €" %}
                 {% endif %}
             </div>
         </div>
@@ -220,6 +263,7 @@
 </div>
 
 <style>
+.an-volver { display:inline-block; margin-bottom:14px; font-size:0.82rem; }
 .an-bar {
     display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:20px;
     background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 14px;
@@ -251,6 +295,9 @@
 .an-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
 .an-card-head h3 { margin:0; font-size:1rem; }
 .an-card-nota { font-size:0.75rem; color:var(--muted); }
+.an-leyenda-color { font-weight:700; }
+.an-leyenda-color.dentro { color:var(--success); }
+.an-leyenda-color.fuera { color:var(--danger); }
 .an-grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 .an-grid.una { grid-template-columns:1fr; }
 
@@ -267,7 +314,11 @@
 .an-pilar[open] .an-pilar-chevron { transform:rotate(90deg); }
 .an-pilar-nombre { font-weight:700; font-size:0.87rem; }
 .an-pilar-barra { height:8px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
-.an-pilar-barra i { display:block; height:100%; border-radius:999px; background:var(--bc); }
+.an-pilar-barra i { display:block; height:100%; border-radius:999px; background:#9aa5a0; }
+.an-pilar-barra.dentro i { background:var(--success); }
+.an-pilar-barra.fuera i { background:var(--danger); }
+.an-pilar-limite { font-variant-numeric:tabular-nums; color:var(--muted); font-size:0.76rem; text-align:right; white-space:nowrap; min-width:74px; }
+.an-pilar-limite em { font-style:italic; opacity:.75; }
 .an-pilar-cifra { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.92rem; }
 .an-pilar-dif { font-variant-numeric:tabular-nums; font-size:0.78rem; font-weight:700; min-width:64px; text-align:right; }
 .an-pilar-detalle { border-top:1px solid var(--border); padding:10px 13px 12px 29px; display:flex; flex-direction:column; gap:8px; }
@@ -315,15 +366,53 @@
 .an-badge.recurrente { background:color-mix(in srgb, var(--info, #5f8fb0) 18%, transparent); color:var(--info, #5f8fb0); }
 .an-badge.puntual { background:color-mix(in srgb, var(--muted) 18%, transparent); color:var(--muted); }
 
+/* Fuera de presupuesto: real frente al límite, con la marca del límite. */
+.an-fuera { display:flex; flex-direction:column; gap:10px; }
+.an-fuera-fila { display:grid; grid-template-columns:minmax(110px,1.1fr) 2fr auto 78px; gap:12px; align-items:center; font-size:0.83rem; }
+.an-fuera-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.an-fuera-cat em { font-style:normal; color:var(--muted); font-size:0.72rem; }
+.an-fuera-pista { position:relative; height:12px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.an-fuera-pista i.real { display:block; height:100%; border-radius:999px; background:var(--danger); }
+.an-fuera-limite { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text-color); opacity:.75; }
+.an-fuera-cifras { font-variant-numeric:tabular-nums; white-space:nowrap; font-size:0.8rem; }
+.an-fuera-exceso { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; }
+.an-fuera-total { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font-size:0.82rem; color:var(--muted); }
+.an-fuera-leyenda { margin-left:12px; font-size:0.74rem; }
+.an-fuera-leyenda i { display:inline-block; width:2px; height:11px; background:var(--text-color); opacity:.75; vertical-align:-2px; margin-right:5px; }
+.an-sin-presupuesto { margin-top:16px; padding-top:12px; border-top:1px solid var(--border); }
+.an-sin-presupuesto > summary { cursor:pointer; font-size:0.79rem; color:var(--muted); }
+.an-sin-presupuesto > summary:hover { color:var(--primary-color); }
+.an-sin-lista { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+.an-sin-fila { display:grid; grid-template-columns:1fr auto auto; gap:12px; align-items:baseline; font-size:0.8rem; }
+.an-sin-fila em { font-style:normal; color:var(--muted); font-size:0.72rem; }
+.an-sin-fila .num { font-variant-numeric:tabular-nums; font-weight:700; }
+.an-sin-nota { font-size:0.74rem; color:var(--muted); margin:10px 0 0; }
+@media (max-width:640px){ .an-fuera-fila { grid-template-columns:1fr auto; } .an-fuera-pista, .an-fuera-cifras { display:none; } }
+
 /* Habitual vs puntual. */
 .an-reparto-barra { display:flex; height:14px; border-radius:999px; overflow:hidden; background:var(--app-bg); }
 .an-reparto-barra span.habitual { background:var(--info, #5f8fb0); }
 .an-reparto-barra span.puntual { background:var(--accent-alt, #9d4edd); }
-.an-reparto-pie { display:flex; gap:18px; flex-wrap:wrap; margin-top:10px; font-size:0.8rem; color:var(--muted); }
-.an-reparto-pie i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:5px; }
-.an-reparto-pie i.habitual { background:var(--info, #5f8fb0); }
-.an-reparto-pie i.puntual { background:var(--accent-alt, #9d4edd); }
-.an-reparto-pie strong { color:var(--text-color); font-variant-numeric:tabular-nums; }
+.an-reparto-grupos { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+.an-grupo { border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.an-grupo > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:9px; padding:9px 12px; font-size:0.81rem; }
+.an-grupo > summary::-webkit-details-marker { display:none; }
+.an-grupo > summary:hover { background:color-mix(in srgb, var(--primary-color) 5%, transparent); }
+.an-grupo-punto { width:9px; height:9px; border-radius:3px; flex-shrink:0; }
+.an-grupo.habitual .an-grupo-punto { background:var(--info, #5f8fb0); }
+.an-grupo.puntual .an-grupo-punto { background:var(--accent-alt, #9d4edd); }
+.an-grupo.hormiga .an-grupo-punto { background:var(--muted); }
+.an-grupo-nota { color:var(--muted); font-size:0.73rem; }
+.an-grupo-total { margin-left:auto; font-weight:800; font-variant-numeric:tabular-nums; }
+.an-grupo-chevron { display:flex; color:var(--muted); transition:transform .2s; }
+.an-grupo[open] .an-grupo-chevron { transform:rotate(90deg); }
+.an-grupo-lista { border-top:1px solid var(--border); max-height:260px; overflow-y:auto; }
+.an-grupo-mov { display:grid; grid-template-columns:54px 1fr auto; gap:10px; align-items:center;
+    font-size:0.78rem; padding:6px 12px; border-bottom:1px solid var(--border); }
+.an-grupo-mov:last-child { border-bottom:none; }
+.an-grupo-fecha { color:var(--muted); font-variant-numeric:tabular-nums; }
+.an-grupo-concepto { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.an-grupo-importe { font-variant-numeric:tabular-nums; font-weight:700; }
 
 /* Etiquetas. */
 .an-etiquetas { display:flex; gap:9px; flex-wrap:wrap; }
