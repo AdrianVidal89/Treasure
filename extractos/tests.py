@@ -860,10 +860,13 @@ class ComputoDeCategoriaTests(TestCase):
         panel = self.panel()
         self.assertEqual(panel['kpi_gastos'], Decimal('-100'))
         self.assertEqual(panel['kpi_traspaso_neto'], Decimal('-500'))
+        # El desglose es por BLOQUE del presupuesto, con la categoría dentro:
+        # es la lectura que se puede conciliar con lo declarado.
+        self.assertEqual([b['etiqueta'] for b in panel['bloques']], ['Variables'])
         self.assertEqual(
-            [b['etiqueta'] for b in panel['bloques']], ['Variables'],
+            [c['nombre'] for c in panel['bloques'][0]['categorias']], ['Alimentacion'],
         )
-        self.assertEqual([d['nombre'] for d in panel['donut']], ['Alimentacion'])
+        self.assertEqual([d['nombre'] for d in panel['donut']], ['Variables'])
 
     def test_una_categoria_propia_marcada_como_neutra_tampoco_cuenta(self):
         cat = CategoriaGasto.objects.create(
@@ -1670,3 +1673,129 @@ class PagosDeGastosAnualesTests(TestCase):
 
         mov.refresh_from_db()
         self.assertEqual(mov.categoria, self.ibi.categoria)
+
+
+class PilaresDelPresupuestoTests(TestCase):
+    """El gasto observado se lee por los cuatro pilares con los que se declara
+    el presupuesto: es lo único que permite conciliar uno con otro. Las
+    categorías viven dentro de su pilar, no al lado."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self._dia = 0
+
+    def gasto(self, importe, categoria=None):
+        self._dia += 1
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 8, self._dia),
+            concepto=f'Gasto {self._dia}', importe=Decimal(importe),
+            categoria=(
+                CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria)
+                if categoria else None
+            ),
+        )
+
+    def panel(self, **params):
+        return self.client.get(reverse('extractos:listar'), params).context['panel']
+
+    def test_los_bloques_llevan_sus_categorias_dentro(self):
+        self.gasto('-300', 'Alimentacion')     # variable
+        self.gasto('-120', 'Luz')              # variable
+        self.gasto('-200', 'Restaurantes')     # discrecional
+        self.gasto('-900', 'Hipoteca / Alquiler')  # fijo
+
+        bloques = {b['etiqueta']: b for b in self.panel()['bloques']}
+
+        self.assertEqual(
+            [b['etiqueta'] for b in self.panel()['bloques']],
+            ['Fijos', 'Variables', 'Discrecionales'],
+        )
+        self.assertEqual(bloques['Variables']['importe'], Decimal('420'))
+        self.assertEqual(
+            [c['nombre'] for c in bloques['Variables']['categorias']],
+            ['Alimentacion', 'Luz'],
+        )
+        self.assertEqual(bloques['Variables']['categorias'][0]['pct_bloque'], 71.4)
+
+    def test_lo_sin_categorizar_es_un_bloque_mas(self):
+        """Tiene que verse: si el 79% del gasto no está clasificado, el reparto
+        por pilares no significa nada y hay que decirlo."""
+        self.gasto('-300', 'Alimentacion')
+        self.gasto('-700')
+
+        bloques = {b['etiqueta']: b for b in self.panel()['bloques']}
+        self.assertEqual(bloques['Sin categorizar']['importe'], Decimal('700'))
+        self.assertEqual(bloques['Sin categorizar']['pct'], 70.0)
+
+    def test_el_donut_va_por_bloque_y_cuadra_con_la_lista(self):
+        self.gasto('-300', 'Alimentacion')
+        self.gasto('-200', 'Restaurantes')
+
+        panel = self.panel()
+        self.assertEqual(
+            [d['nombre'] for d in panel['donut']],
+            [b['etiqueta'] for b in panel['bloques']],
+        )
+        self.assertEqual(
+            sum(d['importe'] for d in panel['donut']), float(panel['donut_total']),
+        )
+
+    def test_mover_una_categoria_de_bloque_la_recoloca(self):
+        """«Salud / Farmacia va en variables»: se dice desde la propia pantalla
+        donde se ve mal colocada."""
+        salud = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Salud / Farmacia')
+        salud.tipo = 'discrecional'
+        salud.save(update_fields=['tipo'])
+        self.gasto('-60', 'Salud / Farmacia')
+
+        self.assertEqual(
+            [b['etiqueta'] for b in self.panel()['bloques']], ['Discrecionales'],
+        )
+
+        respuesta = self.client.post(reverse('finanzas:cambiar_bloque_categoria'), {
+            'categoria_id': salud.id, 'tipo': 'variable',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertTrue(respuesta.json()['ok'])
+        self.assertEqual(
+            [b['etiqueta'] for b in self.panel()['bloques']], ['Variables'],
+        )
+
+    def test_un_bloque_inventado_no_recoloca_nada(self):
+        salud = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Salud / Farmacia')
+        respuesta = self.client.post(reverse('finanzas:cambiar_bloque_categoria'), {
+            'categoria_id': salud.id, 'tipo': 'inventado',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertEqual(respuesta.status_code, 400)
+        salud.refresh_from_db()
+        self.assertEqual(salud.tipo, 'variable')
+
+    def test_una_categoria_de_otro_hogar_no_se_toca(self):
+        otro = Hogar.objects.create(nombre='Otro')
+        ajena = CategoriaGasto.objects.create(hogar=otro, nombre='Ajena', tipo='fijo')
+        respuesta = self.client.post(reverse('finanzas:cambiar_bloque_categoria'), {
+            'categoria_id': ajena.id, 'tipo': 'variable',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertEqual(respuesta.status_code, 400)
+        ajena.refresh_from_db()
+        self.assertEqual(ajena.tipo, 'fijo')
+
+    def test_el_analisis_tambien_se_lee_por_pilares(self):
+        self.gasto('-300', 'Alimentacion')
+        self.gasto('-200', 'Restaurantes')
+
+        respuesta = self.client.get(reverse('extractos:analisis'), {'anio': 2026, 'mes': 8})
+        bloques = respuesta.context['a']['bloques']
+
+        self.assertEqual([b['etiqueta'] for b in bloques], ['Variables', 'Discrecionales'])
+        self.assertEqual(bloques[0]['importe'], Decimal('300'))
+        self.assertEqual([c['nombre'] for c in bloques[0]['categorias']], ['Alimentacion'])

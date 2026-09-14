@@ -82,6 +82,7 @@ urlpatterns = [
     # ── Categorías (gastos, ingresos y movimientos) ───────────────────────
     path('categorias/', views_gastos.listar_categorias, name='listar_categorias'),
     path('categorias/<int:categoria_id>/editar/', views_gastos.editar_categoria, name='editar_categoria'),
+    path('categorias/bloque/', views_gastos.cambiar_bloque_categoria, name='cambiar_bloque_categoria'),
     path('categorias/<int:categoria_id>/archivar/', views_gastos.archivar_categoria, name='archivar_categoria'),
     path('categorias/<int:categoria_id>/eliminar/', views_gastos.eliminar_categoria, name='eliminar_categoria'),
 

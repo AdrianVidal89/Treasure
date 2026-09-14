@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.http import JsonResponse
 from decimal import Decimal
 
+from . import costes_activo
 from .models import FuenteIngreso, DestinoIngreso
 from .fiscal import calcular_neto_anual
 
@@ -169,7 +170,7 @@ def crear_ingreso(request):
             from django.contrib.auth.models import User
             usuario = get_object_or_404(User, id=usuario_id)
 
-            FuenteIngreso.objects.create(
+            fuente = FuenteIngreso.objects.create(
                 usuario=usuario,
                 hogar=hogar,
                 nombre=nombre,
@@ -187,6 +188,12 @@ def crear_ingreso(request):
                 incluir_en_distribucion=incluir_en_distribucion,
                 destino_id=int(destino_id) if destino_id else None,
             )
+            # Imputar el ingreso a un activo (el alquiler ES de ese piso) es lo
+            # que permite balancear después lo que cuesta con lo que deja.
+            costes_activo.asignar(
+                fuente, costes_activo.resolver(hogar, request.POST.get('activo') or ''),
+            )
+            fuente.save(update_fields=['vehiculo', 'propiedad'])
             messages.success(request, f"Ingreso '{nombre}' creado.")
             return redirect('finanzas:listar_ingresos')
 
@@ -194,6 +201,7 @@ def crear_ingreso(request):
         'miembros': miembros,
         'destinos': destinos,
         'hogar': hogar,
+        'grupos_activos': costes_activo.opciones(hogar),
     })
 
 @login_required
@@ -226,6 +234,9 @@ def editar_ingreso(request, ingreso_id):
         fuente.incluir_en_distribucion = 'incluir_en_distribucion' in request.POST
         destino_id = request.POST.get('destino_id')
         fuente.destino_id = int(destino_id) if destino_id else None
+        costes_activo.asignar(
+            fuente, costes_activo.resolver(hogar, request.POST.get('activo') or ''),
+        )
         fuente.save()
         messages.success(request, f"Ingreso '{fuente.nombre}' actualizado.")
         return redirect('finanzas:listar_ingresos')
@@ -237,6 +248,7 @@ def editar_ingreso(request, ingreso_id):
         'destinos': destinos,
         'hogar': hogar,
         'meses': MESES_CHOICES,
+        'grupos_activos': costes_activo.opciones(hogar),
     })
 
 @login_required

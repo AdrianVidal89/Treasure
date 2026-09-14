@@ -2,6 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Count
+from django.http import JsonResponse
 from decimal import Decimal
 
 from . import costes_activo
@@ -527,6 +528,39 @@ def editar_categoria(request, categoria_id):
     else:
         messages.success(request, f"Categoría «{nombre}» actualizada.")
     return _volver_a_categorias(request)
+
+
+@login_required
+def cambiar_bloque_categoria(request):
+    """Mueve una categoría de pilar sin salir de donde estás.
+
+    El bloque es lo que hace conciliable el gasto observado con el
+    presupuesto, así que el sitio natural para decir «Salud va en variables» es
+    la propia pantalla donde ves que está mal colocada, no un formulario
+    aparte."""
+    profile = getattr(request.user, 'userprofile', None)
+    if not profile or not profile.hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    categoria = CategoriaGasto.objects.filter(
+        hogar=profile.hogar, id=request.POST.get('categoria_id') or 0,
+    ).first()
+    tipo = request.POST.get('tipo') or ''
+    if not categoria or not _tipo_valido(tipo):
+        return JsonResponse({'ok': False, 'error': 'datos_invalidos'}, status=400)
+
+    categoria.tipo = tipo
+    # Deja de ser «de fábrica»: el mantenimiento de las predefinidas no debe
+    # devolverla a su bloque original después de que el usuario la mueva.
+    categoria.es_predefinida = False
+    categoria.save(update_fields=['tipo', 'es_predefinida'])
+
+    return JsonResponse({
+        'ok': True, 'categoria': categoria.nombre,
+        'tipo': categoria.tipo, 'etiqueta': ETIQUETAS_TIPO.get(tipo, tipo),
+    })
 
 
 @login_required
