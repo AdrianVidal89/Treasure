@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% load extractos_nav %}
+
+{% block title %}Etiquetas · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-grip"/></svg> Etiquetas</h1>
+            <div class="page-sub">
+                Cortes que <strong>cruzan</strong> las categorías: un viaje, una obra, los regalos de
+                Navidad. Una cena del viaje es <em>Restaurantes</em> y <em>Vacaciones Lisboa</em> a la vez.
+                Se ponen desde la lista de movimientos, con el botón <strong>+</strong> de cada apunte.
+            </div>
+        </div>
+    </div>
+
+    {% extractos_nav 'etiquetas' %}
+
+    {% for msg in messages %}
+    <div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+
+    <form method="post" class="et-crear">
+        {% csrf_token %}
+        <input type="hidden" name="accion" value="crear">
+        <input type="text" name="nombre" placeholder="Nombre de la etiqueta (Vacaciones Lisboa…)" maxlength="60" required>
+        <input type="color" name="color" value="{{ color_sugerido }}" title="Color">
+        <button type="submit" class="btn btn-primary">Crear etiqueta</button>
+    </form>
+
+    {% if filas %}
+    <div class="et-lista">
+        {% for f in filas %}
+        <div class="et-tarjeta" style="--tc:{{ f.etiqueta.color }};">
+            <div class="et-cabecera">
+                <span class="et-nombre">{{ f.etiqueta.nombre }}</span>
+                <span class="et-gasto">{{ f.gasto|euro }}</span>
+            </div>
+            <div class="et-meta">
+                {{ f.num }} movimiento{{ f.num|pluralize:"s" }}
+                {% if f.desde %}· {{ f.desde|date:"d/m/Y" }} – {{ f.hasta|date:"d/m/Y" }}{% endif %}
+            </div>
+            <div class="et-acciones">
+                <a href="{% url 'extractos:listar' %}?etiqueta={{ f.etiqueta.id }}" class="et-link">Ver movimientos</a>
+                <button type="button" class="et-link" data-editar="{{ f.etiqueta.id }}"
+                        data-nombre="{{ f.etiqueta.nombre }}" data-color="{{ f.etiqueta.color }}">Editar</button>
+                <form method="post" style="display:inline;"
+                      onsubmit="return confirm('¿Eliminar la etiqueta «{{ f.etiqueta.nombre|escapejs }}»? Los movimientos no se tocan.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="accion" value="eliminar">
+                    <input type="hidden" name="etiqueta_id" value="{{ f.etiqueta.id }}">
+                    <button type="submit" class="et-link peligro">Eliminar</button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="et-vacio">
+        <p>Todavía no has creado ninguna etiqueta.</p>
+        <p class="text-muted">
+            Son para las preguntas que las categorías no responden: «¿cuánto me costó el viaje?»,
+            «¿cuánto llevo gastado en la reforma?». Créala aquí y ponla a los movimientos desde el listado.
+        </p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- MODAL EDITAR -->
+<div id="modal-etiqueta" class="modal-overlay">
+    <div class="modal-box">
+        <h2>Editar etiqueta</h2>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="accion" value="editar">
+            <input type="hidden" name="etiqueta_id" id="et-id">
+            <div class="form-group">
+                <label>Nombre</label>
+                <input type="text" name="nombre" id="et-nombre" maxlength="60" required>
+            </div>
+            <div class="form-group">
+                <label>Color</label>
+                <input type="color" name="color" id="et-color">
+            </div>
+            <div class="modal-btns">
+                <button type="submit" class="btn btn-primary">Guardar</button>
+                <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-etiqueta').style.display='none'">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.et-crear { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:22px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+.et-crear input[type="text"] {
+    flex:1; min-width:220px; background:var(--app-bg); color:var(--text-color);
+    border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:0.86rem;
+}
+.et-crear input[type="color"] { width:42px; height:38px; border:1px solid var(--border); border-radius:8px; background:var(--app-bg); padding:3px; cursor:pointer; }
+
+.et-lista { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:14px; }
+.et-tarjeta { background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--tc); border-radius:12px; padding:14px 16px; }
+.et-cabecera { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.et-nombre { font-weight:700; color:var(--tc); }
+.et-gasto { font-weight:800; font-variant-numeric:tabular-nums; }
+.et-meta { font-size:0.75rem; color:var(--muted); margin-top:3px; }
+.et-acciones { display:flex; gap:12px; margin-top:10px; align-items:center; flex-wrap:wrap; }
+.et-link { background:none; border:none; padding:0; font-size:0.76rem; color:var(--muted); cursor:pointer; text-decoration:underline; }
+.et-link:hover { color:var(--primary-color); }
+.et-link.peligro:hover { color:var(--danger); }
+.et-vacio { text-align:center; padding:34px; border:1px dashed var(--border-strong); border-radius:14px; }
+.et-vacio p { margin:0 0 8px; }
+.et-vacio p.text-muted { font-size:0.84rem; max-width:60ch; margin:0 auto; }
+
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:2000; align-items:center; justify-content:center; padding:20px; }
+.modal-box { background:var(--surface); border:1px solid var(--primary-color); border-radius:20px; padding:32px; max-width:420px; width:100%; box-sizing:border-box; }
+.modal-box h2 { color:var(--primary-color); margin-top:0; font-size:1.15rem; }
+.modal-box .form-group { margin-bottom:16px; }
+.modal-box label { display:block; font-size:0.85rem; color:var(--muted); margin-bottom:6px; }
+.modal-box input[type="text"] { width:100%; padding:12px 14px; border:1px solid var(--border-strong); border-radius:10px; background:var(--app-bg); color:var(--text-color); box-sizing:border-box; }
+.modal-box input[type="color"] { width:60px; height:38px; background:var(--app-bg); border:1px solid var(--border-strong); border-radius:8px; padding:3px; }
+.modal-btns { display:flex; gap:12px; margin-top:18px; }
+.msg-toast { background:var(--surface); border-left:3px solid var(--primary-color); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
+</style>
+
+<script>
+document.querySelectorAll('[data-editar]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        document.getElementById('et-id').value = btn.dataset.editar;
+        document.getElementById('et-nombre').value = btn.dataset.nombre;
+        document.getElementById('et-color').value = btn.dataset.color;
+        document.getElementById('modal-etiqueta').style.display = 'flex';
+    });
+});
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') document.getElementById('modal-etiqueta').style.display = 'none';
+});
+</script>
+{% endblock %}

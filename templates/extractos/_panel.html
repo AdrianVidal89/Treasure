@@ -35,6 +35,20 @@ para no competir con los tres que de verdad importan.
         {% endfor %}
     </select>
 
+    {% if panel.etiquetas_hogar %}
+    <select name="etiqueta" onchange="this.form.submit()" aria-label="Etiqueta">
+        <option value="">Todas las etiquetas</option>
+        {% for e in panel.etiquetas_hogar %}
+        <option value="{{ e.id }}" {% if panel.etiqueta_sel == e.id|stringformat:'s' %}selected{% endif %}>{{ e.nombre }}</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+
+    {% if panel.bloque_sel %}
+    <input type="hidden" name="bloque" value="{{ panel.bloque_sel }}">
+    <span class="ext-bar-bloque">Bloque: <strong>{{ panel.bloque_etiqueta }}</strong></span>
+    {% endif %}
+
     <div class="ext-bar-buscar">
         <svg class="icon"><use href="#i-search"/></svg>
         <input type="search" name="q" value="{{ panel.busqueda }}" placeholder="Buscar comercio o concepto…">
@@ -198,6 +212,16 @@ para no competir con los tres que de verdad importan.
                     </span>
                     {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
                     {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
+
+                    <span class="ext-tags" data-mov-id="{{ m.id }}">
+                        {% for e in m.etiquetas.all %}
+                        <span class="ext-tag" style="--tc:{{ e.color }};" data-etiqueta-id="{{ e.id }}">
+                            {{ e.nombre }}<button type="button" class="ext-tag-quitar" title="Quitar etiqueta">×</button>
+                        </span>
+                        {% endfor %}
+                    </span>
+                    <button type="button" class="ext-tag-add" data-mov-id="{{ m.id }}"
+                            title="Etiquetar (un viaje, una obra…)">+</button>
                 </div>
             </div>
 
@@ -219,6 +243,10 @@ para no competir con los tres que de verdad importan.
     {% if panel.hay_filtro %}<a href="{{ request.path }}" class="btn btn-secondary">Quitar filtros</a>{% endif %}
 </div>
 {% endfor %}
+
+<datalist id="ext-etiquetas-existentes">
+    {% for e in panel.etiquetas_hogar %}<option value="{{ e.nombre }}"></option>{% endfor %}
+</datalist>
 
 {{ panel.donut|json_script:"ext-donut-data" }}
 <span id="ext-kpi-data" data-ing="{{ panel.kpi_ingresos|unlocalize }}" data-gas="{{ panel.kpi_gastos|unlocalize }}"></span>
@@ -345,6 +373,27 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     padding:2px 6px; max-width:190px; cursor:pointer; appearance:none; -webkit-appearance:none;
 }
 .ext-cat-select:focus { outline:1px solid var(--primary-color); border-radius:6px; }
+.ext-bar-bloque { font-size:0.78rem; color:var(--muted); }
+.ext-tags { display:inline-flex; gap:5px; flex-wrap:wrap; }
+.ext-tag {
+    display:inline-flex; align-items:center; gap:3px; font-size:0.66rem; line-height:1.6;
+    border:1px solid color-mix(in srgb, var(--tc) 45%, transparent);
+    background:color-mix(in srgb, var(--tc) 12%, transparent);
+    color:var(--tc); border-radius:999px; padding:0 4px 0 8px;
+}
+.ext-tag-quitar { background:none; border:none; color:inherit; cursor:pointer; font-size:0.85rem; line-height:1; padding:0 2px; opacity:.5; }
+.ext-tag-quitar:hover { opacity:1; }
+.ext-tag-add {
+    background:none; border:1px dashed var(--border-strong); color:var(--muted); cursor:pointer;
+    border-radius:999px; width:18px; height:18px; line-height:1; font-size:0.8rem; padding:0;
+    opacity:0; transition:opacity .15s;
+}
+.ext-mov:hover .ext-tag-add, .ext-tag-add:focus { opacity:1; }
+.ext-tag-add:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.ext-tag-input {
+    font-size:0.72rem; padding:2px 8px; border-radius:999px;
+    border:1px solid var(--primary-color); background:var(--app-bg); color:var(--text-color); width:150px;
+}
 .ext-badge-neutro { font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); border:1px solid var(--border-strong); border-radius:999px; padding:1px 7px; }
 .ext-mov-importe { font-size:0.95rem; font-weight:700; font-variant-numeric:tabular-nums; cursor:pointer; white-space:nowrap; border-radius:5px; }
 .ext-mov-importe:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); }
@@ -614,6 +663,130 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 
     document.querySelectorAll('.ext-mov-concepto, .ext-mov-importe').forEach(function(celda) {
         celda.addEventListener('click', function(){ editarCelda(celda); });
+    });
+
+    /* ---- Etiquetas ----
+       Se ponen desde la propia fila porque etiquetar es un gesto de paso: si
+       hay que irse a otra pantalla, no se hace. Al etiquetar se ofrece aplicar
+       la etiqueta al resto del comercio, igual que con las categorías. */
+    var URL_ETIQUETAR = "/extractos/movimiento/__ID__/etiquetar/";
+    var URL_ETIQUETAR_COMERCIO = "{% url 'extractos:etiquetar_comercio' %}";
+    var ETIQUETAS = [{% for e in panel.etiquetas_hogar %}"{{ e.nombre|escapejs }}"{% if not forloop.last %},{% endif %}{% endfor %}];
+
+    function pintarEtiquetas(contenedor, etiquetas) {
+        contenedor.innerHTML = '';
+        etiquetas.forEach(function(e) {
+            var chip = document.createElement('span');
+            chip.className = 'ext-tag';
+            chip.style.setProperty('--tc', e.color);
+            chip.dataset.etiquetaId = e.id;
+            chip.textContent = e.nombre;
+            var quitar = document.createElement('button');
+            quitar.type = 'button';
+            quitar.className = 'ext-tag-quitar';
+            quitar.title = 'Quitar etiqueta';
+            quitar.textContent = '×';
+            chip.appendChild(quitar);
+            contenedor.appendChild(chip);
+        });
+    }
+
+    function etiquetar(movId, datos) {
+        var body = new URLSearchParams();
+        Object.keys(datos).forEach(function(k){ body.set(k, datos[k]); });
+        return fetch(URL_ETIQUETAR.replace('__ID__', movId), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); });
+    }
+
+    function ofrecerComercio(fila, sug) {
+        quitarAviso();
+        var aviso = document.createElement('div');
+        aviso.className = 'ext-sugerencia';
+        var texto = document.createElement('span');
+        texto.className = 'ext-sugerencia-texto';
+        texto.textContent = '¿Poner «' + sug.nombre + '» también a los otros ' +
+            sug.n_similares + ' movimiento' + (sug.n_similares === 1 ? '' : 's') +
+            ' de «' + sug.comercio + '»?';
+        var acciones = document.createElement('span');
+        acciones.className = 'ext-sugerencia-btns';
+
+        var si = document.createElement('button');
+        si.type = 'button'; si.className = 'btn btn-primary btn-sm'; si.textContent = 'Sí, a todos';
+        si.addEventListener('click', function() {
+            si.disabled = true;
+            var body = new URLSearchParams();
+            body.set('etiqueta_id', sug.etiqueta_id);
+            body.set('comercio', sug.comercio);
+            fetch(URL_ETIQUETAR_COMERCIO, {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+                body: body.toString()
+            }).then(function(r){ return r.json(); }).then(function(data){
+                if (!data.ok) { si.disabled = false; return; }
+                texto.textContent = data.aplicados + ' movimiento(s) etiquetados como «' + data.etiqueta + '». Recargando…';
+                acciones.remove();
+                setTimeout(function(){ window.location.reload(); }, 800);
+            }).catch(function(){ si.disabled = false; });
+        });
+
+        var no = document.createElement('button');
+        no.type = 'button'; no.className = 'btn btn-ghost btn-sm'; no.textContent = 'Solo este';
+        no.addEventListener('click', quitarAviso);
+
+        acciones.appendChild(si); acciones.appendChild(no);
+        aviso.appendChild(texto); aviso.appendChild(acciones);
+        fila.parentNode.insertBefore(aviso, fila.nextSibling);
+    }
+
+    document.querySelectorAll('.ext-tag-add').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            if (btn.dataset.abierto) return;
+            btn.dataset.abierto = '1';
+            var movId = btn.dataset.movId;
+            var input = document.createElement('input');
+            input.className = 'ext-tag-input';
+            input.setAttribute('list', 'ext-etiquetas-existentes');
+            input.placeholder = 'Etiqueta…';
+            btn.parentNode.insertBefore(input, btn);
+            input.focus();
+
+            var cerrado = false;
+            function cerrar(guardar) {
+                if (cerrado) return; cerrado = true;
+                var nombre = input.value.trim();
+                input.remove();
+                delete btn.dataset.abierto;
+                if (!guardar || !nombre) return;
+                etiquetar(movId, {nombre: nombre}).then(function(data) {
+                    if (!data.ok) return;
+                    var contenedor = document.querySelector('.ext-tags[data-mov-id="' + movId + '"]');
+                    if (contenedor) pintarEtiquetas(contenedor, data.etiquetas);
+                    if (data.sugerencia) {
+                        var fila = filaDe(movId);
+                        if (fila) ofrecerComercio(fila, data.sugerencia);
+                    }
+                }).catch(function(){});
+            }
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); cerrar(true); }
+                if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
+            });
+            input.addEventListener('blur', function(){ cerrar(true); });
+        });
+    });
+
+    /* Quitar una etiqueta: delegado, porque los chips se repintan al vuelo. */
+    document.addEventListener('click', function(e) {
+        var boton = e.target.closest('.ext-tag-quitar');
+        if (!boton) return;
+        var chip = boton.closest('.ext-tag');
+        var contenedor = chip.closest('.ext-tags');
+        etiquetar(contenedor.dataset.movId, {quitar: chip.dataset.etiquetaId}).then(function(data) {
+            if (data.ok) pintarEtiquetas(contenedor, data.etiquetas);
+        }).catch(function(){});
     });
 
     /* ---- Plegar / desplegar meses ---- */

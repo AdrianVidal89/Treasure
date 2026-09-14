@@ -101,6 +101,46 @@ class ReglaCategorizacion(models.Model):
         super().save(*args, **kwargs)
 
 
+class Etiqueta(models.Model):
+    """Corte transversal sobre los movimientos: «Vacaciones Lisboa», «Obra
+    casa», «Regalos Navidad».
+
+    No sustituye a la categoría, la cruza: una cena del viaje es *Restaurantes*
+    Y *Vacaciones Lisboa*. Sin esto, la única salida para analizar un gasto
+    puntual es inventar categorías («Compras», «Otros») que acaban siendo un
+    cajón de sastre que no explica nada.
+    """
+
+    PALETA = [
+        '#2d6a4f', '#3DCD58', '#2c5f7a', '#b7791f', '#b4442e',
+        '#9d4edd', '#5f8fb0', '#d4a017', '#e07a5f', '#40916c',
+    ]
+
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='etiquetas')
+    nombre = models.CharField(max_length=60)
+    color = models.CharField(max_length=7, default='#2d6a4f')
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nombre']
+        constraints = [
+            models.UniqueConstraint(fields=['hogar', 'nombre'], name='uniq_etiqueta_hogar_nombre'),
+        ]
+
+    def __str__(self):
+        return self.nombre
+
+    @classmethod
+    def color_sugerido(cls, hogar):
+        """Un color distinto al de las etiquetas que ya tiene el hogar, para que
+        se distingan en las listas sin tener que elegirlo a mano."""
+        usados = set(cls.objects.filter(hogar=hogar).values_list('color', flat=True))
+        for color in cls.PALETA:
+            if color not in usados:
+                return color
+        return cls.PALETA[cls.objects.filter(hogar=hogar).count() % len(cls.PALETA)]
+
+
 class MovimientoBancario(models.Model):
     """Un apunte observado en el extracto. Se cruza con los datos declarados."""
 
@@ -147,6 +187,11 @@ class MovimientoBancario(models.Model):
     partida_conciliada = models.ForeignKey(
         'finanzas.PartidaGasto', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='movimientos_conciliados',
+    )
+
+    etiquetas = models.ManyToManyField(
+        Etiqueta, blank=True, related_name='movimientos',
+        help_text='Cortes transversales (un viaje, una obra) que cruzan las categorías.',
     )
 
     hash_dedupe = models.CharField(max_length=64, db_index=True, editable=False)

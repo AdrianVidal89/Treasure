@@ -1,5 +1,6 @@
 import difflib
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 
 from django.contrib import messages
@@ -13,8 +14,9 @@ from finanzas.parsing import leer_tabla
 from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
+from .analisis import analizar_mes
 from .categorizacion import categorizar_lote
-from .models import ExtractoBancario, MovimientoBancario, ReglaCategorizacion
+from .models import Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion
 from .normalizacion import (
     es_traspaso_interno, nombres_del_hogar, normalizar_comercio, normalizar_texto,
 )
@@ -55,7 +57,7 @@ def listar(request):
     # los movimientos del hogar (todos los extractos juntos).
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria').order_by('-fecha')
+        .select_related('categoria').prefetch_related('etiquetas').order_by('-fecha')
     )
     panel = _panel_context(hogar, todos, request)
 
@@ -459,6 +461,10 @@ def _panel_context(hogar, todos, request):
     anio_sel = request.GET.get('anio', 'all')
     mes_sel = request.GET.get('mes', 'all')
     cat_sel = request.GET.get('categoria', 'all')
+    # Bloque y etiqueta llegan desde el drill-down del análisis y de la
+    # conciliación («enséñame los movimientos que hay detrás de esta cifra»).
+    bloque_sel = request.GET.get('bloque', '')
+    etiqueta_sel = request.GET.get('etiqueta', '')
     # Buscador libre: con cientos de apuntes, encontrar «ese recibo raro» a ojo
     # es lo que hace que la pantalla se sienta un muro de números.
     busqueda = (request.GET.get('q') or '').strip()
@@ -480,6 +486,13 @@ def _panel_context(hogar, todos, request):
                 if m.categoria_id is not None:
                     return False
             elif str(m.categoria_id) != cat_sel:
+                return False
+        if bloque_sel:
+            tipo = m.categoria.tipo if m.categoria else 'sin'
+            if tipo != bloque_sel:
+                return False
+        if etiqueta_sel:
+            if etiqueta_sel not in {str(e.id) for e in m.etiquetas.all()}:
                 return False
         if busqueda_norm:
             texto = f"{m.comercio or ''} {normalizar_texto(m.concepto)}"
@@ -591,6 +604,10 @@ def _panel_context(hogar, todos, request):
         'cat_sel': cat_sel,
         'ver_traspasos': ver_traspasos,
         'busqueda': busqueda,
+        'bloque_sel': bloque_sel,
+        'bloque_etiqueta': ETIQUETAS_TIPO.get(bloque_sel, 'Sin categorizar') if bloque_sel else '',
+        'etiqueta_sel': etiqueta_sel,
+        'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'colores_tipo': COLOR_TIPO,
         'num_traspasos': sum(1 for m in todos if m.es_neutro),
@@ -600,7 +617,8 @@ def _panel_context(hogar, todos, request):
         'categorias_hogar': categorias_hogar,
         'bloques_categorias': _categorias_por_bloque(hogar),
         'hay_filtro': (
-            anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all' or bool(busqueda)
+            anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all'
+            or bool(busqueda) or bool(bloque_sel) or bool(etiqueta_sel)
         ),
     }
 
@@ -613,7 +631,9 @@ def detalle(request, pk):
         return redirect('dashboard')
 
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
-    todos = list(extracto.movimientos.select_related('categoria').all())
+    todos = list(
+        extracto.movimientos.select_related('categoria').prefetch_related('etiquetas').all()
+    )
     panel = _panel_context(hogar, todos, request)
     return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
 
@@ -858,6 +878,7 @@ def conciliacion(request):
         })
         bloque['filas'].append({
             'categoria': cat.nombre,
+            'categoria_id': cat.id,
             'declarado': declarado,
             'observado': obs_mensual,
             'diferencia': obs_mensual - declarado,
@@ -902,6 +923,229 @@ def conciliacion(request):
         'ahorro_observado': ingreso_observado - total_observado,
         'hay_datos': bool(movimientos),
         'hay_movimientos': bool(todos),
+    })
+
+
+@login_required
+def analisis(request):
+    """En qué se ha ido el mes y qué lo explica.
+
+    Es el destino del drill-down de la conciliación: se entra desde «Ocio se ha
+    pasado 180 €» y aquí se ve contra qué se compara, qué comercios lo componen
+    y cuánto de eso volverá a pasar el mes que viene."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+
+    todos = list(
+        MovimientoBancario.objects.filter(hogar=hogar)
+        .select_related('categoria').prefetch_related('etiquetas')
+    )
+
+    anio, mes = _mes_analizado(request, todos)
+    bloque = request.GET.get('bloque') or ''
+    categoria_id = _entero_o_none(request.GET.get('categoria'))
+    etiqueta_id = _entero_o_none(request.GET.get('etiqueta'))
+
+    categoria = (
+        CategoriaGasto.objects.filter(hogar=hogar, id=categoria_id).first()
+        if categoria_id else None
+    )
+    etiqueta = (
+        Etiqueta.objects.filter(hogar=hogar, id=etiqueta_id).first()
+        if etiqueta_id else None
+    )
+    if bloque not in ETIQUETAS_TIPO and bloque != 'sin':
+        bloque = ''
+
+    datos = analizar_mes(
+        todos, anio, mes,
+        bloque=bloque or None,
+        categoria_id=categoria.id if categoria else None,
+        etiqueta_id=etiqueta.id if etiqueta else None,
+    )
+
+    meses_con_datos = sorted({(m.fecha.year, m.fecha.month) for m in todos}, reverse=True)
+    return render(request, 'extractos/analisis.html', {
+        'a': datos,
+        'etiqueta_mes': f"{MESES_ES[mes]} {anio}",
+        'bloque': bloque,
+        'bloque_etiqueta': ETIQUETAS_TIPO.get(bloque, 'Sin categorizar') if bloque else '',
+        'categoria': categoria,
+        'etiqueta': etiqueta,
+        'color_bloque': COLOR_TIPO.get(bloque, '#9aa5a0'),
+        'colores_tipo': COLOR_TIPO,
+        'hay_ambito': bool(bloque or categoria or etiqueta),
+        'meses_disponibles': [
+            {'anio': a, 'mes': m, 'etiqueta': f"{MESES_ES[m]} {a}"} for a, m in meses_con_datos
+        ],
+        'hay_movimientos': bool(todos),
+        'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
+    })
+
+
+def _mes_analizado(request, movimientos):
+    """Mes elegido en la URL o, si no viene, el último con datos."""
+    anio = _entero_o_none(request.GET.get('anio'))
+    mes = _entero_o_none(request.GET.get('mes'))
+    if anio and mes and 1 <= mes <= 12:
+        return anio, mes
+
+    meses = sorted({(m.fecha.year, m.fecha.month) for m in movimientos}, reverse=True)
+    if meses:
+        return meses[0]
+    hoy = date.today()
+    return hoy.year, hoy.month
+
+
+# ---------------------------------------------------------------------------
+# Etiquetas
+#
+# Cruzan las categorías en vez de competir con ellas: una cena del viaje es
+# «Restaurantes» Y «Vacaciones Lisboa». Sin esto, analizar un gasto puntual
+# obliga a inventar categorías que acaban siendo un cajón de sastre.
+# ---------------------------------------------------------------------------
+
+@login_required
+def etiquetar_movimiento(request, pk):
+    """Añade o quita una etiqueta de un movimiento. Si el nombre es nuevo, se
+    crea la etiqueta: obligar a crearla antes rompería el gesto."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+    quitar = _entero_o_none(request.POST.get('quitar'))
+    if quitar:
+        mov.etiquetas.remove(quitar)
+        return JsonResponse({'ok': True, 'etiquetas': _etiquetas_de(mov)})
+
+    nombre = (request.POST.get('nombre') or '').strip()[:60]
+    if not nombre:
+        return JsonResponse({'ok': False, 'error': 'nombre_vacio'}, status=400)
+
+    etiqueta = Etiqueta.objects.filter(hogar=hogar, nombre__iexact=nombre).first()
+    if not etiqueta:
+        etiqueta = Etiqueta.objects.create(
+            hogar=hogar, nombre=nombre, color=Etiqueta.color_sugerido(hogar),
+        )
+    mov.etiquetas.add(etiqueta)
+
+    # Al etiquetar a mano se ofrece aplicar la etiqueta a los movimientos del
+    # mismo comercio, igual que con las categorías: un viaje no se etiqueta
+    # apunte a apunte.
+    similares = MovimientoBancario.objects.filter(
+        hogar=hogar, comercio=mov.comercio,
+    ).exclude(pk=mov.pk).exclude(etiquetas=etiqueta).count() if mov.comercio else 0
+
+    return JsonResponse({
+        'ok': True,
+        'etiquetas': _etiquetas_de(mov),
+        'sugerencia': {
+            'etiqueta_id': etiqueta.id, 'nombre': etiqueta.nombre,
+            'comercio': mov.comercio, 'n_similares': similares,
+        } if similares else None,
+    })
+
+
+def _etiquetas_de(mov):
+    return [
+        {'id': e.id, 'nombre': e.nombre, 'color': e.color}
+        for e in mov.etiquetas.all()
+    ]
+
+
+@login_required
+def etiquetar_comercio(request):
+    """Aplica una etiqueta a todos los movimientos de un comercio."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    etiqueta = get_object_or_404(
+        Etiqueta, pk=request.POST.get('etiqueta_id') or 0, hogar=hogar,
+    )
+    comercio = (request.POST.get('comercio') or '').strip()
+    if not comercio:
+        return JsonResponse({'ok': False, 'error': 'comercio_vacio'}, status=400)
+
+    movimientos = MovimientoBancario.objects.filter(hogar=hogar, comercio=comercio)
+    aplicados = 0
+    for mov in movimientos.exclude(etiquetas=etiqueta):
+        mov.etiquetas.add(etiqueta)
+        aplicados += 1
+    return JsonResponse({'ok': True, 'aplicados': aplicados, 'etiqueta': etiqueta.nombre})
+
+
+@login_required
+def etiquetas(request):
+    """Gestión de etiquetas: renombrar, recolorear y borrar.
+
+    Borrar una etiqueta no toca los movimientos: solo deja de cruzarlos."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+
+    if request.method == 'POST':
+        accion = request.POST.get('accion')
+        if accion == 'crear':
+            nombre = (request.POST.get('nombre') or '').strip()[:60]
+            if not nombre:
+                messages.error(request, "El nombre no puede estar vacío.")
+            elif Etiqueta.objects.filter(hogar=hogar, nombre__iexact=nombre).exists():
+                messages.warning(request, f"Ya existe la etiqueta «{nombre}».")
+            else:
+                Etiqueta.objects.create(
+                    hogar=hogar, nombre=nombre,
+                    color=request.POST.get('color') or Etiqueta.color_sugerido(hogar),
+                )
+                messages.success(request, f"Etiqueta «{nombre}» creada.")
+            return redirect('extractos:etiquetas')
+
+        etiqueta = get_object_or_404(Etiqueta, pk=request.POST.get('etiqueta_id'), hogar=hogar)
+        if accion == 'eliminar':
+            nombre = etiqueta.nombre
+            etiqueta.delete()
+            messages.success(request, f"Etiqueta «{nombre}» eliminada. Los movimientos no se tocan.")
+        elif accion == 'editar':
+            nombre = (request.POST.get('nombre') or '').strip()[:60]
+            choque = Etiqueta.objects.filter(
+                hogar=hogar, nombre__iexact=nombre,
+            ).exclude(pk=etiqueta.pk).exists()
+            if not nombre:
+                messages.error(request, "El nombre no puede estar vacío.")
+            elif choque:
+                messages.error(request, f"Ya existe otra etiqueta llamada «{nombre}».")
+            else:
+                etiqueta.nombre = nombre
+                etiqueta.color = request.POST.get('color') or etiqueta.color
+                etiqueta.save(update_fields=['nombre', 'color'])
+                messages.success(request, "Etiqueta actualizada.")
+        return redirect('extractos:etiquetas')
+
+    filas = []
+    for etiqueta in Etiqueta.objects.filter(hogar=hogar).prefetch_related('movimientos'):
+        movimientos = list(etiqueta.movimientos.all())
+        gasto = sum((-m.importe for m in movimientos if m.importe < 0), Decimal('0'))
+        filas.append({
+            'etiqueta': etiqueta,
+            'num': len(movimientos),
+            'gasto': gasto,
+            'desde': min((m.fecha for m in movimientos), default=None),
+            'hasta': max((m.fecha for m in movimientos), default=None),
+        })
+    filas.sort(key=lambda f: f['gasto'], reverse=True)
+
+    return render(request, 'extractos/etiquetas.html', {
+        'filas': filas,
+        'paleta': Etiqueta.PALETA,
+        'color_sugerido': Etiqueta.color_sugerido(hogar),
     })
 
 

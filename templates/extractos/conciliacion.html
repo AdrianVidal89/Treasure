@@ -87,10 +87,23 @@
             </span>
         </summary>
 
+        {% if periodo.es_mes %}
+        <div class="conc-analizar">
+            <a href="{% url 'extractos:analisis' %}?anio={{ periodo.anio_sel }}&mes={{ periodo.mes_sel }}&bloque={{ b.tipo }}">
+                Analizar {{ b.etiqueta|lower }} de {{ periodo.etiqueta }} →
+            </a>
+        </div>
+        {% endif %}
+
         <div class="conc-filas">
             {% for f in b.filas %}
             <div class="conc-fila">
+                {% if periodo.es_mes and f.categoria_id %}
+                <a class="conc-fila-cat" href="{% url 'extractos:analisis' %}?anio={{ periodo.anio_sel }}&mes={{ periodo.mes_sel }}&categoria={{ f.categoria_id }}"
+                   title="Ver en qué se ha ido {{ f.categoria }}">{{ f.categoria }}</a>
+                {% else %}
                 <span class="conc-fila-cat">{{ f.categoria }}</span>
+                {% endif %}
                 <span class="conc-fila-barra" title="{{ f.pct }}% de lo presupuestado">
                     <i style="width:{% if f.pct > 100 %}100{% else %}{{ f.pct|unlocalize }}{% endif %}%;background:{% if f.diferencia > 0 %}var(--danger){% else %}{{ b.color }}{% endif %};"></i>
                 </span>
@@ -173,6 +186,9 @@
     border-radius:10px; padding:11px 14px; font-size:0.84rem;
 }
 .conc-aviso .btn { margin-left:auto; }
+.conc-analizar { padding:10px 18px 10px 36px; border-top:1px solid var(--border); font-size:0.8rem; }
+a.conc-fila-cat { color:var(--text-color); text-decoration:none; border-bottom:1px dotted var(--border-strong); }
+a.conc-fila-cat:hover { color:var(--primary-color); border-bottom-color:var(--primary-color); }
 .conc-vacio { text-align:center; padding:32px; color:var(--muted); border:1px dashed var(--border-strong); border-radius:14px; }
 .conc-vacio p { margin:0 0 12px; font-style:italic; }
 </style>
