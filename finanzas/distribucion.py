@@ -13,6 +13,7 @@ Flujo:
   6. KPIs y transferencias
 """
 from decimal import Decimal
+from datetime import date
 import datetime
 
 from .models import (
@@ -119,6 +120,11 @@ def calcular_flujos(hogar, mes=None, anio=None):
     total_base_hogar = Decimal('0')
     total_pond_hogar = Decimal('0')
     total_base_puro_hogar = Decimal('0')
+    # Las fuentes fuera del reparto no se distribuyen, pero SÍ son ingreso del
+    # hogar: el dashboard da la foto general y ahí tienen que estar. Se llevan
+    # aparte para poder decir en el reparto qué se está dejando fuera y por qué.
+    fuera_reparto = []
+    total_fuera_reparto = Decimal('0')
 
     for m in miembros:
         # Las fuentes marcadas como fuera del reparto siguen declaradas (total
@@ -150,6 +156,17 @@ def calcular_flujos(hogar, mes=None, anio=None):
             ing_base += b
             ing_pond += p
             ing_base_puro += b_base
+
+        for f in FuenteIngreso.objects.filter(
+            usuario=m.user, hogar=hogar, activo=True, incluir_en_distribucion=False,
+        ):
+            base, _ = _neto_fuente_base(f)
+            fuera_reparto.append({
+                'fuente': f.nombre,
+                'miembro': m.user.first_name or m.user.username,
+                'importe': base,
+            })
+            total_fuera_reparto += base
 
         fuentes_lista = [{'id': f.id, 'nombre': f.nombre} for f in fuentes]
 
@@ -410,6 +427,13 @@ def calcular_flujos(hogar, mes=None, anio=None):
         'ingreso_base_puro_hogar': total_base_puro_hogar,
         'ingreso_pond_hogar': total_pond_hogar,
 
+        # Ingreso REAL del hogar: lo que se reparte más lo que se gestiona
+        # aparte. Es la cifra del overview; el reparto sigue usando la de
+        # arriba.
+        'ingreso_total_hogar': total_base_puro_hogar + total_fuera_reparto,
+        'ingresos_fuera_reparto': fuera_reparto,
+        'total_fuera_reparto': total_fuera_reparto,
+
         'gastos_hogar_total': gastos_hogar_total,
         'total_gastos_individuales': total_gastos_ind,
         'total_gastos_all': total_gastos_all,
@@ -435,6 +459,55 @@ def calcular_flujos(hogar, mes=None, anio=None):
 # ---------------------------------------------------------------------------
 # Resumen anual
 # ---------------------------------------------------------------------------
+
+def ahorro_esperado(hogar, anio=None):
+    """Lo que el hogar debería ahorrar: ingresos menos gastos, en dos plazos.
+
+    Se dan las dos cifras porque no dicen lo mismo:
+
+    * MENSUAL: el ingreso recurrente del mes menos el gasto recurrente. Es el
+      colchón que se genera un mes normal.
+    * ANUAL: el ingreso de los doce meses —pagas extra incluidas— menos el
+      gasto de los doce —provisiones de los gastos anuales incluidas—. La paga
+      extra no llega todos los meses, así que sumarla al mensual daría una
+      imagen falsa de lo que se ahorra cada mes; pero es dinero del año y sí
+      cuenta en el total.
+    """
+    from .models import PartidaGasto
+
+    anio = anio or date.today().year
+    miembros = hogar.miembros.select_related('user').all()
+
+    mensual_ingresos = Decimal('0')
+    anual_ingresos = Decimal('0')
+    extras = Decimal('0')
+    for m in miembros:
+        for f in FuenteIngreso.objects.filter(usuario=m.user, hogar=hogar, activo=True):
+            base, _ = _neto_fuente_base(f)
+            mensual_ingresos += base
+            # El anual se suma mes a mes con el mismo motor que usa el reparto:
+            # así las pagas extra y los ingresos periódicos caen donde tocan.
+            del_anio = sum(
+                (_neto_fuente_mes(f, mes, anio)[0] for mes in range(1, 13)), Decimal('0'),
+            )
+            anual_ingresos += del_anio
+            extras += del_anio - base * 12
+
+    partidas = PartidaGasto.objects.filter(hogar=hogar, activo=True)
+    mensual_gastos = sum((p.importe_mensual for p in partidas), Decimal('0'))
+    anual_gastos = sum((p.importe_anual for p in partidas), Decimal('0'))
+
+    return {
+        'anio': anio,
+        'ingresos_mensuales': mensual_ingresos,
+        'gastos_mensuales': mensual_gastos,
+        'mensual': mensual_ingresos - mensual_gastos,
+        'ingresos_anuales': anual_ingresos,
+        'gastos_anuales': anual_gastos,
+        'anual': anual_ingresos - anual_gastos,
+        'extras_anuales': extras,
+    }
+
 
 def calcular_resumen_anual(hogar, anio=None):
     anio = anio or datetime.date.today().year

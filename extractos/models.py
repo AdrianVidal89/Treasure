@@ -236,6 +236,20 @@ class MovimientoBancario(ImputableAActivo):
         return COMPUTO_SUMA if self.es_ingreso else COMPUTO_RESTA
 
     @property
+    def es_pago_provision(self):
+        """Es uno de los pagos a plazos de un gasto que no es mensual.
+
+        El IBI se provisiona a 43 €/mes pero se paga de golpe en junio. Sin
+        marcarlo, junio parece un mes desastroso y los otros once, excelentes:
+        el pago hay que sacarlo de la comparación mensual y llevarlo a la del
+        año, que es donde encaja."""
+        return bool(
+            self.partida_conciliada_id
+            and self.partida_conciliada
+            and self.partida_conciliada.periodicidad != 'mensual'
+        )
+
+    @property
     def es_neutro(self):
         from finanzas.models import COMPUTO_NEUTRO
 

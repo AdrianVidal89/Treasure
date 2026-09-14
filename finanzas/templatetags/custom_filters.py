@@ -13,6 +13,16 @@ def get_item(dictionary, key):
 
 
 @register.filter
+def multiplicar(valor, factor):
+    """Multiplica manteniendo Decimal (el filtro `add` de Django castea a int y
+    se come los céntimos)."""
+    try:
+        return Decimal(str(valor)) * Decimal(str(factor))
+    except (InvalidOperation, TypeError, ValueError):
+        return valor
+
+
+@register.filter
 def euro(valor, decimales=2):
     """Importe en euros con formato español: 2.514,99 €.
 

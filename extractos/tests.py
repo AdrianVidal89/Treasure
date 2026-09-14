@@ -1502,3 +1502,171 @@ class ImputacionAActivosTests(TestCase):
 
         self.assertEqual(ficha['real_anual'], Decimal('60'))
         self.assertEqual(ficha['num_movimientos'], 1)
+
+
+class PagosDeGastosAnualesTests(TestCase):
+    """El IBI se provisiona a 43 €/mes y se paga de golpe en junio.
+
+    Sin marcar ese pago, junio parece un mes desastroso y los otros once un
+    dechado de virtud: el pago tiene que salir de la comparación MENSUAL y
+    llevarse a la del año, que es su unidad."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+
+        self.ibi = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='IBI'),
+            nombre='IBI del piso', importe=Decimal('520'), periodicidad='anual',
+        )
+        self.compra = PartidaGasto.objects.create(
+            hogar=self.hogar,
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion'),
+            nombre='Super', importe=Decimal('400'), periodicidad='mensual',
+        )
+
+    def gasto(self, concepto, importe, mes, categoria='IBI', dia=12):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, mes, dia),
+            concepto=concepto, importe=Decimal(importe),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria),
+        )
+
+    def marcar(self, mov, partida_id):
+        return self.client.post(
+            reverse('extractos:marcar_provision', args=[mov.id]),
+            {'partida_id': partida_id}, HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_marcar_un_pago_como_provision(self):
+        mov = self.gasto('IBI AYUNTAMIENTO', '-260', 6)
+        respuesta = self.marcar(mov, self.ibi.id)
+
+        self.assertTrue(respuesta.json()['ok'])
+        mov.refresh_from_db()
+        self.assertEqual(mov.partida_conciliada, self.ibi)
+        self.assertTrue(mov.es_pago_provision)
+
+    def test_una_partida_mensual_no_vale_como_provision(self):
+        """Un gasto mensual ya se compara mes a mes: marcarlo lo sacaría de la
+        comparación sin motivo."""
+        mov = self.gasto('Compra', '-380', 6, categoria='Alimentacion')
+        respuesta = self.marcar(mov, self.compra.id)
+
+        self.assertEqual(respuesta.status_code, 400)
+        mov.refresh_from_db()
+        self.assertFalse(mov.es_pago_provision)
+
+    def test_el_pago_anual_sale_de_la_comparacion_del_mes(self):
+        self.gasto('Compra semanal', '-380', 6, categoria='Alimentacion')
+        ibi = self.gasto('IBI AYUNTAMIENTO', '-260', 6)
+
+        sin_marcar = self.client.get(
+            reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6},
+        )
+        self.assertEqual(sin_marcar.context['total_observado'], Decimal('640'))
+
+        self.marcar(ibi, self.ibi.id)
+        marcado = self.client.get(
+            reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6},
+        )
+        self.assertEqual(marcado.context['total_observado'], Decimal('380'))
+        self.assertEqual(marcado.context['total_provisiones_periodo'], Decimal('260'))
+        self.assertEqual(len(marcado.context['pagos_provision']), 1)
+
+    def test_el_gasto_no_mensual_no_descuadra_ninguno_de_los_dos_lados(self):
+        """Si el pago sale del observado, su provisión sale del declarado: si
+        no, el bloque de anuales saldría a «0 € de 43 €» todos los meses."""
+        self.marcar(self.gasto('IBI AYUNTAMIENTO', '-260', 6), self.ibi.id)
+        self.gasto('Compra semanal', '-380', 6, categoria='Alimentacion')
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6})
+        etiquetas = [b['etiqueta'] for b in respuesta.context['bloques']]
+
+        self.assertNotIn('Fijos anuales', etiquetas)
+        self.assertEqual(respuesta.context['total_declarado'], Decimal('400'))
+        self.assertEqual(respuesta.context['total_observado'], Decimal('380'))
+
+    def test_sobre_varios_meses_la_comparacion_vuelve_a_incluirlos(self):
+        """En doce meses el prorrateo y los pagos se promedian bien: ahí el
+        gasto anual sí tiene que estar en los dos lados."""
+        self.marcar(self.gasto('IBI AYUNTAMIENTO', '-520', 6), self.ibi.id)
+
+        respuesta = self.client.get(
+            reverse('extractos:conciliacion'), {'anio': 'all', 'mes': 'all'},
+        )
+        etiquetas = [b['etiqueta'] for b in respuesta.context['bloques']]
+        self.assertIn('Fijos anuales', etiquetas)
+        self.assertEqual(respuesta.context['pagos_provision'], [])
+
+    def test_el_bloque_anual_suma_los_pagos_del_anio(self):
+        """Dos pagos parciales: junio y noviembre."""
+        for mes, importe in ((6, '-260'), (11, '-260')):
+            self.marcar(self.gasto('IBI AYUNTAMIENTO', importe, mes), self.ibi.id)
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6})
+        fila = next(f for f in respuesta.context['provisiones'] if f['partida'] == self.ibi)
+
+        self.assertEqual(fila['objetivo'], Decimal('520'))
+        self.assertEqual(fila['pagado'], Decimal('520'))
+        self.assertEqual(fila['num_pagos'], 2)
+        self.assertEqual(fila['pct'], 100)
+        self.assertTrue(fila['completo'])
+
+    def test_un_pago_a_medias_se_ve_a_medias(self):
+        self.marcar(self.gasto('IBI AYUNTAMIENTO', '-260', 6), self.ibi.id)
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6})
+        fila = next(f for f in respuesta.context['provisiones'] if f['partida'] == self.ibi)
+
+        self.assertEqual(fila['pagado'], Decimal('260'))
+        self.assertEqual(fila['pendiente'], Decimal('260'))
+        self.assertEqual(fila['pct'], 50)
+        self.assertFalse(fila['completo'])
+
+    def test_los_pagos_de_otro_anio_no_se_cuelan(self):
+        viejo = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2025, 6, 12),
+            concepto='IBI AYUNTAMIENTO', importe=Decimal('-500'),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='IBI'),
+        )
+        self.marcar(viejo, self.ibi.id)
+        self.marcar(self.gasto('IBI AYUNTAMIENTO', '-260', 6), self.ibi.id)
+
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6})
+        fila = next(f for f in respuesta.context['provisiones'] if f['partida'] == self.ibi)
+        self.assertEqual(fila['pagado'], Decimal('260'))
+
+    def test_una_partida_sin_pagos_sale_igualmente_para_recordarla(self):
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6})
+        fila = next(f for f in respuesta.context['provisiones'] if f['partida'] == self.ibi)
+
+        self.assertEqual(fila['pagado'], Decimal('0'))
+        self.assertEqual(fila['num_pagos'], 0)
+
+    def test_desmarcar_lo_devuelve_a_la_comparacion_mensual(self):
+        ibi = self.gasto('IBI AYUNTAMIENTO', '-260', 6)
+        self.marcar(ibi, self.ibi.id)
+        self.marcar(ibi, '')
+
+        ibi.refresh_from_db()
+        self.assertFalse(ibi.es_pago_provision)
+        respuesta = self.client.get(reverse('extractos:conciliacion'), {'anio': 2026, 'mes': 6})
+        self.assertEqual(respuesta.context['total_observado'], Decimal('260'))
+
+    def test_el_pago_hereda_la_categoria_del_gasto_declarado(self):
+        """Si no, el mismo apunte contaría en un sitio y en otro no."""
+        mov = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 6, 12),
+            concepto='RECIBO AYUNTAMIENTO', importe=Decimal('-260'),
+        )
+        self.marcar(mov, self.ibi.id)
+
+        mov.refresh_from_db()
+        self.assertEqual(mov.categoria, self.ibi.categoria)

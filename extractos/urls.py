@@ -22,4 +22,5 @@ urlpatterns = [
     path('movimiento/<int:pk>/etiquetar/', views.etiquetar_movimiento, name='etiquetar_movimiento'),
     path('movimiento/<int:pk>/imputar/', views.imputar_movimiento, name='imputar_movimiento'),
     path('imputar/comercio/', views.imputar_comercio, name='imputar_comercio'),
+    path('movimiento/<int:pk>/provision/', views.marcar_provision, name='marcar_provision'),
 ]

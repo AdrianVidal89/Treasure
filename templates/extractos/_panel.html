@@ -225,6 +225,7 @@ para no competir con los tres que de verdad importan.
                     </span>
                     {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
                     {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
+                    {% if m.es_pago_provision %}<span class="ext-badge-provision" title="Pago de {{ m.partida_conciliada.nombre }}: se compara en el año, no en el mes">anual</span>{% endif %}
 
                     <span class="ext-tags" data-mov-id="{{ m.id }}">
                         {% for e in m.etiquetas.all %}
@@ -235,6 +236,16 @@ para no competir con los tres que de verdad importan.
                     </span>
                     <button type="button" class="ext-tag-add" data-mov-id="{{ m.id }}"
                             title="Etiquetar (un viaje, una obra…)">+</button>
+
+                    {% if panel.provisiones %}
+                    <select class="ext-provision-select {% if m.partida_conciliada_id %}puesto{% endif %}" data-mov-id="{{ m.id }}"
+                            title="¿Es uno de los pagos de un gasto no mensual (IBI, seguro…)? Así no descuadra el mes.">
+                        <option value="">— no es un pago anual —</option>
+                        {% for p in panel.provisiones %}
+                        <option value="{{ p.id }}" {% if m.partida_conciliada_id == p.id %}selected{% endif %}>{{ p.nombre }} ({{ p.get_periodicidad_display|lower }})</option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
 
                     {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
                     <select class="ext-activo-select {% if m.clave_activo %}puesto{% endif %}" data-mov-id="{{ m.id }}"
@@ -417,6 +428,19 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 }
 .ext-mov:hover .ext-tag-add, .ext-tag-add:focus { opacity:1; }
 .ext-tag-add:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.ext-badge-provision {
+    font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em;
+    color:var(--info, #5f8fb0); border:1px solid color-mix(in srgb, var(--info, #5f8fb0) 45%, transparent);
+    background:color-mix(in srgb, var(--info, #5f8fb0) 12%, transparent);
+    border-radius:999px; padding:1px 7px;
+}
+.ext-provision-select {
+    background:transparent; border:1px dashed var(--border-strong); color:var(--muted);
+    font-size:0.68rem; padding:1px 5px; border-radius:999px; max-width:170px; cursor:pointer;
+    opacity:0; transition:opacity .15s;
+}
+.ext-mov:hover .ext-provision-select, .ext-provision-select:focus, .ext-provision-select.puesto { opacity:1; }
+.ext-provision-select.puesto { border-style:solid; border-color:var(--info, #5f8fb0); color:var(--info, #5f8fb0); }
 .ext-activo-select {
     background:transparent; border:1px dashed var(--border-strong); color:var(--muted);
     font-size:0.68rem; padding:1px 5px; border-radius:999px; max-width:150px; cursor:pointer;
@@ -886,6 +910,30 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
                 var fila = filaDe(movId);
                 if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
                 if (data.sugerencia && fila) ofrecerImputarComercio(fila, data.sugerencia);
+            }).catch(function(){});
+        });
+    });
+
+    /* ---- Pagos de gastos no mensuales ----
+       El IBI se provisiona a 43 €/mes y se paga de golpe en junio: marcándolo
+       aquí, junio deja de parecer un desastre y el pago se compara contra el
+       año, que es su unidad. */
+    var URL_PROVISION = "/extractos/movimiento/__ID__/provision/";
+
+    document.querySelectorAll('.ext-provision-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            var movId = sel.dataset.movId;
+            var body = new URLSearchParams();
+            body.set('partida_id', sel.value);
+            fetch(URL_PROVISION.replace('__ID__', movId), {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+                body: body.toString()
+            }).then(function(r){ return r.json(); }).then(function(data){
+                if (!data.ok) return;
+                sel.classList.toggle('puesto', !!data.partida_id);
+                var fila = filaDe(movId);
+                if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
             }).catch(function(){});
         });
     });
