@@ -44,6 +44,19 @@ para no competir con los tres que de verdad importan.
     </select>
     {% endif %}
 
+    {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
+    <select name="activo" onchange="this.form.submit()" aria-label="Vehículo o propiedad">
+        <option value="">Todo</option>
+        {% for g in panel.grupos_activos %}{% if g.opciones %}
+        <optgroup label="{{ g.etiqueta }}">
+            {% for o in g.opciones %}
+            <option value="{{ o.clave }}" {% if panel.activo_sel == o.clave %}selected{% endif %}>{{ o.nombre }}</option>
+            {% endfor %}
+        </optgroup>
+        {% endif %}{% endfor %}
+    </select>
+    {% endif %}
+
     {% if panel.bloque_sel %}
     <input type="hidden" name="bloque" value="{{ panel.bloque_sel }}">
     <span class="ext-bar-bloque">Bloque: <strong>{{ panel.bloque_etiqueta }}</strong></span>
@@ -222,6 +235,20 @@ para no competir con los tres que de verdad importan.
                     </span>
                     <button type="button" class="ext-tag-add" data-mov-id="{{ m.id }}"
                             title="Etiquetar (un viaje, una obra…)">+</button>
+
+                    {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
+                    <select class="ext-activo-select {% if m.clave_activo %}puesto{% endif %}" data-mov-id="{{ m.id }}"
+                            title="¿Este gasto es de un vehículo o de una propiedad?">
+                        <option value="">— sin activo —</option>
+                        {% for g in panel.grupos_activos %}{% if g.opciones %}
+                        <optgroup label="{{ g.etiqueta }}">
+                            {% for o in g.opciones %}
+                            <option value="{{ o.clave }}" {% if m.clave_activo == o.clave %}selected{% endif %}>{{ o.nombre }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        {% endif %}{% endfor %}
+                    </select>
+                    {% endif %}
                 </div>
             </div>
 
@@ -390,6 +417,13 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 }
 .ext-mov:hover .ext-tag-add, .ext-tag-add:focus { opacity:1; }
 .ext-tag-add:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.ext-activo-select {
+    background:transparent; border:1px dashed var(--border-strong); color:var(--muted);
+    font-size:0.68rem; padding:1px 5px; border-radius:999px; max-width:150px; cursor:pointer;
+    opacity:0; transition:opacity .15s;
+}
+.ext-mov:hover .ext-activo-select, .ext-activo-select:focus, .ext-activo-select.puesto { opacity:1; }
+.ext-activo-select.puesto { border-style:solid; border-color:var(--primary-color); color:var(--primary-color); }
 .ext-tag-input {
     font-size:0.72rem; padding:2px 8px; border-radius:999px;
     border:1px solid var(--primary-color); background:var(--app-bg); color:var(--text-color); width:150px;
@@ -787,6 +821,73 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         etiquetar(contenedor.dataset.movId, {quitar: chip.dataset.etiquetaId}).then(function(data) {
             if (data.ok) pintarEtiquetas(contenedor, data.etiquetas);
         }).catch(function(){});
+    });
+
+    /* ---- Imputar a un vehículo o propiedad ----
+       La pata «real» de «cuánto me cuesta el coche»: lo presupuestado sale de
+       Gastos, pero lo que de verdad se paga solo se sabe marcando aquí qué
+       apuntes son suyos. Como los gastos de un coche vienen casi siempre del
+       mismo puñado de comercios, se ofrece imputarlos todos de una vez. */
+    var URL_IMPUTAR = "/extractos/movimiento/__ID__/imputar/";
+    var URL_IMPUTAR_COMERCIO = "{% url 'extractos:imputar_comercio' %}";
+
+    function ofrecerImputarComercio(fila, sug) {
+        quitarAviso();
+        var aviso = document.createElement('div');
+        aviso.className = 'ext-sugerencia';
+        var texto = document.createElement('span');
+        texto.className = 'ext-sugerencia-texto';
+        texto.textContent = '¿Imputar a «' + sug.nombre + '» los otros ' +
+            plural(sug.n_similares, 'movimiento', 'movimientos') + ' de «' + sug.comercio + '»?';
+        var acciones = document.createElement('span');
+        acciones.className = 'ext-sugerencia-btns';
+
+        var si = document.createElement('button');
+        si.type = 'button'; si.className = 'btn btn-primary btn-sm'; si.textContent = 'Sí, todos';
+        si.addEventListener('click', function() {
+            si.disabled = true;
+            var body = new URLSearchParams();
+            body.set('activo', sug.clave);
+            body.set('comercio', sug.comercio);
+            fetch(URL_IMPUTAR_COMERCIO, {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+                body: body.toString()
+            }).then(function(r){ return r.json(); }).then(function(data){
+                if (!data.ok) { si.disabled = false; return; }
+                texto.textContent = data.aplicados + ' movimiento(s) imputados a «' + data.activo + '». Recargando…';
+                acciones.remove();
+                setTimeout(function(){ window.location.reload(); }, 800);
+            }).catch(function(){ si.disabled = false; });
+        });
+
+        var no = document.createElement('button');
+        no.type = 'button'; no.className = 'btn btn-ghost btn-sm'; no.textContent = 'Solo este';
+        no.addEventListener('click', quitarAviso);
+
+        acciones.appendChild(si); acciones.appendChild(no);
+        aviso.appendChild(texto); aviso.appendChild(acciones);
+        fila.parentNode.insertBefore(aviso, fila.nextSibling);
+    }
+
+    document.querySelectorAll('.ext-activo-select').forEach(function(sel) {
+        sel.addEventListener('change', function() {
+            quitarAviso();
+            var movId = sel.dataset.movId;
+            var body = new URLSearchParams();
+            body.set('activo', sel.value);
+            fetch(URL_IMPUTAR.replace('__ID__', movId), {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+                body: body.toString()
+            }).then(function(r){ return r.json(); }).then(function(data){
+                if (!data.ok) return;
+                sel.classList.toggle('puesto', !!data.clave);
+                var fila = filaDe(movId);
+                if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
+                if (data.sugerencia && fila) ofrecerImputarComercio(fila, data.sugerencia);
+            }).catch(function(){});
+        });
     });
 
     /* ---- Plegar / desplegar meses ---- */

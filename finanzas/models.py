@@ -933,7 +933,51 @@ class CategoriaGasto(models.Model):
             return len(ORDEN_TIPOS)
 
 
-class PartidaGasto(models.Model):
+class ImputableAActivo(models.Model):
+    """Gasto que pertenece a un activo concreto: esta casa, este coche.
+
+    Es lo que permite responder «¿cuánto me cuesta tener el coche?», que la
+    categoría sola no contesta: el seguro, la ITV y la gasolina caen en bloques
+    distintos del presupuesto y, con dos coches, ni siquiera se distinguen entre
+    sí.
+
+    Son dos claves foráneas y no una relación genérica porque el activo se
+    consulta y se agrega constantemente (totales por vehículo, por propiedad) y
+    las genéricas no dejan hacer `select_related` ni agregados directos. A
+    cambio, un tercer tipo de activo exigiría un tercer campo; cuando llegue,
+    ese será el momento de generalizar, no antes.
+    """
+
+    propiedad = models.ForeignKey(
+        'finanzas.Propiedad', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='%(class)s_imputados',
+        help_text='Propiedad a la que pertenece este gasto.',
+    )
+    vehiculo = models.ForeignKey(
+        'finanzas.Vehiculo', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='%(class)s_imputados',
+        help_text='Vehículo al que pertenece este gasto.',
+    )
+
+    class Meta:
+        abstract = True
+
+    @property
+    def activo_imputado(self):
+        """El activo al que se imputa, sea del tipo que sea (o None)."""
+        return self.vehiculo or self.propiedad
+
+    @property
+    def clave_activo(self):
+        """Identificador único para los selectores: «vehiculo:3», «propiedad:1»."""
+        if self.vehiculo_id:
+            return f'vehiculo:{self.vehiculo_id}'
+        if self.propiedad_id:
+            return f'propiedad:{self.propiedad_id}'
+        return ''
+
+
+class PartidaGasto(ImputableAActivo):
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='partidas_gasto')
     categoria = models.ForeignKey(CategoriaGasto, on_delete=models.CASCADE, related_name='partidas')
     responsable = models.ForeignKey(User, on_delete=models.SET_NULL,
@@ -1277,6 +1321,68 @@ class TickerCatalogo(models.Model):
 
 
 # ─── Módulo Inmuebles ─────────────────────────────────────────────────────────
+
+class Vehiculo(models.Model):
+    """Un coche, una moto… Existe para poder imputarle gastos y saber lo que
+    cuesta mantenerlo, no para valorar patrimonio."""
+
+    TIPO_CHOICES = [
+        ('coche', 'Coche'),
+        ('moto', 'Moto'),
+        ('furgoneta', 'Furgoneta'),
+        ('bici', 'Bicicleta'),
+        ('otro', 'Otro'),
+    ]
+
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='vehiculos')
+    nombre = models.CharField(max_length=120, help_text='Ej: Golf de Ana, Furgo del trabajo…')
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default='coche')
+    marca_modelo = models.CharField(max_length=120, blank=True)
+    matricula = models.CharField(max_length=20, blank=True)
+
+    fecha_compra = models.DateField(null=True, blank=True)
+    precio_compra = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Lo que costó, para poder repartir su coste real de uso.',
+    )
+    valor_actual = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Valoración de mercado estimada a día de hoy.',
+    )
+
+    color = models.CharField(max_length=7, default='#2c5f7a')
+    notas = models.CharField(max_length=300, blank=True)
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['nombre']
+        verbose_name = 'Vehículo'
+        verbose_name_plural = 'Vehículos'
+
+    def __str__(self):
+        return self.nombre
+
+    @property
+    def clave_activo(self):
+        return f'vehiculo:{self.pk}'
+
+    @property
+    def etiqueta_tipo(self):
+        return self.get_tipo_display()
+
+    @property
+    def depreciacion_anual(self):
+        """Lo que pierde de valor al año desde que se compró. No es un gasto que
+        pase por el banco, pero es dinero: un coche que cuesta 60 €/mes de
+        mantenimiento y se deprecia 2.000 €/año no cuesta 60 €/mes."""
+        if not (self.precio_compra and self.valor_actual and self.fecha_compra):
+            return None
+        anios = (date.today() - self.fecha_compra).days / Decimal('365.25')
+        if anios <= 0:
+            return None
+        return ((self.precio_compra - self.valor_actual) / anios).quantize(Decimal('0.01'))
+
 
 class Propiedad(models.Model):
     TIPO_CHOICES = [

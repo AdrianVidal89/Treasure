@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load custom_filters %}
+{% load l10n %}
 {% load l10n %}
 {% block title %}Mis Propiedades - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
@@ -9,7 +11,7 @@
 .prop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
 .prop-header h1 { color: var(--primary-color); text-shadow: none; margin: 0; font-size: 1.6rem; }
 
-.resumen-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 32px; }
+.resumen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 32px; }
 @media (max-width: 600px) { .resumen-grid { grid-template-columns: 1fr; } }
 .resumen-card { background: var(--surface); border-radius: 14px; padding: 20px; border: 1px solid var(--border); }
 .resumen-card .lbl { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
@@ -18,6 +20,17 @@
 .prop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
 @media (max-width: 500px) { .prop-grid { grid-template-columns: 1fr; } }
 
+.prop-anio { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:6px; padding:2px 6px; font-size:0.72rem; margin-left:6px; }
+.coste-box { margin-top:14px; padding:12px 14px; background:var(--app-bg); border-radius:10px; }
+.coste-title { font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+.coste-cifras { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px; }
+.coste-cifras .k { display:block; font-size:0.68rem; color:var(--muted); }
+.coste-val { display:block; font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.coste-val small { font-size:0.68rem; font-weight:600; color:var(--muted); }
+.coste-acciones { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+.coste-imputar { display:flex; gap:6px; flex:1; min-width:0; }
+.coste-imputar select { flex:1; min-width:0; background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:0.74rem; }
+.coste-link { font-size:0.74rem; }
 .prop-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
 .prop-card-header { padding: 18px 20px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--surface-2); }
 .prop-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
@@ -75,11 +88,25 @@
             <div class="lbl">Patrimonio neto inmuebles</div>
             <div class="val" style="color: var(--success);">€{{ total_neto|floatformat:0 }}</div>
         </div>
+        <div class="resumen-card">
+            <div class="lbl">Lo que cuesta tenerlas · {{ anio }}</div>
+            <div class="val">{{ total_coste_anual|euro:0 }}</div>
+            <div class="lbl" style="margin-top:4px;">
+                presupuestado {{ total_coste_teorico|euro:0 }}
+                <form method="get" style="display:inline;">
+                    <select name="anio" onchange="this.form.submit()" class="prop-anio" aria-label="Año">
+                        {% for a in anios_disponibles %}
+                        <option value="{{ a }}" {% if a == anio %}selected{% endif %}>{{ a }}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+            </div>
+        </div>
     </div>
 
     <div class="prop-grid">
         {% for item in propiedades_con_venta %}
-        {% with p=item.propiedad v=item.neto_venta %}
+        {% with p=item.propiedad v=item.neto_venta f=item.costes %}
         <div class="prop-card">
             <div class="prop-card-header">
                 <div class="prop-dot" style="background: {{ p.color }};"></div>
@@ -105,6 +132,40 @@
                     <div class="venta-neto">
                         <span class="k">Capital neto libre</span>
                         <span>€{{ v.neto|floatformat:0 }}</span>
+                    </div>
+                </div>
+
+                <div class="coste-box">
+                    <div class="coste-title">Lo que cuesta mantenerla · {{ anio }}</div>
+                    <div class="coste-cifras">
+                        <div>
+                            <span class="k">Presupuestado</span>
+                            <span class="coste-val">{{ f.teorico_mensual|euro }}<small>/mes</small></span>
+                            <span class="k">{{ f.teorico_anual|euro:0 }}/año</span>
+                        </div>
+                        <div>
+                            <span class="k">Real</span>
+                            <span class="coste-val {% if f.diferencia_anual > 0 %}text-negative{% endif %}">{{ f.real_anual|euro }}</span>
+                            <span class="k">{{ f.num_movimientos }} movimiento{{ f.num_movimientos|pluralize:"s" }}</span>
+                        </div>
+                    </div>
+                    {% include "finanzas/vehiculos/_barra.html" %}
+                    <div class="coste-acciones">
+                        {% if sin_imputar %}
+                        <form method="post" action="{% url 'finanzas:imputar_partida' %}" class="coste-imputar">
+                            {% csrf_token %}
+                            <input type="hidden" name="activo" value="{{ f.clave }}">
+                            <input type="hidden" name="volver_a" value="{{ request.get_full_path }}">
+                            <select name="partida_id" required>
+                                <option value="">Imputar un gasto declarado…</option>
+                                {% for sp in sin_imputar %}
+                                <option value="{{ sp.id }}">{{ sp.nombre }} · {{ sp.importe_mensual|euro }}/mes</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-edit">Añadir</button>
+                        </form>
+                        {% endif %}
+                        <a href="{% url 'extractos:listar' %}?activo={{ f.clave }}" class="coste-link">Ver sus movimientos →</a>
                     </div>
                 </div>
             </div>

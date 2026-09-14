@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% load l10n %}
+
+{% block title %}{{ v.nombre }} · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel" style="--vc:{{ v.color }};">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-car"/></svg> {{ v.nombre }}</h1>
+            <div class="page-sub">
+                {{ v.etiqueta_tipo }}
+                {% if v.marca_modelo %}· {{ v.marca_modelo }}{% endif %}
+                {% if v.matricula %}· {{ v.matricula }}{% endif %}
+                {% if v.fecha_compra %}· comprado el {{ v.fecha_compra|date:"d/m/Y" }}{% endif %}
+            </div>
+        </div>
+        <div class="toolbar">
+            <form method="get" style="display:inline;">
+                <select name="anio" onchange="this.form.submit()" class="veh-anio" aria-label="Año">
+                    {% for a in anios_disponibles %}
+                    <option value="{{ a }}" {% if a == f.anio %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            <button type="button" class="btn btn-secondary" onclick="editarVehiculo({
+                id: {{ v.id }}, nombre: '{{ v.nombre|escapejs }}', tipo: '{{ v.tipo }}',
+                color: '{{ v.color }}', marca: '{{ v.marca_modelo|escapejs }}',
+                matricula: '{{ v.matricula|escapejs }}',
+                fecha: '{{ v.fecha_compra|date:"Y-m-d" }}',
+                precio: '{{ v.precio_compra|default_if_none:""|unlocalize }}',
+                valor: '{{ v.valor_actual|default_if_none:""|unlocalize }}',
+                notas: '{{ v.notas|escapejs }}'})">Editar</button>
+            <a href="{% url 'finanzas:listar_vehiculos' %}" class="btn btn-ghost">← Vehículos</a>
+        </div>
+    </div>
+
+    {% for msg in messages %}
+    <div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
+    {% endfor %}
+
+    <!-- TEÓRICO vs REAL -->
+    <section class="veh-hero">
+        <div class="veh-hero-col">
+            <span class="veh-hero-lbl">Mantenimiento teórico</span>
+            <span class="veh-hero-cifra">{{ f.teorico_mensual|euro }}<small>/mes</small></span>
+            <span class="veh-hero-sub">{{ f.teorico_anual|euro }} al año · {{ f.num_partidas }} gasto{{ f.num_partidas|pluralize:"s" }} declarado{{ f.num_partidas|pluralize:"s" }}</span>
+        </div>
+        <div class="veh-hero-col">
+            <span class="veh-hero-lbl">Mantenimiento real {{ f.anio }}</span>
+            <span class="veh-hero-cifra {% if f.diferencia_anual > 0 %}text-negative{% endif %}">{{ f.real_anual|euro }}</span>
+            <span class="veh-hero-sub">
+                {% if f.meses_con_datos %}{{ f.real_mensual|euro }}/mes en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }} con gasto
+                {% else %}sin movimientos imputados todavía{% endif %}
+            </span>
+        </div>
+        <div class="veh-hero-col ancha">
+            {% include "finanzas/vehiculos/_barra.html" %}
+            {% if v.depreciacion_anual %}
+            <div class="veh-deprecia" title="No pasa por el banco, pero es dinero: el valor que pierde al año desde que lo compraste.">
+                + {{ v.depreciacion_anual|euro:0 }}/año de depreciación
+                → coste real de tenerlo: <strong>{{ coste_con_depreciacion|euro:0 }}/año</strong>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- MES A MES -->
+    {% if f.num_movimientos %}
+    <section class="glass-panel veh-card">
+        <div class="veh-card-head">
+            <h3>Mes a mes</h3>
+            <span class="veh-card-nota">la línea es la previsión mensual ({{ f.teorico_mensual|euro }})</span>
+        </div>
+        <div class="veh-meses">
+            {% for m in f.por_mes %}
+            <div class="veh-mes" title="{{ m.etiqueta }}: {{ m.real|euro }}">
+                <div class="veh-mes-col">
+                    <i style="height:{{ m.pct|unlocalize }}%;"></i>
+                    {% if f.teorico_mensual %}<span class="veh-mes-linea" style="bottom:{{ m.pct_teorico|unlocalize }}%;"></span>{% endif %}
+                </div>
+                <span class="veh-mes-lbl">{{ m.etiqueta }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <div class="veh-grid2">
+        <!-- GASTOS DECLARADOS -->
+        <section class="glass-panel veh-card">
+            <div class="veh-card-head">
+                <h3>Gastos declarados</h3>
+                <span class="veh-card-nota">lo que has presupuestado para este vehículo</span>
+            </div>
+            {% if f.partidas %}
+            <div class="veh-lista">
+                {% for p in f.partidas %}
+                <div class="veh-partida">
+                    <span class="veh-partida-nombre">{{ p.nombre }}<em>{{ p.categoria.nombre }}</em></span>
+                    <span class="veh-partida-cifra">
+                        {{ p.importe_mensual|euro }}<small>/mes</small>
+                        <em>{{ p.get_periodicidad_display|lower }}</em>
+                    </span>
+                    <form method="post" action="{% url 'finanzas:imputar_partida' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="partida_id" value="{{ p.id }}">
+                        <input type="hidden" name="activo" value="">
+                        <input type="hidden" name="volver_a" value="{{ request.get_full_path }}">
+                        <button type="submit" class="veh-quitar" title="Quitar de este vehículo">×</button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="veh-vacio">Ningún gasto declarado está imputado a este vehículo todavía.</p>
+            {% endif %}
+
+            {% if sin_imputar %}
+            <form method="post" action="{% url 'finanzas:imputar_partida' %}" class="veh-imputar">
+                {% csrf_token %}
+                <input type="hidden" name="activo" value="{{ f.clave }}">
+                <input type="hidden" name="volver_a" value="{{ request.get_full_path }}">
+                <select name="partida_id" required>
+                    <option value="">Añadir un gasto declarado…</option>
+                    {% for p in sin_imputar %}
+                    <option value="{{ p.id }}">{{ p.nombre }} · {{ p.categoria.nombre }} · {{ p.importe_mensual|euro }}/mes</option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn btn-secondary">Imputar</button>
+            </form>
+            {% endif %}
+        </section>
+
+        <!-- POR CATEGORÍA -->
+        <section class="glass-panel veh-card">
+            <div class="veh-card-head">
+                <h3>Dónde se va</h3>
+                <span class="veh-card-nota">declarado frente a real, {{ f.anio }}</span>
+            </div>
+            {% if f.por_categoria %}
+            <div class="veh-lista">
+                {% for c in f.por_categoria %}
+                <div class="veh-cat">
+                    <span class="veh-cat-nombre">{{ c.categoria }}</span>
+                    <span class="veh-cat-real">{{ c.real_anual|euro:0 }}</span>
+                    <span class="veh-cat-decl">de {{ c.declarado_anual|euro:0 }}</span>
+                    <span class="veh-cat-dif {% if c.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">
+                        {% if c.diferencia > 0 %}+{% endif %}{{ c.diferencia|euro:0 }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="veh-vacio">Nada imputado todavía.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <!-- MOVIMIENTOS REALES -->
+    <section class="glass-panel veh-card">
+        <div class="veh-card-head">
+            <h3>Movimientos imputados · {{ f.anio }}</h3>
+            <a href="{% url 'extractos:listar' %}?activo={{ f.clave }}" class="veh-card-nota">ver en Extractos →</a>
+        </div>
+        {% if f.movimientos %}
+        <div class="veh-movs">
+            {% for m in f.movimientos %}
+            <div class="veh-mov">
+                <span class="veh-mov-fecha">{{ m.fecha|date:"d/m/Y" }}</span>
+                <span class="veh-mov-concepto">{{ m.concepto }}</span>
+                <span class="veh-mov-cat">{{ m.categoria.nombre|default:"—" }}</span>
+                <span class="veh-mov-importe text-negative">{{ m.importe|euro }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="veh-vacio">
+            Todavía no has marcado ningún movimiento como gasto de este vehículo. Se hace desde
+            <a href="{% url 'extractos:listar' %}">Extractos</a>, en el selector de cada apunte:
+            al imputar el primero se te ofrece imputar de golpe todos los del mismo comercio.
+        </p>
+        {% endif %}
+    </section>
+
+    <div class="veh-peligro">
+        <form method="post" action="{% url 'finanzas:archivar_vehiculo' v.id %}">
+            {% csrf_token %}
+            <button type="submit" class="veh-mini">{% if v.activo %}Archivar{% else %}Reactivar{% endif %}</button>
+        </form>
+        <form method="post" action="{% url 'finanzas:eliminar_vehiculo' v.id %}"
+              onsubmit="return confirm('¿Eliminar «{{ v.nombre|escapejs }}»? Sus gastos no se borran: se quedan sin vehículo asignado.');">
+            {% csrf_token %}
+            <button type="submit" class="veh-mini peligro">Eliminar</button>
+        </form>
+    </div>
+</div>
+
+{% include "finanzas/vehiculos/_form.html" %}
+
+<style>
+.veh-anio { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:9px 12px; font-size:0.85rem; }
+.veh-hero { display:grid; grid-template-columns:1fr 1fr 1.3fr; gap:26px; align-items:center;
+    background:var(--surface); border:1px solid var(--border); border-left:4px solid var(--vc);
+    border-radius:16px; padding:22px 26px; margin-bottom:20px; }
+@media (max-width:860px){ .veh-hero { grid-template-columns:1fr; gap:16px; } }
+.veh-hero-lbl { display:block; font-size:0.68rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.veh-hero-cifra { display:block; font-size:1.8rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.2; }
+.veh-hero-cifra small { font-size:0.8rem; font-weight:600; color:var(--muted); }
+.veh-hero-sub { font-size:0.74rem; color:var(--muted); }
+.veh-deprecia { margin-top:10px; font-size:0.76rem; color:var(--muted); }
+
+.veh-card { padding:20px 24px; margin-bottom:18px; }
+.veh-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+.veh-card-head h3 { margin:0; font-size:1rem; }
+.veh-card-nota { font-size:0.75rem; color:var(--muted); }
+.veh-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+@media (max-width:860px){ .veh-grid2 { grid-template-columns:1fr; } }
+.veh-vacio { color:var(--muted); font-size:0.83rem; font-style:italic; margin:0; }
+.veh-lista { display:flex; flex-direction:column; gap:9px; }
+
+.veh-partida { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center; font-size:0.84rem; }
+.veh-partida-nombre em { display:block; font-style:normal; font-size:0.72rem; color:var(--muted); }
+.veh-partida-cifra { font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+.veh-partida-cifra small { font-size:0.7rem; font-weight:600; color:var(--muted); }
+.veh-partida-cifra em { display:block; font-style:normal; font-size:0.68rem; color:var(--muted); font-weight:500; }
+.veh-quitar { background:none; border:none; color:var(--muted); cursor:pointer; font-size:1.05rem; line-height:1; padding:2px 4px; }
+.veh-quitar:hover { color:var(--danger); }
+.veh-imputar { display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
+.veh-imputar select { flex:1; min-width:0; background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:0.8rem; }
+
+.veh-cat { display:grid; grid-template-columns:1fr auto auto auto; gap:10px; align-items:baseline; font-size:0.84rem; }
+.veh-cat-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.veh-cat-real { font-weight:700; font-variant-numeric:tabular-nums; }
+.veh-cat-decl, .veh-cat-dif { font-size:0.76rem; font-variant-numeric:tabular-nums; }
+.veh-cat-decl { color:var(--muted); }
+.veh-cat-dif { font-weight:700; min-width:62px; text-align:right; }
+
+.veh-meses { display:flex; gap:6px; align-items:flex-end; height:130px; }
+.veh-mes { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; }
+.veh-mes-col { position:relative; flex:1; width:100%; background:var(--app-bg); border-radius:6px 6px 0 0; display:flex; align-items:flex-end; overflow:hidden; }
+.veh-mes-col i { display:block; width:100%; background:var(--vc); border-radius:6px 6px 0 0; }
+.veh-mes-linea { position:absolute; left:0; right:0; height:2px; background:var(--danger); opacity:.65; }
+.veh-mes-lbl { font-size:0.62rem; color:var(--muted); text-transform:uppercase; }
+
+.veh-movs { display:flex; flex-direction:column; }
+.veh-mov { display:grid; grid-template-columns:82px 1fr 130px auto; gap:12px; align-items:center;
+    font-size:0.83rem; padding:8px 0; border-bottom:1px solid var(--border); }
+.veh-mov:last-child { border-bottom:none; }
+.veh-mov-fecha { color:var(--muted); font-variant-numeric:tabular-nums; }
+.veh-mov-concepto { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.veh-mov-cat { font-size:0.74rem; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.veh-mov-importe { font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+@media (max-width:640px){ .veh-mov { grid-template-columns:1fr auto; } .veh-mov-fecha, .veh-mov-cat { display:none; } }
+
+.veh-peligro { display:flex; gap:10px; margin-top:22px; padding-top:14px; border-top:1px solid var(--border); }
+.veh-mini { background:var(--app-bg); border:1px solid var(--border-strong); color:var(--muted); font-size:0.72rem; font-weight:600; padding:6px 12px; border-radius:8px; cursor:pointer; }
+.veh-mini:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.veh-mini.peligro:hover { border-color:var(--danger); color:var(--danger); }
+.msg-toast { background:var(--surface); border-left:3px solid var(--primary-color); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
+</style>
+{% endblock %}
