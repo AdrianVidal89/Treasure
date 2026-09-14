@@ -5,10 +5,22 @@ Panel de análisis de movimientos compartido por el detalle de un extracto y la
 vista global. Espera un dict `panel` en contexto.
 
 La lectura va de lo general a lo concreto, como en una app de banco: primero
-CUÁNTO (balance del periodo), luego EN QUÉ (categorías) y por último el detalle
-movimiento a movimiento. Los números secundarios viven en la tira de «chips»
-para no competir con los tres que de verdad importan.
+CUÁNTO (balance y media del periodo), luego EN QUÉ (los cuatro pilares), luego
+QUÉ LO EXPLICA (la media de los meses anteriores, lo que se sale del
+presupuesto, los comercios) y por último el detalle movimiento a movimiento. Los
+números secundarios viven en la tira de «chips» para no competir con los que de
+verdad importan.
+
+Esta pantalla absorbió la antigua pestaña «Análisis»: eran la misma pregunta
+partida en dos, y cruzar una cifra con los movimientos que la componen obligaba
+a saltar de una a otra.
 {% endcomment %}
+
+{% if panel.volver_url %}
+{% comment %}Se ha entrado desde otra pantalla (la conciliación, casi siempre): sin esto,
+   mirar en qué se fue Alimentación era un callejón sin salida.{% endcomment %}
+<a href="{{ panel.volver_url }}" class="ext-volver">← Volver a {{ panel.volver_nombre }}</a>
+{% endif %}
 
 <!-- ══════════ BARRA DE FILTROS ══════════ -->
 <form method="get" class="ext-bar">
@@ -101,6 +113,25 @@ para no competir con los tres que de verdad importan.
             <div class="ext-flujo-track"><div class="ext-flujo-fill gas" id="barra-gastos"></div></div>
         </div>
     </div>
+
+    {% if panel.media.mostrar %}
+    {% comment %}«¿Cuánto me cuesta la gasolina al mes?» no lo responde el total del
+       filtro, sino el total dividido entre los meses que abarca. Es la cifra
+       que hace comparables un año entero y un trimestre, y se mueve con los
+       filtros: Gasolina + 2026 da la media mensual de 2026; sin año, la de
+       siempre.{% endcomment %}
+    <div class="ext-hero-media">
+        <span class="ext-hero-label">Media al mes · {{ panel.media.ambito }}</span>
+        <span class="ext-media-cifra text-negative">{{ panel.media.gasto|euro }}</span>
+        <span class="ext-hero-sub">
+            sobre {{ panel.media.meses }} mes{{ panel.media.meses|pluralize:"es" }} con extracto
+            {% if panel.media.limite %}· presupuestado {{ panel.media.limite|euro:0 }}/mes{% endif %}
+        </span>
+        {% if panel.media.ingreso %}
+        <span class="ext-hero-sub">ingresos {{ panel.media.ingreso|euro }}/mes</span>
+        {% endif %}
+    </div>
+    {% endif %}
 </section>
 
 <!-- Todo lo secundario, en una sola tira discreta. -->
@@ -166,7 +197,16 @@ para no competir con los tres que de verdad importan.
                 <div class="ext-pilar-detalle">
                     {% for c in b.categorias %}
                     <div class="ext-cat-fila">
-                        <span class="ext-cat-nombre">{{ c.nombre }} <em>{{ c.num }}</em></span>
+                        {% comment %}El nombre abre el desglose en un modal: ver qué hay
+                           dentro de una categoría es la pregunta inmediata al
+                           leer su cifra, y mandarte a otra pantalla para
+                           responderla te hacía perder el sitio.{% endcomment %}
+                        <button type="button" class="ext-cat-nombre ext-cat-abrir"
+                                data-categoria="{% if c.id %}{{ c.id }}{% else %}sin{% endif %}"
+                                data-nombre="{{ c.nombre }}"
+                                title="Ver los {{ c.num }} movimiento{{ c.num|pluralize:"s" }} de {{ c.nombre }}">
+                            {{ c.nombre }} <em>{{ c.num }}</em>
+                        </button>
                         <span class="ext-cat-barra {% if c.dentro == False %}fuera{% elif c.dentro %}dentro{% endif %}"
                               title="{% if c.limite %}{{ c.importe|euro:0 }} de {{ c.limite|euro:0 }} presupuestados{% else %}Sin presupuesto declarado{% endif %}">
                             <i style="width:{{ c.pct_barra|unlocalize }}%;"></i>
@@ -200,15 +240,275 @@ para no competir con los tres que de verdad importan.
 </section>
 {% endif %}
 
+<!-- ══════════ QUÉ EXPLICA ESTE PERIODO ══════════ -->
+{% comment %}
+Lo que antes era la pestaña «Análisis». Está aquí y no en otra pantalla porque
+la pregunta que responde —«me he pasado, ¿en qué?»— se contesta mirando las
+cifras y los movimientos a la vez.
+{% endcomment %}
+
+{% if panel.comparativa %}
+{% comment %}La comparación contra la propia media es más honesta que contra el
+   presupuesto, que puede estar mal puesto. Necesita UN mes concreto y los
+   meses anteriores, así que solo aparece con mes seleccionado.{% endcomment %}
+<section class="glass-panel an-card an-card-vs">
+    <div class="an-card-head">
+        <h3>Frente a tu media de los meses anteriores</h3>
+        <span class="an-card-nota">compararte contigo mismo, no con un presupuesto que igual está mal puesto</span>
+    </div>
+    {% if panel.comparativa.hay_referencia %}
+    <div class="an-vs">
+        <div class="an-vs-bloque">
+            <span class="an-vs-lbl">{{ panel.periodo_etiqueta }}</span>
+            <span class="an-vs-total">{{ panel.comparativa.total|euro }}</span>
+        </div>
+        <div class="an-vs-bloque">
+            <span class="an-vs-lbl">media de {{ panel.comparativa.meses_referencia }} mes{{ panel.comparativa.meses_referencia|pluralize:"es" }}</span>
+            <span class="an-vs-media-cifra">{{ panel.comparativa.media|euro }}</span>
+        </div>
+        <div class="an-vs-bloque an-vs-dif">
+            <span class="an-vs-lbl">diferencia</span>
+            <span class="an-vs-cifra {% if panel.comparativa.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
+                {% if panel.comparativa.desviacion > 0 %}+{% endif %}{{ panel.comparativa.desviacion|euro }}
+            </span>
+        </div>
+    </div>
+
+    {% if panel.comparativa.puente %}
+    <div class="an-puente">
+        {% for p in panel.comparativa.puente %}
+        <div class="an-puente-fila">
+            <span class="an-puente-cat">{{ p.categoria }}</span>
+            <span class="an-puente-pista">
+                <i class="{% if p.desviacion > 0 %}sube{% else %}baja{% endif %}" style="width:{{ p.pct|unlocalize }}%;"></i>
+            </span>
+            <span class="an-puente-dif {% if p.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
+                {% if p.desviacion > 0 %}+{% endif %}{{ p.desviacion|euro:0 }}
+            </span>
+            <span class="an-puente-detalle">{{ p.actual|euro:0 }} vs {{ p.media|euro:0 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="an-vacio">
+        Aún no hay meses anteriores suficientes para comparar. Con dos meses importados esta
+        tarjeta empieza a decirte qué ha cambiado.
+    </p>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if panel.fuera_presupuesto.hay_algo %}
+<section class="glass-panel an-card">
+    <div class="an-card-head">
+        <h3>Fuera de presupuesto</h3>
+        <span class="an-card-nota">solo lo que se ha pasado del límite que declaraste</span>
+    </div>
+
+    {% if panel.fuera_presupuesto.bloques %}
+    <div class="an-fuera-bloques">
+        {% for b in panel.fuera_presupuesto.bloques %}
+        <div class="an-fuera-bloque" style="--bc:{{ b.color }};">
+            <span class="an-fuera-bloque-nombre">{{ b.nombre }}</span>
+            <span class="an-fuera-bloque-cifras">
+                <strong>{{ b.importe|euro:0 }}</strong>
+                <span class="text-muted">de {{ b.limite|euro:0 }}</span>
+            </span>
+            <span class="an-fuera-bloque-exceso text-negative">+{{ b.exceso|euro:0 }}</span>
+            {% if b.tipo == 'discrecional' %}
+            {% comment %}Dentro de discrecionales NO se desglosa el aviso por categoría:
+               ahí no hay presupuesto por categoría ni tiene sentido que lo
+               haya. Se sabe que hay un tope para los caprichos y lo útil es ver
+               en qué se ha ido, no un reproche por categoría.{% endcomment %}
+            <span class="an-fuera-bloque-nota">
+                se ha pasado el bloque · dentro no hay presupuesto por categoría:
+                mira arriba en qué se repartió
+            </span>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if panel.fuera_presupuesto.categorias %}
+    <div class="an-fuera {% if panel.fuera_presupuesto.bloques %}an-fuera-separada{% endif %}">
+        <span class="an-fuera-titulo">Qué categorías se han salido de su límite</span>
+        {% for f in panel.fuera_presupuesto.categorias %}
+        <div class="an-fuera-fila">
+            <button type="button" class="an-fuera-cat ext-cat-abrir" data-categoria="{{ f.id }}" data-nombre="{{ f.nombre }}"
+                    title="Ver los movimientos de {{ f.nombre }}">
+                {{ f.nombre }} <em>{{ f.num }} mov. · {{ f.bloque|lower }}</em>
+            </button>
+            <span class="an-fuera-pista" title="Límite {{ f.limite|euro:0 }} · real {{ f.importe|euro:0 }}">
+                <i class="real" style="width:{{ f.pct_real|unlocalize }}%;"></i>
+                <span class="an-fuera-limite" style="left:{{ f.pct_limite|unlocalize }}%;"></span>
+            </span>
+            <span class="an-fuera-cifras">
+                <strong>{{ f.importe|euro:0 }}</strong>
+                <span class="text-muted">de {{ f.limite|euro:0 }}</span>
+            </span>
+            <span class="an-fuera-exceso text-negative">+{{ f.exceso|euro:0 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="an-fuera-total">
+        {% if panel.fuera_presupuesto.exceso_total %}
+        Te has pasado <strong class="text-negative">{{ panel.fuera_presupuesto.exceso_total|euro }}</strong>
+        del presupuesto de {{ panel.fuera_presupuesto.bloques|length }} bloque{{ panel.fuera_presupuesto.bloques|length|pluralize:"s" }}{% if panel.meses_periodo > 1 %} en {{ panel.meses_periodo }} meses{% endif %}.
+        {% elif panel.fuera_presupuesto.categorias %}
+        Ningún bloque se ha pasado en total, aunque alguna categoría sí se haya salido de su límite.
+        {% else %}
+        Nada se ha salido del presupuesto que tienes declarado.
+        {% endif %}
+        {% if panel.fuera_presupuesto.categorias %}<span class="an-fuera-leyenda"><i></i> la marca es el límite declarado</span>{% endif %}
+    </div>
+
+    {% if panel.fuera_presupuesto.sin_presupuesto %}
+    <details class="an-sin-presupuesto">
+        <summary>{{ panel.fuera_presupuesto.sin_presupuesto|length }} categoría{{ panel.fuera_presupuesto.sin_presupuesto|length|pluralize:"s" }} con gasto y sin presupuesto declarado</summary>
+        <div class="an-sin-lista">
+            {% for f in panel.fuera_presupuesto.sin_presupuesto %}
+            <div class="an-sin-fila">
+                <span>{{ f.nombre }} <em>{{ f.num }} mov. · {{ f.bloque|lower }}</em></span>
+                <span class="num">{{ f.importe|euro:0 }}</span>
+                <a href="{% url 'finanzas:crear_partida' %}">declarar →</a>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="an-sin-nota">
+            Sin límite declarado no hay nada contra lo que compararlas: aparecen aquí para que no
+            pasen desapercibidas, no porque estén mal. Los discrecionales no salen en esta lista:
+            ahí el presupuesto es del bloque, no de cada categoría.
+        </p>
+    </details>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if panel.comercios.filas %}
+<section class="glass-panel an-card">
+    <div class="an-card-head">
+        <h3>Por comercio</h3>
+        <span class="an-card-nota">
+            cuántas veces y de cuánto cada vez · con los filtros que tengas puestos
+        </span>
+    </div>
+    <div class="an-lista">
+        {% for c in panel.comercios.filas %}
+        <div class="an-comercio">
+            <div class="an-comercio-top">
+                <span class="an-comercio-nombre" title="{{ c.categoria }}">{{ c.etiqueta }}</span>
+                {% if c.recurrente %}<span class="an-badge recurrente" title="Aparece casi todos los meses del periodo: cuenta con él">habitual</span>
+                {% elif panel.meses_periodo > 1 %}<span class="an-badge puntual" title="No aparece en la mayoría de los meses del periodo">puntual</span>{% endif %}
+                <span class="an-comercio-total">{{ c.total|euro:0 }}</span>
+            </div>
+            <div class="an-comercio-pie">
+                <span class="an-fila-barra"><i style="width:{{ c.pct|unlocalize }}%;"></i></span>
+                <span class="an-comercio-detalle">
+                    {{ c.num }} × {{ c.ticket_medio|euro }} · {{ c.categoria }}
+                    {% if panel.meses_periodo > 1 %} · {{ c.meses_visto }}/{{ panel.meses_periodo }} meses{% endif %}
+                </span>
+                <a class="an-comercio-ver" href="?{% if panel.anio_sel != 'all' %}anio={{ panel.anio_sel }}&{% endif %}{% if panel.mes_sel != 'all' %}mes={{ panel.mes_sel }}&{% endif %}q={{ c.comercio|urlencode }}">ver</a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% if panel.comercios.num_resto %}
+    <p class="an-sin-nota">
+        Y {{ panel.comercios.num_resto }} comercio{{ panel.comercios.num_resto|pluralize:"s" }} más
+        por {{ panel.comercios.total_resto|euro:0 }} en total.
+    </p>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if panel.comparativa and panel.comparativa.total %}
+<section class="glass-panel an-card">
+    <div class="an-card-head">
+        <h3>Cuánto de esto volverá a pasar</h3>
+        <span class="an-card-nota">
+            tu suelo de gasto frente a lo excepcional · los «pequeños» cruzan los otros dos,
+            no son un tercer grupo
+        </span>
+    </div>
+    <div class="an-reparto">
+        <div class="an-reparto-barra">
+            <span class="habitual" style="width:{% widthratio panel.comparativa.gasto_recurrente panel.comparativa.total 100 %}%;" title="Habitual: {{ panel.comparativa.gasto_recurrente|euro }}"></span>
+            <span class="puntual" style="width:{% widthratio panel.comparativa.gasto_puntual panel.comparativa.total 100 %}%;" title="Puntual: {{ panel.comparativa.gasto_puntual|euro }}"></span>
+        </div>
+        <div class="an-reparto-grupos">
+            {% include "extractos/_grupo_movimientos.html" with clase="habitual" titulo="Habitual" total=panel.comparativa.gasto_recurrente movimientos=panel.comparativa.movs_recurrentes nota="vuelve casi todos los meses" %}
+            {% include "extractos/_grupo_movimientos.html" with clase="puntual" titulo="Puntual" total=panel.comparativa.gasto_puntual movimientos=panel.comparativa.movs_puntuales nota="no es habitual en tus meses anteriores" %}
+            {% if panel.comparativa.hormiga_num %}
+            {% include "extractos/_grupo_movimientos.html" with clase="hormiga" titulo="Gastos pequeños" total=panel.comparativa.hormiga_total movimientos=panel.comparativa.movs_hormiga nota="sueltos por debajo de 20 €" %}
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
 <!-- ══════════ MOVIMIENTOS ══════════ -->
 <div class="ext-mov-head">
     <h2 class="ext-mov-title">Movimientos</h2>
     {% if panel.grupos %}
     <div class="ext-mov-acciones">
+        <button type="button" class="ext-mini-btn" id="ext-marcar-todo"
+                title="Marcar todos los que se ven ahora">Seleccionar todo</button>
         <button type="button" class="ext-mini-btn" id="ext-expandir-todo">Desplegar todo</button>
         <button type="button" class="ext-mini-btn" id="ext-plegar-todo">Plegar todo</button>
     </div>
     {% endif %}
+</div>
+
+{% comment %}
+Cambio en bloque. Categorizar veinte apuntes de uno en uno es el trabajo que
+hace que un mes se quede a medio repasar: se marcan y se decide una vez. La
+barra solo aparece cuando hay algo marcado, para no robar sitio el resto del
+tiempo.
+{% endcomment %}
+<div class="ext-lote" id="ext-lote" hidden>
+    <span class="ext-lote-cuenta"><strong id="ext-lote-num">0</strong> seleccionados</span>
+
+    <select id="ext-lote-categoria" class="ext-lote-campo">
+        <option value="">Poner categoría…</option>
+        <option value="__ninguna__">— quitar la categoría —</option>
+        {% for b in panel.bloques_categorias %}
+        <optgroup label="{{ b.etiqueta }}">
+            {% for c in b.categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+        </optgroup>
+        {% endfor %}
+    </select>
+
+    <input type="text" id="ext-lote-etiqueta" class="ext-lote-campo" list="ext-etiquetas-existentes"
+           placeholder="Etiquetar y pulsa Enter…">
+
+    {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
+    <select id="ext-lote-activo" class="ext-lote-campo">
+        <option value="">Imputar a un activo…</option>
+        <option value="__ninguno__">— sin activo —</option>
+        {% for g in panel.grupos_activos %}{% if g.opciones %}
+        <optgroup label="{{ g.etiqueta }}">
+            {% for o in g.opciones %}<option value="{{ o.clave }}">{{ o.nombre }}</option>{% endfor %}
+        </optgroup>
+        {% endif %}{% endfor %}
+    </select>
+    {% endif %}
+
+    {% if panel.provisiones %}
+    <select id="ext-lote-provision" class="ext-lote-campo">
+        <option value="">Marcar como pago anual…</option>
+        <option value="__ninguno__">— no son pagos anuales —</option>
+        {% for p in panel.provisiones %}
+        <option value="{{ p.id }}">{{ p.nombre }} ({{ p.get_periodicidad_display|lower }})</option>
+        {% endfor %}
+    </select>
+    {% endif %}
+
+    <button type="button" class="ext-lote-borrar" id="ext-lote-eliminar">Eliminar</button>
+    <button type="button" class="ext-lote-cerrar" id="ext-lote-cancelar" title="Quitar la selección">×</button>
 </div>
 
 {% for grupo in panel.grupos %}
@@ -228,77 +528,7 @@ para no competir con los tres que de verdad importan.
 
     <div class="ext-lista">
         {% for m in grupo.movimientos %}
-        <div class="ext-mov{% if m.es_neutro %} neutro{% endif %}" data-mov-id="{{ m.id }}"
-             {% if m.saldo != None %}title="Saldo tras el apunte: {{ m.saldo|euro }}"{% endif %}>
-            <div class="ext-mov-dia">
-                <span class="ext-mov-dd">{{ m.fecha|date:"d" }}</span>
-                <span class="ext-mov-mmm">{{ m.fecha|date:"M"|lower }}</span>
-            </div>
-
-            <div class="ext-mov-cuerpo">
-                <div class="ext-mov-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</div>
-                <div class="ext-mov-meta">
-                    <span class="ext-cat-chip" style="--cc:{% if m.categoria %}{{ panel.colores_tipo|get_item:m.categoria.tipo }}{% else %}#9aa5a0{% endif %};">
-                        <select class="ext-cat-select" data-mov-id="{{ m.id }}">
-                            <option value="" {% if not m.categoria_id %}selected{% endif %}>Sin categorizar</option>
-                            {% for b in panel.bloques_categorias %}
-                            <optgroup label="{{ b.etiqueta }}">
-                                {% for c in b.categorias %}
-                                <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
-                                {% endfor %}
-                            </optgroup>
-                            {% endfor %}
-                        </select>
-                    </span>
-                    {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
-                    {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
-                    {% if m.es_pago_provision %}<span class="ext-badge-provision" title="Pago de {{ m.partida_conciliada.nombre }}: se compara en el año, no en el mes">anual</span>{% endif %}
-
-                    <span class="ext-tags" data-mov-id="{{ m.id }}">
-                        {% for e in m.etiquetas.all %}
-                        <span class="ext-tag" style="--tc:{{ e.color }};" data-etiqueta-id="{{ e.id }}">
-                            {{ e.nombre }}<button type="button" class="ext-tag-quitar" title="Quitar etiqueta">×</button>
-                        </span>
-                        {% endfor %}
-                    </span>
-                    <button type="button" class="ext-tag-add" data-mov-id="{{ m.id }}"
-                            title="Etiquetar (un viaje, una obra…)">+</button>
-
-                    {% if panel.provisiones %}
-                    <select class="ext-provision-select {% if m.partida_conciliada_id %}puesto{% endif %}" data-mov-id="{{ m.id }}"
-                            title="¿Es uno de los pagos de un gasto no mensual (IBI, seguro…)? Así no descuadra el mes.">
-                        <option value="">— no es un pago anual —</option>
-                        {% for p in panel.provisiones %}
-                        <option value="{{ p.id }}" {% if m.partida_conciliada_id == p.id %}selected{% endif %}>{{ p.nombre }} ({{ p.get_periodicidad_display|lower }})</option>
-                        {% endfor %}
-                    </select>
-                    {% endif %}
-
-                    {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
-                    <select class="ext-activo-select {% if m.clave_activo %}puesto{% endif %}" data-mov-id="{{ m.id }}"
-                            title="¿Este gasto es de un vehículo o de una propiedad?">
-                        <option value="">— sin activo —</option>
-                        {% for g in panel.grupos_activos %}{% if g.opciones %}
-                        <optgroup label="{{ g.etiqueta }}">
-                            {% for o in g.opciones %}
-                            <option value="{{ o.clave }}" {% if m.clave_activo == o.clave %}selected{% endif %}>{{ o.nombre }}</option>
-                            {% endfor %}
-                        </optgroup>
-                        {% endif %}{% endfor %}
-                    </select>
-                    {% endif %}
-                </div>
-            </div>
-
-            <div class="ext-mov-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}"
-                 data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">
-                {% if m.importe > 0 %}+{% endif %}{{ m.importe|euro }}
-            </div>
-
-            <button type="button" class="ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento">
-                <svg class="icon"><use href="#i-trash"/></svg>
-            </button>
-        </div>
+        {% include "extractos/_movimiento.html" with m=m panel=panel %}
         {% endfor %}
     </div>
 </details>
@@ -308,6 +538,22 @@ para no competir con los tres que de verdad importan.
     {% if panel.hay_filtro %}<a href="{{ request.path }}" class="btn btn-secondary">Quitar filtros</a>{% endif %}
 </div>
 {% endfor %}
+
+{% comment %}
+El modal del desglose de una categoría. La caja se rellena por AJAX con la
+plantilla `_modal_categoria.html`, que reutiliza las MISMAS filas de movimiento
+del listado: así todo lo que se puede cambiar abajo se puede cambiar aquí.
+{% endcomment %}
+<div class="ext-modal" id="ext-modal" hidden>
+    <div class="ext-modal-fondo" data-cerrar-modal></div>
+    <div class="ext-modal-caja" role="dialog" aria-modal="true" aria-labelledby="ext-modal-titulo">
+        <div class="ext-modal-head">
+            <span class="ext-modal-titulo" id="ext-modal-titulo">Desglose</span>
+            <button type="button" class="ext-modal-cerrar" data-cerrar-modal aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="ext-modal-cuerpo" id="ext-modal-cuerpo"></div>
+    </div>
+</div>
 
 <datalist id="ext-etiquetas-existentes">
     {% for e in panel.etiquetas_hogar %}<option value="{{ e.nombre }}"></option>{% endfor %}
@@ -337,11 +583,20 @@ para no competir con los tres que de verdad importan.
 
 /* ── Resumen del periodo ────────────────────────────────────────────── */
 .ext-hero {
-    display:grid; grid-template-columns:minmax(200px,0.8fr) 1.2fr; gap:28px; align-items:center;
+    display:grid; grid-template-columns:minmax(190px,0.8fr) 1.2fr auto; gap:28px; align-items:center;
     background:var(--surface); border:1px solid var(--border); border-radius:16px;
     padding:22px 26px; margin-bottom:12px;
 }
+@media (max-width:980px){ .ext-hero { grid-template-columns:minmax(190px,0.8fr) 1.2fr; } .ext-hero-media { grid-column:1 / -1; } }
 @media (max-width:720px){ .ext-hero { grid-template-columns:1fr; gap:18px; } }
+.ext-volver { display:inline-block; margin-bottom:12px; font-size:0.82rem; }
+/* La media al mes: la cifra que hace comparables un año y un trimestre. */
+.ext-hero-media {
+    display:flex; flex-direction:column; gap:2px;
+    padding-left:26px; border-left:1px solid var(--border);
+}
+.ext-media-cifra { font-size:1.55rem; font-weight:800; line-height:1.15; font-variant-numeric:tabular-nums; }
+@media (max-width:980px){ .ext-hero-media { padding-left:0; border-left:none; padding-top:14px; border-top:1px solid var(--border); } }
 .ext-hero-balance { display:flex; flex-direction:column; gap:2px; }
 .ext-hero-label { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
 .ext-hero-cifra { font-size:2.1rem; font-weight:800; line-height:1.15; font-variant-numeric:tabular-nums; }
@@ -416,6 +671,12 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-cat-fila { display:grid; grid-template-columns:minmax(90px,1.2fr) 1.4fr auto 76px auto; gap:10px; align-items:center; font-size:0.79rem; }
 .ext-cat-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ext-cat-nombre em { font-style:normal; color:var(--muted); font-size:0.7rem; }
+.ext-cat-abrir {
+    background:none; border:none; padding:2px 4px; margin-left:-4px; border-radius:6px;
+    color:var(--text-color); font:inherit; text-align:left; cursor:pointer;
+    text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;
+}
+.ext-cat-abrir:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); color:var(--primary-color); }
 .ext-cat-barra { height:6px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
 .ext-cat-barra i { display:block; height:100%; border-radius:999px; }
 .ext-cat-cifra { font-variant-numeric:tabular-nums; font-weight:700; }
@@ -454,9 +715,12 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 
 .ext-lista { border-top:1px solid var(--border); }
 .ext-mov {
-    display:grid; grid-template-columns:44px 1fr auto 30px; gap:14px; align-items:center;
+    display:grid; grid-template-columns:22px 44px 1fr auto 30px; gap:14px; align-items:center;
     padding:11px 18px; border-bottom:1px solid var(--border);
 }
+.ext-mov-check { display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.ext-mov-check input { width:15px; height:15px; cursor:pointer; accent-color:var(--primary-color); }
+.ext-mov.ext-marcada { background:color-mix(in srgb, var(--primary-color) 8%, transparent); }
 .ext-mov:last-child { border-bottom:none; }
 .ext-mov:hover { background:color-mix(in srgb, var(--primary-color) 3%, transparent); }
 .ext-mov.neutro { opacity:.62; }
@@ -522,7 +786,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-del:hover { color:var(--danger); }
 .ext-del .icon { width:15px; height:15px; }
 @media (max-width:560px){
-    .ext-mov { grid-template-columns:38px 1fr auto; gap:10px; padding:10px 12px; }
+    .ext-mov { grid-template-columns:20px 38px 1fr auto; gap:9px; padding:10px 12px; }
     .ext-del { display:none; }
 }
 .ext-cell-input { width:100%; box-sizing:border-box; padding:4px 7px; border:1px solid var(--primary-color); border-radius:6px; background:var(--app-bg); color:var(--text-color); font-size:0.85rem; }
@@ -541,6 +805,206 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-sugerencia-texto { margin-right:auto; }
 .ext-sugerencia-btns { display:flex; gap:8px; flex-wrap:wrap; }
 .ext-sugerencia .btn { padding:5px 12px; font-size:0.77rem; }
+
+/* ── Cambio en bloque ─────────────────────────────────────────────────
+   Flotante y pegada abajo: se marca en cualquier mes, incluso con la lista
+   desplazada, y la barra sigue ahí sin tener que volver arriba. */
+.ext-lote {
+    position:sticky; bottom:14px; z-index:30;
+    display:flex; align-items:center; gap:9px; flex-wrap:wrap;
+    margin:0 0 14px; padding:11px 15px;
+    background:var(--surface); border:1px solid var(--primary-color); border-radius:12px;
+    box-shadow:0 8px 26px rgba(0,0,0,.22);
+}
+/* Igual que el modal: `display:flex` pisaría el `[hidden]` del navegador y la
+   barra seguiría ocupando sitio (y tapando clics) sin nada seleccionado. */
+.ext-lote[hidden] { display:none; }
+.ext-lote-cuenta { font-size:0.82rem; margin-right:4px; white-space:nowrap; }
+.ext-lote-campo {
+    background:var(--app-bg); color:var(--text-color); border:1px solid var(--border-strong);
+    border-radius:8px; padding:6px 10px; font-size:0.79rem; max-width:210px;
+}
+.ext-lote-borrar {
+    background:none; border:1px solid var(--danger); color:var(--danger);
+    border-radius:8px; padding:6px 12px; font-size:0.79rem; cursor:pointer;
+}
+.ext-lote-borrar:hover { background:color-mix(in srgb, var(--danger) 14%, transparent); }
+.ext-lote-cerrar {
+    background:none; border:none; color:var(--muted); font-size:1.25rem; line-height:1;
+    cursor:pointer; margin-left:auto; padding:0 4px;
+}
+.ext-lote-cerrar:hover { color:var(--text-color); }
+@media (max-width:640px){ .ext-lote-campo { max-width:none; flex:1 1 140px; } }
+
+/* ── Modal del desglose de una categoría ─────────────────────────────── */
+.ext-modal { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+/* `display:flex` gana al `[hidden]` del navegador: sin esto el modal cerrado
+   seguía ahí, invisible y tapando toda la pantalla, y ningún clic llegaba. */
+.ext-modal[hidden] { display:none; }
+.ext-modal-fondo { position:absolute; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(2px); }
+.ext-modal-caja {
+    position:relative; width:min(860px,100%); max-height:88vh; display:flex; flex-direction:column;
+    background:var(--surface); border:1px solid var(--border-strong); border-radius:16px;
+    box-shadow:0 22px 60px rgba(0,0,0,.4); overflow:hidden;
+}
+.ext-modal-head {
+    display:flex; align-items:center; gap:12px; padding:13px 18px;
+    border-bottom:1px solid var(--border); flex-shrink:0;
+}
+.ext-modal-titulo { font-weight:700; font-size:0.95rem; margin-right:auto; }
+.ext-modal-cerrar { background:none; border:none; color:var(--muted); font-size:1.6rem; line-height:1; cursor:pointer; padding:0 4px; }
+.ext-modal-cerrar:hover { color:var(--text-color); }
+.ext-modal-cuerpo { overflow-y:auto; padding:18px 20px 22px; }
+.ext-modal-cargando { color:var(--muted); font-style:italic; font-size:0.85rem; padding:22px 0; text-align:center; }
+
+.mc-cabecera { display:flex; align-items:flex-start; gap:18px; flex-wrap:wrap; border-left:3px solid var(--cc); padding-left:14px; }
+.mc-identidad { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.mc-bloque { font-size:0.68rem; text-transform:uppercase; letter-spacing:.06em; color:var(--cc); font-weight:700; }
+.mc-nombre { margin:0; font-size:1.25rem; }
+.mc-periodo { font-size:0.76rem; color:var(--muted); }
+.mc-cifras { margin-left:auto; display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.mc-total { font-size:1.5rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.mc-media { font-size:0.74rem; color:var(--muted); }
+.mc-presupuesto { margin-top:15px; display:flex; flex-direction:column; gap:6px; }
+.mc-barra { height:10px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.mc-barra i { display:block; height:100%; border-radius:999px; background:var(--success); }
+.mc-barra.fuera i { background:var(--danger); }
+.mc-presupuesto-txt { font-size:0.78rem; color:var(--muted); }
+.mc-sin-limite { margin:14px 0 0; font-size:0.79rem; color:var(--muted); }
+.mc-seccion { margin-top:20px; }
+.mc-seccion h4 { margin:0 0 9px; font-size:0.74rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.mc-meses, .mc-comercios { display:flex; flex-direction:column; gap:6px; }
+.mc-mes { display:grid; grid-template-columns:110px 1fr auto; gap:11px; align-items:center; font-size:0.79rem; }
+.mc-mes-lbl { color:var(--muted); }
+.mc-mes-barra, .mc-comercio-barra { height:7px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.mc-mes-barra i, .mc-comercio-barra i { display:block; height:100%; border-radius:999px; background:var(--primary-color); }
+.mc-mes-val, .mc-comercio-val { font-variant-numeric:tabular-nums; font-weight:700; }
+.mc-comercio { display:grid; grid-template-columns:minmax(90px,1.1fr) 1fr auto 96px; gap:11px; align-items:center; font-size:0.78rem; }
+.mc-comercio-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mc-comercio-veces { color:var(--muted); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.mc-lista { border:1px solid var(--border); border-radius:10px; }
+.mc-lista .ext-mov { padding:10px 12px; }
+.mc-vacio { color:var(--muted); font-style:italic; font-size:0.83rem; padding:14px; margin:0; }
+@media (max-width:640px){
+    .mc-comercio { grid-template-columns:1fr auto; }
+    .mc-comercio-barra, .mc-comercio-veces { display:none; }
+    .mc-mes { grid-template-columns:1fr auto; }
+    .mc-mes-barra { display:none; }
+}
+
+/* ── Qué explica el periodo (la antigua pestaña de Análisis) ─────────── */
+.an-card { padding:20px 24px; margin-bottom:18px; }
+.an-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+.an-card-head h3 { margin:0; font-size:1rem; }
+.an-card-nota { font-size:0.75rem; color:var(--muted); }
+.an-vacio { color:var(--muted); font-size:0.83rem; font-style:italic; margin:0; }
+
+.an-vs { display:flex; gap:30px; flex-wrap:wrap; align-items:flex-end; margin-bottom:18px; }
+.an-vs-bloque { display:flex; flex-direction:column; gap:2px; }
+.an-vs-lbl { font-size:0.69rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.an-vs-total { font-size:1.7rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.15; }
+.an-vs-media-cifra { font-size:1.25rem; font-weight:700; color:var(--muted); font-variant-numeric:tabular-nums; }
+.an-vs-cifra { font-size:1.5rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.an-vs-dif { padding-left:30px; border-left:1px solid var(--border); }
+@media (max-width:640px){ .an-vs-dif { padding-left:0; border-left:none; } }
+
+/* Puente: cuánto aporta cada categoría a la desviación del mes. */
+.an-puente { display:flex; flex-direction:column; gap:9px; }
+.an-puente-fila { display:grid; grid-template-columns:minmax(90px,1.1fr) 2fr 90px auto; gap:12px; align-items:center; font-size:0.83rem; }
+.an-puente-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.an-puente-pista { height:10px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.an-puente-pista i { display:block; height:100%; border-radius:999px; }
+.an-puente-pista i.sube { background:var(--danger); }
+.an-puente-pista i.baja { background:var(--success); }
+.an-puente-dif { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; }
+.an-puente-detalle { font-size:0.74rem; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+@media (max-width:640px){ .an-puente-fila { grid-template-columns:1fr auto; } .an-puente-pista, .an-puente-detalle { display:none; } }
+
+/* Fuera de presupuesto: primero el bloque, luego qué categoría lo explica. */
+.an-fuera-bloques { display:flex; flex-direction:column; gap:9px; margin-bottom:6px; }
+.an-fuera-bloque {
+    display:grid; grid-template-columns:minmax(120px,1fr) auto 84px; gap:12px; align-items:baseline;
+    padding:11px 14px; border:1px solid var(--border); border-left:3px solid var(--bc);
+    border-radius:10px; font-size:0.86rem;
+}
+.an-fuera-bloque-nombre { font-weight:700; }
+.an-fuera-bloque-cifras { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.an-fuera-bloque-exceso { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; }
+.an-fuera-bloque-nota { grid-column:1 / -1; font-size:0.73rem; color:var(--muted); }
+.an-fuera { display:flex; flex-direction:column; gap:10px; }
+.an-fuera-separada { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+.an-fuera-titulo { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.an-fuera-fila { display:grid; grid-template-columns:minmax(110px,1.1fr) 2fr auto 78px; gap:12px; align-items:center; font-size:0.83rem; }
+.an-fuera-cat {
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left;
+    background:none; border:none; padding:2px 4px; margin-left:-4px; border-radius:6px;
+    color:var(--text-color); font:inherit; cursor:pointer;
+    text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;
+}
+.an-fuera-cat:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); color:var(--primary-color); }
+.an-fuera-cat em { font-style:normal; color:var(--muted); font-size:0.72rem; }
+.an-fuera-pista { position:relative; height:12px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.an-fuera-pista i.real { display:block; height:100%; border-radius:999px; background:var(--danger); }
+.an-fuera-limite { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text-color); opacity:.75; }
+.an-fuera-cifras { font-variant-numeric:tabular-nums; white-space:nowrap; font-size:0.8rem; }
+.an-fuera-exceso { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; }
+.an-fuera-total { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font-size:0.82rem; color:var(--muted); }
+.an-fuera-leyenda { margin-left:12px; font-size:0.74rem; }
+.an-fuera-leyenda i { display:inline-block; width:2px; height:11px; background:var(--text-color); opacity:.75; vertical-align:-2px; margin-right:5px; }
+.an-sin-presupuesto { margin-top:16px; padding-top:12px; border-top:1px solid var(--border); }
+.an-sin-presupuesto > summary { cursor:pointer; font-size:0.79rem; color:var(--muted); }
+.an-sin-presupuesto > summary:hover { color:var(--primary-color); }
+.an-sin-lista { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
+.an-sin-fila { display:grid; grid-template-columns:1fr auto auto; gap:12px; align-items:baseline; font-size:0.8rem; }
+.an-sin-fila em { font-style:normal; color:var(--muted); font-size:0.72rem; }
+.an-sin-fila .num { font-variant-numeric:tabular-nums; font-weight:700; }
+.an-sin-nota { font-size:0.74rem; color:var(--muted); margin:10px 0 0; }
+@media (max-width:640px){
+    .an-fuera-fila { grid-template-columns:1fr auto; }
+    .an-fuera-pista, .an-fuera-cifras { display:none; }
+    .an-fuera-bloque { grid-template-columns:1fr auto; }
+}
+
+/* Por comercio. */
+.an-lista { display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; }
+.an-fila-barra { height:6px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.an-fila-barra i { display:block; height:100%; border-radius:999px; background:var(--primary-color); }
+.an-comercio { display:flex; flex-direction:column; gap:4px; padding-bottom:9px; border-bottom:1px solid var(--border); }
+.an-comercio:last-child { border-bottom:none; }
+.an-comercio-top { display:flex; align-items:center; gap:8px; font-size:0.85rem; }
+.an-comercio-nombre { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.an-comercio-total { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
+.an-comercio-pie { display:grid; grid-template-columns:70px 1fr auto; gap:10px; align-items:center; font-size:0.74rem; color:var(--muted); }
+.an-comercio-detalle { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.an-comercio-ver { font-size:0.72rem; }
+.an-badge { font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; padding:1px 7px; border-radius:999px; white-space:nowrap; }
+.an-badge.recurrente { background:color-mix(in srgb, var(--info, #5f8fb0) 18%, transparent); color:var(--info, #5f8fb0); }
+.an-badge.puntual { background:color-mix(in srgb, var(--muted) 18%, transparent); color:var(--muted); }
+
+/* Habitual vs puntual. */
+.an-reparto-barra { display:flex; height:14px; border-radius:999px; overflow:hidden; background:var(--app-bg); }
+.an-reparto-barra span.habitual { background:var(--info, #5f8fb0); }
+.an-reparto-barra span.puntual { background:var(--accent-alt, #9d4edd); }
+.an-reparto-grupos { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+.an-grupo { border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+.an-grupo > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:9px; padding:9px 12px; font-size:0.81rem; }
+.an-grupo > summary::-webkit-details-marker { display:none; }
+.an-grupo > summary:hover { background:color-mix(in srgb, var(--primary-color) 5%, transparent); }
+.an-grupo-punto { width:9px; height:9px; border-radius:3px; flex-shrink:0; }
+.an-grupo.habitual .an-grupo-punto { background:var(--info, #5f8fb0); }
+.an-grupo.puntual .an-grupo-punto { background:var(--accent-alt, #9d4edd); }
+.an-grupo.hormiga .an-grupo-punto { background:var(--muted); }
+.an-grupo-nota { color:var(--muted); font-size:0.73rem; }
+.an-grupo-total { margin-left:auto; font-weight:800; font-variant-numeric:tabular-nums; }
+.an-grupo-chevron { display:flex; color:var(--muted); transition:transform .2s; }
+.an-grupo[open] .an-grupo-chevron { transform:rotate(90deg); }
+.an-grupo-lista { border-top:1px solid var(--border); max-height:260px; overflow-y:auto; }
+.an-grupo-mov { display:grid; grid-template-columns:54px 1fr auto; gap:10px; align-items:center;
+    font-size:0.78rem; padding:6px 12px; border-bottom:1px solid var(--border); }
+.an-grupo-mov:last-child { border-bottom:none; }
+.an-grupo-fecha { color:var(--muted); font-variant-numeric:tabular-nums; }
+.an-grupo-concepto { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.an-grupo-importe { font-variant-numeric:tabular-nums; font-weight:700; }
 </style>
 
 <script>
@@ -598,8 +1062,21 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     var URL_ACT = "/extractos/movimiento/__ID__/actualizar/";
     var URL_DEL = "/extractos/movimiento/__ID__/eliminar/";
 
+    /* Un mismo movimiento puede estar pintado DOS veces a la vez: en el listado
+       y dentro del modal de su categoría. Todo lo que toca una fila tiene que
+       tocar las dos, o el modal y la lista se contradicen en pantalla. */
+    function filasDe(movId) {
+        return Array.prototype.slice.call(
+            document.querySelectorAll('.ext-mov[data-mov-id="' + movId + '"]'));
+    }
     function filaDe(movId) {
-        return document.querySelector('.ext-mov[data-mov-id="' + movId + '"]');
+        return filasDe(movId)[0];
+    }
+    function destacar(movId) {
+        filasDe(movId).forEach(function(fila) {
+            fila.classList.add('ext-guardada');
+            setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900);
+        });
     }
 
     function guardar(movId, campo, valor, onOk) {
@@ -611,8 +1088,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             body: body.toString()
         }).then(function(r){ return r.json(); }).then(function(data){
             if (!data.ok) return;
-            var fila = filaDe(movId);
-            if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
+            destacar(movId);
             if (onOk) onOk(data);
         }).catch(function(){});
     }
@@ -726,14 +1202,23 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         fila.parentNode.insertBefore(aviso, fila.nextSibling);
     }
 
-    document.querySelectorAll('.ext-cat-select').forEach(function(sel) {
-        sel.addEventListener('change', function() {
-            quitarAviso();
-            guardar(sel.dataset.movId, 'categoria_id', sel.value, function(data) {
-                if (!data.sugerencia) return;
-                var fila = filaDe(sel.dataset.movId);
-                if (fila) mostrarSugerencia(fila, data.sugerencia);
+    /* Todos los gestos de una fila van DELEGADOS en el documento, no atados a
+       cada elemento al cargar: las filas también se pintan dentro del modal
+       después, y con `querySelectorAll` al arrancar aquellas nacían muertas. */
+    document.addEventListener('change', function(e) {
+        var sel = e.target.closest('.ext-cat-select');
+        if (!sel) return;
+        quitarAviso();
+        var movId = sel.dataset.movId;
+        guardar(movId, 'categoria_id', sel.value, function(data) {
+            /* La otra copia de la fila tiene que reflejar el cambio. */
+            filasDe(movId).forEach(function(fila) {
+                var otro = fila.querySelector('.ext-cat-select');
+                if (otro && otro !== sel) otro.value = sel.value;
             });
+            if (!data.sugerencia) return;
+            var fila = sel.closest('.ext-mov');
+            if (fila) mostrarSugerencia(fila, data.sugerencia);
         });
     });
 
@@ -781,8 +1266,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         input.addEventListener('blur', function(){ fin(true); });
     }
 
-    document.querySelectorAll('.ext-mov-concepto, .ext-mov-importe').forEach(function(celda) {
-        celda.addEventListener('click', function(){ editarCelda(celda); });
+    document.addEventListener('click', function(e) {
+        var celda = e.target.closest('.ext-mov-concepto, .ext-mov-importe');
+        if (celda) editarCelda(celda);
     });
 
     /* ---- Etiquetas ----
@@ -861,8 +1347,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         fila.parentNode.insertBefore(aviso, fila.nextSibling);
     }
 
-    document.querySelectorAll('.ext-tag-add').forEach(function(btn) {
-        btn.addEventListener('click', function() {
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.ext-tag-add');
+        if (btn) (function() {
             if (btn.dataset.abierto) return;
             btn.dataset.abierto = '1';
             var movId = btn.dataset.movId;
@@ -882,21 +1369,26 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
                 if (!guardar || !nombre) return;
                 etiquetar(movId, {nombre: nombre}).then(function(data) {
                     if (!data.ok) return;
-                    var contenedor = document.querySelector('.ext-tags[data-mov-id="' + movId + '"]');
-                    if (contenedor) pintarEtiquetas(contenedor, data.etiquetas);
+                    pintarTodasLasEtiquetas(movId, data.etiquetas);
                     if (data.sugerencia) {
-                        var fila = filaDe(movId);
+                        var fila = btn.closest('.ext-mov');
                         if (fila) ofrecerComercio(fila, data.sugerencia);
                     }
                 }).catch(function(){});
             }
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter') { e.preventDefault(); cerrar(true); }
-                if (e.key === 'Escape') { e.preventDefault(); cerrar(false); }
+            input.addEventListener('keydown', function(ev) {
+                if (ev.key === 'Enter') { ev.preventDefault(); cerrar(true); }
+                if (ev.key === 'Escape') { ev.preventDefault(); cerrar(false); }
             });
             input.addEventListener('blur', function(){ cerrar(true); });
-        });
+        })();
     });
+
+    function pintarTodasLasEtiquetas(movId, etiquetas) {
+        document.querySelectorAll('.ext-tags[data-mov-id="' + movId + '"]').forEach(function(c) {
+            pintarEtiquetas(c, etiquetas);
+        });
+    }
 
     /* Quitar una etiqueta: delegado, porque los chips se repintan al vuelo. */
     document.addEventListener('click', function(e) {
@@ -904,8 +1396,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         if (!boton) return;
         var chip = boton.closest('.ext-tag');
         var contenedor = chip.closest('.ext-tags');
-        etiquetar(contenedor.dataset.movId, {quitar: chip.dataset.etiquetaId}).then(function(data) {
-            if (data.ok) pintarEtiquetas(contenedor, data.etiquetas);
+        var movId = contenedor.dataset.movId;
+        etiquetar(movId, {quitar: chip.dataset.etiquetaId}).then(function(data) {
+            if (data.ok) pintarTodasLasEtiquetas(movId, data.etiquetas);
         }).catch(function(){});
     });
 
@@ -956,24 +1449,29 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         fila.parentNode.insertBefore(aviso, fila.nextSibling);
     }
 
-    document.querySelectorAll('.ext-activo-select').forEach(function(sel) {
-        sel.addEventListener('change', function() {
-            quitarAviso();
-            var movId = sel.dataset.movId;
-            var body = new URLSearchParams();
-            body.set('activo', sel.value);
-            fetch(URL_IMPUTAR.replace('__ID__', movId), {
-                method: 'POST',
-                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-                body: body.toString()
-            }).then(function(r){ return r.json(); }).then(function(data){
-                if (!data.ok) return;
-                sel.classList.toggle('puesto', !!data.clave);
-                var fila = filaDe(movId);
-                if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
-                if (data.sugerencia && fila) ofrecerImputarComercio(fila, data.sugerencia);
-            }).catch(function(){});
-        });
+    document.addEventListener('change', function(e) {
+        var sel = e.target.closest('.ext-activo-select');
+        if (!sel) return;
+        quitarAviso();
+        var movId = sel.dataset.movId;
+        var body = new URLSearchParams();
+        body.set('activo', sel.value);
+        fetch(URL_IMPUTAR.replace('__ID__', movId), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (!data.ok) return;
+            filasDe(movId).forEach(function(fila) {
+                var otro = fila.querySelector('.ext-activo-select');
+                if (!otro) return;
+                otro.value = sel.value;
+                otro.classList.toggle('puesto', !!data.clave);
+            });
+            destacar(movId);
+            var fila = sel.closest('.ext-mov');
+            if (data.sugerencia && fila) ofrecerImputarComercio(fila, data.sugerencia);
+        }).catch(function(){});
     });
 
     /* ---- Pagos de gastos no mensuales ----
@@ -982,22 +1480,26 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
        año, que es su unidad. */
     var URL_PROVISION = "/extractos/movimiento/__ID__/provision/";
 
-    document.querySelectorAll('.ext-provision-select').forEach(function(sel) {
-        sel.addEventListener('change', function() {
-            var movId = sel.dataset.movId;
-            var body = new URLSearchParams();
-            body.set('partida_id', sel.value);
-            fetch(URL_PROVISION.replace('__ID__', movId), {
-                method: 'POST',
-                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-                body: body.toString()
-            }).then(function(r){ return r.json(); }).then(function(data){
-                if (!data.ok) return;
-                sel.classList.toggle('puesto', !!data.partida_id);
-                var fila = filaDe(movId);
-                if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
-            }).catch(function(){});
-        });
+    document.addEventListener('change', function(e) {
+        var sel = e.target.closest('.ext-provision-select');
+        if (!sel) return;
+        var movId = sel.dataset.movId;
+        var body = new URLSearchParams();
+        body.set('partida_id', sel.value);
+        fetch(URL_PROVISION.replace('__ID__', movId), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (!data.ok) return;
+            filasDe(movId).forEach(function(fila) {
+                var otro = fila.querySelector('.ext-provision-select');
+                if (!otro) return;
+                otro.value = sel.value;
+                otro.classList.toggle('puesto', !!data.partida_id);
+            });
+            destacar(movId);
+        }).catch(function(){});
     });
 
     /* ---- Mover una categoría de pilar ----
@@ -1005,20 +1507,22 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
        el sitio natural para corregirlo es justo donde ves que está mal. */
     var URL_BLOQUE = "{% url 'finanzas:cambiar_bloque_categoria' %}";
 
-    document.querySelectorAll('.ext-bloque-select').forEach(function(sel) {
-        sel.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); });
-        sel.addEventListener('change', function() {
-            var body = new URLSearchParams();
-            body.set('categoria_id', sel.dataset.categoriaId);
-            body.set('tipo', sel.value);
-            fetch(URL_BLOQUE, {
-                method: 'POST',
-                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-                body: body.toString()
-            }).then(function(r){ return r.json(); }).then(function(data){
-                if (data.ok) window.location.reload();
-            }).catch(function(){});
-        });
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.ext-bloque-select')) { e.preventDefault(); e.stopPropagation(); }
+    });
+    document.addEventListener('change', function(e) {
+        var sel = e.target.closest('.ext-bloque-select');
+        if (!sel) return;
+        var body = new URLSearchParams();
+        body.set('categoria_id', sel.dataset.categoriaId);
+        body.set('tipo', sel.value);
+        fetch(URL_BLOQUE, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (data.ok) window.location.reload();
+        }).catch(function(){});
     });
 
     /* ---- Plegar / desplegar meses ---- */
@@ -1031,19 +1535,202 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         document.querySelectorAll('.ext-mes').forEach(function(d){ d.open = false; });
     });
 
-    document.querySelectorAll('.ext-del').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            if (!confirm('¿Eliminar este movimiento?')) return;
-            var movId = btn.dataset.movId;
-            fetch(URL_DEL.replace('__ID__', movId), {
-                method: 'POST',
-                headers: {'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest'}
-            }).then(function(r){ return r.json(); }).then(function(data){
-                if (!data.ok) return;
-                var fila = filaDe(movId);
-                if (fila) { fila.style.transition = 'opacity .3s'; fila.style.opacity = '0'; setTimeout(function(){ fila.remove(); }, 300); }
-            }).catch(function(){});
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.ext-del');
+        if (!btn) return;
+        if (!confirm('¿Eliminar este movimiento?')) return;
+        var movId = btn.dataset.movId;
+        fetch(URL_DEL.replace('__ID__', movId), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest'}
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (!data.ok) return;
+            filasDe(movId).forEach(function(fila) {
+                fila.style.transition = 'opacity .3s';
+                fila.style.opacity = '0';
+                setTimeout(function(){ fila.remove(); }, 300);
+            });
+            refrescarSeleccion();
+        }).catch(function(){});
+    });
+
+    /* ---- Desglose de una categoría, en un modal ----
+       Al leer «Restaurantes 480 €» la pregunta siguiente es siempre «¿en qué?».
+       Mandar a otra pantalla para responderla hacía perder el sitio, así que el
+       desglose se abre encima y trae las MISMAS filas editables del listado:
+       lo que se ve mal se arregla ahí mismo. */
+    var URL_DESGLOSE = "{% url 'extractos:desglose_categoria' %}";
+    var modal = document.getElementById('ext-modal');
+    var modalCuerpo = document.getElementById('ext-modal-cuerpo');
+    var modalTitulo = document.getElementById('ext-modal-titulo');
+    var focoPrevio = null;
+
+    function cerrarModal() {
+        if (!modal || modal.hidden) return;
+        modal.hidden = true;
+        modalCuerpo.innerHTML = '';
+        document.body.style.overflow = '';
+        if (focoPrevio) { focoPrevio.focus(); focoPrevio = null; }
+    }
+
+    function abrirModal(clave, nombre, disparador) {
+        if (!modal) return;
+        focoPrevio = disparador || null;
+        modalTitulo.textContent = nombre || 'Desglose';
+        modalCuerpo.innerHTML = '<p class="ext-modal-cargando">Cargando el desglose…</p>';
+        modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+
+        /* Los filtros de la pantalla viajan tal cual y solo se cambia la
+           categoría: lo que se ve dentro tiene que sumar exactamente lo que
+           decía la fila de la que se ha entrado. */
+        var params = new URLSearchParams(window.location.search);
+        params.set('categoria', clave);
+        params.delete('bloque');
+        fetch(URL_DESGLOSE + '?' + params.toString(), {
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).then(function(r){
+            if (!r.ok) throw new Error('respuesta ' + r.status);
+            return r.text();
+        }).then(function(html){
+            modalCuerpo.innerHTML = html;
+        }).catch(function(){
+            modalCuerpo.innerHTML = '<p class="ext-modal-cargando">No se ha podido cargar el desglose.</p>';
         });
+    }
+
+    document.addEventListener('click', function(e) {
+        var abrir = e.target.closest('.ext-cat-abrir');
+        if (abrir) {
+            e.preventDefault();
+            abrirModal(abrir.dataset.categoria, abrir.dataset.nombre, abrir);
+            return;
+        }
+        if (e.target.closest('[data-cerrar-modal]')) cerrarModal();
+    });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') cerrarModal();
+    });
+
+    /* ---- Cambio en bloque ----
+       Repasar un mes es marcar diez apuntes del mismo tipo y decidir una vez.
+       Hacerlo de uno en uno es lo que deja los meses a medio categorizar. */
+    var URL_LOTE = "{% url 'extractos:accion_lote' %}";
+    var barra = document.getElementById('ext-lote');
+    var cuenta = document.getElementById('ext-lote-num');
+
+    function marcadas() {
+        return Array.prototype.slice.call(document.querySelectorAll('.ext-check:checked'));
+    }
+
+    function refrescarSeleccion() {
+        if (!barra) return;
+        /* Un movimiento pintado dos veces (listado y modal) cuenta una: lo que
+           importa son los ids distintos, no las casillas. */
+        var ids = {};
+        marcadas().forEach(function(c){ ids[c.dataset.movId] = true; });
+        var n = Object.keys(ids).length;
+        cuenta.textContent = n;
+        barra.hidden = n === 0;
+        document.querySelectorAll('.ext-mov').forEach(function(fila) {
+            fila.classList.toggle('ext-marcada', !!ids[fila.dataset.movId]);
+        });
+        return Object.keys(ids);
+    }
+
+    function limpiarSeleccion() {
+        marcadas().forEach(function(c){ c.checked = false; });
+        refrescarSeleccion();
+    }
+
+    document.addEventListener('change', function(e) {
+        var check = e.target.closest('.ext-check');
+        if (!check) return;
+        /* Si el movimiento está en pantalla dos veces, las dos casillas van
+           juntas: ver una marcada y la otra no es desconcertante. */
+        document.querySelectorAll('.ext-check[data-mov-id="' + check.dataset.movId + '"]')
+            .forEach(function(otra){ otra.checked = check.checked; });
+        refrescarSeleccion();
+    });
+
+    function aplicarLote(datos, confirmacion) {
+        var ids = refrescarSeleccion();
+        if (!ids || !ids.length) return;
+        if (confirmacion && !confirm(confirmacion.replace('__N__', ids.length))) return;
+
+        var body = new URLSearchParams();
+        Object.keys(datos).forEach(function(k){ body.set(k, datos[k]); });
+        ids.forEach(function(id){ body.append('ids', id); });
+
+        fetch(URL_LOTE, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); }).then(function(data){
+            if (!data.ok) return;
+            /* Se recarga a propósito: un cambio en bloque mueve los totales, los
+               pilares y el reparto por comercio, y dejarlos desfasados haría que
+               la pantalla mintiera justo después de tocarla. */
+            window.location.reload();
+        }).catch(function(){});
+    }
+
+    var selCategoria = document.getElementById('ext-lote-categoria');
+    if (selCategoria) selCategoria.addEventListener('change', function() {
+        if (!selCategoria.value) return;
+        aplicarLote({
+            accion: 'categoria',
+            categoria_id: selCategoria.value === '__ninguna__' ? '' : selCategoria.value
+        });
+        selCategoria.value = '';
+    });
+
+    var inpEtiqueta = document.getElementById('ext-lote-etiqueta');
+    if (inpEtiqueta) inpEtiqueta.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var nombre = inpEtiqueta.value.trim();
+        if (!nombre) return;
+        aplicarLote({accion: 'etiqueta', nombre: nombre});
+        inpEtiqueta.value = '';
+    });
+
+    var selActivo = document.getElementById('ext-lote-activo');
+    if (selActivo) selActivo.addEventListener('change', function() {
+        if (!selActivo.value) return;
+        aplicarLote({
+            accion: 'activo',
+            activo: selActivo.value === '__ninguno__' ? '' : selActivo.value
+        });
+        selActivo.value = '';
+    });
+
+    var selProvision = document.getElementById('ext-lote-provision');
+    if (selProvision) selProvision.addEventListener('change', function() {
+        if (!selProvision.value) return;
+        aplicarLote({
+            accion: 'provision',
+            partida_id: selProvision.value === '__ninguno__' ? '' : selProvision.value
+        });
+        selProvision.value = '';
+    });
+
+    var btnEliminarLote = document.getElementById('ext-lote-eliminar');
+    if (btnEliminarLote) btnEliminarLote.addEventListener('click', function() {
+        aplicarLote({accion: 'eliminar'}, '¿Eliminar __N__ movimientos? No se puede deshacer.');
+    });
+
+    var btnCancelarLote = document.getElementById('ext-lote-cancelar');
+    if (btnCancelarLote) btnCancelarLote.addEventListener('click', limpiarSeleccion);
+
+    var btnMarcarTodo = document.getElementById('ext-marcar-todo');
+    if (btnMarcarTodo) btnMarcarTodo.addEventListener('click', function() {
+        /* Solo lo que está a la vista: marcar meses plegados sin verlos y
+           cambiarlos de golpe es la clase de sorpresa que nadie quiere. */
+        var visibles = Array.prototype.slice.call(document.querySelectorAll('.ext-mes[open] .ext-check'));
+        var todasMarcadas = visibles.length > 0 && visibles.every(function(c){ return c.checked; });
+        visibles.forEach(function(c){ c.checked = !todasMarcadas; });
+        refrescarSeleccion();
     });
 })();
 </script>

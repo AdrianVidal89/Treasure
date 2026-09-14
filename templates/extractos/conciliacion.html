@@ -100,7 +100,7 @@
 
         {% if periodo.es_mes %}
         <div class="conc-analizar">
-            <a href="{% url 'extractos:analisis' %}?anio={{ periodo.anio_sel }}&mes={{ periodo.mes_sel }}&bloque={{ b.tipo }}&volver=conciliacion">
+            <a href="{% url 'extractos:listar' %}?anio={{ periodo.anio_sel }}&mes={{ periodo.mes_sel }}&bloque={{ b.tipo }}&volver=conciliacion">
                 Analizar {{ b.etiqueta|lower }} de {{ periodo.etiqueta }} →
             </a>
         </div>
@@ -110,7 +110,7 @@
             {% for f in b.filas %}
             <div class="conc-fila">
                 {% if periodo.es_mes and f.categoria_id %}
-                <a class="conc-fila-cat" href="{% url 'extractos:analisis' %}?anio={{ periodo.anio_sel }}&mes={{ periodo.mes_sel }}&categoria={{ f.categoria_id }}&volver=conciliacion"
+                <a class="conc-fila-cat" href="{% url 'extractos:listar' %}?anio={{ periodo.anio_sel }}&mes={{ periodo.mes_sel }}&categoria={{ f.categoria_id }}&volver=conciliacion"
                    title="Ver en qué se ha ido {{ f.categoria }}">{{ f.categoria }}</a>
                 {% else %}
                 <span class="conc-fila-cat">{{ f.categoria }}</span>

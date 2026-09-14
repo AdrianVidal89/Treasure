@@ -16,9 +16,9 @@
     </div>
 
     {% if total_duplicados %}
-    {# Reimportar el mismo mes varias veces para ver cómo va es lo normal, así
+    {% comment %}Reimportar el mismo mes varias veces para ver cómo va es lo normal, así
        que el aviso va antes de los números: se dice en una frase qué se omite
-       y por qué, sin obligar a interpretar los recuadros. #}
+       y por qué, sin obligar a interpretar los recuadros.{% endcomment %}
     <div class="revisar-aviso-duplicados">
         <svg class="icon"><use href="#i-check"/></svg>
         <div>

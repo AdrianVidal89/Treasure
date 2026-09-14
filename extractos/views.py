@@ -16,7 +16,7 @@ from finanzas.parsing import leer_tabla
 from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
-from .analisis import analizar_mes
+from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
 from .categorizacion import categorizar_lote
 from .models import Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion
 from .normalizacion import (
@@ -449,6 +449,205 @@ def _etiqueta_periodo(anio_sel, mes_sel):
     return "Todo el histórico"
 
 
+def _leer_filtros(request, **overrides):
+    """Los filtros activos de la pantalla de movimientos, en un solo sitio.
+
+    Los lee una vez y los devuelve como diccionario para que el panel, el
+    desglose de una categoría y cualquier cálculo derivado usen EXACTAMENTE el
+    mismo criterio: en cuanto hay dos copias de esta lectura, la media de una
+    tarjeta deja de cuadrar con la lista que tiene debajo.
+
+    `overrides` permite acotar sin tocar la URL: así el modal de una categoría
+    reutiliza los filtros de la pantalla y solo cambia la categoría.
+    """
+    filtros = {
+        'anio': request.GET.get('anio', 'all'),
+        'mes': request.GET.get('mes', 'all'),
+        'categoria': request.GET.get('categoria', 'all'),
+        # Bloque y etiqueta llegan desde el drill-down de la conciliación
+        # («enséñame los movimientos que hay detrás de esta cifra»).
+        'bloque': request.GET.get('bloque', ''),
+        'etiqueta': request.GET.get('etiqueta', ''),
+        'activo': request.GET.get('activo', ''),
+        # Buscador libre: con cientos de apuntes, encontrar «ese recibo raro» a
+        # ojo es lo que hace que la pantalla se sienta un muro de números.
+        'busqueda': (request.GET.get('q') or '').strip(),
+        # Los movimientos neutros (traspasos entre cuentas propias y cualquier
+        # otra categoría marcada como neutra) siguen apareciendo en el listado,
+        # pero se pueden ocultar porque no aportan nada al análisis de gasto.
+        'ver_traspasos': request.GET.get('traspasos') != '0',
+    }
+    filtros.update(overrides)
+    filtros['busqueda_norm'] = normalizar_texto(filtros['busqueda'])
+    return filtros
+
+
+def _pasa_periodo(m, f):
+    """Solo el corte temporal. Se usa aparte para contar los meses sobre los que
+    se promedia: si Gasolina no se repostó en marzo, marzo sigue siendo un mes
+    del periodo y tiene que contar como cero en la media."""
+    # Se compara como texto porque los filtros llegan de la URL; `str()` a los
+    # dos lados deja además que un override pase el año como número.
+    if f['anio'] != 'all' and str(m.fecha.year) != str(f['anio']):
+        return False
+    if f['mes'] != 'all' and str(m.fecha.month) != str(f['mes']):
+        return False
+    return True
+
+
+def _pasa_filtro(m, f):
+    if m.es_neutro and not f['ver_traspasos']:
+        return False
+    if not _pasa_periodo(m, f):
+        return False
+    cat = f['categoria']
+    if cat != 'all':
+        if cat == 'sin':
+            if m.categoria_id is not None:
+                return False
+        elif str(m.categoria_id) != str(cat):
+            return False
+    if f['bloque']:
+        tipo = m.categoria.tipo if m.categoria else 'sin'
+        if tipo != f['bloque']:
+            return False
+    if f['etiqueta']:
+        if str(f['etiqueta']) not in {str(e.id) for e in m.etiquetas.all()}:
+            return False
+    if f['activo'] and m.clave_activo != f['activo']:
+        return False
+    if f['busqueda_norm']:
+        texto = f"{m.comercio or ''} {normalizar_texto(m.concepto)}"
+        if f['busqueda_norm'] not in texto:
+            return False
+    return True
+
+
+def _contexto_edicion(hogar):
+    """Lo que necesita una fila de movimiento para poder editarse: categorías,
+    colores, provisiones y activos.
+
+    Va aparte porque las filas se pintan en dos sitios —el listado y el modal de
+    una categoría— y tienen que ofrecer los mismos desplegables en los dos."""
+    return {
+        'colores_tipo': COLOR_TIPO,
+        'bloques_categorias': _categorias_por_bloque(hogar),
+        'provisiones': PartidaGasto.objects.filter(
+            hogar=hogar, activo=True,
+        ).exclude(periodicidad='mensual').select_related('categoria'),
+        'grupos_activos': costes_activo.opciones(hogar),
+        'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
+    }
+
+
+def _comercios_del_periodo(movimientos, meses_con_datos, tope=14):
+    """Ranking de comercios de lo que se está mirando: cuánto, cuántas veces y
+    de cuánto cada vez.
+
+    El ticket medio es la mitad del diagnóstico: ocho pedidos de 24 € y una cena
+    de 190 € pesan parecido en el total y no son el mismo problema. Se calcula
+    sobre los movimientos YA FILTRADOS, así que respeta el año, el mes, la
+    categoría y el buscador que haya puestos.
+    """
+    grupos = defaultdict(list)
+    for m in movimientos:
+        if not m.cuenta_como_gasto or m.es_neutro:
+            continue
+        grupos[m.comercio or 'otros'].append(m)
+
+    filas = []
+    for comercio, movs in grupos.items():
+        total = sum((-m.importe for m in movs), Decimal('0'))
+        if total <= 0:
+            continue
+        conceptos = defaultdict(int)
+        for m in movs:
+            conceptos[m.concepto] += 1
+        meses_visto = len({(m.fecha.year, m.fecha.month) for m in movs})
+        filas.append({
+            'comercio': comercio,
+            # El concepto más repetido es el que el usuario reconoce, no la
+            # clave normalizada con la que se agrupa.
+            'etiqueta': max(conceptos.items(), key=lambda kv: kv[1])[0],
+            'categoria': movs[0].categoria.nombre if movs[0].categoria else 'Sin categorizar',
+            'num': len(movs),
+            'total': total,
+            'ticket_medio': total / len(movs),
+            'meses_visto': meses_visto,
+            # Sin al menos dos meses a la vista no se moja: llamar «puntual» a
+            # algo de lo que solo se ve un mes sería mentir con seguridad.
+            'recurrente': (
+                meses_con_datos >= MINIMO_MESES_REFERENCIA
+                and meses_visto >= UMBRAL_RECURRENTE * meses_con_datos
+            ),
+        })
+
+    filas.sort(key=lambda f: f['total'], reverse=True)
+    resto = filas[tope:]
+    filas = filas[:tope]
+    tope_importe = max((f['total'] for f in filas), default=Decimal('0'))
+    for f in filas:
+        f['pct'] = float(f['total'] / tope_importe * 100) if tope_importe else 0
+    return {
+        'filas': filas,
+        'num_resto': len(resto),
+        'total_resto': sum((f['total'] for f in resto), Decimal('0')),
+    }
+
+
+def _fuera_de_presupuesto(bloques):
+    """Lo que se ha salido del presupuesto, a partir de los bloques ya
+    calculados: el bloque que se pasa y, dentro, qué categoría lo explica.
+
+    En DISCRECIONALES solo se avisa del bloque. Ahí no hay —ni tiene sentido
+    que haya— un presupuesto por categoría: el usuario sabe que tiene un tope
+    para sus caprichos y quiere ver en qué se le ha ido, no que le riñan por
+    gastar 40 € en una categoría para la que nunca declaró un límite.
+    """
+    excedidos, explican, sin_limite = [], [], []
+    for b in bloques:
+        if b['dentro'] is False:
+            excedidos.append({
+                'tipo': b['tipo'], 'nombre': b['etiqueta'], 'color': b['color'],
+                'importe': b['importe'], 'limite': b['limite'],
+                'exceso': b['exceso'], 'num_categorias': b['num_categorias'],
+                'categorias': b['categorias'][:5],
+            })
+        if b['tipo'] == 'discrecional':
+            continue
+        for c in b['categorias']:
+            fila = dict(c, bloque=b['etiqueta'], color=b['color'], tipo=b['tipo'])
+            if c['dentro'] is False:
+                explican.append(fila)
+            elif c['dentro'] is None and c['importe'] > 0 and c['id']:
+                sin_limite.append(fila)
+
+    excedidos.sort(key=lambda f: f['exceso'], reverse=True)
+    explican.sort(key=lambda f: f['exceso'], reverse=True)
+    sin_limite.sort(key=lambda f: f['importe'], reverse=True)
+
+    # Las barras se miden contra el gasto mayor de la lista, para que el límite
+    # y el real se lean uno contra otro de un vistazo.
+    tope = max((f['importe'] for f in explican), default=Decimal('0'))
+    for f in explican:
+        f['pct_real'] = float(f['importe'] / tope * 100) if tope else 0
+        f['pct_limite'] = float(f['limite'] / tope * 100) if tope else 0
+
+    return {
+        'bloques': excedidos,
+        'categorias': explican,
+        'sin_presupuesto': sin_limite,
+        # El exceso total es el de los BLOQUES: sumar además el de cada
+        # categoría contaría dos veces el mismo euro.
+        'exceso_total': sum((f['exceso'] for f in excedidos), Decimal('0')),
+        # La tarjeta también aparece cuando no hay excesos pero sí categorías
+        # gastando sin límite declarado: es la lista desde la que se declaran, y
+        # esconderla las deja invisibles para siempre.
+        'hay_algo': bool(excedidos or explican or sin_limite),
+        'hay_exceso': bool(excedidos or explican),
+    }
+
+
 def _panel_context(hogar, todos, request):
     """Construye el panel de análisis de movimientos (KPIs, donut, ingresos vs
     gastos, filtros año/mes/categoría y listado agrupado por mes) que comparten
@@ -460,53 +659,12 @@ def _panel_context(hogar, todos, request):
     anios_disponibles = sorted({m.fecha.year for m in todos}, reverse=True)
     meses_disponibles = [{'valor': str(n), 'etiqueta': MESES_ES[n]} for n in range(1, 13)]
 
-    # --- Filtros activos ---
-    anio_sel = request.GET.get('anio', 'all')
-    mes_sel = request.GET.get('mes', 'all')
-    cat_sel = request.GET.get('categoria', 'all')
-    # Bloque y etiqueta llegan desde el drill-down del análisis y de la
-    # conciliación («enséñame los movimientos que hay detrás de esta cifra»).
-    bloque_sel = request.GET.get('bloque', '')
-    etiqueta_sel = request.GET.get('etiqueta', '')
-    activo_sel = request.GET.get('activo', '')
-    # Buscador libre: con cientos de apuntes, encontrar «ese recibo raro» a ojo
-    # es lo que hace que la pantalla se sienta un muro de números.
-    busqueda = (request.GET.get('q') or '').strip()
-    busqueda_norm = normalizar_texto(busqueda)
-    # Los movimientos neutros (traspasos entre cuentas propias y cualquier otra
-    # categoría marcada como neutra) siguen apareciendo en el listado, pero se
-    # pueden ocultar porque no aportan nada al análisis de gasto.
-    ver_traspasos = request.GET.get('traspasos') != '0'
+    f = _leer_filtros(request)
+    anio_sel, mes_sel, cat_sel = f['anio'], f['mes'], f['categoria']
+    bloque_sel, etiqueta_sel, activo_sel = f['bloque'], f['etiqueta'], f['activo']
+    busqueda, ver_traspasos = f['busqueda'], f['ver_traspasos']
 
-    def pasa_filtro(m):
-        if m.es_neutro and not ver_traspasos:
-            return False
-        if anio_sel != 'all' and str(m.fecha.year) != anio_sel:
-            return False
-        if mes_sel != 'all' and str(m.fecha.month) != mes_sel:
-            return False
-        if cat_sel != 'all':
-            if cat_sel == 'sin':
-                if m.categoria_id is not None:
-                    return False
-            elif str(m.categoria_id) != cat_sel:
-                return False
-        if bloque_sel:
-            tipo = m.categoria.tipo if m.categoria else 'sin'
-            if tipo != bloque_sel:
-                return False
-        if etiqueta_sel:
-            if etiqueta_sel not in {str(e.id) for e in m.etiquetas.all()}:
-                return False
-        if activo_sel and m.clave_activo != activo_sel:
-            return False
-        if busqueda_norm:
-            texto = f"{m.comercio or ''} {normalizar_texto(m.concepto)}"
-            if busqueda_norm not in texto:
-                return False
-        return True
-
-    movimientos = [m for m in todos if pasa_filtro(m)]
+    movimientos = [m for m in todos if _pasa_filtro(m, f)]
 
     # --- KPIs sobre el conjunto filtrado ---
     # Quién suma, quién resta y quién no cuenta lo dice el cómputo de la
@@ -547,10 +705,14 @@ def _panel_context(hogar, todos, request):
         (d['importe'] for d in por_bloque.values() if d['importe'] > 0), Decimal('0'),
     )
 
-    # Comparar lo observado con el presupuesto: la barra en verde si cabe
-    # dentro y en rojo si no. El límite se multiplica por los meses que abarca
-    # el filtro, porque el presupuesto es mensual y lo mirado puede ser un año.
-    meses_periodo = max(len({(m.fecha.year, m.fecha.month) for m in movimientos}), 1)
+    # Meses del periodo con extracto importado. Es el divisor de todas las
+    # medias y de los límites: el presupuesto es mensual y lo que se está
+    # mirando puede ser un año entero. Se cuentan los meses con DATOS, no los
+    # meses con gasto de lo filtrado, para que un mes sin repostar cuente como
+    # cero en la media de Gasolina en vez de desaparecer del divisor.
+    meses_periodo = max(
+        len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
+    )
     limite_bloque = presupuesto.por_bloque(hogar)
     limite_categoria = presupuesto.por_categoria(hogar)
 
@@ -567,6 +729,7 @@ def _panel_context(hogar, todos, request):
         for c in categorias:
             c['pct_bloque'] = round(float(c['importe'] / importe * 100), 1) if importe else 0
             c['pct_total'] = round(float(c['importe'] / total_gasto_abs * 100), 1) if total_gasto_abs else 0
+            c['media_mes'] = c['importe'] / meses_periodo
             c.update(presupuesto.estado(
                 c['importe'], limite_categoria.get(c['id'], Decimal('0')) * meses_periodo,
             ))
@@ -623,6 +786,49 @@ def _panel_context(hogar, todos, request):
         })
 
     categorias_hogar = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
+    categoria_activa = next(
+        (c for c in categorias_hogar if str(c.id) == str(cat_sel)), None,
+    )
+
+    # --- La media mensual de lo que se está mirando ---
+    # «¿Cuánto me cuesta la gasolina al mes?» no se responde con el total del
+    # filtro: se responde dividiéndolo entre los meses que abarca. Es la cifra
+    # que hace comparables un año entero y un trimestre.
+    media = {
+        'meses': meses_periodo,
+        'gasto': abs(gastos) / meses_periodo,
+        'ingreso': ingresos / meses_periodo,
+        'neto': (ingresos + gastos) / meses_periodo,
+        'num': len(movimientos) / meses_periodo,
+        'ambito': _ambito_filtrado(f, categoria_activa, hogar),
+        # Con un solo mes a la vista la media ES el mes: repetir la cifra solo
+        # añade ruido.
+        'mostrar': meses_periodo > 1,
+        'limite': (
+            limite_categoria.get(categoria_activa.id, Decimal('0'))
+            if categoria_activa else Decimal('0')
+        ),
+    }
+
+    # --- Lo que explica el periodo (antes, la pestaña «Análisis») ---
+    fuera_presupuesto = _fuera_de_presupuesto(bloques)
+    comercios = _comercios_del_periodo(movimientos, meses_periodo)
+
+    # La comparación contra la media de los meses anteriores necesita UN mes
+    # concreto —es su unidad— y los meses previos, que por definición quedan
+    # fuera del filtro. Con el buscador o un activo puestos no se ofrece: el
+    # motor no los conoce y la comparación diría algo distinto de la lista que
+    # tiene debajo.
+    comparativa = None
+    if anio_sel != 'all' and mes_sel != 'all' and not busqueda and not activo_sel:
+        comparativa = analizar_mes(
+            todos, int(anio_sel), int(mes_sel),
+            bloque=bloque_sel or None,
+            categoria_id=categoria_activa.id if categoria_activa else None,
+            etiqueta_id=_entero_o_none(etiqueta_sel),
+            limite_categoria=limite_categoria,
+            limite_bloque=limite_bloque,
+        )
 
     return {
         'grupos': grupos,
@@ -638,20 +844,19 @@ def _panel_context(hogar, todos, request):
         'anio_sel': anio_sel,
         'mes_sel': mes_sel,
         'cat_sel': cat_sel,
+        'categoria_activa': categoria_activa,
         'ver_traspasos': ver_traspasos,
         'busqueda': busqueda,
         'bloque_sel': bloque_sel,
         'bloque_etiqueta': ETIQUETAS_TIPO.get(bloque_sel, 'Sin categorizar') if bloque_sel else '',
         'etiqueta_sel': etiqueta_sel,
-        'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
         'activo_sel': activo_sel,
-        'grupos_activos': costes_activo.opciones(hogar),
-        'provisiones': PartidaGasto.objects.filter(
-            hogar=hogar, activo=True,
-        ).exclude(periodicidad='mensual').select_related('categoria'),
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'meses_periodo': meses_periodo,
-        'colores_tipo': COLOR_TIPO,
+        'media': media,
+        'fuera_presupuesto': fuera_presupuesto,
+        'comercios': comercios,
+        'comparativa': comparativa,
         'tipos_bloque': [
             {'valor': t, 'etiqueta': ETIQUETAS_TIPO.get(t, t)} for t in ORDEN_TIPOS
         ],
@@ -660,13 +865,63 @@ def _panel_context(hogar, todos, request):
         'traspasos_cuadran': traspaso_neto == 0 and bool(traspasos),
         'bloques': bloques,
         'categorias_hogar': categorias_hogar,
-        'bloques_categorias': _categorias_por_bloque(hogar),
         'hay_filtro': (
             anio_sel != 'all' or mes_sel != 'all' or cat_sel != 'all'
             or bool(busqueda) or bool(bloque_sel) or bool(etiqueta_sel)
             or bool(activo_sel)
         ),
+        **_volver_a(request, anio_sel, mes_sel),
+        **_contexto_edicion(hogar),
     }
+
+
+def _volver_a(request, anio_sel, mes_sel):
+    """De dónde se venía, para poder volver sin perder el mes.
+
+    Entrar desde «Ocio se ha pasado 180 €» y no tener forma de regresar a la
+    conciliación era el corte de navegación más molesto de la pantalla. Es una
+    LISTA BLANCA de destinos conocidos y no una URL libre: un «volver» que
+    acepte cualquier dirección es un redirector abierto de manual.
+    """
+    destinos = {
+        'conciliacion': ('extractos:conciliacion', 'Conciliación'),
+        'movimientos': ('extractos:listar', 'Movimientos'),
+    }
+    volver = request.GET.get('volver') or ''
+    if volver not in destinos:
+        return {'volver_url': '', 'volver_nombre': ''}
+
+    ruta, nombre = destinos[volver]
+    periodo = '&'.join(
+        f'{clave}={valor}' for clave, valor in (('anio', anio_sel), ('mes', mes_sel))
+        if valor and valor != 'all'
+    )
+    return {
+        'volver_url': f'{reverse(ruta)}?{periodo}' if periodo else reverse(ruta),
+        'volver_nombre': nombre,
+    }
+
+
+def _ambito_filtrado(f, categoria_activa, hogar):
+    """Cómo se llama en una línea lo que hay filtrado. Una media sin decir de
+    qué es una media es un número suelto."""
+    if categoria_activa:
+        return categoria_activa.nombre
+    if f['categoria'] == 'sin':
+        return 'lo que está sin categorizar'
+    if f['bloque']:
+        return ETIQUETAS_TIPO.get(f['bloque'], 'Sin categorizar')
+    if f['etiqueta']:
+        etiqueta = Etiqueta.objects.filter(hogar=hogar, id=f['etiqueta']).first()
+        if etiqueta:
+            return etiqueta.nombre
+    if f['activo']:
+        activo = costes_activo.resolver(hogar, f['activo'])
+        if activo:
+            return activo.nombre
+    if f['busqueda']:
+        return f'«{f["busqueda"]}»'
+    return 'todo el gasto'
 
 
 @login_required
@@ -805,6 +1060,188 @@ def eliminar_movimiento(request, pk):
     extracto.num_movimientos = extracto.movimientos.count()
     extracto.save(update_fields=['num_movimientos'])
     return JsonResponse({'ok': True})
+
+
+@login_required
+def movimientos_de_categoria(request):
+    """El desglose de una categoría, para el modal que se abre desde su pilar.
+
+    Devuelve un trozo de HTML, no una página: el objetivo es ver de un vistazo
+    qué hay dentro de «Restaurantes» sin perder la pantalla en la que estabas,
+    y poder cambiarlo ahí mismo. Reutiliza los filtros de la pantalla —año, mes,
+    etiqueta, activo, buscador— y solo fuerza la categoría, para que lo que se
+    ve dentro sume exactamente lo que decía la fila de la que se ha entrado.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+
+    clave = request.GET.get('categoria') or ''
+    categoria = (
+        CategoriaGasto.objects.filter(hogar=hogar, id=clave).first()
+        if clave.isdigit() else None
+    )
+    if not categoria and clave != 'sin':
+        return JsonResponse({'ok': False, 'error': 'categoria_invalida'}, status=404)
+
+    todos = list(
+        MovimientoBancario.objects.filter(hogar=hogar)
+        .select_related('categoria', 'partida_conciliada').prefetch_related('etiquetas')
+    )
+    # El bloque se quita: la categoría ya es más concreta que su pilar, y
+    # dejarlo puesto vaciaría la lista justo cuando se entra desde otro bloque
+    # (por ejemplo, después de mover la categoría de sitio).
+    f = _leer_filtros(request, categoria=str(categoria.id) if categoria else 'sin', bloque='')
+    movimientos = sorted(
+        (m for m in todos if _pasa_filtro(m, f)), key=lambda m: m.fecha, reverse=True,
+    )
+
+    meses_periodo = max(
+        len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
+    )
+    total = sum((-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
+    limite_mensual = (
+        presupuesto.por_categoria(hogar).get(categoria.id, Decimal('0'))
+        if categoria else Decimal('0')
+    )
+
+    por_mes = defaultdict(lambda: Decimal('0'))
+    for m in movimientos:
+        if m.cuenta_como_gasto:
+            por_mes[(m.fecha.year, m.fecha.month)] += -m.importe
+    meses = [
+        {'etiqueta': f"{MESES_ES[mes]} {anio}", 'importe': importe,
+         'pct': float(importe / max(por_mes.values()) * 100) if por_mes else 0}
+        for (anio, mes), importe in sorted(por_mes.items(), reverse=True)
+    ]
+
+    contexto = {
+        'categoria': categoria,
+        'nombre': categoria.nombre if categoria else 'Sin categorizar',
+        'color': COLOR_TIPO.get(categoria.tipo if categoria else 'sin', '#9aa5a0'),
+        'bloque_etiqueta': (
+            ETIQUETAS_TIPO.get(categoria.tipo, 'Sin categorizar')
+            if categoria else 'Sin categorizar'
+        ),
+        'movimientos': movimientos,
+        'total': total,
+        'num': len(movimientos),
+        'meses_periodo': meses_periodo,
+        'media_mes': total / meses_periodo,
+        'periodo_etiqueta': _etiqueta_periodo(f['anio'], f['mes']),
+        'meses': meses,
+        'comercios': _comercios_del_periodo(movimientos, meses_periodo, tope=8),
+        **presupuesto.estado(total, limite_mensual * meses_periodo),
+        'limite_mensual': limite_mensual,
+        # Anidado, no expandido: la plantilla de una fila de movimiento espera
+        # este contexto bajo el nombre `panel`, igual que en el listado.
+        'contexto_edicion': _contexto_edicion(hogar),
+    }
+    return render(request, 'extractos/_modal_categoria.html', contexto)
+
+
+# Acciones que se pueden aplicar a varios movimientos de una vez. Están
+# enumeradas a propósito: un endpoint que acepte «el campo que venga» sobre una
+# lista de ids es una puerta abierta a cambiar cualquier cosa en bloque.
+ACCIONES_LOTE = ('categoria', 'etiqueta', 'quitar_etiqueta', 'activo', 'provision', 'eliminar')
+
+
+@login_required
+def accion_lote(request):
+    """Aplica un mismo cambio a varios movimientos seleccionados.
+
+    Categorizar veinte apuntes de uno en uno es el trabajo que hace que la
+    pantalla se abandone a medias. Con la selección múltiple, repasar un mes
+    entero es marcar y elegir una vez.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    accion = request.POST.get('accion') or ''
+    if accion not in ACCIONES_LOTE:
+        return JsonResponse({'ok': False, 'error': 'accion_invalida'}, status=400)
+
+    ids = [i for i in request.POST.getlist('ids') if str(i).isdigit()]
+    movimientos = list(MovimientoBancario.objects.filter(hogar=hogar, id__in=ids))
+    if not movimientos:
+        return JsonResponse({'ok': False, 'error': 'sin_movimientos'}, status=400)
+
+    respuesta = {'ok': True, 'accion': accion, 'num': len(movimientos)}
+
+    if accion == 'categoria':
+        crudo = request.POST.get('categoria_id') or ''
+        categoria = CategoriaGasto.objects.filter(hogar=hogar, id=crudo).first() if crudo else None
+        if crudo and not categoria:
+            return JsonResponse({'ok': False, 'error': 'categoria_invalida'}, status=400)
+        MovimientoBancario.objects.filter(id__in=[m.id for m in movimientos]).update(
+            categoria=categoria,
+            estado_categorizacion='manual' if categoria else 'sin_categorizar',
+        )
+        respuesta['etiqueta'] = categoria.nombre if categoria else 'Sin categorizar'
+
+    elif accion in ('etiqueta', 'quitar_etiqueta'):
+        etiqueta = _etiqueta_para_lote(hogar, request, crear=accion == 'etiqueta')
+        if not etiqueta:
+            return JsonResponse({'ok': False, 'error': 'etiqueta_invalida'}, status=400)
+        for m in movimientos:
+            if accion == 'etiqueta':
+                m.etiquetas.add(etiqueta)
+            else:
+                m.etiquetas.remove(etiqueta)
+        respuesta['etiqueta'] = etiqueta.nombre
+
+    elif accion == 'activo':
+        crudo = request.POST.get('activo') or ''
+        activo = costes_activo.resolver(hogar, crudo) if crudo else None
+        if crudo and not activo:
+            return JsonResponse({'ok': False, 'error': 'activo_invalido'}, status=400)
+        for m in movimientos:
+            costes_activo.asignar(m, activo)
+            m.save(update_fields=['propiedad', 'vehiculo'])
+        respuesta['etiqueta'] = activo.nombre if activo else 'sin activo'
+
+    elif accion == 'provision':
+        crudo = request.POST.get('partida_id') or ''
+        partida = (
+            PartidaGasto.objects.filter(hogar=hogar, id=crudo).exclude(periodicidad='mensual').first()
+            if crudo else None
+        )
+        if crudo and not partida:
+            return JsonResponse({'ok': False, 'error': 'partida_invalida'}, status=400)
+        MovimientoBancario.objects.filter(id__in=[m.id for m in movimientos]).update(
+            partida_conciliada=partida,
+        )
+        respuesta['etiqueta'] = partida.nombre if partida else 'no es un pago anual'
+
+    elif accion == 'eliminar':
+        extractos_afectados = {m.extracto_id for m in movimientos}
+        MovimientoBancario.objects.filter(id__in=[m.id for m in movimientos]).delete()
+        for extracto in ExtractoBancario.objects.filter(id__in=extractos_afectados):
+            extracto.num_movimientos = extracto.movimientos.count()
+            extracto.save(update_fields=['num_movimientos'])
+
+    return JsonResponse(respuesta)
+
+
+def _etiqueta_para_lote(hogar, request, crear):
+    """La etiqueta del cambio en bloque: por id si viene elegida, o por nombre
+    creándola si hace falta, igual que al etiquetar un movimiento suelto."""
+    crudo = request.POST.get('etiqueta_id') or ''
+    if crudo:
+        return Etiqueta.objects.filter(hogar=hogar, id=crudo).first()
+    nombre = (request.POST.get('nombre') or '').strip()[:60]
+    if not nombre:
+        return None
+    existente = Etiqueta.objects.filter(hogar=hogar, nombre__iexact=nombre).first()
+    if existente or not crear:
+        return existente
+    return Etiqueta.objects.create(
+        hogar=hogar, nombre=nombre[:60],
+        color=Etiqueta.color_sugerido(hogar),
+    )
 
 
 def _periodo_conciliacion(request, movimientos):
@@ -999,91 +1436,20 @@ def conciliacion(request):
 
 @login_required
 def analisis(request):
-    """En qué se ha ido el mes y qué lo explica.
+    """La pantalla de Análisis ya no existe por separado.
 
-    Es el destino del drill-down de la conciliación: se entra desde «Ocio se ha
-    pasado 180 €» y aquí se ve contra qué se compara, qué comercios lo componen
-    y cuánto de eso volverá a pasar el mes que viene."""
-    profile, hogar = _get_hogar(request)
-    if not hogar:
-        messages.error(request, "Necesitas pertenecer a un hogar.")
-        return redirect('dashboard')
+    Todo lo que decía —cuánto llevas frente a tu media de los meses anteriores,
+    en qué comercios se ha ido y qué se ha salido del presupuesto— está ahora en
+    Movimientos, junto a los apuntes que lo explican: era la misma pregunta
+    partida en dos pantallas, y obligaba a saltar de una a otra para cruzar una
+    cifra con los movimientos que la componen.
 
-    todos = list(
-        MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria').prefetch_related('etiquetas')
-    )
-
-    anio, mes = _mes_analizado(request, todos)
-    bloque = request.GET.get('bloque') or ''
-    categoria_id = _entero_o_none(request.GET.get('categoria'))
-    etiqueta_id = _entero_o_none(request.GET.get('etiqueta'))
-
-    categoria = (
-        CategoriaGasto.objects.filter(hogar=hogar, id=categoria_id).first()
-        if categoria_id else None
-    )
-    etiqueta = (
-        Etiqueta.objects.filter(hogar=hogar, id=etiqueta_id).first()
-        if etiqueta_id else None
-    )
-    if bloque not in ETIQUETAS_TIPO and bloque != 'sin':
-        bloque = ''
-
-    datos = analizar_mes(
-        todos, anio, mes,
-        bloque=bloque or None,
-        categoria_id=categoria.id if categoria else None,
-        etiqueta_id=etiqueta.id if etiqueta else None,
-        limite_categoria=presupuesto.por_categoria(hogar),
-        limite_bloque=presupuesto.por_bloque(hogar),
-    )
-
-    # Desde dónde se llegó, para poder volver. Es una lista blanca de destinos
-    # conocidos y no una URL libre: un «volver» que acepte cualquier dirección
-    # es un redirector abierto de manual.
-    volver = request.GET.get('volver') or ''
-    destinos = {
-        'conciliacion': ('extractos:conciliacion', 'Conciliación'),
-        'movimientos': ('extractos:listar', 'Movimientos'),
-    }
-
-    meses_con_datos = sorted({(m.fecha.year, m.fecha.month) for m in todos}, reverse=True)
-    return render(request, 'extractos/analisis.html', {
-        'volver_url': (
-            f"{reverse(destinos[volver][0])}?anio={anio}&mes={mes}"
-            if volver in destinos else ''
-        ),
-        'volver_nombre': destinos[volver][1] if volver in destinos else '',
-        'a': datos,
-        'etiqueta_mes': f"{MESES_ES[mes]} {anio}",
-        'bloque': bloque,
-        'bloque_etiqueta': ETIQUETAS_TIPO.get(bloque, 'Sin categorizar') if bloque else '',
-        'categoria': categoria,
-        'etiqueta': etiqueta,
-        'color_bloque': COLOR_TIPO.get(bloque, '#9aa5a0'),
-        'colores_tipo': COLOR_TIPO,
-        'hay_ambito': bool(bloque or categoria or etiqueta),
-        'meses_disponibles': [
-            {'anio': a, 'mes': m, 'etiqueta': f"{MESES_ES[m]} {a}"} for a, m in meses_con_datos
-        ],
-        'hay_movimientos': bool(todos),
-        'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
-    })
-
-
-def _mes_analizado(request, movimientos):
-    """Mes elegido en la URL o, si no viene, el último con datos."""
-    anio = _entero_o_none(request.GET.get('anio'))
-    mes = _entero_o_none(request.GET.get('mes'))
-    if anio and mes and 1 <= mes <= 12:
-        return anio, mes
-
-    meses = sorted({(m.fecha.year, m.fecha.month) for m in movimientos}, reverse=True)
-    if meses:
-        return meses[0]
-    hoy = date.today()
-    return hoy.year, hoy.month
+    La ruta se conserva redirigiendo porque estaba enlazada desde la
+    conciliación y desde cualquier marcador que el usuario tuviera guardado.
+    """
+    parametros = request.GET.urlencode()
+    destino = reverse('extractos:listar')
+    return redirect(f'{destino}?{parametros}' if parametros else destino)
 
 
 # ---------------------------------------------------------------------------

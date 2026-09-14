@@ -2512,8 +2512,10 @@ class PantallasSeRenderizanTests(TestCase):
             precio_compra=Decimal('100000'), valor_actual=Decimal('120000'),
         )
 
-    def test_todas_las_pantallas_responden(self):
-        rutas = [
+    RUTAS = None   # se rellena en test_todas_las_pantallas_responden
+
+    def rutas_de_la_app(self):
+        return [
             reverse('dashboard'),
             reverse('finanzas:listar_gastos'),
             reverse('finanzas:crear_partida'),
@@ -2524,16 +2526,43 @@ class PantallasSeRenderizanTests(TestCase):
             reverse('finanzas:listar_ingresos'),
             reverse('finanzas:vista_distribucion'),
             reverse('extractos:listar'),
-            reverse('extractos:analisis'),
             reverse('extractos:conciliacion'),
             reverse('extractos:sin_categorizar'),
             reverse('extractos:reglas'),
             reverse('extractos:etiquetas'),
             reverse('extractos:subir'),
         ]
-        for ruta in rutas:
+
+    def test_todas_las_pantallas_responden(self):
+        for ruta in self.rutas_de_la_app():
             with self.subTest(ruta=ruta):
                 self.assertEqual(self.client.get(ruta).status_code, 200)
+
+    def test_ninguna_pantalla_escupe_sintaxis_de_plantilla(self):
+        """Un `{# … #}` de varias líneas NO es un comentario para Django: se
+        pinta tal cual en medio de la pantalla. Como la página responde 200
+        igualmente, ningún test lo veía —y el usuario sí—."""
+        for ruta in self.rutas_de_la_app():
+            with self.subTest(ruta=ruta):
+                contenido = self.client.get(ruta).content.decode('utf-8')
+                # Solo marcas que NUNCA aparecen en JavaScript ni en CSS de
+                # verdad: buscar «{{» o «}}» daría falsos positivos en cada
+                # cierre de bloque de los scripts en línea.
+                for marca in ('{#', '#}', '{% comment', '{% if ', '{% for ',
+                              '{% endif', '{% endfor', '{% include'):
+                    self.assertNotIn(
+                        marca, contenido,
+                        f'{ruta} deja escapar «{marca}»: hay una etiqueta de plantilla sin interpretar.',
+                    )
+
+    def test_la_vieja_pantalla_de_analisis_redirige_a_movimientos(self):
+        """La pestaña ya no existe, pero la ruta seguía enlazada desde la
+        conciliación y desde los marcadores del usuario: tiene que llevar a
+        Movimientos con el mismo periodo, no a un 404."""
+        respuesta = self.client.get(reverse('extractos:analisis'), {'anio': 2026, 'mes': 8})
+        self.assertRedirects(
+            respuesta, reverse('extractos:listar') + '?anio=2026&mes=8',
+        )
 
     def test_editar_una_partida_se_renderiza(self):
         from finanzas.models import PartidaGasto
