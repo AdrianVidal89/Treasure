@@ -2326,3 +2326,218 @@ class ParseDecimalMilesTests(SimpleTestCase):
         self.assertEqual(parse_decimal('18.000,50'), Decimal('18000.50'))
         self.assertEqual(parse_decimal('1,842.50'), Decimal('1842.50'))
         self.assertEqual(parse_decimal('0.00'), Decimal('0.00'))
+
+
+class AhorroEsperadoTests(TestCase):
+    """Ahorro esperado mensual y anual: no son la misma cifra y las dos hacen
+    falta. La paga extra no llega todos los meses, pero es dinero del año."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.models import CategoriaGasto, FuenteIngreso, PartidaGasto
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('ahorrador', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+        self.categoria = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Piso', tipo='fijo',
+        )
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.categoria, nombre='Alquiler',
+            importe=Decimal('900'), periodicidad='mensual',
+        )
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.categoria, nombre='Seguro',
+            importe=Decimal('240'), periodicidad='anual',
+        )
+        self.FuenteIngreso = FuenteIngreso
+
+    def nomina(self, **extra):
+        # Neto declarado y en anual: así las cifras del test son las del
+        # usuario y no las que salgan del motor fiscal.
+        datos = dict(
+            usuario=self.user, hogar=self.hogar, nombre='Nómina',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        datos.update(extra)
+        return self.FuenteIngreso.objects.create(**datos)
+
+    def test_el_mensual_es_ingresos_menos_gastos_recurrentes(self):
+        from finanzas.distribucion import ahorro_esperado
+
+        self.nomina()
+        datos = ahorro_esperado(self.hogar, 2026)
+
+        # 900 mensual + 20 de provisión del seguro anual.
+        self.assertEqual(datos['gastos_mensuales'], Decimal('920'))
+        self.assertEqual(datos['ingresos_mensuales'], Decimal('2000'))
+        self.assertEqual(datos['mensual'], Decimal('1080'))
+
+    def test_el_anual_incluye_las_pagas_extra(self):
+        from finanzas.distribucion import ahorro_esperado
+
+        self.nomina(num_pagas=14, importe_declarado=Decimal('28000'),
+                    meses_pagas_extras='6,12')
+        datos = ahorro_esperado(self.hogar, 2026)
+
+        # 14 pagas de 2.000: 12 mensuales + 2 extras.
+        self.assertEqual(datos['ingresos_mensuales'], Decimal('2000'))
+        self.assertEqual(datos['ingresos_anuales'], Decimal('28000'))
+        self.assertEqual(datos['extras_anuales'], Decimal('4000'))
+        # Gasto anual: 900x12 + 240.
+        self.assertEqual(datos['gastos_anuales'], Decimal('11040'))
+        self.assertEqual(datos['anual'], Decimal('16960'))
+
+    def test_el_anual_no_es_doce_veces_el_mensual_cuando_hay_extras(self):
+        from finanzas.distribucion import ahorro_esperado
+
+        self.nomina(num_pagas=14, importe_declarado=Decimal('28000'),
+                    meses_pagas_extras='6,12')
+        datos = ahorro_esperado(self.hogar, 2026)
+        self.assertNotEqual(datos['anual'], datos['mensual'] * 12)
+
+
+class IngresosFueraDelRepartoTests(TestCase):
+    """Un ingreso marcado «fuera del reparto» no se distribuye, pero sigue
+    siendo ingreso del hogar: el dashboard da la foto general y ahí cuenta."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.models import FuenteIngreso
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('irene', password='clave-de-prueba')
+        self.user.first_name = 'Irene'
+        self.user.save()
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+        FuenteIngreso.objects.create(
+            usuario=self.user, hogar=self.hogar, nombre='Nómina',
+            modo_entrada='anual', importe_declarado=Decimal('24000'),
+            es_bruto=False, num_pagas=12, activo=True,
+        )
+        FuenteIngreso.objects.create(
+            usuario=self.user, hogar=self.hogar, nombre='Alquiler del piso',
+            modo_entrada='anual', importe_declarado=Decimal('8400'),
+            es_bruto=False, num_pagas=12, activo=True, incluir_en_distribucion=False,
+        )
+
+    def test_el_reparto_lo_deja_fuera_pero_lo_declara(self):
+        from finanzas.distribucion import calcular_flujos
+
+        flujo = calcular_flujos(self.hogar, mes=6, anio=2026)
+
+        self.assertEqual(flujo['ingreso_base_puro_hogar'], Decimal('2000'))
+        self.assertEqual(flujo['total_fuera_reparto'], Decimal('700'))
+        self.assertEqual(flujo['ingreso_total_hogar'], Decimal('2700'))
+        self.assertEqual(flujo['ingresos_fuera_reparto'][0]['fuente'], 'Alquiler del piso')
+        self.assertEqual(flujo['ingresos_fuera_reparto'][0]['miembro'], 'Irene')
+
+    def test_el_ahorro_esperado_cuenta_todos_los_ingresos(self):
+        from finanzas.distribucion import ahorro_esperado
+
+        self.assertEqual(
+            ahorro_esperado(self.hogar, 2026)['ingresos_mensuales'], Decimal('2700'),
+        )
+
+    def test_el_dashboard_los_cuenta_y_lo_explica(self):
+        respuesta = self.client.get(reverse('dashboard'))
+
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.context['ahorro']['ingresos_mensuales'], Decimal('2700'))
+        self.assertContains(respuesta, 'Alquiler del piso')
+
+    def test_el_semaforo_usa_la_misma_base_que_el_ahorro_esperado(self):
+        """El dashboard no puede decir «gastas más de lo que ingresas» junto a
+        un ahorro esperado positivo: la base tiene que ser la misma."""
+        from finanzas.models import CategoriaGasto, PartidaGasto
+
+        categoria = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Casa', tipo='fijo',
+        )
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=categoria, nombre='Alquiler',
+            importe=Decimal('2200'), periodicidad='mensual',
+        )
+        respuesta = self.client.get(reverse('dashboard'))
+
+        # Ingresos 2.700 (2.000 + 700 fuera del reparto) contra 2.200 de gasto.
+        self.assertGreater(respuesta.context['salud_tasa'], 0)
+        self.assertGreater(respuesta.context['ahorro']['mensual'], 0)
+
+    def test_la_distribucion_avisa_de_lo_omitido(self):
+        respuesta = self.client.get(reverse('finanzas:vista_distribucion'))
+        self.assertContains(respuesta, 'Se está omitiendo del reparto')
+
+
+class PantallasSeRenderizanTests(TestCase):
+    """Un render por pantalla del módulo.
+
+    No comprueban contenido: comprueban que la plantilla compila y la vista
+    responde. Un filtro mal escrito en una plantilla no lo caza ningún test de
+    lógica, y estas pantallas se tocan a menudo."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.models import CategoriaGasto, PartidaGasto, Propiedad, Vehiculo
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('vista', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+        PartidaGasto.objects.create(
+            hogar=self.hogar, nombre='Alquiler', importe=Decimal('900'),
+            periodicidad='mensual',
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='Hipoteca / Alquiler'),
+        )
+        PartidaGasto.objects.create(
+            hogar=self.hogar, nombre='IBI', importe=Decimal('520'), periodicidad='anual',
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='IBI'),
+        )
+        self.vehiculo = Vehiculo.objects.create(hogar=self.hogar, nombre='Coche')
+        Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=datetime.date(2020, 1, 1),
+            precio_compra=Decimal('100000'), valor_actual=Decimal('120000'),
+        )
+
+    def test_todas_las_pantallas_responden(self):
+        rutas = [
+            reverse('dashboard'),
+            reverse('finanzas:listar_gastos'),
+            reverse('finanzas:crear_partida'),
+            reverse('finanzas:listar_categorias'),
+            reverse('finanzas:listar_vehiculos'),
+            reverse('finanzas:detalle_vehiculo', args=[self.vehiculo.id]),
+            reverse('finanzas:listar_propiedades'),
+            reverse('finanzas:listar_ingresos'),
+            reverse('finanzas:vista_distribucion'),
+            reverse('extractos:listar'),
+            reverse('extractos:analisis'),
+            reverse('extractos:conciliacion'),
+            reverse('extractos:sin_categorizar'),
+            reverse('extractos:reglas'),
+            reverse('extractos:etiquetas'),
+            reverse('extractos:subir'),
+        ]
+        for ruta in rutas:
+            with self.subTest(ruta=ruta):
+                self.assertEqual(self.client.get(ruta).status_code, 200)
+
+    def test_editar_una_partida_se_renderiza(self):
+        from finanzas.models import PartidaGasto
+
+        partida = PartidaGasto.objects.first()
+        respuesta = self.client.get(reverse('finanzas:editar_partida', args=[partida.id]))
+        self.assertEqual(respuesta.status_code, 200)

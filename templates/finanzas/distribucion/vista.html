@@ -40,6 +40,21 @@
 </div>
 {% endif %}
 
+{% if d.ingresos_fuera_reparto %}
+<!-- Lo que se está dejando fuera del reparto, dicho en voz alta: si no, la
+     cifra de ingresos de aquí no cuadra con la del dashboard y parece un fallo. -->
+<div class="aviso-fuera-reparto">
+    <svg class="icon"><use href="#i-info"/></svg>
+    <span>
+        Se está omitiendo del reparto, por decisión tuya,
+        <strong>€{{ d.total_fuera_reparto|floatformat:2 }}/mes</strong>:
+        {% for i in d.ingresos_fuera_reparto %}{{ i.fuente }} de {{ i.miembro }} (€{{ i.importe|floatformat:2 }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        Sigue contando como ingreso del hogar en el Dashboard.
+    </span>
+    <a href="{% url 'finanzas:listar_ingresos' %}" class="btn btn-secondary">Ingresos</a>
+</div>
+{% endif %}
+
 <!-- ===== RESUMEN GENERAL (KPIs + barra) ===== -->
 <div class="resumen-general glass-panel">
     <div class="kpi-bar">
@@ -469,6 +484,13 @@
 .dist-mes-cerrado strong { color: var(--info); }
 
 /* ── Resumen general ── */
+.aviso-fuera-reparto {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:16px;
+    background:color-mix(in srgb, var(--primary-color) 8%, transparent);
+    border:1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
+    border-radius:10px; padding:11px 14px; font-size:0.84rem;
+}
+.aviso-fuera-reparto .btn { margin-left:auto; }
 .resumen-general { padding:18px; margin-bottom:22px; }
 .kpi-bar { display:flex; gap:10px; flex-wrap:wrap; }
 /* flex-basis (no min-width) para que la caja pueda encogerse: con min-width

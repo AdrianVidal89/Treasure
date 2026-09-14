@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load custom_filters %}
+{% load l10n %}
 {% load static %}
 {% load l10n %}
 
@@ -205,42 +207,115 @@
     <!-- ═══ HERO: CAPITAL LÍQUIDO TOTAL ═══ -->
     <a href="/finanzas/evolucion/" class="cc-hero" style="display:block; text-decoration:none;">
         <div class="cc-hero-label">Capital líquido total</div>
-        <div class="cc-hero-value">€{{ capital_liquido_total|floatformat:0 }}</div>
+        <div class="cc-hero-value">{{ capital_liquido_total|euro:0 }}</div>
         <div class="cc-hero-sub">
             {% if mes_liquidez_nombre %}Fondos y depósitos · {{ mes_liquidez_nombre }} {{ anio }}{% elif capital_liquido_total > 0 %}Depósitos · {{ mes_nombre }} {{ anio }}{% else %}Sin saldos registrados aún{% endif %}
         </div>
         {% if num_propiedades > 0 %}
         <div class="cc-hero-net">
             <span class="cc-hero-net-label">Valor neto propiedades</span>
-            <span class="cc-hero-net-value">€{{ patrimonio_inmuebles|floatformat:0 }}</span>
+            <span class="cc-hero-net-value">{{ patrimonio_inmuebles|euro:0 }}</span>
             <span class="cc-hero-net-sub">{{ num_propiedades }} inmueble{{ num_propiedades|pluralize:"s" }} · activos − pasivos</span>
         </div>
         {% endif %}
     </a>
 
-    <!-- ═══ KPI STRIP ═══ -->
-    <div class="cc-kpis">
-        <div class="cc-kpi">
-            <div class="cc-kpi-label">Ingreso neto</div>
-            <div class="cc-kpi-value" style="color: #2d6a4f;">€{{ flujo.ingreso_base_puro_hogar|floatformat:0 }}</div>
-            <div class="cc-kpi-sub">/mes base</div>
+    <!-- ═══ EL MES: ENTRA, SALE, QUEDA ═══ -->
+    <div class="cc-mes">
+        <div class="cc-mes-flujo">
+            <div class="cc-flujo-fila entra">
+                <div class="cc-flujo-cab">
+                    <span class="cc-flujo-lbl">Entra</span>
+                    <span class="cc-flujo-val">{{ ahorro.ingresos_mensuales|euro:0 }}</span>
+                </div>
+                <div class="cc-flujo-track"><i class="entra" style="width:100%;"></i></div>
+                <div class="cc-flujo-pie">
+                    ingreso neto del hogar
+                    {% if flujo.total_fuera_reparto %}· incluye {{ flujo.total_fuera_reparto|euro:0 }} que se gestionan fuera del reparto{% endif %}
+                </div>
+            </div>
+            <div class="cc-flujo-fila sale">
+                <div class="cc-flujo-cab">
+                    <span class="cc-flujo-lbl">Sale</span>
+                    <span class="cc-flujo-val">{{ ahorro.gastos_mensuales|euro:0 }}</span>
+                </div>
+                <div class="cc-flujo-track"><i class="sale" id="cc-barra-gastos"></i></div>
+                <div class="cc-flujo-pie">gasto recurrente declarado</div>
+            </div>
         </div>
-        <div class="cc-kpi">
-            <div class="cc-kpi-label">Gastos</div>
-            <div class="cc-kpi-value" style="color: #b4442e;">€{{ flujo.total_gastos_all|floatformat:0 }}</div>
-            <div class="cc-kpi-sub">{{ flujo.pct_gastos }}% del ingreso</div>
-        </div>
-        <div class="cc-kpi">
-            <div class="cc-kpi-label">Ahorro + Inversión</div>
-            <div class="cc-kpi-value" style="color: #2c5f7a;">€{{ flujo.total_ahorro|floatformat:0 }}</div>
-            <div class="cc-kpi-sub">+ €{{ flujo.total_inversion|floatformat:0 }} inversión</div>
-        </div>
-        <div class="cc-kpi">
-            <div class="cc-kpi-label">Libre</div>
-            <div class="cc-kpi-value" style="color: {% if flujo.libre_total >= 0 %}#b7791f{% else %}#b4442e{% endif %};">€{{ flujo.libre_total|floatformat:0 }}</div>
-            <div class="cc-kpi-sub">{{ flujo.pct_libre }}% disponible</div>
+
+        <div class="cc-ahorro">
+            <div class="cc-ahorro-lbl">Ahorro esperado</div>
+            <div class="cc-ahorro-val {% if ahorro.mensual < 0 %}neg{% endif %}">{{ ahorro.mensual|euro:0 }}<small>/mes</small></div>
+            <div class="cc-ahorro-anual">
+                <span class="cc-ahorro-anual-lbl">Al año</span>
+                <span class="cc-ahorro-anual-val {% if ahorro.anual < 0 %}neg{% endif %}">{{ ahorro.anual|euro:0 }}</span>
+                {% if ahorro.extras_anuales %}
+                <span class="cc-ahorro-anual-sub">incluye {{ ahorro.extras_anuales|euro:0 }} de pagas extra</span>
+                {% else %}
+                <span class="cc-ahorro-anual-sub">12 meses de ingresos y gastos</span>
+                {% endif %}
+            </div>
         </div>
     </div>
+
+    {% if flujo.ingresos_fuera_reparto %}
+    <div class="cc-nota">
+        <strong>{{ flujo.total_fuera_reparto|euro:0 }}/mes</strong> cuentan aquí como ingreso pero quedan fuera del reparto por decisión tuya:
+        {% for i in flujo.ingresos_fuera_reparto %}{{ i.fuente }} ({{ i.miembro }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        <a href="/finanzas/distribucion/">Ver el reparto →</a>
+    </div>
+    {% endif %}
+
+    <span id="cc-flujo-data" data-ing="{{ ahorro.ingresos_mensuales|unlocalize }}" data-gas="{{ ahorro.gastos_mensuales|unlocalize }}"></span>
+
+    <style>
+    .cc-mes { display:grid; grid-template-columns:1.6fr 1fr; gap:18px; margin-top:20px; }
+    @media (max-width:760px){ .cc-mes { grid-template-columns:1fr; } }
+    .cc-mes-flujo { display:flex; flex-direction:column; gap:18px; background:var(--surface);
+        border:1px solid var(--border); border-radius:16px; padding:20px 22px; }
+    .cc-flujo-cab { display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+    .cc-flujo-lbl { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--muted); }
+    .cc-flujo-val { font-size:1.5rem; font-weight:800; font-variant-numeric:tabular-nums; }
+    .cc-flujo-fila.entra .cc-flujo-val { color:var(--success); }
+    .cc-flujo-fila.sale .cc-flujo-val { color:var(--danger); }
+    .cc-flujo-track { height:12px; background:var(--app-bg); border-radius:999px; overflow:hidden; margin-top:7px; }
+    .cc-flujo-track i { display:block; height:100%; border-radius:999px; width:0; transition:width .8s cubic-bezier(.16,1,.3,1); }
+    .cc-flujo-track i.entra { background:linear-gradient(90deg,var(--success),var(--success-2)); }
+    .cc-flujo-track i.sale { background:linear-gradient(90deg,var(--danger),var(--danger-2)); }
+    .cc-flujo-pie { font-size:0.73rem; color:var(--muted); margin-top:6px; }
+
+    .cc-ahorro { background:var(--surface); border:1px solid var(--border); border-radius:16px;
+        padding:20px 22px; display:flex; flex-direction:column; justify-content:center; }
+    .cc-ahorro-lbl { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--muted); }
+    .cc-ahorro-val { font-size:2rem; font-weight:800; color:var(--success); font-variant-numeric:tabular-nums; line-height:1.2; }
+    .cc-ahorro-val small { font-size:0.8rem; font-weight:600; color:var(--muted); }
+    .cc-ahorro-val.neg, .cc-ahorro-anual-val.neg { color:var(--danger); }
+    .cc-ahorro-anual { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+    .cc-ahorro-anual-lbl { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--muted); }
+    .cc-ahorro-anual-val { display:block; font-size:1.3rem; font-weight:800; font-variant-numeric:tabular-nums; }
+    .cc-ahorro-anual-sub { font-size:0.72rem; color:var(--muted); }
+
+    .cc-nota { margin-top:14px; font-size:0.8rem; color:var(--muted);
+        background:color-mix(in srgb, var(--primary-color) 7%, transparent);
+        border:1px solid color-mix(in srgb, var(--primary-color) 22%, transparent);
+        border-radius:10px; padding:10px 14px; }
+    </style>
+
+    <script>
+    (function () {
+        var datos = document.getElementById('cc-flujo-data');
+        if (!datos) return;
+        var ing = Math.abs(parseFloat(datos.dataset.ing) || 0);
+        var gas = Math.abs(parseFloat(datos.dataset.gas) || 0);
+        var barra = document.getElementById('cc-barra-gastos');
+        // El gasto se mide contra el ingreso: la barra dice de un vistazo qué
+        // parte de lo que entra se va.
+        if (barra) setTimeout(function () {
+            barra.style.width = (ing ? Math.min(gas / ing * 100, 100) : 0) + '%';
+        }, 80);
+    })();
+    </script>
 
 
 </div>

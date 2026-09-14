@@ -15,7 +15,7 @@ from finanzas.models import (
     TarjetaCredito, AjusteIngresoMensual, SaldoRealFondo,
     IngresoRealMes, ReglaReparto, Propiedad, HistorialPropiedad,
 )
-from finanzas.distribucion import calcular_flujos, clasificar_salud
+from finanzas.distribucion import ahorro_esperado, calcular_flujos, clasificar_salud
 from finanzas.views_evolucion import (
     _fecha_corte_mes, _saldos_liquidez_patrimonio,
 )
@@ -166,7 +166,11 @@ def dashboard_view(request):
     # recurrentes. Se calcula sobre el ingreso BASE (sin pagas extras ni
     # ajustes del mes) para que un mes con paga extra —o unas reglas de
     # ahorro de importe fijo— no disparen la tasa por encima del 100 %.
-    ingreso_base = flujo['ingreso_base_puro_hogar']
+    # La base es el ingreso TOTAL del hogar, el mismo que enseña «Entra» más
+    # abajo. Con la base del reparto salía otra cifra y la pantalla se
+    # contradecía a sí misma: «gastas más de lo que ingresas» junto a un ahorro
+    # esperado positivo, porque el alquiler que se gestiona aparte no contaba.
+    ingreso_base = flujo['ingreso_total_hogar']
     gastos_recurrentes = flujo['total_gastos_all']
     if ingreso_base > 0:
         salud_tasa = round((ingreso_base - gastos_recurrentes) / ingreso_base * 100, 1)
@@ -305,9 +309,15 @@ def dashboard_view(request):
     # (común + ahorro) del último mes con datos + el valor de los depósitos.
     capital_liquido_total = liquidez_real
 
+    # Ahorro esperado: lo que debería quedar. Mensual y anual son cifras
+    # distintas y las dos hacen falta — la paga extra no llega todos los meses,
+    # pero es dinero del año.
+    ahorro = ahorro_esperado(hogar, anio)
+
     context = {
         'hogar': hogar,
         'profile': profile,
+        'ahorro': ahorro,
         'saludo': _saludo(),
         'mes': mes,
         'anio': anio,

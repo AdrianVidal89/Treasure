@@ -58,7 +58,8 @@ def listar(request):
     # los movimientos del hogar (todos los extractos juntos).
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria').prefetch_related('etiquetas').order_by('-fecha')
+        .select_related('categoria', 'partida_conciliada')
+        .prefetch_related('etiquetas').order_by('-fecha')
     )
     panel = _panel_context(hogar, todos, request)
 
@@ -614,6 +615,9 @@ def _panel_context(hogar, todos, request):
         'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
         'activo_sel': activo_sel,
         'grupos_activos': costes_activo.opciones(hogar),
+        'provisiones': PartidaGasto.objects.filter(
+            hogar=hogar, activo=True,
+        ).exclude(periodicidad='mensual').select_related('categoria'),
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'colores_tipo': COLOR_TIPO,
         'num_traspasos': sum(1 for m in todos if m.es_neutro),
@@ -639,7 +643,8 @@ def detalle(request, pk):
 
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
     todos = list(
-        extracto.movimientos.select_related('categoria').prefetch_related('etiquetas').all()
+        extracto.movimientos.select_related('categoria', 'partida_conciliada')
+        .prefetch_related('etiquetas').all()
     )
     panel = _panel_context(hogar, todos, request)
     return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
@@ -837,13 +842,29 @@ def conciliacion(request):
     # categorías marcadas como neutras): no son gasto ni ingreso, así que no
     # tienen nada contra lo que compararse en el presupuesto.
     todos = [
-        m for m in MovimientoBancario.objects.filter(hogar=hogar).select_related('categoria')
+        m for m in MovimientoBancario.objects.filter(hogar=hogar)
+        .select_related('categoria', 'partida_conciliada')
         if not m.es_neutro
     ]
     periodo = _periodo_conciliacion(request, todos)
     movimientos = periodo['movimientos']
-    gastos = [m for m in movimientos if m.cuenta_como_gasto]
     num_meses = periodo['num_meses']
+
+    # Los gastos que no son mensuales se comparan en el bloque anual, no aquí:
+    # se provisionan mes a mes y se pagan de golpe, así que dejar el pago del
+    # IBI dentro de junio haría parecer un desastre ese mes y un dechado de
+    # virtud los otros once. Se sacan sus pagos del observado Y su provisión
+    # del declarado, o la comparación quedaría coja por un lado.
+    #
+    # Solo en la vista de UN MES: sobre doce meses ambos lados se promedian
+    # bien y la comparación vuelve a tener sentido tal cual.
+    solo_mes = periodo['es_mes']
+    pagos_provision = [m for m in movimientos if m.es_pago_provision]
+    gastos = [
+        m for m in movimientos
+        if m.cuenta_como_gasto and not (solo_mes and m.es_pago_provision)
+    ]
+    total_provisiones_periodo = sum((-m.importe for m in pagos_provision), Decimal('0'))
 
     # Observado por categoría (gasto absoluto, media mensual).
     observado = defaultdict(lambda: Decimal('0'))
@@ -871,7 +892,10 @@ def conciliacion(request):
     total_observado = Decimal('0')
 
     for cat in categorias:
-        declarado = sum((p.importe_mensual for p in cat.partidas.filter(activo=True)), Decimal('0'))
+        suyas = cat.partidas.filter(activo=True)
+        if solo_mes:
+            suyas = suyas.filter(periodicidad='mensual')
+        declarado = sum((p.importe_mensual for p in suyas), Decimal('0'))
         obs_mensual = (observado.get(cat.id, Decimal('0')) / num_meses)
         if declarado == 0 and obs_mensual == 0:
             continue
@@ -918,6 +942,11 @@ def conciliacion(request):
     return render(request, 'extractos/conciliacion.html', {
         'bloques': bloques,
         'periodo': periodo,
+        'pagos_provision': (
+            sorted(pagos_provision, key=lambda m: m.fecha, reverse=True) if solo_mes else []
+        ),
+        'total_provisiones_periodo': total_provisiones_periodo,
+        'provisiones': _provisiones_del_anio(hogar, periodo, todos),
         'num_meses': num_meses,
         'sin_categorizar_importe': sin_cat / num_meses if sin_cat else Decimal('0'),
         'total_declarado': total_declarado,
@@ -1132,6 +1161,43 @@ def imputar_movimiento(request, pk):
 
 
 @login_required
+def marcar_provision(request, pk):
+    """Marca un movimiento como uno de los pagos de un gasto no mensual.
+
+    Es lo que evita que el mes en el que cae el IBI parezca un desastre y los
+    otros once un dechado de virtud."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+    partida_id = _entero_o_none(request.POST.get('partida_id'))
+    partida = None
+    if partida_id:
+        partida = PartidaGasto.objects.filter(
+            hogar=hogar, id=partida_id, activo=True,
+        ).exclude(periodicidad='mensual').first()
+        if not partida:
+            return JsonResponse({'ok': False, 'error': 'partida_invalida'}, status=400)
+
+    mov.partida_conciliada = partida
+    # Un pago de provisión hereda la categoría del gasto declarado: si no, el
+    # mismo apunte contaría en un sitio y en otro no.
+    if partida and not mov.categoria_id:
+        mov.categoria = partida.categoria
+        mov.estado_categorizacion = 'manual'
+    mov.save()
+
+    return JsonResponse({
+        'ok': True,
+        'partida': partida.nombre if partida else None,
+        'partida_id': partida.id if partida else None,
+    })
+
+
+@login_required
 def imputar_comercio(request):
     """Imputa al mismo activo todos los movimientos de un comercio."""
     profile, hogar = _get_hogar(request)
@@ -1219,6 +1285,49 @@ def etiquetas(request):
         'paleta': Etiqueta.PALETA,
         'color_sugerido': Etiqueta.color_sugerido(hogar),
     })
+
+
+def _provisiones_del_anio(hogar, periodo, movimientos):
+    """Los gastos no mensuales del hogar y cuánto llevas pagado de cada uno.
+
+    La conciliación mensual no puede responder «¿ya he pagado el IBI?» porque
+    su unidad es el mes; esta sí: el año entero, pago a pago.
+    """
+    anio = _entero_o_none(periodo['anio_sel'])
+    partidas = (
+        PartidaGasto.objects.filter(hogar=hogar, activo=True)
+        .exclude(periodicidad='mensual').select_related('categoria')
+    )
+    if not partidas:
+        return []
+
+    pagos = defaultdict(list)
+    for m in movimientos:
+        if not m.es_pago_provision:
+            continue
+        if anio and m.fecha.year != anio:
+            continue
+        pagos[m.partida_conciliada_id].append(m)
+
+    filas = []
+    for p in partidas:
+        suyos = pagos.get(p.id, [])
+        pagado = sum((-m.importe for m in suyos), Decimal('0'))
+        objetivo = p.importe_anual
+        filas.append({
+            'partida': p,
+            'categoria': p.categoria.nombre if p.categoria else '—',
+            'periodicidad': p.get_periodicidad_display(),
+            'objetivo': objetivo,
+            'pagado': pagado,
+            'pendiente': max(objetivo - pagado, Decimal('0')),
+            'num_pagos': len(suyos),
+            'pagos': sorted(suyos, key=lambda m: m.fecha),
+            'pct': int(min(pagado / objetivo * 100, 100)) if objetivo > 0 else 0,
+            'completo': objetivo > 0 and pagado >= objetivo,
+        })
+    filas.sort(key=lambda f: (f['completo'], -float(f['objetivo'])))
+    return filas
 
 
 def _ingreso_declarado_mensual(hogar):
