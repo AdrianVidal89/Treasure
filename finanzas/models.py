@@ -867,6 +867,30 @@ PERIODICIDAD_GASTO_CHOICES = [
 ]
 
 
+class CategoriaPredefinidaDescartada(models.Model):
+    """Categoría de fábrica que este hogar ha eliminado a conciencia.
+
+    Las predefinidas se recrean en cada visita (así los hogares antiguos van
+    recibiendo las nuevas), lo que hacía imposible borrar una: reaparecía sola
+    en la siguiente pantalla. Guardar el nombre descartado es lo que hace que
+    «eliminar» signifique eliminar. Vuelve a crearla a mano y la lápida se
+    retira."""
+
+    hogar = models.ForeignKey(
+        'core.Hogar', on_delete=models.CASCADE, related_name='categorias_descartadas',
+    )
+    nombre = models.CharField(max_length=100)
+    descartada_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('hogar', 'nombre')
+        verbose_name = 'Categoría predefinida descartada'
+        verbose_name_plural = 'Categorías predefinidas descartadas'
+
+    def __str__(self):
+        return f"{self.nombre} (descartada)"
+
+
 class CategoriaGasto(models.Model):
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='categorias_gasto')
     nombre = models.CharField(max_length=100)

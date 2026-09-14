@@ -142,9 +142,6 @@
                 <a href="{% url 'finanzas:listar_gastos' %}" class="sidebar-link {% if vn == 'finanzas:listar_gastos' %}active{% endif %}">
                     <svg class="icon"><use href="#i-expense"/></svg><span>Gastos</span>
                 </a>
-                <a href="{% url 'finanzas:listar_categorias' %}" class="sidebar-link {% if vn == 'finanzas:listar_categorias' %}active{% endif %}">
-                    <svg class="icon"><use href="#i-tag"/></svg><span>Categorías</span>
-                </a>
                 <a href="{% url 'finanzas:listar_fondos' %}" class="sidebar-link {% if vn == 'finanzas:listar_fondos' %}active{% endif %}">
                     <svg class="icon"><use href="#i-file"/></svg><span>Fondos</span>
                 </a>
@@ -154,7 +151,7 @@
                 <a href="{% url 'finanzas:listar_propiedades' %}" class="sidebar-link {% if vn == 'finanzas:listar_propiedades' %}active{% endif %}">
                     <svg class="icon"><use href="#i-properties"/></svg><span>Propiedades</span>
                 </a>
-                <a href="{% url 'extractos:listar' %}" class="sidebar-link {% if vn == 'extractos:listar' or vn == 'extractos:subir' or vn == 'extractos:detalle' or vn == 'extractos:conciliacion' %}active{% endif %}">
+                <a href="{% url 'extractos:listar' %}" class="sidebar-link {% if vn == 'extractos:listar' or vn == 'extractos:subir' or vn == 'extractos:detalle' or vn == 'extractos:conciliacion' or vn == 'extractos:sin_categorizar' or vn == 'extractos:reglas' or vn == 'finanzas:listar_categorias' %}active{% endif %}">
                     <svg class="icon"><use href="#i-statements"/></svg><span>Extractos</span>
                 </a>
             </div>

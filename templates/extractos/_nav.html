@@ -1,0 +1,53 @@
+{% comment %}
+Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
+—es donde se usan— en vez de en un menú aparte del lateral.
+{% endcomment %}
+<nav class="ext-nav">
+    <a href="{% url 'extractos:listar' %}" class="ext-nav-tab {% if activo == 'movimientos' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-statements"/></svg> Movimientos
+    </a>
+    <a href="{% url 'extractos:conciliacion' %}" class="ext-nav-tab {% if activo == 'conciliacion' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
+    </a>
+    <a href="{% url 'extractos:sin_categorizar' %}" class="ext-nav-tab {% if activo == 'sin_categorizar' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
+        {% if sin_categorizar %}<span class="ext-nav-badge">{{ sin_categorizar }}</span>{% endif %}
+    </a>
+    <a href="{% url 'finanzas:listar_categorias' %}" class="ext-nav-tab {% if activo == 'categorias' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-tag"/></svg> Categorías
+    </a>
+    <a href="{% url 'extractos:reglas' %}" class="ext-nav-tab {% if activo == 'reglas' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-refresh"/></svg> Reglas
+        {% if num_reglas %}<span class="ext-nav-badge suave">{{ num_reglas }}</span>{% endif %}
+    </a>
+    <a href="{% url 'extractos:subir' %}" class="ext-nav-importar btn btn-primary">
+        <svg class="icon"><use href="#i-upload"/></svg> Importar
+    </a>
+</nav>
+
+<style>
+.ext-nav {
+    display:flex; align-items:center; gap:4px; flex-wrap:wrap;
+    border-bottom:1px solid var(--border); margin:0 0 22px; padding-bottom:0;
+}
+.ext-nav-tab {
+    display:inline-flex; align-items:center; gap:7px; text-decoration:none;
+    color:var(--muted); font-size:0.86rem; font-weight:600;
+    padding:11px 14px; border-bottom:2px solid transparent; margin-bottom:-1px;
+    transition:color .15s, border-color .15s;
+}
+.ext-nav-tab:hover { color:var(--text-color); }
+.ext-nav-tab.activa { color:var(--primary-color); border-bottom-color:var(--primary-color); }
+.ext-nav-tab .icon { width:16px; height:16px; }
+.ext-nav-badge {
+    background:var(--danger); color:#fff; font-size:0.66rem; font-weight:700;
+    padding:1px 7px; border-radius:999px; line-height:1.5;
+}
+.ext-nav-badge.suave { background:var(--surface-2, var(--app-bg)); color:var(--muted); }
+.ext-nav-importar { margin-left:auto; margin-bottom:6px; }
+@media (max-width:640px) {
+    .ext-nav { gap:0; }
+    .ext-nav-tab { padding:10px; font-size:0.8rem; }
+    .ext-nav-importar { margin-left:0; width:100%; justify-content:center; }
+}
+</style>

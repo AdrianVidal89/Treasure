@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load extractos_nav %}
 
 {% block title %}Reglas de categorización · Treasure{% endblock %}
 
@@ -14,13 +14,9 @@
                 cuando varios encajan, gana el más específico.
             </div>
         </div>
-        <div class="toolbar">
-            <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">
-                <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
-            </a>
-            <a href="{% url 'extractos:listar' %}" class="btn btn-ghost">Volver</a>
-        </div>
     </div>
+
+    {% extractos_nav 'reglas' %}
 
     {% if messages %}
         {% for message in messages %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load custom_filters %}
 
 {% block title %}Revisar importación · Treasure{% endblock %}
 
@@ -100,8 +100,8 @@
                         <tr{% if m.ya_existe %} class="revisar-duplicado"{% endif %}>
                             <td class="num">{{ m.fecha|date:"d/m/Y" }}</td>
                             <td>{% if m.ya_existe %}<span class="badge badge-info" title="Ya está importado: se omitirá">duplicado</span> {% endif %}{{ m.concepto }}</td>
-                            <td class="num {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}">{{ m.importe|floatformat:2|intcomma }} €</td>
-                            <td class="num">{% if m.saldo is not None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
+                            <td class="num {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}">{{ m.importe|euro }}</td>
+                            <td class="num">{% if m.saldo is not None %}{{ m.saldo|euro }}{% else %}—{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

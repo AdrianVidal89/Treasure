@@ -1,168 +1,154 @@
-{% load humanize %}
 {% load l10n %}
+{% load custom_filters %}
 {% comment %}
-Panel de análisis de movimientos compartido por el detalle de un extracto
-y la vista global de todos los extractos. Espera un dict `panel` en contexto.
+Panel de análisis de movimientos compartido por el detalle de un extracto y la
+vista global. Espera un dict `panel` en contexto.
+
+La lectura va de lo general a lo concreto, como en una app de banco: primero
+CUÁNTO (balance del periodo), luego EN QUÉ (categorías) y por último el detalle
+movimiento a movimiento. Los números secundarios viven en la tira de «chips»
+para no competir con los tres que de verdad importan.
 {% endcomment %}
 
-<!-- FILTROS -->
-<form method="get" class="ext-filtros">
-    <div class="ext-filtro">
-        <label>Año</label>
-        <select name="anio" onchange="this.form.submit()">
-            <option value="all" {% if panel.anio_sel == 'all' %}selected{% endif %}>Todos</option>
+<!-- ══════════ BARRA DE FILTROS ══════════ -->
+<form method="get" class="ext-bar">
+    <div class="ext-bar-grupo ext-bar-periodo">
+        <select name="anio" onchange="this.form.submit()" aria-label="Año">
+            <option value="all" {% if panel.anio_sel == 'all' %}selected{% endif %}>Todos los años</option>
             {% for a in panel.anios_disponibles %}
             <option value="{{ a }}" {% if panel.anio_sel == a|stringformat:'s' %}selected{% endif %}>{{ a }}</option>
             {% endfor %}
         </select>
-    </div>
-    <div class="ext-filtro">
-        <label>Mes</label>
-        <select name="mes" onchange="this.form.submit()">
-            <option value="all" {% if panel.mes_sel == 'all' %}selected{% endif %}>Todos</option>
+        <select name="mes" onchange="this.form.submit()" aria-label="Mes">
+            <option value="all" {% if panel.mes_sel == 'all' %}selected{% endif %}>Todo el año</option>
             {% for m in panel.meses_disponibles %}
             <option value="{{ m.valor }}" {% if panel.mes_sel == m.valor %}selected{% endif %}>{{ m.etiqueta }}</option>
             {% endfor %}
         </select>
     </div>
-    <div class="ext-filtro">
-        <label>Categoría</label>
-        <select name="categoria" onchange="this.form.submit()">
-            <option value="all" {% if panel.cat_sel == 'all' %}selected{% endif %}>Todas</option>
-            <option value="sin" {% if panel.cat_sel == 'sin' %}selected{% endif %}>Sin categorizar</option>
-            {% for c in panel.categorias_hogar %}
-            <option value="{{ c.id }}" {% if panel.cat_sel == c.id|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>
-            {% endfor %}
-        </select>
+
+    <select name="categoria" class="ext-bar-cat" onchange="this.form.submit()" aria-label="Categoría">
+        <option value="all" {% if panel.cat_sel == 'all' %}selected{% endif %}>Todas las categorías</option>
+        <option value="sin" {% if panel.cat_sel == 'sin' %}selected{% endif %}>Sin categorizar</option>
+        {% for c in panel.categorias_hogar %}
+        <option value="{{ c.id }}" {% if panel.cat_sel == c.id|stringformat:'s' %}selected{% endif %}>{{ c.nombre }}</option>
+        {% endfor %}
+    </select>
+
+    <div class="ext-bar-buscar">
+        <svg class="icon"><use href="#i-search"/></svg>
+        <input type="search" name="q" value="{{ panel.busqueda }}" placeholder="Buscar comercio o concepto…">
     </div>
+
     {% if panel.num_traspasos %}
-    <div class="ext-filtro">
-        <label title="Traspasos entre cuentas propias y categorías marcadas como neutras.">Movimientos neutros</label>
-        <select name="traspasos" onchange="this.form.submit()">
-            <option value="1" {% if panel.ver_traspasos %}selected{% endif %}>Mostrar ({{ panel.num_traspasos }})</option>
-            <option value="0" {% if not panel.ver_traspasos %}selected{% endif %}>Ocultar</option>
-        </select>
-    </div>
+    <label class="ext-bar-toggle" title="Traspasos entre tus cuentas y categorías neutras: no son ingreso ni gasto.">
+        <input type="checkbox" name="traspasos" value="0" onchange="this.form.submit()" {% if not panel.ver_traspasos %}checked{% endif %}>
+        Ocultar neutros
+    </label>
     {% endif %}
+
     {% if panel.hay_filtro %}
-    <a href="{{ request.path }}" class="btn btn-ghost" style="align-self:flex-end;">Limpiar filtros</a>
+    <a href="{{ request.path }}" class="ext-bar-limpiar">Limpiar</a>
     {% endif %}
 </form>
 
-{% if panel.kpi_sin_categorizar %}
-<div class="ext-aviso-sincat">
-    <svg class="icon"><use href="#i-info"/></svg>
-    <span>Hay <strong>{{ panel.kpi_sin_categorizar }}</strong> movimiento(s) sin categorizar. Agrúpalos por comercio y clasifícalos de una vez.</span>
-    <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar por comercio</a>
-</div>
-{% endif %}
-
-<!-- KPIs -->
-<div class="stat-row">
-    <div class="card stat-tile">
-        <span class="stat-tile-label">Ingresos</span>
-        <span class="stat-tile-valor num text-positive">{{ panel.kpi_ingresos|floatformat:2|intcomma }} €</span>
-    </div>
-    <div class="card stat-tile">
-        <span class="stat-tile-label">Gastos</span>
-        <span class="stat-tile-valor num text-negative">{{ panel.kpi_gastos|floatformat:2|intcomma }} €</span>
-    </div>
-    <div class="card stat-tile">
-        <span class="stat-tile-label">Neto</span>
-        <span class="stat-tile-valor num {% if panel.kpi_neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ panel.kpi_neto|floatformat:2|intcomma }} €</span>
-    </div>
-    <div class="card stat-tile">
-        <span class="stat-tile-label">Movimientos</span>
-        <span class="stat-tile-valor num">{{ panel.kpi_num }}</span>
-    </div>
-    <div class="card stat-tile">
-        <span class="stat-tile-label">Sin categorizar</span>
-        <span class="stat-tile-valor num {% if panel.kpi_sin_categorizar %}text-negative{% endif %}">{{ panel.kpi_sin_categorizar }}</span>
-    </div>
-    {% if panel.num_traspasos %}
-    <div class="card stat-tile" title="Traspasos entre tus propias cuentas y categorías marcadas como neutras. No son ingreso ni gasto, así que no entran en los totales de arriba. Si has cargado las dos cuentas de un traspaso, su neto debe ser cero.">
-        <span class="stat-tile-label">Neutros (neto)</span>
-        <span class="stat-tile-valor num {% if panel.traspasos_cuadran %}text-positive{% else %}text-muted{% endif %}">{{ panel.kpi_traspaso_neto|floatformat:2|intcomma }} €</span>
-        <span style="font-size:0.65rem;color:var(--muted);">
-            {% if panel.traspasos_cuadran %}cuadran: ambas cuentas cargadas{% else %}{{ panel.num_traspasos }} mov. · fuera de ingresos y gastos{% endif %}
+<!-- ══════════ RESUMEN DEL PERIODO ══════════ -->
+<section class="ext-hero">
+    <div class="ext-hero-balance">
+        <span class="ext-hero-label">Balance · {{ panel.periodo_etiqueta }}</span>
+        <span class="ext-hero-cifra {% if panel.kpi_neto < 0 %}text-negative{% else %}text-positive{% endif %}">
+            {% if panel.kpi_neto > 0 %}+{% endif %}{{ panel.kpi_neto|euro }}
         </span>
+        <span class="ext-hero-sub">{{ panel.kpi_num }} movimiento{{ panel.kpi_num|pluralize:"s" }}</span>
     </div>
+
+    <div class="ext-hero-flujo">
+        <div class="ext-flujo-fila">
+            <span class="ext-flujo-lbl">Ingresos</span>
+            <span class="ext-flujo-val text-positive">{{ panel.kpi_ingresos|euro }}</span>
+            <div class="ext-flujo-track"><div class="ext-flujo-fill ing" id="barra-ingresos"></div></div>
+        </div>
+        <div class="ext-flujo-fila">
+            <span class="ext-flujo-lbl">Gastos</span>
+            <span class="ext-flujo-val text-negative">{{ panel.kpi_gastos|euro }}</span>
+            <div class="ext-flujo-track"><div class="ext-flujo-fill gas" id="barra-gastos"></div></div>
+        </div>
+    </div>
+</section>
+
+<!-- Todo lo secundario, en una sola tira discreta. -->
+<div class="ext-chips">
+    {% if panel.kpi_sin_categorizar %}
+    <a href="{% url 'extractos:sin_categorizar' %}" class="ext-chip alerta">
+        <svg class="icon"><use href="#i-alert"/></svg>
+        {{ panel.kpi_sin_categorizar }} sin categorizar · clasificar
+    </a>
+    {% else %}
+    <span class="ext-chip ok"><svg class="icon"><use href="#i-check"/></svg> Todo categorizado</span>
     {% endif %}
+    {% if panel.num_traspasos %}
+    <span class="ext-chip" title="Traspasos entre tus propias cuentas y categorías marcadas como neutras. No entran en ingresos ni en gastos.">
+        {{ panel.num_traspasos }} neutro{{ panel.num_traspasos|pluralize:"s" }} ·
+        {{ panel.kpi_traspaso_neto|euro }}
+        {% if panel.traspasos_cuadran %}<em>cuadran</em>{% endif %}
+    </span>
+    {% endif %}
+    <a href="{% url 'extractos:conciliacion' %}" class="ext-chip">Comparar con el presupuesto →</a>
 </div>
 
-{% if panel.bloques %}
-<!-- GASTO POR BLOQUE DEL PRESUPUESTO -->
-<div class="ext-bloques">
-    <div class="ext-bloques-titulo">Gasto por bloque del presupuesto</div>
-    <div class="ext-bloques-barra">
-        {% for b in panel.bloques %}
-        <span style="width:{{ b.pct }}%;background:{{ b.color }};" title="{{ b.etiqueta }}: {{ b.importe|floatformat:2|intcomma }} € ({{ b.pct }}%)"></span>
-        {% endfor %}
+<!-- ══════════ EN QUÉ SE VA ══════════ -->
+{% if panel.donut %}
+<section class="glass-panel ext-gasto">
+    <div class="ext-gasto-head">
+        <h3>En qué se va</h3>
+        <span class="ext-gasto-total">{{ panel.donut_total|euro:0 }}</span>
     </div>
-    <div class="ext-bloques-leyenda">
-        {% for b in panel.bloques %}
-        <span class="ext-bloque-item">
-            <i style="background:{{ b.color }};"></i>
-            {{ b.etiqueta }}
-            <strong>{{ b.importe|floatformat:2|intcomma }} €</strong>
-            <span class="text-muted">{{ b.pct }}%</span>
-        </span>
-        {% endfor %}
-    </div>
-    <a href="{% url 'extractos:conciliacion' %}" class="ext-bloques-link">Comparar con el presupuesto →</a>
-</div>
-{% endif %}
 
-<!-- VISUALIZACIONES -->
-<div class="ext-viz">
-    <div class="glass-panel ext-viz-card">
-        <h3>Gasto por categoría</h3>
-        {% if panel.donut %}
+    <div class="ext-gasto-grid">
         <div class="ext-donut-wrap">
-            <svg id="ext-donut" viewBox="0 0 200 200" width="180" height="180" aria-label="Distribución de gasto por categoría"></svg>
+            <svg id="ext-donut" viewBox="0 0 200 200" width="170" height="170" aria-label="Distribución de gasto por categoría"></svg>
             <div class="ext-donut-center">
-                <span class="ext-donut-total">{{ panel.donut_total|floatformat:0|intcomma }} €</span>
-                <span class="ext-donut-sub">gasto total</span>
+                <span class="ext-donut-total">{{ panel.donut|length }}</span>
+                <span class="ext-donut-sub">categorías</span>
             </div>
         </div>
-        <div class="ext-leyenda">
+
+        <ul class="ext-cats">
             {% for d in panel.donut %}
-            <div class="ext-leyenda-item">
-                <span class="ext-leyenda-dot" style="background:{{ d.color }};"></span>
-                <span class="ext-leyenda-nombre">{{ d.nombre }}</span>
-                <span class="ext-leyenda-val">{{ d.importe|floatformat:0|intcomma }} € · {{ d.pct }}%</span>
-            </div>
+            <li class="ext-cat-fila">
+                <span class="ext-cat-dot" style="background:{{ d.color }};"></span>
+                <span class="ext-cat-nombre">{{ d.nombre }}</span>
+                <span class="ext-cat-barra"><i style="width:{{ d.pct|unlocalize }}%;background:{{ d.color }};"></i></span>
+                <span class="ext-cat-cifra">{{ d.importe|euro:0 }}</span>
+                <span class="ext-cat-pct">{{ d.pct }}%</span>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    {% if panel.bloques %}
+    <div class="ext-bloques">
+        <div class="ext-bloques-barra">
+            {% for b in panel.bloques %}
+            <span style="width:{{ b.pct|unlocalize }}%;background:{{ b.color }};" title="{{ b.etiqueta }}: {{ b.importe|euro }} ({{ b.pct }}%)"></span>
             {% endfor %}
         </div>
-        {% else %}
-        <p class="ext-viz-empty">No hay gastos en la selección actual.</p>
-        {% endif %}
-    </div>
-
-    <div class="glass-panel ext-viz-card">
-        <h3>Ingresos vs. gastos</h3>
-        <div class="ext-barras">
-            <div class="ext-barra-fila">
-                <span class="ext-barra-lbl">Ingresos</span>
-                <div class="ext-barra-track"><div class="ext-barra-fill ing" id="barra-ingresos"></div></div>
-                <span class="ext-barra-val text-positive">{{ panel.kpi_ingresos|floatformat:0|intcomma }} €</span>
-            </div>
-            <div class="ext-barra-fila">
-                <span class="ext-barra-lbl">Gastos</span>
-                <div class="ext-barra-track"><div class="ext-barra-fill gas" id="barra-gastos"></div></div>
-                <span class="ext-barra-val text-negative">{{ panel.kpi_gastos|floatformat:0|intcomma }} €</span>
-            </div>
-        </div>
-        <div class="ext-neto-box {% if panel.kpi_neto < 0 %}neg{% else %}pos{% endif %}">
-            <span>Balance del periodo</span>
-            <strong>{{ panel.kpi_neto|floatformat:2|intcomma }} €</strong>
+        <div class="ext-bloques-leyenda">
+            {% for b in panel.bloques %}
+            <span class="ext-bloque-item">
+                <i style="background:{{ b.color }};"></i>{{ b.etiqueta }}
+                <strong>{{ b.pct }}%</strong>
+            </span>
+            {% endfor %}
         </div>
     </div>
-</div>
+    {% endif %}
+</section>
+{% endif %}
 
-<!-- MOVIMIENTOS -->
+<!-- ══════════ MOVIMIENTOS ══════════ -->
 <div class="ext-mov-head">
-    <h2 class="ext-mov-title">Movimientos {% if panel.hay_filtro %}· filtrados{% endif %}</h2>
+    <h2 class="ext-mov-title">Movimientos</h2>
     {% if panel.grupos %}
     <div class="ext-mov-acciones">
         <button type="button" class="ext-mini-btn" id="ext-expandir-todo">Desplegar todo</button>
@@ -170,28 +156,37 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
     </div>
     {% endif %}
 </div>
+
 {% for grupo in panel.grupos %}
-<details class="ext-mes-grupo"{% if panel.hay_filtro and forloop.first %} open{% endif %}>
+<details class="ext-mes"{% if forloop.first %} open{% endif %}>
     <summary class="ext-mes-summary">
         <span class="ext-mes-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
         <span class="ext-mes-nombre">{{ grupo.etiqueta }}</span>
-        <span class="ext-mes-count">{{ grupo.movimientos|length }} mov.</span>
-        {% if grupo.neutro %}<span class="ext-mes-neutro" title="Movimientos neutros del mes: no entran en el neto.">neutro {{ grupo.neutro|floatformat:2|intcomma }} €</span>{% endif %}
-        <span class="ext-mes-neto group-total {% if grupo.neto < 0 %}text-negative{% else %}text-positive{% endif %}">{{ grupo.neto|floatformat:2|intcomma }} €</span>
+        <span class="ext-mes-detalle">
+            <span class="text-positive">{{ grupo.ingresos|euro:0 }}</span>
+            <span class="text-negative">{{ grupo.gastos|euro:0 }}</span>
+            {% if grupo.neutro %}<span class="text-muted" title="Movimientos neutros: no entran en el balance">≈{{ grupo.neutro|euro:0 }}</span>{% endif %}
+        </span>
+        <span class="ext-mes-neto {% if grupo.neto < 0 %}text-negative{% else %}text-positive{% endif %}">
+            {% if grupo.neto > 0 %}+{% endif %}{{ grupo.neto|euro }}
+        </span>
     </summary>
-    <div class="table-scroll">
-        <table class="table ext-mov-table">
-            <thead>
-                <tr><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th><th class="num">Saldo</th><th></th></tr>
-            </thead>
-            <tbody>
-                {% for m in grupo.movimientos %}
-                <tr data-mov-id="{{ m.id }}"{% if m.es_neutro %} class="ext-traspaso"{% endif %}>
-                    <td class="num ext-fecha">{{ m.fecha|date:"d/m/Y" }}</td>
-                    <td class="ext-concepto" data-campo="concepto" title="Clic para editar">{% if m.es_traspaso %}<span class="badge badge-info ext-badge-traspaso" title="Traspaso entre cuentas propias">Traspaso</span> {% elif m.es_neutro %}<span class="badge badge-info ext-badge-traspaso" title="Su categoría es neutra: no cuenta como gasto ni como ingreso">Neutro</span> {% endif %}{{ m.concepto }}</td>
-                    <td class="ext-cat-cell">
+
+    <div class="ext-lista">
+        {% for m in grupo.movimientos %}
+        <div class="ext-mov{% if m.es_neutro %} neutro{% endif %}" data-mov-id="{{ m.id }}"
+             {% if m.saldo != None %}title="Saldo tras el apunte: {{ m.saldo|euro }}"{% endif %}>
+            <div class="ext-mov-dia">
+                <span class="ext-mov-dd">{{ m.fecha|date:"d" }}</span>
+                <span class="ext-mov-mmm">{{ m.fecha|date:"M"|lower }}</span>
+            </div>
+
+            <div class="ext-mov-cuerpo">
+                <div class="ext-mov-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</div>
+                <div class="ext-mov-meta">
+                    <span class="ext-cat-chip" style="--cc:{% if m.categoria %}{{ panel.colores_tipo|get_item:m.categoria.tipo }}{% else %}#9aa5a0{% endif %};">
                         <select class="ext-cat-select" data-mov-id="{{ m.id }}">
-                            <option value="" {% if not m.categoria_id %}selected{% endif %}>— Sin categorizar —</option>
+                            <option value="" {% if not m.categoria_id %}selected{% endif %}>Sin categorizar</option>
                             {% for b in panel.bloques_categorias %}
                             <optgroup label="{{ b.etiqueta }}">
                                 {% for c in b.categorias %}
@@ -200,121 +195,183 @@ y la vista global de todos los extractos. Espera un dict `panel` en contexto.
                             </optgroup>
                             {% endfor %}
                         </select>
-                    </td>
-                    <td class="num ext-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}" data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">{{ m.importe|floatformat:2|intcomma }} €</td>
-                    <td class="num text-muted">{% if m.saldo != None %}{{ m.saldo|floatformat:2|intcomma }} €{% else %}—{% endif %}</td>
-                    <td class="num">
-                        <button type="button" class="r-btn ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento"><svg class="icon"><use href="#i-trash"/></svg></button>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                    </span>
+                    {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
+                    {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
+                </div>
+            </div>
+
+            <div class="ext-mov-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}"
+                 data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">
+                {% if m.importe > 0 %}+{% endif %}{{ m.importe|euro }}
+            </div>
+
+            <button type="button" class="ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento">
+                <svg class="icon"><use href="#i-trash"/></svg>
+            </button>
+        </div>
+        {% endfor %}
     </div>
 </details>
 {% empty %}
-<div class="ext-viz-empty" style="padding:30px;text-align:center;">No hay movimientos con los filtros seleccionados.</div>
+<div class="ext-vacio">
+    <p>No hay movimientos con los filtros seleccionados.</p>
+    {% if panel.hay_filtro %}<a href="{{ request.path }}" class="btn btn-secondary">Quitar filtros</a>{% endif %}
+</div>
 {% endfor %}
 
 {{ panel.donut|json_script:"ext-donut-data" }}
 <span id="ext-kpi-data" data-ing="{{ panel.kpi_ingresos|unlocalize }}" data-gas="{{ panel.kpi_gastos|unlocalize }}"></span>
 
 <style>
-.ext-filtros { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:18px; align-items:flex-end; }
-.ext-filtro { display:flex; flex-direction:column; gap:4px; }
-.ext-filtro label { font-size:0.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; }
-.ext-filtro select { background:var(--surface); color:var(--text-color); border:1px solid var(--border-strong); border-radius:8px; padding:9px 12px; font-size:0.85rem; min-width:150px; }
+/* ── Barra de filtros ───────────────────────────────────────────────── */
+.ext-bar {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:20px;
+    background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:10px 12px;
+}
+.ext-bar select, .ext-bar input[type="search"] {
+    background:var(--app-bg); color:var(--text-color); border:1px solid var(--border);
+    border-radius:8px; padding:8px 11px; font-size:0.84rem;
+}
+.ext-bar-periodo { display:flex; gap:6px; }
+.ext-bar-cat { max-width:210px; }
+.ext-bar-buscar { position:relative; display:flex; align-items:center; flex:1; min-width:180px; }
+.ext-bar-buscar .icon { position:absolute; left:10px; width:15px; height:15px; color:var(--muted); pointer-events:none; }
+.ext-bar-buscar input[type="search"] { width:100%; padding-left:32px; }
+.ext-bar-toggle { display:inline-flex; align-items:center; gap:7px; font-size:0.8rem; color:var(--muted); cursor:pointer; white-space:nowrap; }
+.ext-bar-limpiar { font-size:0.8rem; color:var(--muted); text-decoration:underline; }
+.ext-bar-limpiar:hover { color:var(--primary-color); }
 
-.ext-viz { display:grid; grid-template-columns:1.3fr 1fr; gap:16px; margin:22px 0 8px; }
-@media (max-width:760px){ .ext-viz { grid-template-columns:1fr; } }
-.ext-viz-card { padding:20px 22px; }
-.ext-viz-card h3 { margin:0 0 16px; font-size:1rem; color:var(--text-color); }
-.ext-viz-empty { color:var(--muted); font-style:italic; font-size:0.85rem; }
+/* ── Resumen del periodo ────────────────────────────────────────────── */
+.ext-hero {
+    display:grid; grid-template-columns:minmax(200px,0.8fr) 1.2fr; gap:28px; align-items:center;
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:22px 26px; margin-bottom:12px;
+}
+@media (max-width:720px){ .ext-hero { grid-template-columns:1fr; gap:18px; } }
+.ext-hero-balance { display:flex; flex-direction:column; gap:2px; }
+.ext-hero-label { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.ext-hero-cifra { font-size:2.1rem; font-weight:800; line-height:1.15; font-variant-numeric:tabular-nums; }
+.ext-hero-sub { font-size:0.76rem; color:var(--muted); }
+.ext-hero-flujo { display:flex; flex-direction:column; gap:14px; }
+.ext-flujo-fila { display:grid; grid-template-columns:70px auto; grid-template-areas:"lbl val" "bar bar"; gap:2px 10px; align-items:baseline; }
+.ext-flujo-lbl { grid-area:lbl; font-size:0.78rem; color:var(--muted); }
+.ext-flujo-val { grid-area:val; font-size:1rem; font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+.ext-flujo-track { grid-area:bar; height:8px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.ext-flujo-fill { height:100%; width:0; border-radius:999px; transition:width .7s cubic-bezier(.16,1,.3,1); }
+.ext-flujo-fill.ing { background:linear-gradient(90deg,var(--success),var(--success-2)); }
+.ext-flujo-fill.gas { background:linear-gradient(90deg,var(--danger),var(--danger-2)); }
 
-.ext-donut-wrap { position:relative; width:180px; height:180px; margin:0 auto 16px; }
+/* ── Tira de datos secundarios ──────────────────────────────────────── */
+.ext-chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:26px; }
+.ext-chip {
+    display:inline-flex; align-items:center; gap:6px; font-size:0.77rem; color:var(--muted);
+    background:var(--surface); border:1px solid var(--border); border-radius:999px;
+    padding:5px 12px; text-decoration:none;
+}
+a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.ext-chip .icon { width:14px; height:14px; }
+.ext-chip em { font-style:normal; color:var(--success); font-weight:700; }
+.ext-chip.alerta { color:var(--danger); border-color:color-mix(in srgb, var(--danger) 35%, transparent); }
+.ext-chip.ok { color:var(--success); }
+
+/* ── En qué se va ───────────────────────────────────────────────────── */
+.ext-gasto { padding:22px 24px; margin-bottom:26px; }
+.ext-gasto-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.ext-gasto-head h3 { margin:0; font-size:1rem; }
+.ext-gasto-total { font-size:1.15rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.ext-gasto-grid { display:grid; grid-template-columns:170px 1fr; gap:26px; align-items:center; }
+@media (max-width:720px){ .ext-gasto-grid { grid-template-columns:1fr; gap:18px; } .ext-donut-wrap { margin:0 auto; } }
+.ext-donut-wrap { position:relative; width:170px; height:170px; }
 .ext-donut-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none; }
-.ext-donut-total { font-size:1.15rem; font-weight:800; color:var(--text-color); }
-.ext-donut-sub { font-size:0.68rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
-#ext-donut path { transition:opacity .15s; cursor:default; }
-#ext-donut path:hover { opacity:0.8; }
+.ext-donut-total { font-size:1.5rem; font-weight:800; color:var(--text-color); line-height:1; }
+.ext-donut-sub { font-size:0.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; }
+#ext-donut path { transition:opacity .15s; }
+#ext-donut path:hover { opacity:.75; }
+.ext-cats { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:9px; max-height:230px; overflow-y:auto; }
+.ext-cat-fila { display:grid; grid-template-columns:10px minmax(90px,1.4fr) 2fr auto 42px; gap:10px; align-items:center; font-size:0.81rem; }
+.ext-cat-dot { width:10px; height:10px; border-radius:3px; }
+.ext-cat-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ext-cat-barra { height:6px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
+.ext-cat-barra i { display:block; height:100%; border-radius:999px; }
+.ext-cat-cifra { font-variant-numeric:tabular-nums; font-weight:700; }
+.ext-cat-pct { font-variant-numeric:tabular-nums; color:var(--muted); text-align:right; }
+@media (max-width:520px){ .ext-cat-fila { grid-template-columns:10px 1fr auto; } .ext-cat-barra, .ext-cat-pct { display:none; } }
 
-.ext-leyenda { display:flex; flex-direction:column; gap:8px; }
-.ext-leyenda-item { display:flex; align-items:center; gap:8px; font-size:0.8rem; }
-.ext-leyenda-dot { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
-.ext-leyenda-nombre { color:var(--text-color); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ext-leyenda-val { color:var(--muted); font-variant-numeric:tabular-nums; flex-shrink:0; }
+.ext-bloques { margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+.ext-bloques-barra { display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--app-bg); }
+.ext-bloques-barra span { display:block; }
+.ext-bloques-leyenda { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; font-size:0.76rem; color:var(--muted); }
+.ext-bloque-item { display:flex; align-items:center; gap:5px; }
+.ext-bloque-item i { width:9px; height:9px; border-radius:3px; display:inline-block; }
+.ext-bloque-item strong { color:var(--text-color); }
 
-.ext-barras { display:flex; flex-direction:column; gap:16px; margin-bottom:18px; }
-.ext-barra-fila { display:grid; grid-template-columns:70px 1fr auto; align-items:center; gap:10px; }
-.ext-barra-lbl { font-size:0.8rem; color:var(--muted); }
-.ext-barra-track { height:14px; background:var(--app-bg); border-radius:8px; overflow:hidden; border:1px solid var(--surface-2); }
-.ext-barra-fill { height:100%; width:0; border-radius:8px; transition:width .8s cubic-bezier(.16,1,.3,1); }
-.ext-barra-fill.ing { background:linear-gradient(90deg,var(--success),var(--success-2)); }
-.ext-barra-fill.gas { background:linear-gradient(90deg,var(--danger),var(--danger-2)); }
-.ext-barra-val { font-size:0.85rem; font-weight:700; font-variant-numeric:tabular-nums; }
-.ext-neto-box { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; border-radius:10px; font-size:0.85rem; }
-.ext-neto-box.pos { background:color-mix(in srgb, var(--success) 10%, transparent); color:var(--success); }
-.ext-neto-box.neg { background:color-mix(in srgb, var(--danger) 10%, transparent); color:var(--danger); }
-.ext-neto-box strong { font-size:1.05rem; }
-
-.ext-mov-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:28px 0 10px; }
+/* ── Movimientos ────────────────────────────────────────────────────── */
+.ext-mov-head { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin:0 0 12px; }
 .ext-mov-title { font-size:1.05rem; margin:0; }
 .ext-mov-acciones { display:flex; gap:6px; }
 .ext-mini-btn { background:var(--app-bg); border:1px solid var(--border-strong); color:var(--muted); font-size:0.72rem; font-weight:600; padding:6px 12px; border-radius:8px; cursor:pointer; transition:all .2s; }
 .ext-mini-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
 
-.ext-mes-grupo { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; background:var(--surface); }
+.ext-mes { border:1px solid var(--border); border-radius:14px; margin-bottom:10px; overflow:hidden; background:var(--surface); }
 .ext-mes-summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:12px; padding:14px 18px; transition:background .15s; }
 .ext-mes-summary::-webkit-details-marker { display:none; }
 .ext-mes-summary:hover { background:color-mix(in srgb, var(--primary-color) 4%, transparent); }
-.ext-mes-chevron { display:flex; align-items:center; color:var(--muted); transition:transform .2s; flex-shrink:0; }
-.ext-mes-grupo[open] .ext-mes-chevron { transform:rotate(90deg); }
-.ext-mes-nombre { font-weight:700; color:var(--text-color); font-size:0.95rem; }
-.ext-mes-count { font-size:0.72rem; color:var(--muted); background:var(--app-bg); padding:2px 9px; border-radius:999px; }
-.ext-mes-neutro { font-size:0.7rem; color:var(--muted); font-variant-numeric:tabular-nums; }
-.ext-mes-neto { margin-left:auto; font-weight:700; font-variant-numeric:tabular-nums; }
-.ext-mes-grupo .table-scroll { border-top:1px solid var(--border); }
-.ext-cat-select { background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:5px 8px; font-size:0.78rem; max-width:180px; }
-.ext-cat-select:focus { border-color:var(--primary-color); outline:none; }
-.ext-concepto, .ext-importe { cursor:pointer; border-radius:6px; }
-.ext-concepto:hover, .ext-importe:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); }
-.ext-cell-input { width:100%; box-sizing:border-box; padding:5px 7px; border:1px solid var(--primary-color); border-radius:6px; background:var(--app-bg); color:var(--text-color); font-size:0.82rem; }
-tr.ext-guardada td { animation: ext-flash 0.9s ease; }
+.ext-mes-chevron { display:flex; color:var(--muted); transition:transform .2s; }
+.ext-mes[open] .ext-mes-chevron { transform:rotate(90deg); }
+.ext-mes-nombre { font-weight:700; font-size:0.95rem; }
+.ext-mes-detalle { display:flex; gap:10px; font-size:0.74rem; font-variant-numeric:tabular-nums; }
+.ext-mes-neto { margin-left:auto; font-weight:800; font-size:1rem; font-variant-numeric:tabular-nums; }
+@media (max-width:560px){ .ext-mes-detalle { display:none; } }
+
+.ext-lista { border-top:1px solid var(--border); }
+.ext-mov {
+    display:grid; grid-template-columns:44px 1fr auto 30px; gap:14px; align-items:center;
+    padding:11px 18px; border-bottom:1px solid var(--border);
+}
+.ext-mov:last-child { border-bottom:none; }
+.ext-mov:hover { background:color-mix(in srgb, var(--primary-color) 3%, transparent); }
+.ext-mov.neutro { opacity:.62; }
+.ext-mov-dia { display:flex; flex-direction:column; align-items:center; line-height:1.1; color:var(--muted); }
+.ext-mov-dd { font-size:1rem; font-weight:700; color:var(--text-color); font-variant-numeric:tabular-nums; }
+.ext-mov-mmm { font-size:0.62rem; text-transform:uppercase; letter-spacing:.04em; }
+.ext-mov-cuerpo { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.ext-mov-concepto { font-size:0.88rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; border-radius:5px; }
+.ext-mov-concepto:hover { color:var(--primary-color); }
+.ext-mov-meta { display:flex; align-items:center; gap:7px; }
+.ext-cat-chip { display:inline-flex; border-left:3px solid var(--cc); border-radius:6px; background:color-mix(in srgb, var(--cc) 10%, transparent); }
+.ext-cat-select {
+    background:transparent; border:none; color:var(--muted); font-size:0.73rem; font-weight:600;
+    padding:2px 6px; max-width:190px; cursor:pointer; appearance:none; -webkit-appearance:none;
+}
+.ext-cat-select:focus { outline:1px solid var(--primary-color); border-radius:6px; }
+.ext-badge-neutro { font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); border:1px solid var(--border-strong); border-radius:999px; padding:1px 7px; }
+.ext-mov-importe { font-size:0.95rem; font-weight:700; font-variant-numeric:tabular-nums; cursor:pointer; white-space:nowrap; border-radius:5px; }
+.ext-mov-importe:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); }
+.ext-del { background:none; border:none; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .15s, color .15s; padding:4px; }
+.ext-mov:hover .ext-del { opacity:1; }
+.ext-del:hover { color:var(--danger); }
+.ext-del .icon { width:15px; height:15px; }
+@media (max-width:560px){
+    .ext-mov { grid-template-columns:38px 1fr auto; gap:10px; padding:10px 12px; }
+    .ext-del { display:none; }
+}
+.ext-cell-input { width:100%; box-sizing:border-box; padding:4px 7px; border:1px solid var(--primary-color); border-radius:6px; background:var(--app-bg); color:var(--text-color); font-size:0.85rem; }
+.ext-mov.ext-guardada { animation: ext-flash 0.9s ease; }
 @keyframes ext-flash { 0%{ background:color-mix(in srgb, var(--success) 22%, transparent);} 100%{ background:transparent; } }
-.ext-mov-table td { vertical-align:middle; }
 
-/* Aviso de gastos sin categorizar, con acceso directo a la pantalla de grupos. */
-.ext-aviso-sincat {
+.ext-vacio { text-align:center; padding:34px; color:var(--muted); border:1px dashed var(--border-strong); border-radius:14px; }
+.ext-vacio p { margin:0 0 12px; font-style:italic; }
+
+/* Aviso «¿aplicar a los movimientos similares?» */
+.ext-sugerencia {
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    background:color-mix(in srgb, var(--primary-color) 8%, transparent);
-    border:1px solid color-mix(in srgb, var(--primary-color) 25%, transparent);
-    border-radius:10px; padding:11px 14px; margin-bottom:18px; font-size:0.85rem;
-}
-.ext-aviso-sincat .btn { margin-left:auto; }
-
-/* Desglose por bloque del presupuesto: la agrupación superior de las categorías. */
-.ext-bloques { margin:20px 0 4px; }
-.ext-bloques-titulo { font-size:0.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:600; margin-bottom:8px; }
-.ext-bloques-barra { display:flex; height:14px; border-radius:999px; overflow:hidden; background:var(--app-bg); }
-.ext-bloques-barra span { display:block; transition:width .5s ease; }
-.ext-bloques-leyenda { display:flex; flex-wrap:wrap; gap:14px; margin-top:10px; font-size:0.8rem; }
-.ext-bloque-item { display:flex; align-items:center; gap:5px; }
-.ext-bloque-item i { width:10px; height:10px; border-radius:3px; display:inline-block; }
-.ext-bloques-link { display:inline-block; margin-top:10px; font-size:0.8rem; }
-
-/* Traspasos entre cuentas propias: visibles pero claramente al margen. */
-tr.ext-traspaso td { opacity:.62; }
-.ext-badge-traspaso { font-size:0.65rem; vertical-align:middle; }
-
-/* Fila de confirmación «aplicar a los similares». */
-tr.ext-sugerencia td {
+    padding:11px 18px; font-size:0.82rem; border-bottom:1px solid var(--border);
     background:color-mix(in srgb, var(--primary-color) 10%, transparent);
-    padding:10px 14px; font-size:0.83rem;
 }
-tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
-.ext-sugerencia-caja { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .ext-sugerencia-texto { margin-right:auto; }
 .ext-sugerencia-btns { display:flex; gap:8px; flex-wrap:wrap; }
+.ext-sugerencia .btn { padding:5px 12px; font-size:0.77rem; }
 </style>
 
 <script>
@@ -324,7 +381,8 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
         return m ? m[1] : '';
     }
     function euro(v) {
-        return Number(v).toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+        var texto = Number(v).toLocaleString('es-ES', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+        return Number(v) > 0 ? '+' + texto : texto;
     }
 
     /* ---- Donut de categorías ---- */
@@ -332,7 +390,7 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
     var svg = document.getElementById('ext-donut');
     if (svg && donutData.length) {
         var NS = 'http://www.w3.org/2000/svg';
-        var cx = 100, cy = 100, r = 74, grosor = 26;
+        var cx = 100, cy = 100, r = 74, grosor = 24;
         var ang = -Math.PI / 2;
         var total = donutData.reduce(function(s, d){ return s + d.pct; }, 0) || 100;
         donutData.forEach(function(d) {
@@ -367,9 +425,13 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
     if (bIng) setTimeout(function(){ bIng.style.width = (ing / maxIG * 100) + '%'; }, 60);
     if (bGas) setTimeout(function(){ bGas.style.width = (gas / maxIG * 100) + '%'; }, 60);
 
-    /* ---- Edición ---- */
+    /* ---- Edición en línea ---- */
     var URL_ACT = "/extractos/movimiento/__ID__/actualizar/";
     var URL_DEL = "/extractos/movimiento/__ID__/eliminar/";
+
+    function filaDe(movId) {
+        return document.querySelector('.ext-mov[data-mov-id="' + movId + '"]');
+    }
 
     function guardar(movId, campo, valor, onOk) {
         var body = new URLSearchParams();
@@ -379,20 +441,18 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
             headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
             body: body.toString()
         }).then(function(r){ return r.json(); }).then(function(data){
-            if (data.ok) {
-                var fila = document.querySelector('tr[data-mov-id="' + movId + '"]');
-                if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
-                if (onOk) onOk(data);
-            }
+            if (!data.ok) return;
+            var fila = filaDe(movId);
+            if (fila) { fila.classList.add('ext-guardada'); setTimeout(function(){ fila.classList.remove('ext-guardada'); }, 900); }
+            if (onOk) onOk(data);
         }).catch(function(){});
     }
 
     /* ---- Aprender del comercio ----
-       Al categorizar a mano, el servidor dice cuántos movimientos del mismo
-       comercio quedan con otra categoría, en ese mes y en total. Se pregunta
-       hasta dónde llega el cambio: solo este, el mes que se está revisando o
-       todo el histórico (que además se recuerda para futuras importaciones).
-       Nada se aplica hasta que el usuario elige. */
+       Aplicar y recordar son dos decisiones distintas y se preguntan por
+       separado: primero hasta dónde llega el cambio (solo este, el mes que se
+       está revisando o todo el histórico) y, una vez aplicado, si además debe
+       quedarse como regla para las próximas importaciones. */
     var URL_APRENDER = "{% url 'extractos:aprender_regla' %}";
 
     function quitarAviso() {
@@ -404,12 +464,20 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
         return n + ' ' + (n === 1 ? singular : plural_);
     }
 
+    function pedir(datos) {
+        var body = new URLSearchParams();
+        Object.keys(datos).forEach(function(k){ body.set(k, datos[k]); });
+        return fetch(URL_APRENDER, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); });
+    }
+
     function mostrarSugerencia(fila, sug) {
         quitarAviso();
-        var aviso = document.createElement('tr');
+        var aviso = document.createElement('div');
         aviso.className = 'ext-sugerencia';
-        var td = document.createElement('td');
-        td.colSpan = fila.children.length;
 
         var texto = document.createElement('span');
         texto.className = 'ext-sugerencia-texto';
@@ -421,68 +489,71 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
         var acciones = document.createElement('span');
         acciones.className = 'ext-sugerencia-btns';
 
-        function aplicar(boton, ambito) {
-            boton.disabled = true;
-            var body = new URLSearchParams();
-            body.set('patron', sug.patron);
-            body.set('categoria_id', sug.categoria_id);
-            body.set('incluir_categorizados', '1');
-            body.set('ambito', ambito);
-            if (ambito === 'mes') {
-                body.set('anio', sug.anio);
-                body.set('mes', sug.mes);
-            }
-            fetch(URL_APRENDER, {
-                method: 'POST',
-                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-                body: body.toString()
-            }).then(function(r){ return r.json(); }).then(function(data){
-                if (data.ok) {
-                    texto.textContent = data.aplicados + ' movimiento(s) categorizados como «' +
-                        data.categoria + '»' +
-                        (data.recordada ? ', y se recordará en las próximas importaciones' : '') +
-                        '. Recargando…';
+        function boton(clase, etiqueta, titulo) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn ' + clase + ' btn-sm';
+            b.textContent = etiqueta;
+            if (titulo) b.title = titulo;
+            acciones.appendChild(b);
+            return b;
+        }
+
+        /* Segundo paso: ya se ha aplicado, ahora se pregunta si se recuerda. */
+        function preguntarRegla(aplicados) {
+            acciones.innerHTML = '';
+            texto.textContent = 'Listo: ' + plural(aplicados, 'movimiento', 'movimientos') +
+                ' de «' + sug.patron + '» ' + (aplicados === 1 ? 'es' : 'son') + ' ahora «' + sug.categoria +
+                '». ¿Quieres que se clasifique siempre así, también en lo que importes a partir de ahora?';
+
+            var si = boton('btn-primary', 'Sí, recordarlo');
+            var no = boton('btn-ghost', 'No, solo esta vez');
+
+            si.addEventListener('click', function() {
+                si.disabled = true;
+                pedir({
+                    patron: sug.patron, categoria_id: sug.categoria_id, accion: 'solo_regla'
+                }).then(function(data) {
+                    if (!data.ok) { si.disabled = false; return; }
+                    texto.textContent = 'Hecho: «' + sug.patron + '» será «' + sug.categoria + '» a partir de ahora. Recargando…';
                     acciones.remove();
-                    setTimeout(function(){ window.location.reload(); }, 900);
+                    setTimeout(function(){ window.location.reload(); }, 800);
+                }).catch(function(){ si.disabled = false; });
+            });
+            no.addEventListener('click', function(){ window.location.reload(); });
+        }
+
+        function aplicar(boton_, ambito) {
+            boton_.disabled = true;
+            var datos = {
+                patron: sug.patron, categoria_id: sug.categoria_id,
+                incluir_categorizados: '1', ambito: ambito, recordar: '0'
+            };
+            if (ambito === 'mes') { datos.anio = sug.anio; datos.mes = sug.mes; }
+            pedir(datos).then(function(data) {
+                if (!data.ok) { boton_.disabled = false; return; }
+                if (sug.ya_hay_regla) {
+                    texto.textContent = data.aplicados + ' movimiento(s) categorizados como «' + data.categoria + '». Recargando…';
+                    acciones.remove();
+                    setTimeout(function(){ window.location.reload(); }, 800);
                 } else {
-                    boton.disabled = false;
+                    preguntarRegla(data.aplicados);
                 }
-            }).catch(function(){ boton.disabled = false; });
+            }).catch(function(){ boton_.disabled = false; });
         }
 
         if (sug.n_mes) {
-            var soloMes = document.createElement('button');
-            soloMes.type = 'button';
-            soloMes.className = 'btn btn-secondary btn-sm';
-            soloMes.textContent = 'Solo ' + sug.etiqueta_mes + ' (' + sug.n_mes + ')';
-            soloMes.title = 'Cambia únicamente los de ese mes; no se recuerda para el futuro.';
+            var soloMes = boton('btn-secondary', 'Solo ' + sug.etiqueta_mes + ' (' + sug.n_mes + ')',
+                                'Cambia únicamente los de ese mes.');
             soloMes.addEventListener('click', function(){ aplicar(soloMes, 'mes'); });
-            acciones.appendChild(soloMes);
         }
-
-        var todos = document.createElement('button');
-        todos.type = 'button';
-        todos.className = 'btn btn-primary btn-sm';
-        todos.textContent = 'Todos (' + sug.n_similares + ')';
-        todos.title = sug.ya_hay_regla
-            ? 'Cambia todo el histórico de este comercio.'
-            : 'Cambia todo el histórico y lo recuerda para las próximas importaciones.';
+        var todos = boton('btn-primary', 'Todos (' + sug.n_similares + ')', 'Cambia todo el histórico de este comercio.');
         todos.addEventListener('click', function(){ aplicar(todos, 'todos'); });
-        acciones.appendChild(todos);
+        var nunca = boton('btn-ghost', 'Solo este');
+        nunca.addEventListener('click', quitarAviso);
 
-        var no = document.createElement('button');
-        no.type = 'button';
-        no.className = 'btn btn-ghost btn-sm';
-        no.textContent = 'Solo este';
-        no.addEventListener('click', quitarAviso);
-        acciones.appendChild(no);
-
-        var caja = document.createElement('div');
-        caja.className = 'ext-sugerencia-caja';
-        caja.appendChild(texto);
-        caja.appendChild(acciones);
-        td.appendChild(caja);
-        aviso.appendChild(td);
+        aviso.appendChild(texto);
+        aviso.appendChild(acciones);
         fila.parentNode.insertBefore(aviso, fila.nextSibling);
     }
 
@@ -491,27 +562,27 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
             quitarAviso();
             guardar(sel.dataset.movId, 'categoria_id', sel.value, function(data) {
                 if (!data.sugerencia) return;
-                var fila = document.querySelector('tr[data-mov-id="' + sel.dataset.movId + '"]');
+                var fila = filaDe(sel.dataset.movId);
                 if (fila) mostrarSugerencia(fila, data.sugerencia);
             });
         });
     });
 
-    function editarCelda(td) {
-        if (td.querySelector('.ext-cell-input')) return;
-        var fila = td.closest('tr');
+    function editarCelda(celda) {
+        if (celda.querySelector('.ext-cell-input')) return;
+        var fila = celda.closest('.ext-mov');
         var movId = fila.dataset.movId;
-        var campo = td.dataset.campo;
-        var valorOriginal = campo === 'importe' ? (td.dataset.valor || '') : td.textContent.trim();
-        var textoOriginal = td.innerHTML;
+        var campo = celda.dataset.campo;
+        var valorOriginal = campo === 'importe' ? (celda.dataset.valor || '') : celda.textContent.trim();
+        var contenidoOriginal = celda.innerHTML;
 
         var input = document.createElement('input');
         input.className = 'ext-cell-input';
         input.type = campo === 'importe' ? 'number' : 'text';
         if (campo === 'importe') input.step = '0.01';
         input.value = valorOriginal;
-        td.innerHTML = '';
-        td.appendChild(input);
+        celda.innerHTML = '';
+        celda.appendChild(input);
         input.focus();
         input.select();
 
@@ -520,17 +591,17 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
             if (hecho) return; hecho = true;
             var nuevo = input.value.trim();
             if (!guardarCambio || nuevo === '' || nuevo === valorOriginal) {
-                td.innerHTML = textoOriginal;
+                celda.innerHTML = contenidoOriginal;
                 return;
             }
             guardar(movId, campo, nuevo, function(data) {
                 if (campo === 'importe') {
-                    td.dataset.valor = data.importe;
-                    td.textContent = euro(data.importe);
-                    td.classList.remove('text-positive', 'text-negative');
-                    td.classList.add(data.importe >= 0 ? 'text-positive' : 'text-negative');
+                    celda.dataset.valor = data.importe;
+                    celda.textContent = euro(data.importe);
+                    celda.classList.remove('text-positive', 'text-negative');
+                    celda.classList.add(data.importe >= 0 ? 'text-positive' : 'text-negative');
                 } else {
-                    td.textContent = data.concepto;
+                    celda.textContent = data.concepto;
                 }
             });
         }
@@ -541,18 +612,18 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
         input.addEventListener('blur', function(){ fin(true); });
     }
 
-    document.querySelectorAll('.ext-concepto, .ext-importe').forEach(function(td) {
-        td.addEventListener('click', function(){ editarCelda(td); });
+    document.querySelectorAll('.ext-mov-concepto, .ext-mov-importe').forEach(function(celda) {
+        celda.addEventListener('click', function(){ editarCelda(celda); });
     });
 
-    /* ---- Plegar / desplegar todos los meses ---- */
+    /* ---- Plegar / desplegar meses ---- */
     var btnExpandir = document.getElementById('ext-expandir-todo');
     var btnPlegar = document.getElementById('ext-plegar-todo');
     if (btnExpandir) btnExpandir.addEventListener('click', function() {
-        document.querySelectorAll('.ext-mes-grupo').forEach(function(d){ d.open = true; });
+        document.querySelectorAll('.ext-mes').forEach(function(d){ d.open = true; });
     });
     if (btnPlegar) btnPlegar.addEventListener('click', function() {
-        document.querySelectorAll('.ext-mes-grupo').forEach(function(d){ d.open = false; });
+        document.querySelectorAll('.ext-mes').forEach(function(d){ d.open = false; });
     });
 
     document.querySelectorAll('.ext-del').forEach(function(btn) {
@@ -563,10 +634,9 @@ tr.ext-sugerencia .btn { padding:5px 12px; font-size:0.78rem; }
                 method: 'POST',
                 headers: {'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest'}
             }).then(function(r){ return r.json(); }).then(function(data){
-                if (data.ok) {
-                    var fila = document.querySelector('tr[data-mov-id="' + movId + '"]');
-                    if (fila) { fila.style.transition = 'opacity .3s'; fila.style.opacity = '0'; setTimeout(function(){ fila.remove(); }, 300); }
-                }
+                if (!data.ok) return;
+                var fila = filaDe(movId);
+                if (fila) { fila.style.transition = 'opacity .3s'; fila.style.opacity = '0'; setTimeout(function(){ fila.remove(); }, 300); }
             }).catch(function(){});
         });
     });
