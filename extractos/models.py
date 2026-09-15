@@ -295,15 +295,38 @@ class MovimientoBancario(ImputableAActivo):
     def es_parte(self):
         return self.dividido_de_id is not None
 
-    @property
-    def cubierto_por_reserva(self):
-        """Cuánto de este pago salió de dinero apartado, en positivo."""
+    def _coberturas(self):
         cache = getattr(self, '_prefetched_objects_cache', None)
         if cache is not None and 'coberturas' in cache:
-            coberturas = cache['coberturas']
-        else:
-            coberturas = self.coberturas.all()
-        return sum((abs(c.importe) for c in coberturas), Decimal('0'))
+            return cache['coberturas']
+        return self.coberturas.all()
+
+    @property
+    def cubierto_por_reserva(self):
+        """Cuánto de este pago salió de dinero apartado, en positivo.
+
+        Una PARTE hereda su porción de lo que se puso sobre el cobro entero.
+        La hucha se empareja con el recibo de Norauto —que es lo que hay en el
+        banco y lo que uno mira—, no con cada línea de dentro; pero el que
+        cuenta en el presupuesto es cada línea, así que el dinero tiene que
+        bajar hasta ellas. Se reparte a prorrata del importe de cada una, que
+        es la única forma de repartirlo sin inventarse un criterio.
+        """
+        propio = sum((abs(c.importe) for c in self._coberturas()), Decimal('0'))
+        if not self.es_parte:
+            return propio
+
+        padre = self.dividido_de
+        del_padre = sum((abs(c.importe) for c in padre._coberturas()), Decimal('0'))
+        if not del_padre:
+            return propio
+
+        hermanas = padre.partes.all()
+        total = sum((abs(p.importe) for p in hermanas), Decimal('0'))
+        if not total:
+            return propio
+        porcion = (del_padre * abs(self.importe) / total).quantize(Decimal('0.01'))
+        return propio + porcion
 
     @property
     def impacto_real(self):

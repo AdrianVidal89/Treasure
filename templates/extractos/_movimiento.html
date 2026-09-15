@@ -35,7 +35,7 @@ categorías por bloque, provisiones y activos).
             hay al final de la página cuando el usuario va a usarlo.
             {% endcomment %}
             {% if m.esta_dividido %}
-            <span class="ext-badge-dividido" title="Este cobro está repartido en partes; cada una lleva su categoría">repartido en {{ m.partes.all|length }}</span>
+            <span class="ext-badge-dividido" title="Este cobro está repartido en {{ m.partes.all|length }} partes, que son las que cuentan. El apunte del banco se queda aquí para que reimportar el extracto no lo duplique, pero no suma: si sumara, el mismo dinero contaría dos veces.">repartido en {{ m.partes.all|length }} · no cuenta</span>
             {% else %}
             <span class="ext-cat-chip" style="--cc:{% if m.categoria %}{{ panel.colores_tipo|get_item:m.categoria.tipo }}{% else %}#9aa5a0{% endif %};">
                 <button type="button" class="ext-campo-perezoso ext-cat-boton" data-mov-id="{{ m.id }}"
@@ -47,7 +47,7 @@ categorías por bloque, provisiones y activos).
             {% elif m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
             {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
             {% if m.es_pago_provision %}<span class="ext-badge-provision" title="Pago de {{ m.partida_conciliada.nombre }}: se compara en el año, no en el mes">anual</span>{% endif %}
-            {% if m.cubierto_por_reserva %}<span class="ext-badge-reserva" title="De este pago, {{ m.cubierto_por_reserva|euro }} salieron de la reserva. Al presupuesto del mes solo le pesan {{ m.impacto_real|euro }}; el coste del activo sigue siendo el total.">reserva {{ m.cubierto_por_reserva|euro:0 }} · pesó {{ m.impacto_real|euro:0 }}</span>{% endif %}
+            {% if m.cubierto_por_reserva %}{% if m.esta_dividido %}<span class="ext-badge-reserva" title="{{ m.cubierto_por_reserva|euro }} de este recibo salieron de la reserva. Como el cobro está repartido, ese dinero se reparte entre sus partes a prorrata: son ellas las que cuentan.">reserva {{ m.cubierto_por_reserva|euro:0 }} · va a las partes</span>{% else %}<span class="ext-badge-reserva" title="De este pago, {{ m.cubierto_por_reserva|euro }} salieron de la reserva. Al presupuesto del mes solo le pesan {{ m.impacto_real|euro }}; el coste del activo sigue siendo el total.">reserva {{ m.cubierto_por_reserva|euro:0 }} · pesó {{ m.impacto_real|euro:0 }}</span>{% endif %}{% endif %}
 
             <span class="ext-tags" data-mov-id="{{ m.id }}">
                 {% for e in m.etiquetas.all %}
@@ -72,12 +72,16 @@ categorías por bloque, provisiones y activos).
             concreto. Emparejarlo con ese pago es lo que deja el mes contando
             solo la diferencia.
             {% endcomment %}
-            {% if not m.es_parte and not m.esta_dividido %}
+            {% comment %}
+            Sin condiciones: el cobro repartido también lo lleva, y es el que
+            más falta hace. La hucha se empareja con el recibo de Norauto —lo
+            que hay en el banco y lo que uno mira—; el dinero baja solo a las
+            partes, a prorrata.
+            {% endcomment %}
             <button type="button" class="ext-cubre-boton {% if m.es_cobertura or m.cubierto_por_reserva %}puesto{% endif %}"
                     data-mov-id="{{ m.id }}" data-importe="{{ m.importe|unlocalize }}"
                     data-concepto="{{ m.concepto }}" data-valor="{{ m.cubre_id|default_if_none:'' }}"
                     title="{% if m.importe < 0 %}¿Pagaste parte de esto con dinero que tenías apartado? Dilo aquí y el mes solo cargará la diferencia.{% else %}¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.{% endif %}">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% elif m.cubierto_por_reserva %}reserva puesta{% else %}— de la reserva —{% endif %}</button>
-            {% endif %}
 
             {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
             <button type="button" class="ext-campo-perezoso ext-activo-boton {% if m.clave_activo %}puesto{% endif %}"
@@ -88,8 +92,9 @@ categorías por bloque, provisiones y activos).
         </div>
     </div>
 
-    <div class="ext-mov-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}"
-         data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">
+    <div class="ext-mov-importe {% if m.esta_dividido %}ext-importe-repartido{% endif %} {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}"
+         data-campo="importe" data-valor="{{ m.importe|unlocalize }}"
+         title="{% if m.esta_dividido %}Lo que cobró el banco. Lo que cuenta son sus partes, aquí debajo.{% else %}Clic para editar{% endif %}">
         {% if m.importe > 0 %}+{% endif %}{{ m.importe|euro }}
     </div>
 
