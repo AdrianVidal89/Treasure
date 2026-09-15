@@ -979,7 +979,38 @@ PERIODICIDAD_GASTO_CHOICES = [
     ('trimestral', 'Trimestral'), ('semestral', 'Semestral'), ('anual', 'Anual'),
     ('bienal', 'Cada 2 años'), ('trienal', 'Cada 3 años'),
     ('quinquenal', 'Cada 5 años'),
+    # La lista de arriba cubre lo corriente, pero la vida útil de una cosa no
+    # viene en años redondos: unos neumáticos duran 36 meses en un coche y 50
+    # en otro que hace menos kilómetros. Con esta opción se escribe el número.
+    ('personalizada', 'Cada N meses…'),
 ]
+
+# Tope de la periodicidad personalizada: cincuenta años. No es una limitación
+# real de nada, solo evita que un dedazo (500 en vez de 50) deje una cuota de
+# céntimos que no se entiende de dónde sale.
+MAXIMO_MESES_PERIODO = 600
+
+
+def normalizar_periodicidad(periodicidad, meses):
+    """Devuelve `(periodicidad, meses_personalizados)` ya en limpio.
+
+    Una periodicidad escrita a mano que coincide con una de las de siempre se
+    guarda con SU nombre: así la pantalla dice «Anual» y no «Cada 12 meses», y
+    —más importante— los doce sitios que preguntan `periodicidad != 'mensual'`
+    para sacar los pagos anuales del mes siguen funcionando cuando alguien
+    escribe un 1.
+    """
+    if periodicidad != 'personalizada':
+        return periodicidad, None
+    try:
+        meses = int(meses)
+    except (TypeError, ValueError):
+        meses = 1
+    meses = max(1, min(meses, MAXIMO_MESES_PERIODO))
+    for nombre, cuantos in MESES_POR_PERIODICIDAD.items():
+        if cuantos == meses:
+            return nombre, None
+    return 'personalizada', meses
 
 
 class CategoriaPredefinidaDescartada(models.Model):
@@ -1074,6 +1105,10 @@ class PartidaGasto(ImputableAActivo):
         help_text="Importe por periodo declarado")
     periodicidad = models.CharField(max_length=20, choices=PERIODICIDAD_GASTO_CHOICES, default='mensual',
         help_text="Cada cuanto se paga este gasto")
+    meses_personalizados = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Solo con periodicidad «Cada N meses»: cuántos meses dura o '
+                  'cada cuántos toca pagarlo.')
     mes_pago = models.IntegerField(choices=MESES_CHOICES, null=True, blank=True,
         help_text="Para gastos no mensuales: mes principal de pago.")
     activo = models.BooleanField(default=True)
@@ -1110,7 +1145,19 @@ class PartidaGasto(ImputableAActivo):
 
         Es el único sitio donde se traduce la periodicidad a meses, para que
         nadie tenga que acordarse de que «trienal» son treinta y seis."""
+        if self.periodicidad == 'personalizada':
+            return max(int(self.meses_personalizados or 1), 1)
         return MESES_POR_PERIODICIDAD.get(self.periodicidad, 1)
+
+    def get_periodicidad_display(self):
+        """«Cada 50 meses» en lugar de «Cada N meses…».
+
+        Django pone este método solo si el modelo no lo trae ya, así que
+        definirlo aquí arregla de una vez las veinte plantillas que lo
+        llaman, en vez de que cada una tenga que acordarse del caso raro."""
+        if self.periodicidad == 'personalizada':
+            return f'Cada {self.meses_periodo} meses'
+        return dict(PERIODICIDAD_GASTO_CHOICES).get(self.periodicidad, self.periodicidad)
 
     @property
     def importe_mensual(self):
