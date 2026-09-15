@@ -2,8 +2,9 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Count
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from decimal import Decimal
+from collections import defaultdict
 
 from . import costes_activo
 from .models import (
@@ -150,34 +151,57 @@ def listar_gastos(request):
     total_variables = Decimal('0')
     total_discrecionales = Decimal('0')
 
+    # Las partidas declaradas para el bloque entero no cuelgan de ninguna
+    # categoría, así que van en su propia entrada al principio de su bloque: son
+    # el techo del bloque, no una categoría más.
+    del_bloque = defaultdict(list)
+    for p in PartidaGasto.objects.filter(
+        hogar=hogar, activo=True, categoria__isnull=True,
+    ).select_related('responsable'):
+        if p.bloque:
+            del_bloque[p.bloque].append(p)
+
+    entradas = []
+    for tipo, partidas_bloque in del_bloque.items():
+        entradas.append((tipo, {
+            'categoria': None,
+            'bloque': tipo,
+            'etiqueta_bloque': ETIQUETAS_TIPO.get(tipo, tipo),
+            'partidas': partidas_bloque,
+            'subtotal_mensual': sum(p.importe_mensual for p in partidas_bloque),
+            'subtotal_anual': sum(p.importe_anual for p in partidas_bloque),
+            'num_partidas': len(partidas_bloque),
+        }))
+
     for cat in categorias:
-        partidas = cat.partidas.filter(activo=True).select_related('responsable')
-        if not partidas.exists():
+        # Se evalúa UNA vez: antes, el exists() y el count() sobre el mismo
+        # queryset eran dos consultas más por categoría.
+        partidas = list(cat.partidas.filter(activo=True).select_related('responsable'))
+        if not partidas:
             continue
-
-        subtotal_mensual = sum(p.importe_mensual for p in partidas)
-        subtotal_anual = sum(p.importe_anual for p in partidas)
-        num_partidas = partidas.count()
-
-        entrada = {
+        entradas.append((cat.tipo, {
             'categoria': cat,
+            'bloque': cat.tipo,
             'partidas': partidas,
-            'subtotal_mensual': subtotal_mensual,
-            'subtotal_anual': subtotal_anual,
-            'num_partidas': num_partidas,
-        }
+            'subtotal_mensual': sum(p.importe_mensual for p in partidas),
+            'subtotal_anual': sum(p.importe_anual for p in partidas),
+            'num_partidas': len(partidas),
+        }))
 
-        if cat.tipo == 'fijo':
+    for tipo, entrada in entradas:
+        subtotal_mensual = entrada['subtotal_mensual']
+        subtotal_anual = entrada['subtotal_anual']
+        if tipo == 'fijo':
             gastos_fijos.append(entrada)
             total_fijos += subtotal_mensual
-        elif cat.tipo == 'anual':
+        elif tipo == 'anual':
             gastos_anuales.append(entrada)
             total_anuales_anual += subtotal_anual
             total_provision += subtotal_mensual
-        elif cat.tipo == 'variable':
+        elif tipo == 'variable':
             gastos_variables.append(entrada)
             total_variables += subtotal_mensual
-        elif cat.tipo == 'discrecional':
+        elif tipo == 'discrecional':
             gastos_discrecionales.append(entrada)
             total_discrecionales += subtotal_mensual
 
@@ -230,17 +254,22 @@ def _agrupar_por_miembro(hogar, categorias):
         nombre = m.user.first_name or m.user.username
         _grupo(m.user_id, nombre)
 
-    for cat in categorias:
-        for p in cat.partidas.filter(activo=True).select_related('responsable', 'categoria'):
-            clave = p.responsable_id
-            if clave is not None and clave not in grupos:
-                # Responsable que ya no es miembro: agrúpalo por su nombre igualmente.
-                nombre = p.responsable.first_name or p.responsable.username if p.responsable else 'Otros'
-                _grupo(clave, nombre)
-            g = _grupo(clave, grupos.get(clave, {}).get('nombre', 'Común del hogar'))
-            g['partidas'].append(p)
-            g['total_mensual'] += p.importe_mensual
-            g['total_anual'] += p.importe_anual
+    # Todas las partidas del hogar de una vez: recorrer categorías y pedir las
+    # suyas era una consulta por categoría, y además dejaba fuera las que se
+    # declaran para el bloque entero, que no cuelgan de ninguna.
+    todas = PartidaGasto.objects.filter(
+        hogar=hogar, activo=True,
+    ).select_related('responsable', 'categoria')
+    for p in todas:
+        clave = p.responsable_id
+        if clave is not None and clave not in grupos:
+            # Responsable que ya no es miembro: agrúpalo por su nombre igualmente.
+            nombre = p.responsable.first_name or p.responsable.username if p.responsable else 'Otros'
+            _grupo(clave, nombre)
+        g = _grupo(clave, grupos.get(clave, {}).get('nombre', 'Común del hogar'))
+        g['partidas'].append(p)
+        g['total_mensual'] += p.importe_mensual
+        g['total_anual'] += p.importe_anual
 
     # Común primero, luego miembros con gasto, luego los que no tienen nada.
     ordenados = sorted(
@@ -248,6 +277,23 @@ def _agrupar_por_miembro(hogar, categorias):
         key=lambda g: (not g['es_comun'], -float(g['total_mensual']), g['nombre'].lower()),
     )
     return [g for g in ordenados if g['partidas'] or g['es_comun']]
+
+
+def _destino_de_la_partida(hogar, valor):
+    """A qué apunta lo elegido en el selector: (categoria, bloque).
+
+    El selector mezcla categorías con una opción por bloque («bloque:variable»),
+    porque para el usuario es la misma pregunta —«¿de qué es este gasto?»— y
+    partirla en dos campos obligaba a entender la diferencia antes de poder
+    escribir nada.
+    """
+    valor = (valor or '').strip()
+    if valor.startswith('bloque:'):
+        tipo = valor.split(':', 1)[1]
+        if tipo not in TIPOS_GASTO:
+            raise Http404('Bloque de gasto desconocido')
+        return None, tipo
+    return get_object_or_404(CategoriaGasto, id=valor or 0, hogar=hogar), ''
 
 
 @login_required
@@ -274,10 +320,11 @@ def crear_partida(request):
         if not nombre or not importe:
             messages.error(request, "Nombre e importe son obligatorios.")
         else:
-            categoria = get_object_or_404(CategoriaGasto, id=categoria_id, hogar=hogar)
+            categoria, bloque = _destino_de_la_partida(hogar, categoria_id)
             partida = PartidaGasto(
                 hogar=hogar,
                 categoria=categoria,
+                bloque=bloque,
                 nombre=nombre,
                 importe=Decimal(importe),
                 periodicidad=periodicidad,
@@ -291,7 +338,9 @@ def crear_partida(request):
             )
             partida.save()
             messages.success(request, f"Gasto '{nombre}' creado.")
-            return redirect(f'/finanzas/gastos/?open={categoria.id}')
+            if categoria:
+                return redirect(f'/finanzas/gastos/?open={categoria.id}')
+            return redirect('finanzas:listar_gastos')
 
     return render(request, 'finanzas/gastos/crear.html', {
         'categorias': categorias,

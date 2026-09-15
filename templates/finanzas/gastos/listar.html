@@ -228,6 +228,12 @@
     80% { opacity: 1; }
     100% { opacity: 0; transform: translateY(-10px); }
 }
+.gasto-card.es-techo-bloque { border-style:dashed; }
+.etiqueta-techo {
+    font-size:0.6rem; text-transform:uppercase; letter-spacing:.05em; font-weight:700;
+    color:var(--muted); border:1px solid var(--border-strong); border-radius:999px;
+    padding:1px 7px; margin-left:6px; vertical-align:middle;
+}
 </style>
 
 <div class="dashboard-container">
@@ -321,7 +327,7 @@
                     <div class="gasto-partida-left">
                         <div class="gasto-partida-nombre">{{ p.nombre }}</div>
                         <div class="gasto-partida-meta">
-                            <span class="badge-cat">{{ p.categoria.nombre }}</span>
+                            <span class="badge-cat">{% if p.categoria %}{{ p.categoria.nombre }}{% else %}{{ p.get_bloque_display }} · sin desglosar{% endif %}</span>
                             {% if p.periodicidad != 'mensual' %} &middot; {{ p.get_periodicidad_display }}{% endif %}
                             {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
                         </div>
@@ -352,10 +358,10 @@
     <div class="section-label" style="color: var(--warning);"> Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_fijos %}
-        <div class="gasto-card tipo-fijo {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
+        <div class="gasto-card tipo-fijo {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
@@ -397,10 +403,10 @@
     <div class="section-label" style="color: var(--info);"> Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
     <div class="grid-gastos">
         {% for grupo in gastos_anuales %}
-        <div class="gasto-card tipo-anual {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
+        <div class="gasto-card tipo-anual {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div style="text-align: right;">
@@ -442,10 +448,10 @@
     <div class="section-label" style="color: var(--primary-color);"> Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_variables %}
-        <div class="gasto-card tipo-variable {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
+        <div class="gasto-card tipo-variable {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
@@ -487,10 +493,10 @@
     <div class="section-label" style="color: var(--accent-alt);"> Gastos Discrecionales &mdash; &euro;{{ total_discrecionales|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_discrecionales %}
-        <div class="gasto-card tipo-discrecional {% if open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}" data-cat-id="{{ grupo.categoria.id }}" onclick="toggleCard(this)">
+        <div class="gasto-card tipo-discrecional {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{{ grupo.categoria.nombre }}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>

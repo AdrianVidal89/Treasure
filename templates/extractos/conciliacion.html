@@ -67,7 +67,7 @@
     <div class="conc-aviso">
         <svg class="icon"><use href="#i-alert"/></svg>
         <span><strong>{{ sin_categorizar_importe|euro }}</strong> de gasto sin categorizar no entra en ningún bloque: la comparación se queda corta por ese importe.</span>
-        <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-secondary">Categorizar</a>
+        <a href="{% url 'extractos:listar' %}?categoria=sin" class="btn btn-secondary">Categorizar</a>
     </div>
     {% endif %}
 
@@ -97,6 +97,13 @@
                 <span class="conc-dif {% if b.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{% if b.diferencia > 0 %}+{% endif %}{{ b.diferencia|euro:0 }}</span>
             </span>
         </summary>
+
+        {% if b.techo_propio %}
+        <div class="conc-techo">
+            El límite de este bloque lo declaras entero, sin repartirlo por categorías.
+            Las de abajo son el desglose de lo que se ha ido, no presupuestos aparte.
+        </div>
+        {% endif %}
 
         {% if periodo.es_mes %}
         <div class="conc-analizar">
@@ -266,5 +273,8 @@ a.conc-fila-cat:hover { color:var(--primary-color); border-bottom-color:var(--pr
 .conc-prov-sin { font-style:italic; }
 .conc-vacio { text-align:center; padding:32px; color:var(--muted); border:1px dashed var(--border-strong); border-radius:14px; }
 .conc-vacio p { margin:0 0 12px; font-style:italic; }
+.conc-techo {
+    font-size:0.75rem; color:var(--muted); padding:8px 14px 0; line-height:1.5;
+}
 </style>
 {% endblock %}

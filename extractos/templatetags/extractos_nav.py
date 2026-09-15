@@ -1,13 +1,12 @@
 """Barra de navegación del módulo de Extractos.
 
-Vive aquí y no en el contexto de cada vista porque son seis pantallas que la
-comparten (movimientos, sin categorizar, conciliación, reglas, categorías y la
-importación) y el contador de pendientes tiene que estar al día en todas.
+Vive aquí y no en el contexto de cada vista porque son varias pantallas que la
+comparten (movimientos, conciliación, reglas, categorías y la importación).
 """
 
 from django import template
 
-from ..models import MovimientoBancario, ReglaCategorizacion
+from ..models import ReglaCategorizacion
 
 register = template.Library()
 
@@ -25,17 +24,14 @@ def extractos_nav(context, activo=''):
     # contexto y la vuelta carga todos los movimientos del hogar.
     periodo = _periodo(request)
 
-    sin_categorizar = 0
+    # Lo que queda sin clasificar se ve en el propio listado (un chip que
+    # filtra), así que aquí ya no hay contador que mantener.
     num_reglas = 0
     if hogar:
-        sin_categorizar = MovimientoBancario.objects.filter(
-            hogar=hogar, categoria__isnull=True, es_traspaso=False,
-        ).count()
         num_reglas = ReglaCategorizacion.objects.filter(hogar=hogar, activo=True).count()
 
     return {
         'activo': activo,
-        'sin_categorizar': sin_categorizar,
         'num_reglas': num_reglas,
         'periodo': periodo,
     }

@@ -22,8 +22,8 @@
     <div class="empty-state">
         <svg class="icon icon-xl empty-icon"><use href="#i-settings"/></svg>
         <h3>Todavía no has enseñado ninguna regla</h3>
-        <p>Cuando categorices un grupo en «Sin categorizar», el criterio se guardará aquí y se aplicará solo a partir de entonces.</p>
-        <a href="{% url 'extractos:sin_categorizar' %}" class="btn btn-primary"><svg class="icon"><use href="#i-search"/></svg> Ir a Sin categorizar</a>
+        <p>Cuando cambies la categoría de un movimiento y aceptes aplicarlo a todo su comercio, el criterio se guardará aquí y se aplicará solo a partir de entonces.</p>
+        <a href="{% url 'extractos:listar' %}?categoria=sin" class="btn btn-primary"><svg class="icon"><use href="#i-search"/></svg> Ver lo que falta por clasificar</a>
     </div>
     {% else %}
 

@@ -1,0 +1,8 @@
+{% comment %}
+Las filas de un mes, servidas sueltas para el despliegue perezoso del listado.
+Usa la MISMA plantilla de fila que el listado, así que lo que se carga al abrir
+un mes es idéntico a lo que se habría pintado de golpe.
+{% endcomment %}
+{% for m in movimientos %}{% include "extractos/_movimiento.html" with m=m panel=panel %}{% empty %}
+<div class="ext-mes-vacio">No queda ningún movimiento de este mes con los filtros puestos.</div>
+{% endfor %}

@@ -12,24 +12,61 @@ from collections import defaultdict
 from decimal import Decimal
 
 
-def por_categoria(hogar):
-    """{categoria_id: importe mensual declarado}."""
+def _partidas(hogar):
     from .models import PartidaGasto
 
+    return PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria')
+
+
+def por_categoria(hogar):
+    """{categoria_id: importe mensual declarado}.
+
+    Las partidas declaradas para el bloque entero no aportan a ninguna
+    categoría: precisamente existen porque el usuario NO sabe en qué categorías
+    se va a repartir ese dinero.
+    """
     totales = defaultdict(lambda: Decimal('0'))
-    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
-        totales[p.categoria_id] += p.importe_mensual
+    for p in _partidas(hogar):
+        if p.categoria_id:
+            totales[p.categoria_id] += p.importe_mensual
     return dict(totales)
 
 
 def por_bloque(hogar):
-    """{tipo de bloque: importe mensual declarado}."""
-    from .models import PartidaGasto
+    """{tipo de bloque: importe mensual declarado}.
 
+    Cuando el bloque tiene un presupuesto propio declarado, ESE es su techo y no
+    se le suma el de sus categorías: «tengo 1.500 € para caprichos, de los
+    cuales 200 para restaurantes» son 1.500, no 1.700. Las categorías que sí
+    tengan límite siguen teniéndolo como desglose informativo dentro del techo.
+
+    Sin presupuesto de bloque declarado se comporta como siempre: el techo es la
+    suma de lo declarado en sus categorías.
+    """
+    de_bloque = defaultdict(lambda: Decimal('0'))
+    de_categorias = defaultdict(lambda: Decimal('0'))
+    for p in _partidas(hogar):
+        tipo = p.tipo_bloque
+        if not tipo:
+            continue
+        if p.es_del_bloque:
+            de_bloque[tipo] += p.importe_mensual
+        else:
+            de_categorias[tipo] += p.importe_mensual
+
+    return {
+        tipo: de_bloque.get(tipo) or de_categorias[tipo]
+        for tipo in set(de_bloque) | set(de_categorias)
+    }
+
+
+def techo_de_bloque(hogar):
+    """Solo los bloques con un techo propio declarado, para poder decir en la
+    pantalla que ese límite es del bloque y no la suma de sus categorías."""
     totales = defaultdict(lambda: Decimal('0'))
-    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
-        if p.categoria:
-            totales[p.categoria.tipo] += p.importe_mensual
+    for p in _partidas(hogar):
+        if p.es_del_bloque and p.tipo_bloque:
+            totales[p.tipo_bloque] += p.importe_mensual
     return dict(totales)
 
 
