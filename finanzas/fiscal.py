@@ -8,28 +8,50 @@ def _resolver_año(año):
     return año or datetime.date.today().year
 
 
+# Las tablas de IRPF y de cotización son datos de referencia: cuatro docenas de
+# filas que cambian una vez al año por migración o por el admin. Se consultaban
+# en cada llamada —y calcular el neto de una fuente en un mes es UNA llamada—,
+# así que una pantalla que recorre 12 meses × varias fuentes acababa pidiendo
+# las mismas cuatro filas sesenta veces. Se memorizan por (país, año) y se
+# invalidan cuando alguien las toca, que es lo único que puede cambiarlas.
+_CACHE_TRAMOS = {}
+_CACHE_COTIZACIONES = {}
+
+
+def limpiar_cache_fiscal():
+    """Vacía la memoria de tablas fiscales. La llaman las señales de guardado y
+    borrado: sin esto, editar un tramo en el admin no se vería hasta reiniciar."""
+    _CACHE_TRAMOS.clear()
+    _CACHE_COTIZACIONES.clear()
+
+
 def _obtener_tramos(pais, año):
     """Obtiene tramos IRPF, con fallback al último año disponible."""
-    tramos = TablaIRPF.objects.filter(pais=pais, año=año).order_by('tramo_desde')
-    if tramos.exists():
-        return tramos
-
-    ultimo = TablaIRPF.objects.filter(pais=pais).order_by('-año').first()
-    if ultimo:
-        return TablaIRPF.objects.filter(pais=pais, año=ultimo.año).order_by('tramo_desde')
-    return TablaIRPF.objects.none()
+    clave = (pais, año)
+    if clave not in _CACHE_TRAMOS:
+        # Se devuelve una LISTA, no un queryset: un queryset cacheado volvería a
+        # ir a la base en cuanto alguien lo recorriera desde otro sitio.
+        tramos = list(TablaIRPF.objects.filter(pais=pais, año=año).order_by('tramo_desde'))
+        if not tramos:
+            ultimo = TablaIRPF.objects.filter(pais=pais).order_by('-año').first()
+            if ultimo:
+                tramos = list(TablaIRPF.objects.filter(
+                    pais=pais, año=ultimo.año).order_by('tramo_desde'))
+        _CACHE_TRAMOS[clave] = tramos
+    return _CACHE_TRAMOS[clave]
 
 
 def _obtener_cotizaciones(pais, año):
     """Obtiene cotizaciones SS, con fallback al último año disponible."""
-    cotizaciones = CotizacionSS.objects.filter(pais=pais, año=año)
-    if cotizaciones.exists():
-        return cotizaciones
-
-    ultimo = CotizacionSS.objects.filter(pais=pais).order_by('-año').first()
-    if ultimo:
-        return CotizacionSS.objects.filter(pais=pais, año=ultimo.año)
-    return CotizacionSS.objects.none()
+    clave = (pais, año)
+    if clave not in _CACHE_COTIZACIONES:
+        cotizaciones = list(CotizacionSS.objects.filter(pais=pais, año=año))
+        if not cotizaciones:
+            ultimo = CotizacionSS.objects.filter(pais=pais).order_by('-año').first()
+            if ultimo:
+                cotizaciones = list(CotizacionSS.objects.filter(pais=pais, año=ultimo.año))
+        _CACHE_COTIZACIONES[clave] = cotizaciones
+    return _CACHE_COTIZACIONES[clave]
 
 
 def _aplicar_tramos(base_liquidable, tramos):
@@ -61,7 +83,7 @@ def calcular_ss(bruto_anual, pais='ES', año=None):
     año = _resolver_año(año)
     cotizaciones = _obtener_cotizaciones(pais, año)
 
-    if not cotizaciones.exists():
+    if not cotizaciones:
         return Decimal('0')
 
     total_porcentaje = sum(c.porcentaje_trabajador for c in cotizaciones)
@@ -80,7 +102,7 @@ def calcular_irpf(bruto_anual, pais='ES', año=None, ss=None):
     año = _resolver_año(año)
     tramos = _obtener_tramos(pais, año)
 
-    if not tramos.exists():
+    if not tramos:
         return Decimal('0')
 
     bruto = Decimal(str(bruto_anual))

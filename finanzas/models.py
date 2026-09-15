@@ -198,6 +198,60 @@ class GrupoInversion(models.Model):
         return self._compras().count()
 
 
+def posicion_desde_movimientos(movimientos, valor_unitario=None):
+    """Todas las cifras de un activo en UNA pasada sobre sus movimientos.
+
+    Existe porque `Inversion` expone total_activos, valor_aportado,
+    precio_medio_compra, coste_base_actual, ganancia_latente y
+    ganancia_realizada como propiedades, y cada una lanza su propia consulta.
+    Leerlas todas para un activo son seis consultas; una lista de veinte
+    activos se iba a casi trescientas. Cuando ya tienes los movimientos en
+    memoria —la lista los carga igualmente para pintar la tabla— esto da lo
+    mismo sin tocar la base.
+
+    Reproduce EXACTAMENTE lo que hacen esas propiedades hoy, incluido el
+    criterio de precio medio: la media se calcula sobre TODAS las compras y no
+    se reduce al vender. Ver la nota de `Inversion.precio_medio_compra`.
+
+    `movimientos` debe venir ordenado por (fecha, id): la ganancia realizada usa
+    el precio medio vigente en cada venta, y el orden cambia el resultado.
+    """
+    unidades_netas = Decimal('0')      # compradas − vendidas: lo que queda
+    unidades_compradas = Decimal('0')  # solo compras, nunca se reduce
+    invertido = Decimal('0')           # coste de esas compras
+    realizada = Decimal('0')
+
+    for m in movimientos:
+        if m.tipo == 'COMPRA':
+            invertido += m.cantidad * m.precio_unitario
+            unidades_compradas += m.cantidad
+            unidades_netas += m.cantidad
+        elif m.tipo == 'VENTA':
+            # Precio medio VIGENTE en el momento de la venta (AVCO histórico).
+            pmc_venta = (round(invertido / unidades_compradas, 8)
+                         if unidades_compradas > 0 else Decimal('0'))
+            realizada += (m.precio_unitario - pmc_venta) * m.cantidad - m.comision
+            unidades_netas -= m.cantidad
+
+    pmc = (round(invertido / unidades_compradas, 8)
+           if unidades_compradas > 0 else Decimal('0'))
+    coste_base = round(unidades_netas * pmc, 2)
+    valor_total = (round(Decimal(str(valor_unitario)) * unidades_netas, 2)
+                   if valor_unitario is not None else 0)
+    latente = valor_total - coste_base
+    return {
+        'total_activos': unidades_netas,
+        'valor_aportado': invertido,
+        'precio_medio_compra': pmc,
+        'coste_base_actual': coste_base,
+        'valor_total_actual': valor_total,
+        'ganancia_latente': latente,
+        'ganancia_realizada': round(realizada, 2),
+        'rentabilidad_latente_pct': (round(float(latente / coste_base * 100), 2)
+                                     if coste_base > 0 else None),
+    }
+
+
 class Inversion(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
     nombre = models.CharField(max_length=100)
