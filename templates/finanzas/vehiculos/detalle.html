@@ -47,11 +47,18 @@
             <span class="veh-hero-lbl">Mantenimiento real {{ f.anio }}</span>
             <span class="veh-hero-cifra {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
             <span class="veh-hero-sub">
+                {% comment %}
+                La cifra de arriba es la cuota: lo que cuesta el coche al mes con
+                cada gasto repartido entre los meses que cubre. Debajo iba el
+                total pagado del año —«82,85 €/mes» y justo debajo «1.249,34 €
+                en 9 meses»— y no había forma de que salieran las cuentas: son
+                dos cosas distintas. Ahora se dice cuál es cuál.
+                {% endcomment %}
                 {% if f.num_movimientos %}
-                {{ f.real_anual|euro }} en {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }} de {{ f.anio }}
+                {{ f.devengado_anual|euro }} devengados en {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }} de {{ f.anio }}
                 {% if f.provisiones_anual %}
-                <br><span class="veh-provision">de los cuales {{ f.provisiones_anual|euro }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }}
-                de gastos que provisionas todo el año</span>
+                <br><span class="veh-provision">has pagado {{ f.real_anual|euro }}, de los cuales {{ f.provisiones_anual|euro }} en
+                {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }} de gastos que se reparten entre los meses que cubren</span>
                 {% endif %}
                 {% if f.meses_con_datos %}
                 <br>gasto corriente: {{ f.real_mensual|euro }}/mes en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }}
@@ -146,18 +153,32 @@
         <section class="glass-panel veh-card">
             <div class="veh-card-head">
                 <h3>Dónde se va</h3>
-                <span class="veh-card-nota">declarado frente a real, {{ f.anio }}</span>
+                <span class="veh-card-nota">
+                    devengado frente a declarado · {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }} de {{ f.anio }}
+                </span>
             </div>
             {% if f.por_categoria %}
+            {% comment %}
+            Los dos lados van prorrateados y sobre los mismos meses. Antes se
+            ponía el pago entero contra el presupuesto del año —«929 € de 593 €,
+            +336 €» por unos neumáticos que duran tres años— y la fila no se
+            podía leer: ni el 929 era de este año ni el 593 era de estos meses.
+            {% endcomment %}
             <div class="veh-lista">
                 {% for c in f.por_categoria %}
                 <div class="veh-cat">
                     <span class="veh-cat-nombre">{{ c.categoria }}</span>
                     <span class="veh-cat-real">{{ c.real_anual|euro:0 }}</span>
-                    <span class="veh-cat-decl">de {{ c.declarado_anual|euro:0 }}</span>
+                    <span class="veh-cat-decl">de {{ c.declarado_periodo|euro:0 }}</span>
                     <span class="veh-cat-dif {% if c.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">
                         {% if c.diferencia > 0 %}+{% endif %}{{ c.diferencia|euro:0 }}
                     </span>
+                    {% if c.diferido %}
+                    <span class="veh-cat-nota">
+                        has pagado {{ c.pagado_periodo|euro:0 }}; {{ c.diferido|euro:0 }} cubren meses que aún no han llegado
+                        · {{ c.declarado_anual|euro:0 }} declarados al año
+                    </span>
+                    {% endif %}
                 </div>
                 {% endfor %}
             </div>
@@ -239,7 +260,10 @@
 .veh-imputar { display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid var(--border); }
 .veh-imputar select { flex:1; min-width:0; background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:0.8rem; }
 
-.veh-cat { display:grid; grid-template-columns:1fr auto auto auto; gap:10px; align-items:baseline; font-size:0.84rem; }
+.veh-cat { display:grid; grid-template-columns:1fr auto auto auto; gap:4px 10px; align-items:baseline; font-size:0.84rem; }
+/* La nota ocupa toda la fila: explica por qué lo pagado y lo devengado no
+   coinciden, y partida a partida no cabe en una columna. */
+.veh-cat-nota { grid-column:1/-1; font-size:0.71rem; color:var(--muted); }
 .veh-cat-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .veh-cat-real { font-weight:700; font-variant-numeric:tabular-nums; }
 .veh-cat-decl, .veh-cat-dif { font-size:0.76rem; font-variant-numeric:tabular-nums; }

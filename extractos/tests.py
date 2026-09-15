@@ -2074,14 +2074,24 @@ class FueraDePresupuestoTests(TestCase):
         self.assertEqual([b['nombre'] for b in fuera['bloques']], ['Variables'])
         self.assertEqual(fuera['exceso_total'], Decimal('100'))
 
-    def test_el_gasto_anual_se_compara_prorrateado(self):
-        """Un IBI de 520 € al año son 43,33 €/mes de límite."""
+    def test_el_gasto_anual_se_compara_contra_el_año(self):
+        """Un IBI de 520 € al año se compara con 520 €, no con los 43,33 €/mes
+        que se apartan.
+
+        Ese límite mensual no es un tope de agosto: es la doceava parte de lo
+        que cuesta el año, y el recibo llega de golpe. Comparar el pago contra
+        él solo podía decir que te habías pasado el mes en que se paga."""
         self.declarar('IBI', '520', 'anual')
         self.gasto('IBI', '-100')
 
+        self.assertEqual(self.fuera()['categorias'], [])
+
+        # Pasarse del año sí se ve.
+        self.gasto('IBI', '-500', concepto='Ayuntamiento otra vez')
         fuera = self.fuera()['categorias']
         self.assertEqual(fuera[0]['nombre'], 'IBI')
-        self.assertEqual(fuera[0]['limite'], Decimal('43.33'))
+        self.assertEqual(fuera[0]['limite'], Decimal('520.00'))
+        self.assertEqual(fuera[0]['exceso'], Decimal('80.00'))
 
     def test_lo_que_no_tiene_presupuesto_va_aparte(self):
         """Sin límite declarado no está «fuera»: no hay con qué compararlo, y
@@ -2770,16 +2780,24 @@ class PagosAnualesEnElPanelTests(TestCase):
         self.assertEqual([f['nombre'] for f in fuera['categorias']], ['Alimentacion'])
 
     def test_el_bloque_anual_conserva_su_limite_en_la_vista_del_mes(self):
-        """Los 164 €/mes que apartas para la revisión son el presupuesto de ese
-        mes aunque el recibo llegue en septiembre. Se quitaban junto con el pago
-        y el bloque salía «sin límite», cuando tiene uno bien definido."""
-        # Un gasto del bloque anual SIN marcar como pago de provisión: es lo que
-        # se compara contra lo que se aparta cada mes.
+        """El bloque tiene límite en la vista mensual: se quitaba junto con el
+        pago y salía «sin límite», cuando tiene uno bien definido.
+
+        Y ese límite es el del AÑO —los 164 €/mes apartados son su doceava
+        parte—, porque contra el mes el recibo siempre saldría en rojo."""
+        # Un gasto del bloque anual SIN marcar como pago de provisión.
         self.mov('-200', 8, self.mantenimiento)
 
         bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
-        self.assertEqual(bloques['anual']['limite'], Decimal('164.00'))
-        self.assertFalse(bloques['anual']['dentro'])   # 200 > 164
+        self.assertEqual(bloques['anual']['limite'], Decimal('1968.00'))
+        self.assertTrue(bloques['anual']['dentro'])   # 200 de 1.968 al año
+
+    def test_pasarse_del_presupuesto_del_año_sigue_saltando(self):
+        self.mov('-2000', 8, self.mantenimiento)
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        self.assertFalse(bloques['anual']['dentro'])
+        self.assertEqual(bloques['anual']['exceso'], Decimal('32.00'))
 
     def test_el_pago_marcado_sale_del_gasto_pero_el_limite_sigue(self):
         self.mov('-1249.34', 9, self.mantenimiento, provision=self.revision)
@@ -2787,9 +2805,9 @@ class PagosAnualesEnElPanelTests(TestCase):
 
         panel = self.panel(anio=2026, mes=9)
         bloques = {b['tipo']: b for b in panel['bloques']}
-        # Solo cuentan los 50 € no marcados, contra los 164 € que se apartan.
+        # Solo cuentan los 50 € no marcados, contra los 1.968 € del año.
         self.assertEqual(bloques['anual']['importe'], Decimal('50'))
-        self.assertEqual(bloques['anual']['limite'], Decimal('164.00'))
+        self.assertEqual(bloques['anual']['limite'], Decimal('1968.00'))
         self.assertTrue(bloques['anual']['dentro'])
 
 class DividirMovimientoTests(TestCase):
@@ -3180,17 +3198,84 @@ class ReservaQueCubreUnPagoTests(TestCase):
 
     def test_septiembre_ensena_los_272_que_se_pasaron_y_no_los_1200(self):
         """El caso entero, tal cual: «que cuando vaya a septiembre, gastos fijos
-        anuales y lo despliegue, me salga reflejado ahí que me excedí»."""
+        anuales y lo despliegue, me salga reflejado ahí que me excedí».
+
+        Lo que carga el mes son los 272 que la hucha no cubrió. El pago entero
+        no desaparece: se guarda al lado para poder contarlo."""
         pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
         self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
 
         panel = self.panel(anio=2026, mes=9)
         bloques = {b['tipo']: b for b in panel['bloques']}
         self.assertEqual(bloques['anual']['importe'], Decimal('272'))
-        self.assertEqual(bloques['anual']['limite'], Decimal('100.00'))
-        self.assertFalse(bloques['anual']['dentro'])
+        self.assertEqual(bloques['anual']['bruto'], Decimal('1200'))
+        self.assertEqual(bloques['anual']['cubierto'], Decimal('928'))
         self.assertEqual(panel['kpi_gastos'], Decimal('-272'))
         self.assertEqual(panel['cubierto_reserva'], Decimal('928'))
+
+    def test_los_anuales_se_miden_contra_el_presupuesto_del_año(self):
+        """«Fijos anuales no puede tener ahí una asignación de 253 €: es más
+        claro decir del presupuesto anual X, este mes has pagado Y.»
+
+        Los 100 €/mes que apartas para la revisión no son un tope de
+        septiembre: son la doceava parte de los 1.200 que te va a costar el
+        año. Contra el mes, el pago solo podía salir en rojo siempre."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        anual = bloques['anual']
+        self.assertTrue(anual['es_anual'])
+        self.assertEqual(anual['limite'], Decimal('1200'))
+        # Y lo que consume esa provisión es el recibo entero, lo pagues con la
+        # hucha o no: 1.200 de 1.200.
+        self.assertEqual(anual['medido'], Decimal('1200'))
+        self.assertTrue(anual['dentro'])
+
+    def test_la_barra_de_un_bloque_separa_lo_que_puso_la_reserva(self):
+        """«No hay ninguna indicación ahí al respecto»: la fila decía 1 € y no
+        se veía ni el coste ni de dónde había salido."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        anual = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}['anual']
+        # 272 de 1.200 cargan el mes; 928 más los puso la hucha. Entre los dos
+        # tramos, la barra se llena entera.
+        self.assertEqual(anual['pct_barra'], 22.7)
+        self.assertEqual(anual['pct_cubierto'], 77.3)
+
+    def test_la_categoria_tambien_lleva_su_pago_y_su_reserva(self):
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        anual = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}['anual']
+        fila = {c['nombre']: c for c in anual['categorias']}['Mantenimiento vehicular']
+        self.assertEqual(fila['importe'], Decimal('272'))
+        self.assertEqual(fila['bruto'], Decimal('1200'))
+        self.assertEqual(fila['cubierto'], Decimal('928'))
+        self.assertEqual(fila['limite'], Decimal('1200'))
+
+    def test_la_pantalla_cuenta_lo_que_puso_la_reserva_en_el_bloque(self):
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'los puso la reserva')
+        self.assertContains(respuesta, 'que provisionas')
+
+    def test_un_bloque_normal_no_se_mide_contra_el_año(self):
+        """Solo los anuales cambian de unidad: alimentación se sigue juzgando
+        contra su límite del mes."""
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.alimentacion, nombre='Compra',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+        self.mov('-500', 5, self.alimentacion, concepto='Super')
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        self.assertFalse(bloques['variable']['es_anual'])
+        self.assertEqual(bloques['variable']['limite'], Decimal('400'))
+        self.assertFalse(bloques['variable']['dentro'])
 
     def test_y_se_despliega_con_su_categoria_dentro(self):
         pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
