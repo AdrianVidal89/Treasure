@@ -151,6 +151,12 @@ a saltar de una a otra.
         {% if panel.traspasos_cuadran %}<em>cuadran</em>{% endif %}
     </span>
     {% endif %}
+    {% if panel.cubierto_reserva %}
+    <span class="ext-chip" title="Dinero que tenías apartado y has metido para pagar gastos de este mes. Los pagos que cubre solo pesan aquí por la diferencia.">
+        <svg class="icon"><use href="#i-check"/></svg>
+        {{ panel.cubierto_reserva|euro }} puestos por la reserva
+    </span>
+    {% endif %}
     <a href="{% url 'extractos:conciliacion' %}" class="ext-chip">Comparar con el presupuesto →</a>
 </div>
 
@@ -654,6 +660,35 @@ categoría, no podía representar.
     </div>
 </div>
 
+{% comment %}
+Emparejar una reposición de la reserva con el pago que cubre. El dinero que
+sacas de la hucha entra en el banco como un ingreso más, y sin decir a qué pago
+va, el mes en el que pagas la revisión del coche parece un desastre y el mes en
+el que recargas, un milagro. Se empareja pago a pago, no por fondos: así se
+puede decir exactamente que de los 1.200 € puso 928 la reserva.
+{% endcomment %}
+<div class="ext-modal" id="ext-modal-cubrir" hidden>
+    <div class="ext-modal-fondo" data-cerrar-cubrir></div>
+    <div class="ext-modal-caja ext-caja-cubrir" role="dialog" aria-modal="true" aria-labelledby="ext-cubrir-titulo">
+        <div class="ext-modal-head">
+            <span class="ext-modal-titulo" id="ext-cubrir-titulo">¿Qué pago cubre este dinero?</span>
+            <button type="button" class="ext-modal-cerrar" data-cerrar-cubrir aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="ext-modal-cuerpo">
+            <p class="ext-cubrir-intro">
+                <strong id="ext-cubrir-concepto"></strong> ·
+                <span id="ext-cubrir-importe"></span>
+                <span class="text-muted">— si es dinero que tenías apartado, dime a qué
+                pago va y el mes solo cargará lo que la reserva no cubra.</span>
+            </p>
+            <button type="button" class="ext-cubrir-quitar" id="ext-cubrir-quitar" hidden>
+                No es de la reserva: deshacer el emparejamiento
+            </button>
+            <div id="ext-cubrir-lista" class="ext-cubrir-lista"></div>
+        </div>
+    </div>
+</div>
+
 <datalist id="ext-etiquetas-existentes">
     {% for e in panel.etiquetas_hogar %}<option value="{{ e.nombre }}"></option>{% endfor %}
 </datalist>
@@ -841,7 +876,10 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-mov-cuerpo { min-width:0; display:flex; flex-direction:column; gap:3px; }
 .ext-mov-concepto { font-size:0.88rem; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; border-radius:5px; }
 .ext-mov-concepto:hover { color:var(--primary-color); }
-.ext-mov-meta { display:flex; align-items:center; gap:7px; }
+/* Envuelve: en una tableta la fila ya no cabe con la categoría, las
+   etiquetas, el pago anual, el activo y la reserva, y sin esto los
+   botones se aplastaban hasta quedar en «— pag…» y «— …». */
+.ext-mov-meta { display:flex; align-items:center; gap:7px; flex-wrap:wrap; row-gap:5px; }
 .ext-cat-chip { display:inline-flex; border-left:3px solid var(--cc); border-radius:6px; background:color-mix(in srgb, var(--cc) 10%, transparent); }
 .ext-cat-select {
     background:transparent; border:none; color:var(--muted); font-size:0.73rem; font-weight:600;
@@ -909,6 +947,21 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     border:1px solid var(--primary-color); background:var(--app-bg); color:var(--text-color); width:150px;
 }
 .ext-badge-neutro { font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); border:1px solid var(--border-strong); border-radius:999px; padding:1px 7px; }
+.ext-badge-reserva {
+    font-size:0.64rem; font-weight:700; letter-spacing:.02em;
+    color:var(--success, #4f8a5b); border:1px solid color-mix(in srgb, var(--success, #4f8a5b) 45%, transparent);
+    background:color-mix(in srgb, var(--success, #4f8a5b) 12%, transparent);
+    border-radius:999px; padding:1px 8px; white-space:nowrap;
+}
+.ext-cubre-boton {
+    background:transparent; border:1px dashed var(--border-strong); color:var(--muted);
+    font-size:0.68rem; padding:1px 5px; border-radius:999px; max-width:200px; cursor:pointer;
+    opacity:0; transition:opacity .15s; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ext-mov:hover .ext-cubre-boton, .ext-cubre-boton:focus, .ext-cubre-boton.puesto { opacity:1; }
+.ext-cubre-boton.puesto {
+    border-style:solid; border-color:var(--success, #4f8a5b); color:var(--success, #4f8a5b);
+}
 .ext-mov-importe { font-size:0.95rem; font-weight:700; font-variant-numeric:tabular-nums; cursor:pointer; white-space:nowrap; border-radius:5px; }
 .ext-mov-importe:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); }
 .ext-del { background:none; border:none; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .15s, color .15s; padding:4px; }
@@ -1155,6 +1208,25 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     border-radius:999px; padding:1px 8px;
 }
 .ext-caja-dividir { width:min(820px,100%); }
+.ext-caja-cubrir { width:min(620px,100%); }
+.ext-cubrir-intro { font-size:0.86rem; margin:0 0 14px; }
+.ext-cubrir-lista { display:flex; flex-direction:column; gap:6px; max-height:52vh; overflow-y:auto; }
+.ext-cubrir-opcion {
+    display:flex; align-items:baseline; gap:10px; width:100%; text-align:left;
+    background:var(--app-bg); border:1px solid var(--border); border-radius:9px;
+    padding:9px 12px; font-size:0.83rem; color:var(--text-color); cursor:pointer;
+}
+.ext-cubrir-opcion:hover { border-color:var(--primary-color); }
+.ext-cubrir-opcion.elegida { border-color:var(--success, #4f8a5b); background:color-mix(in srgb, var(--success, #4f8a5b) 10%, transparent); }
+.ext-cubrir-que { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ext-cubrir-cuanto { font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
+.ext-cubrir-resto { font-size:0.72rem; color:var(--muted); white-space:nowrap; }
+.ext-cubrir-quitar {
+    background:none; border:1px solid var(--border-strong); border-radius:8px; color:var(--muted);
+    font-size:0.78rem; padding:7px 11px; margin-bottom:12px; cursor:pointer; width:100%;
+}
+.ext-cubrir-quitar:hover { border-color:var(--danger); color:var(--danger); }
+.ext-cubrir-vacio { color:var(--muted); font-style:italic; font-size:0.83rem; padding:16px 0; text-align:center; }
 .ext-dividir-intro { font-size:0.86rem; margin:0 0 14px; }
 .ext-parte { display:grid; grid-template-columns:1.2fr 1fr 1fr 105px 24px; gap:8px; margin-bottom:8px; align-items:center; }
 .ext-parte input, .ext-parte select {
@@ -1185,6 +1257,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     .ext-tag-add,
     .ext-provision-boton,
     .ext-activo-boton,
+    .ext-cubre-boton,
     .ext-del,
     .ext-dividir { opacity:.75; }
 }
@@ -2221,6 +2294,107 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
                justo después de tocarla. */
             window.location.reload();
         }).catch(function () { btnGuardarDiv.disabled = false; });
+    });
+
+    /* ---- Emparejar dinero de la reserva con el pago que cubre ----
+       Ahorras todo el año para la revisión del coche; cuando llega, metes esa
+       reserva en la cuenta. Sin decir a qué pago va, entra como un ingreso
+       suelto y el mes del pago parece un desastre que no fue. Emparejado, el
+       presupuesto del mes solo carga lo que la reserva NO cubrió —y la ficha
+       del coche sigue diciendo que la revisión costó 1.200, porque eso es lo
+       que cuesta, lo pagaras con lo que lo pagaras—. */
+    var URL_CUBRIR = "/extractos/movimiento/__ID__/cubrir/";
+    var URL_CUBRIBLES = "/extractos/movimiento/pagos-cubribles/";
+    var cajaCubrir = document.getElementById('ext-modal-cubrir');
+    var listaCubrir = document.getElementById('ext-cubrir-lista');
+    var movCubriendo = null;
+
+    function guardarCobertura(pagoId) {
+        var body = new URLSearchParams();
+        body.append('cubre', pagoId || '');
+        fetch(URL_CUBRIR.replace('__ID__', movCubriendo), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data.ok) { alert('No se ha podido emparejar ese pago.'); return; }
+            /* Recarga: emparejar cambia el peso del mes, los pilares y los KPI.
+               Dejarlos como estaban haría mentir a la pantalla justo después
+               de tocarla. */
+            window.location.reload();
+        }).catch(function () {});
+    }
+
+    function abrirCubrir(boton) {
+        movCubriendo = boton.dataset.movId;
+        document.getElementById('ext-cubrir-concepto').textContent = boton.dataset.concepto || '';
+        document.getElementById('ext-cubrir-importe').textContent =
+            euroTexto(parseFloat(boton.dataset.importe) || 0);
+        document.getElementById('ext-cubrir-quitar').hidden = !boton.dataset.valor;
+        listaCubrir.innerHTML = '<div class="ext-modal-cargando">Buscando pagos cercanos…</div>';
+        cajaCubrir.hidden = false;
+        document.body.style.overflow = 'hidden';
+
+        var yaPuesto = boton.dataset.valor || '';
+        fetch(URL_CUBRIBLES + '?mov=' + encodeURIComponent(movCubriendo), {
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            listaCubrir.innerHTML = '';
+            if (!data.ok || !data.pagos.length) {
+                listaCubrir.innerHTML = '<div class="ext-cubrir-vacio">' +
+                    'No hay gastos en los dos meses de alrededor a los que emparejar esto.</div>';
+                return;
+            }
+            data.pagos.forEach(function (p) {
+                var op = document.createElement('button');
+                op.type = 'button';
+                op.className = 'ext-cubrir-opcion' +
+                    (String(p.id) === String(yaPuesto) ? ' elegida' : '');
+
+                var que = document.createElement('span');
+                que.className = 'ext-cubrir-que';
+                que.textContent = p.etiqueta;
+
+                var cuanto = document.createElement('span');
+                cuanto.className = 'ext-cubrir-cuanto';
+                cuanto.textContent = euroTexto(p.importe);
+
+                op.append(que, cuanto);
+                /* Si ya le habías metido dinero antes, lo que importa no es lo
+                   que costó sino lo que queda por cubrir. */
+                if (p.cubierto > 0) {
+                    var resto = document.createElement('span');
+                    resto.className = 'ext-cubrir-resto';
+                    resto.textContent = 'ya cubierto ' + euroTexto(p.cubierto) +
+                        ' · falta ' + euroTexto(p.pendiente);
+                    op.appendChild(resto);
+                }
+                op.addEventListener('click', function () { guardarCobertura(p.id); });
+                listaCubrir.appendChild(op);
+            });
+        }).catch(function () {
+            listaCubrir.innerHTML = '<div class="ext-cubrir-vacio">No se ha podido cargar la lista.</div>';
+        });
+    }
+
+    function cerrarCubrir() {
+        cajaCubrir.hidden = true;
+        document.body.style.overflow = '';
+        movCubriendo = null;
+    }
+
+    document.addEventListener('click', function (e) {
+        var boton = e.target.closest('.ext-cubre-boton');
+        if (boton) { e.preventDefault(); abrirCubrir(boton); return; }
+        if (e.target.closest('[data-cerrar-cubrir]')) cerrarCubrir();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && cajaCubrir && !cajaCubrir.hidden) cerrarCubrir();
+    });
+
+    var btnQuitarCobertura = document.getElementById('ext-cubrir-quitar');
+    if (btnQuitarCobertura) btnQuitarCobertura.addEventListener('click', function () {
+        if (movCubriendo) guardarCobertura('');
     });
 
     var btnDeshacer = document.getElementById('ext-dividir-deshacer');

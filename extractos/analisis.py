@@ -15,6 +15,11 @@ las tres piezas:
 
 Todo se calcula sobre el gasto en valor absoluto (`cuenta_como_gasto`), que es
 lo que se está analizando; ingresos y movimientos neutros quedan fuera.
+
+Se pesa por `impacto_real`, no por el importe del recibo: si de una revisión de
+1.200 € pusiste 928 € de la reserva, lo que este mes se salió de lo normal son
+272 €. Aquí siempre se comparan meses sueltos contra meses sueltos, que es
+justo donde la reserva cuenta. Sin coberturas, `impacto_real` es `-importe`.
 """
 
 from collections import defaultdict
@@ -130,9 +135,10 @@ def analizar_mes(movimientos, anio, mes, bloque=None, categoria_id=None,
 
 
 def _suma(movimientos):
-    """Gasto en positivo. Un abono dentro de una categoría de gasto (una
-    devolución) resta, que es justo lo que hace en la realidad."""
-    return sum((-m.importe for m in movimientos), Decimal('0'))
+    """Gasto en positivo, ya descontado lo que puso la reserva. Un abono dentro
+    de una categoría de gasto (una devolución) resta, que es justo lo que hace
+    en la realidad."""
+    return sum((m.impacto_real for m in movimientos), Decimal('0'))
 
 
 def _puente(del_mes, previos, num_referencia):
@@ -142,11 +148,11 @@ def _puente(del_mes, previos, num_referencia):
     entender por qué el mes cuadra o no."""
     actual = defaultdict(lambda: Decimal('0'))
     for m in del_mes:
-        actual[_nombre_categoria(m)] += -m.importe
+        actual[_nombre_categoria(m)] += m.impacto_real
 
     historico = defaultdict(lambda: Decimal('0'))
     for m in previos:
-        historico[_nombre_categoria(m)] += -m.importe
+        historico[_nombre_categoria(m)] += m.impacto_real
 
     filas = []
     for nombre in set(actual) | set(historico):
@@ -190,12 +196,12 @@ def _frente_al_presupuesto(del_mes, previos, num_referencia, limites):
             'id': m.categoria_id, 'nombre': _nombre_categoria(m),
             'importe': Decimal('0'), 'num': 0,
         })
-        fila['importe'] += -m.importe
+        fila['importe'] += m.impacto_real
         fila['num'] += 1
 
     historico = defaultdict(lambda: Decimal('0'))
     for m in previos:
-        historico[m.categoria_id] += -m.importe
+        historico[m.categoria_id] += m.impacto_real
 
     fuera, sin_limite = [], []
     for categoria_id, fila in actual.items():
@@ -242,18 +248,18 @@ def _por_bloque(del_mes, previos, num_referencia, limites=None):
     for m in del_mes:
         tipo = m.categoria.tipo if m.categoria else 'sin'
         datos = actual[tipo]
-        datos['importe'] += -m.importe
+        datos['importe'] += m.impacto_real
         cat = datos['categorias'].setdefault(
             _nombre_categoria(m),
             {'nombre': _nombre_categoria(m), 'id': m.categoria_id,
              'importe': Decimal('0'), 'num': 0},
         )
-        cat['importe'] += -m.importe
+        cat['importe'] += m.impacto_real
         cat['num'] += 1
 
     historico = defaultdict(lambda: Decimal('0'))
     for m in previos:
-        historico[m.categoria.tipo if m.categoria else 'sin'] += -m.importe
+        historico[m.categoria.tipo if m.categoria else 'sin'] += m.impacto_real
 
     total = sum((d['importe'] for d in actual.values()), Decimal('0'))
 
@@ -290,7 +296,7 @@ def _por_categoria(del_mes, previos, num_referencia):
 
     historico = defaultdict(lambda: Decimal('0'))
     for m in previos:
-        historico[m.categoria_id] += -m.importe
+        historico[m.categoria_id] += m.impacto_real
 
     filas = []
     for categoria_id, movs in grupos.items():
@@ -371,10 +377,10 @@ def _recurrencia(del_mes, previos, meses_con_datos):
     for m in del_mes:
         visto = len(presencia[m.comercio or 'otros'])
         if _es_recurrente(visto, meses_con_datos):
-            recurrente += -m.importe
+            recurrente += m.impacto_real
             movs_recurrentes.append(m)
         else:
-            puntual += -m.importe
+            puntual += m.impacto_real
             movs_puntuales.append(m)
     # Las listas viajan con los totales: «cuánto» sin «cuáles» obliga a salir de
     # la pantalla a buscarlo a mano.

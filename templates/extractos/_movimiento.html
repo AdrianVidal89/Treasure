@@ -43,9 +43,11 @@ categorías por bloque, provisiones y activos).
                         data-valor="{{ m.categoria_id|default_if_none:'' }}">{% if m.categoria %}{{ m.categoria.nombre }}{% else %}Sin categorizar{% endif %}</button>
             </span>
             {% endif %}
-            {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
+            {% if m.es_cobertura %}<span class="ext-badge-reserva" title="Dinero sacado de la reserva para pagar «{{ m.cubre.concepto }}». No cuenta como ingreso: rebaja ese pago.">de la reserva</span>
+            {% elif m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
             {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
             {% if m.es_pago_provision %}<span class="ext-badge-provision" title="Pago de {{ m.partida_conciliada.nombre }}: se compara en el año, no en el mes">anual</span>{% endif %}
+            {% if m.cubierto_por_reserva %}<span class="ext-badge-reserva" title="De este pago, {{ m.cubierto_por_reserva|euro }} salieron de la reserva. Al presupuesto del mes solo le pesan {{ m.impacto_real|euro }}; el coste del activo sigue siendo el total.">reserva {{ m.cubierto_por_reserva|euro:0 }} · pesó {{ m.impacto_real|euro:0 }}</span>{% endif %}
 
             <span class="ext-tags" data-mov-id="{{ m.id }}">
                 {% for e in m.etiquetas.all %}
@@ -62,6 +64,19 @@ categorías por bloque, provisiones y activos).
                     data-mov-id="{{ m.id }}" data-molde="ext-molde-provision" data-clase="ext-provision-select"
                     data-valor="{{ m.partida_conciliada_id|default_if_none:'' }}"
                     title="¿Es uno de los pagos de un gasto no mensual (IBI, seguro…)? Así no descuadra el mes.">{% if m.partida_conciliada_id %}{{ m.partida_conciliada.nombre }} ({{ m.partida_conciliada.get_periodicidad_display|lower }}){% else %}— pago anual —{% endif %}</button>
+            {% endif %}
+
+            {% comment %}
+            El dinero de la reserva es un ingreso en el banco pero no es un
+            ingreso de verdad: es ahorro tuyo volviendo al flujo para pagar algo
+            concreto. Emparejarlo con ese pago es lo que deja el mes contando
+            solo la diferencia.
+            {% endcomment %}
+            {% if m.importe >= 0 and not m.es_parte and not m.esta_dividido %}
+            <button type="button" class="ext-cubre-boton {% if m.es_cobertura %}puesto{% endif %}"
+                    data-mov-id="{{ m.id }}" data-importe="{{ m.importe|unlocalize }}"
+                    data-concepto="{{ m.concepto }}" data-valor="{{ m.cubre_id|default_if_none:'' }}"
+                    title="¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% else %}— de la reserva —{% endif %}</button>
             {% endif %}
 
             {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
