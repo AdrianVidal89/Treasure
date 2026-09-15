@@ -16,6 +16,7 @@ urlpatterns = [
     # sigan llevando a algún sitio.
     path('analisis/', views.analisis, name='analisis'),
     path('categoria/desglose/', views.movimientos_de_categoria, name='desglose_categoria'),
+    path('mes/filas/', views.filas_del_mes, name='filas_mes'),
     path('movimientos/lote/', views.accion_lote, name='accion_lote'),
     path('etiquetas/', views.etiquetas, name='etiquetas'),
     path('etiquetas/comercio/', views.etiquetar_comercio, name='etiquetar_comercio'),

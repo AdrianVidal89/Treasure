@@ -25,17 +25,18 @@ categorías por bloque, provisiones y activos).
     <div class="ext-mov-cuerpo">
         <div class="ext-mov-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</div>
         <div class="ext-mov-meta">
+            {% comment %}
+            El desplegable NO se pinta aquí. Las opciones son las mismas para
+            todas las filas, así que repetirlas por movimiento hacía que una
+            página con el histórico entero pesara veinte megas: el 79 % del HTML
+            eran estos tres <select> copiados miles de veces. Se pinta un botón
+            con el valor actual y el <select> de verdad se clona del molde que
+            hay al final de la página cuando el usuario va a usarlo.
+            {% endcomment %}
             <span class="ext-cat-chip" style="--cc:{% if m.categoria %}{{ panel.colores_tipo|get_item:m.categoria.tipo }}{% else %}#9aa5a0{% endif %};">
-                <select class="ext-cat-select" data-mov-id="{{ m.id }}">
-                    <option value="" {% if not m.categoria_id %}selected{% endif %}>Sin categorizar</option>
-                    {% for b in panel.bloques_categorias %}
-                    <optgroup label="{{ b.etiqueta }}">
-                        {% for c in b.categorias %}
-                        <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
-                        {% endfor %}
-                    </optgroup>
-                    {% endfor %}
-                </select>
+                <button type="button" class="ext-campo-perezoso ext-cat-boton" data-mov-id="{{ m.id }}"
+                        data-molde="ext-molde-categoria" data-clase="ext-cat-select"
+                        data-valor="{{ m.categoria_id|default_if_none:'' }}">{% if m.categoria %}{{ m.categoria.nombre }}{% else %}Sin categorizar{% endif %}</button>
             </span>
             {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
             {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
@@ -52,27 +53,17 @@ categorías por bloque, provisiones y activos).
                     title="Etiquetar (un viaje, una obra…)">+</button>
 
             {% if panel.provisiones %}
-            <select class="ext-provision-select {% if m.partida_conciliada_id %}puesto{% endif %}" data-mov-id="{{ m.id }}"
-                    title="¿Es uno de los pagos de un gasto no mensual (IBI, seguro…)? Así no descuadra el mes.">
-                <option value="">— no es un pago anual —</option>
-                {% for p in panel.provisiones %}
-                <option value="{{ p.id }}" {% if m.partida_conciliada_id == p.id %}selected{% endif %}>{{ p.nombre }} ({{ p.get_periodicidad_display|lower }})</option>
-                {% endfor %}
-            </select>
+            <button type="button" class="ext-campo-perezoso ext-provision-boton {% if m.partida_conciliada_id %}puesto{% endif %}"
+                    data-mov-id="{{ m.id }}" data-molde="ext-molde-provision" data-clase="ext-provision-select"
+                    data-valor="{{ m.partida_conciliada_id|default_if_none:'' }}"
+                    title="¿Es uno de los pagos de un gasto no mensual (IBI, seguro…)? Así no descuadra el mes.">{% if m.partida_conciliada_id %}{{ m.partida_conciliada.nombre }} ({{ m.partida_conciliada.get_periodicidad_display|lower }}){% else %}— pago anual —{% endif %}</button>
             {% endif %}
 
             {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
-            <select class="ext-activo-select {% if m.clave_activo %}puesto{% endif %}" data-mov-id="{{ m.id }}"
-                    title="¿Este gasto es de un vehículo o de una propiedad?">
-                <option value="">— sin activo —</option>
-                {% for g in panel.grupos_activos %}{% if g.opciones %}
-                <optgroup label="{{ g.etiqueta }}">
-                    {% for o in g.opciones %}
-                    <option value="{{ o.clave }}" {% if m.clave_activo == o.clave %}selected{% endif %}>{{ o.nombre }}</option>
-                    {% endfor %}
-                </optgroup>
-                {% endif %}{% endfor %}
-            </select>
+            <button type="button" class="ext-campo-perezoso ext-activo-boton {% if m.clave_activo %}puesto{% endif %}"
+                    data-mov-id="{{ m.id }}" data-molde="ext-molde-activo" data-clase="ext-activo-select"
+                    data-valor="{{ m.clave_activo }}"
+                    title="¿Este gasto es de un vehículo o de una propiedad?">{% if m.activo_imputado %}{{ m.activo_imputado.nombre }}{% else %}— activo —{% endif %}</button>
             {% endif %}
         </div>
     </div>

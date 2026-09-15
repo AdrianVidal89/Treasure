@@ -33,6 +33,11 @@ CAMPOS_MAPEO = ('fecha', 'concepto', 'concepto_extra', 'importe', 'saldo',
 # regla ('farmacia ronda' / 'farmacia rondo'). Solo se sugiere: aplica el usuario.
 UMBRAL_SIMILITUD = 0.85
 
+# A partir de cuántos movimientos filtrados se cargan los meses al desplegarlos
+# en vez de pintarlos todos de golpe. Trescientos es aproximadamente un trimestre
+# de una cuenta normal: por debajo, la página entera sigue siendo pequeña.
+UMBRAL_DIFERIR_MESES = 300
+
 MESES_ES = [
     '', 'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
@@ -613,7 +618,10 @@ def _fuera_de_presupuesto(bloques):
                 'exceso': b['exceso'], 'num_categorias': b['num_categorias'],
                 'categorias': b['categorias'][:5],
             })
-        if b['tipo'] == 'discrecional':
+        # Ni en discrecionales ni en ningún bloque cuyo límite se declare
+        # entero: ahí el presupuesto es del bloque, y avisar por categoría sería
+        # reprochar haberse pasado de un límite que nadie puso.
+        if b['tipo'] == 'discrecional' or b.get('techo_propio'):
             continue
         for c in b['categorias']:
             fila = dict(c, bloque=b['etiqueta'], color=b['color'], tipo=b['tipo'])
@@ -715,6 +723,10 @@ def _panel_context(hogar, todos, request):
     )
     limite_bloque = presupuesto.por_bloque(hogar)
     limite_categoria = presupuesto.por_categoria(hogar)
+    # Los bloques cuyo límite se declara entero: dentro no se espera presupuesto
+    # por categoría, así que las suyas se enseñan con su peso y no con un «de X»
+    # que no existe.
+    techos_propios = presupuesto.techo_de_bloque(hogar)
 
     bloques = []
     for tipo in list(ORDEN_TIPOS) + ['sin']:
@@ -735,6 +747,7 @@ def _panel_context(hogar, todos, request):
             ))
         bloques.append({
             'tipo': tipo,
+            'techo_propio': tipo in techos_propios,
             'etiqueta': ETIQUETAS_TIPO.get(tipo, 'Sin categorizar'),
             'importe': importe,
             'pct': round(float(importe / total_gasto_abs * 100), 1) if total_gasto_abs else 0,
@@ -774,15 +787,28 @@ def _panel_context(hogar, todos, request):
         else:
             g['gastos'] += m.importe
 
+    # Con el histórico entero a la vista, pintar los apuntes de los treinta y
+    # seis meses eran veinte megas de HTML y cuatro segundos de render para ver
+    # el mes de arriba. Los meses plegados se mandan SIN sus filas y se piden al
+    # desplegarlos; la cabecera con sus totales sí viaja siempre, que es lo que
+    # se lee de un vistazo. Por debajo del umbral no se difiere nada: pedir por
+    # red lo que cabe de sobra en la respuesta solo añade latencia.
+    diferir = len(movimientos) > UMBRAL_DIFERIR_MESES
     grupos = []
-    for (anio, mes), datos in sorted(grupos_mes.items(), reverse=True):
+    for indice, ((anio, mes), datos) in enumerate(sorted(grupos_mes.items(), reverse=True)):
+        # El primero viene siempre pintado: es el que se ve al abrir.
+        pendiente = diferir and indice > 0
         grupos.append({
+            'anio': anio,
+            'mes': mes,
             'etiqueta': f"{MESES_ES[mes]} {anio}",
             'ingresos': datos['ingresos'],
             'gastos': datos['gastos'],
             'neutro': datos['neutro'],
             'neto': datos['ingresos'] + datos['gastos'],
-            'movimientos': datos['movimientos'],
+            'num': len(datos['movimientos']),
+            'pendiente': pendiente,
+            'movimientos': [] if pendiente else datos['movimientos'],
         })
 
     categorias_hogar = CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre')
@@ -1060,6 +1086,46 @@ def eliminar_movimiento(request, pk):
     extracto.num_movimientos = extracto.movimientos.count()
     extracto.save(update_fields=['num_movimientos'])
     return JsonResponse({'ok': True})
+
+
+@login_required
+def filas_del_mes(request):
+    """Las filas de un mes concreto, para cuando se despliega en el listado.
+
+    El listado manda los meses plegados sin sus apuntes —si no, ver el mes de
+    arriba costaba cargar el histórico entero— y los pide aquí al abrirlos.
+    Aplica los MISMOS filtros que la pantalla: lo que se despliega tiene que
+    sumar lo que dice la cabecera del mes.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+
+    anio = _entero_o_none(request.GET.get('anio_mes_anio'))
+    mes = _entero_o_none(request.GET.get('anio_mes_mes'))
+    if not anio or not mes or not 1 <= mes <= 12:
+        return JsonResponse({'ok': False, 'error': 'mes_invalido'}, status=400)
+
+    extracto_id = _entero_o_none(request.GET.get('extracto'))
+    base = MovimientoBancario.objects.filter(hogar=hogar)
+    if extracto_id:
+        # El panel también se usa dentro del detalle de UN extracto; sin esto,
+        # desplegar un mes ahí traería los apuntes de todos los extractos.
+        base = base.filter(extracto_id=extracto_id)
+    todos = list(
+        base.select_related('categoria', 'partida_conciliada')
+            .prefetch_related('etiquetas').order_by('-fecha')
+    )
+
+    # El año y el mes de la fila mandan sobre los de la URL: se está pidiendo
+    # ESE mes, no el que hubiera filtrado la pantalla.
+    f = _leer_filtros(request, anio=str(anio), mes=str(mes))
+    movimientos = [m for m in todos if _pasa_filtro(m, f)]
+
+    return render(request, 'extractos/_filas_mes.html', {
+        'movimientos': movimientos,
+        'panel': _contexto_edicion(hogar),
+    })
 
 
 @login_required
@@ -1363,10 +1429,21 @@ def conciliacion(request):
     total_declarado = Decimal('0')
     total_observado = Decimal('0')
 
+    # Las partidas declaradas para el bloque entero no cuelgan de ninguna
+    # categoría: son el techo del bloque. Se llevan aparte para sumarlas al
+    # bloque sin inventarles una fila de categoría que no existe.
+    techo_bloque = defaultdict(lambda: Decimal('0'))
+    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True, categoria__isnull=True):
+        if p.bloque and not (solo_mes and p.periodicidad != 'mensual'):
+            techo_bloque[p.bloque] += p.importe_mensual
+
     for cat in categorias:
-        suyas = cat.partidas.filter(activo=True)
-        if solo_mes:
-            suyas = suyas.filter(periodicidad='mensual')
+        # Las partidas vienen del prefetch; filtrar en Python evita una consulta
+        # por categoría.
+        suyas = [
+            p for p in cat.partidas.all()
+            if p.activo and not (solo_mes and p.periodicidad != 'mensual')
+        ]
         declarado = sum((p.importe_mensual for p in suyas), Decimal('0'))
         obs_mensual = (observado.get(cat.id, Decimal('0')) / num_meses)
         if declarado == 0 and obs_mensual == 0:
@@ -1391,6 +1468,22 @@ def conciliacion(request):
         bloque['observado'] += obs_mensual
         total_declarado += declarado
         total_observado += obs_mensual
+
+    # Un bloque con techo propio se compara contra ESE número, no contra la suma
+    # de lo declarado en sus categorías: es lo que significa «tengo mil quinientos
+    # para caprichos, y dentro doscientos para restaurantes».
+    for tipo, techo in techo_bloque.items():
+        bloque = por_bloque.setdefault(tipo, {
+            'tipo': tipo,
+            'etiqueta': ETIQUETAS_TIPO.get(tipo, tipo),
+            'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
+            'filas': [],
+            'declarado': Decimal('0'),
+            'observado': Decimal('0'),
+        })
+        total_declarado += techo - bloque['declarado']
+        bloque['declarado'] = techo
+        bloque['techo_propio'] = True
 
     bloques = []
     for tipo in ORDEN_TIPOS:
@@ -1842,75 +1935,28 @@ def _entero_o_none(valor):
 
 @login_required
 def sin_categorizar(request):
-    """Agrupa por comercio todo lo que quedó sin categorizar y permite asignar
-    la categoría a un grupo entero de una vez, recordándolo para el futuro."""
-    profile, hogar = _get_hogar(request)
-    if not hogar:
-        messages.error(request, "Necesitas pertenecer a un hogar.")
-        return redirect('dashboard')
+    """La pantalla de «Sin categorizar» ya no existe por separado.
 
-    _crear_categorias_predefinidas(hogar)
+    Hacía una cosa —agrupar lo que quedó en blanco y nombrarlo de una vez— que
+    Movimientos ya hace mejor: se filtra por «Sin categorizar», se marcan los
+    que sean y se cambian en bloque, o se cambia uno y el aviso ofrece aplicarlo
+    a todo su comercio y recordarlo como regla. Tener las dos era mantener dos
+    sitios donde clasificar, y solo uno con los filtros y el buscador.
 
-    # Incluye también los positivos: una nómina o una devolución sin clasificar
-    # es tan invisible en el análisis como un gasto sin clasificar.
-    pendientes = list(
-        MovimientoBancario.objects.filter(
-            hogar=hogar, categoria__isnull=True, es_traspaso=False,
-        ).order_by('-fecha')
-    )
-
-    grupos_por_comercio = defaultdict(list)
-    for mov in pendientes:
-        grupos_por_comercio[mov.comercio or normalizar_comercio(mov.concepto)].append(mov)
-
-    claves = list(grupos_por_comercio.keys())
-    grupos = []
-    for clave, movs in grupos_por_comercio.items():
-        # El nombre que se enseña es el concepto más repetido del grupo: es el
-        # que el usuario reconoce, no la clave normalizada.
-        conteo = defaultdict(int)
-        for m in movs:
-            conteo[m.concepto] += 1
-        etiqueta = max(conteo.items(), key=lambda kv: kv[1])[0]
-
-        similares = [
-            otra for otra in difflib.get_close_matches(clave, claves, n=5, cutoff=UMBRAL_SIMILITUD)
-            if otra != clave
-        ]
-        total = sum((m.importe for m in movs), Decimal('0'))
-        grupos.append({
-            'comercio': clave,
-            'etiqueta': etiqueta,
-            'num': len(movs),
-            'total': total,
-            'es_ingreso': total >= 0,
-            'desde': min(m.fecha for m in movs),
-            'hasta': max(m.fecha for m in movs),
-            'conceptos': sorted({m.concepto for m in movs})[:5],
-            'similares': [
-                {'comercio': s, 'num': len(grupos_por_comercio[s])} for s in similares
-            ],
-        })
-
-    # Primero el gasto y dentro de cada bloque lo que más pesa: así unas pocas
-    # decisiones cubren la mayor parte de lo que falta por clasificar.
-    grupos.sort(key=lambda g: (g['es_ingreso'], -abs(g['total'])))
-
-    return render(request, 'extractos/sin_categorizar.html', {
-        'grupos': grupos,
-        'total_movimientos': len(pendientes),
-        'total_importe': sum((m.importe for m in pendientes), Decimal('0')),
-        'bloques_categorias': _categorias_por_bloque(hogar),
-        'num_reglas': ReglaCategorizacion.objects.filter(hogar=hogar, activo=True).count(),
-    })
+    La ruta se conserva redirigiendo al listado con el filtro puesto, porque
+    estaba enlazada desde la conciliación, desde las reglas y desde los
+    marcadores del usuario.
+    """
+    destino = reverse('extractos:listar')
+    return redirect(f'{destino}?categoria=sin')
 
 
 @login_required
 def aprender_regla(request):
     """Crea (o actualiza) una regla y la aplica a los movimientos que encajen.
 
-    Es el punto único que usan tanto la pantalla «Sin categorizar» como el aviso
-    que sale al cambiar la categoría en el listado."""
+    Es el punto único que usan tanto el formulario de la pantalla antigua como el
+    aviso que sale al cambiar la categoría en el listado."""
     profile, hogar = _get_hogar(request)
     if not hogar:
         return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
@@ -1928,7 +1974,7 @@ def aprender_regla(request):
         if es_ajax:
             return JsonResponse({'ok': False, 'error': 'datos_incompletos'}, status=400)
         messages.error(request, "Indica un patrón y una categoría.")
-        return redirect('extractos:sin_categorizar')
+        return redirect(f"{reverse('extractos:listar')}?categoria=sin")
 
     incluir = request.POST.get('incluir_categorizados') == '1'
 
@@ -1951,7 +1997,7 @@ def aprender_regla(request):
             f"«{categoria.nombre}» se aplicará automáticamente a este comercio "
             "en las próximas importaciones.",
         )
-        return redirect('extractos:sin_categorizar')
+        return redirect(f"{reverse('extractos:listar')}?categoria=sin")
 
     # Alcance del cambio. 'mes' lo acota al mes que se está revisando; por
     # defecto se aplica a todo el histórico, que es lo que hacía siempre.
@@ -1962,7 +2008,7 @@ def aprender_regla(request):
         if es_ajax:
             return JsonResponse({'ok': False, 'error': 'mes_invalido'}, status=400)
         messages.error(request, "No se ha podido identificar el mes a corregir.")
-        return redirect('extractos:sin_categorizar')
+        return redirect(f"{reverse('extractos:listar')}?categoria=sin")
 
     # Aplicar y recordar son decisiones distintas: el listado aplica primero y
     # pregunta después si además debe quedarse como regla. La pantalla de «Sin
@@ -1990,7 +2036,7 @@ def aprender_regla(request):
         f"{aplicados} movimiento(s) categorizados como «{categoria.nombre}»."
         + (" Se aplicará automáticamente en las próximas importaciones." if recordar else "")
     )
-    return redirect('extractos:sin_categorizar')
+    return redirect(f"{reverse('extractos:listar')}?categoria=sin")
 
 
 @login_required

@@ -9,10 +9,6 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
     <a href="{% url 'extractos:conciliacion' %}{{ periodo }}" class="ext-nav-tab {% if activo == 'conciliacion' %}activa{% endif %}">
         <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
     </a>
-    <a href="{% url 'extractos:sin_categorizar' %}" class="ext-nav-tab {% if activo == 'sin_categorizar' %}activa{% endif %}">
-        <svg class="icon"><use href="#i-search"/></svg> Sin categorizar
-        {% if sin_categorizar %}<span class="ext-nav-badge">{{ sin_categorizar }}</span>{% endif %}
-    </a>
     <a href="{% url 'finanzas:listar_categorias' %}" class="ext-nav-tab {% if activo == 'categorias' %}activa{% endif %}">
         <svg class="icon"><use href="#i-tag"/></svg> Categorías
     </a>

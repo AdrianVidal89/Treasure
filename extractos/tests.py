@@ -402,17 +402,20 @@ class IngresosTests(TestCase):
         # Los porcentajes reparten el 100 % del gasto observado.
         self.assertAlmostEqual(sum(b['pct'] for b in panel['bloques']), 100, delta=0.5)
 
-    def test_los_ingresos_sin_clasificar_salen_en_sin_categorizar(self):
+    def test_los_ingresos_sin_clasificar_tambien_salen_al_filtrar(self):
+        """Una nómina sin clasificar es tan invisible en el análisis como un
+        gasto sin clasificar: el filtro tiene que traer las dos cosas."""
         extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
-        MovimientoBancario.objects.create(
+        ingreso = MovimientoBancario.objects.create(
             extracto=extracto, hogar=self.hogar, fecha=date(2026, 7, 3),
             concepto='Ingreso raro de alguien', importe=Decimal('250.00'),
         )
         self.client.force_login(self.user)
-        respuesta = self.client.get(reverse('extractos:sin_categorizar'))
-        grupos = {g['comercio']: g for g in respuesta.context['grupos']}
-        self.assertIn('ingreso raro de alguien', grupos)
-        self.assertTrue(grupos['ingreso raro de alguien']['es_ingreso'])
+        panel = self.client.get(
+            reverse('extractos:listar'), {'categoria': 'sin'},
+        ).context['panel']
+        vistos = [m.id for g in panel['grupos'] for m in g['movimientos']]
+        self.assertIn(ingreso.id, vistos)
 
 
 class ConciliacionTests(TestCase):
@@ -722,16 +725,28 @@ class AprendizajeTests(TestCase):
         # Ofrecer no es aplicar: sin confirmación no se crea ninguna regla.
         self.assertFalse(ReglaCategorizacion.objects.filter(hogar=self.hogar).exists())
 
-    def test_pantalla_sin_categorizar_agrupa_por_comercio(self):
+    def test_la_ruta_vieja_de_sin_categorizar_lleva_al_listado_filtrado(self):
+        """La pantalla se fundió con Movimientos: filtrar por «Sin categorizar»
+        hace lo mismo y además tiene el buscador, el periodo y el cambio en
+        bloque."""
+        respuesta = self.client.get(reverse('extractos:sin_categorizar'))
+        self.assertRedirects(
+            respuesta, reverse('extractos:listar') + '?categoria=sin',
+        )
+
+    def test_el_filtro_de_sin_categorizar_trae_solo_lo_que_falta(self):
         for _ in range(3):
             self.crear_movimiento('Malacabeza')
-        self.crear_movimiento('Otro sitio cualquiera')
+        clasificado = self.crear_movimiento('Otro sitio cualquiera')
+        clasificado.categoria = self.ocio
+        clasificado.save()
 
-        respuesta = self.client.get(reverse('extractos:sin_categorizar'))
-        self.assertEqual(respuesta.status_code, 200)
-        grupos = {g['comercio']: g for g in respuesta.context['grupos']}
-        self.assertEqual(grupos['malacabeza']['num'], 3)
-        self.assertEqual(grupos['malacabeza']['total'], Decimal('-30.00'))
+        panel = self.client.get(
+            reverse('extractos:listar'), {'categoria': 'sin'},
+        ).context['panel']
+        vistos = [m for g in panel['grupos'] for m in g['movimientos']]
+        self.assertEqual(len(vistos), 3)
+        self.assertNotIn(clasificado.id, [m.id for m in vistos])
 
     def test_desactivar_una_regla_la_deja_de_aplicar(self):
         self.client.post(reverse('extractos:aprender_regla'), {
@@ -917,13 +932,10 @@ class AprendizajeTests(TestCase):
         )
         ajeno = self.crear_movimiento('Otro sitio cualquiera')
 
-        # El patrón que ofrece la plantilla es el comercio normalizado del grupo.
-        grupos = {g['comercio']: g for g in
-                  self.client.get(reverse('extractos:sin_categorizar')).context['grupos']}
-        self.assertIn('malacabeza', grupos)
-
+        # El patrón es el comercio normalizado, que es lo que el aviso del
+        # listado ofrece al cambiar la categoría de uno de ellos.
         respuesta = self.client.post(reverse('extractos:aprender_regla'), {
-            'categoria_id': self.ocio.id, 'patron': grupos['malacabeza']['comercio'],
+            'categoria_id': self.ocio.id, 'patron': 'malacabeza',
         }, follow=True)
         self.assertEqual(respuesta.status_code, 200)
 
@@ -943,9 +955,12 @@ class AprendizajeTests(TestCase):
         )
         ajeno.refresh_from_db()
         self.assertIsNone(ajeno.categoria)
-        # Y el grupo desaparece de la pantalla: no queda nada que repasar.
-        restantes = self.client.get(reverse('extractos:sin_categorizar')).context['grupos']
-        self.assertNotIn('malacabeza', {g['comercio'] for g in restantes})
+        # Y ya no quedan de ese comercio por clasificar.
+        panel = self.client.get(
+            reverse('extractos:listar'), {'categoria': 'sin'},
+        ).context['panel']
+        pendientes = [m.comercio for g in panel['grupos'] for m in g['movimientos']]
+        self.assertNotIn('malacabeza', pendientes)
 
     def test_sin_categorizar_arrastra_tambien_los_comercios_parecidos_marcados(self):
         """Los «también parecidos» viajan como patrones extra del mismo envío:
@@ -2549,3 +2564,117 @@ class CambioEnLoteTests(TestCase):
         respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 8})
         self.assertContains(respuesta, 'ext-lote')
         self.assertContains(respuesta, 'ext-check')
+
+
+class ListadoLigeroTests(TestCase):
+    """La pantalla de movimientos no puede mandar el histórico entero.
+
+    Con tres años importados llegaba a veinte megas de HTML y cuatro segundos de
+    render: el 79 % eran los tres desplegables de cada fila repetidos miles de
+    veces, y el resto, los apuntes de meses que estaban plegados."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+
+    def sembrar(self, por_mes, meses=(6, 7, 8)):
+        for mes in meses:
+            for dia in range(1, por_mes + 1):
+                MovimientoBancario.objects.create(
+                    extracto=self.extracto, hogar=self.hogar,
+                    fecha=date(2026, mes, (dia % 28) + 1),
+                    concepto=f'Compra {mes}-{dia}', importe=Decimal('-10.00'),
+                    saldo=Decimal(str(1000 + dia)),
+                )
+
+    def test_la_fila_no_repite_las_opciones_de_los_desplegables(self):
+        """Las opciones son las mismas en todas las filas: van una vez en un
+        molde y se clonan al usarlas."""
+        self.sembrar(2, meses=(8,))
+        contenido = self.client.get(reverse('extractos:listar')).content.decode()
+
+        self.assertIn('id="ext-molde-categoria"', contenido)
+        # El molde trae las opciones; las filas, solo un botón con el valor.
+        self.assertEqual(contenido.count('<template id="ext-molde-categoria">'), 1)
+        self.assertIn('ext-cat-boton', contenido)
+
+    def test_los_meses_plegados_llegan_sin_sus_movimientos(self):
+        self.sembrar(150)   # 450 movimientos, por encima del umbral
+        panel = self.client.get(reverse('extractos:listar')).context['panel']
+
+        primero, resto = panel['grupos'][0], panel['grupos'][1:]
+        self.assertFalse(primero['pendiente'])
+        self.assertEqual(len(primero['movimientos']), 150)
+        for grupo in resto:
+            self.assertTrue(grupo['pendiente'])
+            self.assertEqual(grupo['movimientos'], [])
+            # La cabecera sí viaja: el total del mes se lee sin desplegarlo.
+            self.assertEqual(grupo['num'], 150)
+            self.assertEqual(grupo['gastos'], Decimal('-1500.00'))
+
+    def test_con_pocos_movimientos_no_se_difiere_nada(self):
+        """Pedir por red lo que cabe de sobra en la respuesta solo añade espera."""
+        self.sembrar(10)
+        panel = self.client.get(reverse('extractos:listar')).context['panel']
+        self.assertTrue(all(not g['pendiente'] for g in panel['grupos']))
+        self.assertTrue(all(g['movimientos'] for g in panel['grupos']))
+
+    def test_desplegar_un_mes_trae_exactamente_sus_filas(self):
+        self.sembrar(150)
+        respuesta = self.client.get(reverse('extractos:filas_mes'), {
+            'anio_mes_anio': 2026, 'anio_mes_mes': 7,
+        })
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(len(respuesta.context['movimientos']), 150)
+        self.assertTrue(all(m.fecha.month == 7 for m in respuesta.context['movimientos']))
+
+    def test_el_mes_desplegado_respeta_los_filtros_de_la_pantalla(self):
+        """Lo que se despliega tiene que sumar lo que dice la cabecera del mes."""
+        self.sembrar(150)
+        ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+        marcado = MovimientoBancario.objects.filter(fecha__month=7).first()
+        marcado.categoria = ocio
+        marcado.save()
+
+        respuesta = self.client.get(reverse('extractos:filas_mes'), {
+            'anio_mes_anio': 2026, 'anio_mes_mes': 7, 'categoria': ocio.id,
+        })
+        self.assertEqual([m.id for m in respuesta.context['movimientos']], [marcado.id])
+
+    def test_un_mes_inventado_no_devuelve_nada(self):
+        respuesta = self.client.get(reverse('extractos:filas_mes'), {
+            'anio_mes_anio': 2026, 'anio_mes_mes': 13,
+        })
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_dentro_de_un_extracto_solo_se_despliegan_sus_movimientos(self):
+        """El panel también se usa en el detalle de UN extracto."""
+        self.sembrar(150)
+        otro = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        ajeno = MovimientoBancario.objects.create(
+            extracto=otro, hogar=self.hogar, fecha=date(2026, 7, 5),
+            concepto='De otro extracto', importe=Decimal('-99.00'),
+        )
+        respuesta = self.client.get(reverse('extractos:filas_mes'), {
+            'anio_mes_anio': 2026, 'anio_mes_mes': 7, 'extracto': self.extracto.id,
+        })
+        ids = [m.id for m in respuesta.context['movimientos']]
+        self.assertNotIn(ajeno.id, ids)
+        self.assertEqual(len(ids), 150)
+
+    def test_el_listado_completo_no_se_dispara_de_tamaño(self):
+        """La prueba que faltaba: la página responde 200 igual estando gorda,
+        así que ningún test veía los veinte megas."""
+        self.sembrar(150, meses=(1, 2, 3, 4, 5, 6, 7, 8))   # 1.200 movimientos
+        contenido = self.client.get(reverse('extractos:listar')).content
+        self.assertLess(
+            len(contenido), 900_000,
+            f'la pantalla de movimientos pesa {len(contenido)//1024} KB: '
+            'algo ha vuelto a pintar de más por fila o por mes.',
+        )

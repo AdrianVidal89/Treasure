@@ -27,6 +27,7 @@
 }
 .calc-label { color: var(--muted); font-size: 0.85rem; }
 .calc-value { color: var(--info); font-weight: 700; font-size: 1rem; }
+.ayuda-bloque { font-size:0.76rem; color:var(--muted); margin:8px 0 0; line-height:1.5; }
 </style>
 
 <div class="dashboard-container" style="max-width: 560px;">
@@ -40,28 +41,46 @@
 
             <div class="form-group">
                 <label>Categoria</label>
+                {% comment %}
+                La primera opción de cada bloque es el bloque entero. Está ahí
+                porque hay presupuestos que se saben en total y no por partes
+                —los caprichos del mes, sobre todo—, y la única salida antes era
+                inventarse una categoría cajón de sastre y darle todo el dinero:
+                quedaba esa categoría pareciendo que le sobraba y el resto del
+                bloque sin límite ninguno.
+                {% endcomment %}
                 <select name="categoria_id" id="categoria_id">
                     <optgroup label="Fijos">
+                        <option value="bloque:fijo" data-tipo="fijo">— Todo el bloque, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'fijo' %}
                         <option value="{{ cat.id }}" data-tipo="fijo">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
                     <optgroup label="Anuales (provision)">
+                        <option value="bloque:anual" data-tipo="anual">— Todo el bloque, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'anual' %}
                         <option value="{{ cat.id }}" data-tipo="anual">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
                     <optgroup label="Variables">
+                        <option value="bloque:variable" data-tipo="variable">— Todo el bloque, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'variable' %}
                         <option value="{{ cat.id }}" data-tipo="variable">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
                     <optgroup label="Discrecionales">
+                        <option value="bloque:discrecional" data-tipo="discrecional">— Todo el bloque, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'discrecional' %}
                         <option value="{{ cat.id }}" data-tipo="discrecional">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
                 </select>
+                <p class="ayuda-bloque">
+                    Elige <strong>«Todo el bloque»</strong> cuando sepas cuánto quieres gastar en
+                    total pero no en qué categorías se va a repartir. Ese importe pasa a ser el
+                    techo del bloque; las categorías que sí presupuestes aparte quedan como
+                    desglose dentro de él, no se suman por encima.
+                </p>
             </div>
 
             <div class="form-group">

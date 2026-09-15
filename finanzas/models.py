@@ -1038,8 +1038,23 @@ class CategoriaGasto(models.Model):
 
 
 class PartidaGasto(ImputableAActivo):
+    """Un gasto declarado del presupuesto.
+
+    Normalmente cuelga de una categoría («Luz», «Restaurantes»). Pero hay
+    bloques —los discrecionales, sobre todo— donde el usuario sabe cuánto
+    quiere gastar EN TOTAL y no en qué se va a repartir: ahí la partida cuelga
+    del BLOQUE entero y `categoria` queda vacía. Antes, la única salida era
+    inventarse una categoría cajón de sastre y darle todo el presupuesto, lo que
+    dejaba esa categoría pareciendo que le sobraba dinero y al resto sin límite
+    ninguno.
+    """
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='partidas_gasto')
-    categoria = models.ForeignKey(CategoriaGasto, on_delete=models.CASCADE, related_name='partidas')
+    categoria = models.ForeignKey(CategoriaGasto, on_delete=models.CASCADE, related_name='partidas',
+        null=True, blank=True,
+        help_text="Vacío si el presupuesto es del bloque entero y no de una categoría concreta.")
+    bloque = models.CharField(max_length=20, choices=TIPO_GASTO_CHOICES, blank=True, default='',
+        help_text="Bloque al que pertenece cuando no hay categoría. "
+                  "Con categoría manda el bloque de la categoría.")
     responsable = models.ForeignKey(User, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='gastos_asignados',
         help_text="Si vacio, es un gasto compartido del hogar.")
@@ -1061,6 +1076,22 @@ class PartidaGasto(ImputableAActivo):
 
     def __str__(self):
         return f"{self.nombre} - {self.importe}"
+
+    @property
+    def tipo_bloque(self):
+        """El bloque del presupuesto al que cuenta esta partida.
+
+        Con categoría manda la categoría; sin ella, el bloque declarado. Es el
+        único sitio donde se decide, para que ninguna pantalla tenga que
+        acordarse de mirar los dos campos."""
+        if self.categoria_id and self.categoria:
+            return self.categoria.tipo
+        return self.bloque
+
+    @property
+    def es_del_bloque(self):
+        """Presupuesto declarado para el bloque entero, sin desglosar."""
+        return not self.categoria_id and bool(self.bloque)
 
     @property
     def importe_mensual(self):

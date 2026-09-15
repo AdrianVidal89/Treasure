@@ -2527,7 +2527,6 @@ class PantallasSeRenderizanTests(TestCase):
             reverse('finanzas:vista_distribucion'),
             reverse('extractos:listar'),
             reverse('extractos:conciliacion'),
-            reverse('extractos:sin_categorizar'),
             reverse('extractos:reglas'),
             reverse('extractos:etiquetas'),
             reverse('extractos:subir'),
@@ -2554,6 +2553,12 @@ class PantallasSeRenderizanTests(TestCase):
                         marca, contenido,
                         f'{ruta} deja escapar «{marca}»: hay una etiqueta de plantilla sin interpretar.',
                     )
+
+    def test_la_vieja_pantalla_de_sin_categorizar_redirige_al_filtro(self):
+        respuesta = self.client.get(reverse('extractos:sin_categorizar'))
+        self.assertRedirects(
+            respuesta, reverse('extractos:listar') + '?categoria=sin',
+        )
 
     def test_la_vieja_pantalla_de_analisis_redirige_a_movimientos(self):
         """La pestaña ya no existe, pero la ruta seguía enlazada desde la
@@ -2711,3 +2716,163 @@ class PresupuestoEstadoTests(SimpleTestCase):
 
         bloque = {'pct': 42.0, **estado(Decimal('80'), Decimal('100'))}
         self.assertEqual(bloque['pct'], 42.0)
+
+
+class PresupuestoDeBloqueTests(TestCase):
+    """Presupuestar un bloque entero sin desglosarlo por categorías.
+
+    Hay bloques —los discrecionales, sobre todo— donde se sabe cuánto se quiere
+    gastar en total pero no en qué. La única salida era inventarse una categoría
+    cajón de sastre y darle todo el dinero: quedaba esa categoría pareciendo que
+    le sobraba presupuesto y el resto del bloque sin límite ninguno.
+    """
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+    def categoria(self, nombre):
+        from finanzas.models import CategoriaGasto
+        return CategoriaGasto.objects.get(hogar=self.hogar, nombre=nombre)
+
+    def partida_de_bloque(self, tipo, importe, periodicidad='mensual'):
+        from finanzas.models import PartidaGasto
+        return PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=None, bloque=tipo,
+            nombre=f'Presupuesto {tipo}', importe=Decimal(importe),
+            periodicidad=periodicidad,
+        )
+
+    def partida_de_categoria(self, nombre, importe):
+        from finanzas.models import PartidaGasto
+        return PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.categoria(nombre),
+            nombre=f'Presupuesto {nombre}', importe=Decimal(importe),
+            periodicidad='mensual',
+        )
+
+    def test_el_techo_del_bloque_no_cuenta_para_ninguna_categoria(self):
+        """Es justo el problema que resuelve: antes ese dinero colgaba de una
+        categoría inventada y la dejaba pareciendo que le sobraba."""
+        from finanzas import presupuesto
+
+        self.partida_de_bloque('discrecional', '1500')
+
+        self.assertEqual(presupuesto.por_categoria(self.hogar), {})
+        self.assertEqual(presupuesto.por_bloque(self.hogar)['discrecional'], Decimal('1500'))
+
+    def test_el_techo_del_bloque_manda_sobre_sus_categorias(self):
+        """«Tengo 1.500 € para caprichos, de los cuales 200 para restaurantes»
+        son 1.500, no 1.700."""
+        from finanzas import presupuesto
+
+        self.partida_de_bloque('discrecional', '1500')
+        self.partida_de_categoria('Restaurantes', '200')
+
+        self.assertEqual(presupuesto.por_bloque(self.hogar)['discrecional'], Decimal('1500'))
+        # La categoría conserva su límite como desglose dentro del techo.
+        por_cat = presupuesto.por_categoria(self.hogar)
+        self.assertEqual(por_cat[self.categoria('Restaurantes').id], Decimal('200'))
+
+    def test_sin_techo_declarado_todo_sigue_como_antes(self):
+        from finanzas import presupuesto
+
+        self.partida_de_categoria('Restaurantes', '200')
+        self.partida_de_categoria('Ocio', '100')
+
+        self.assertEqual(presupuesto.por_bloque(self.hogar)['discrecional'], Decimal('300'))
+
+    def test_el_techo_de_un_bloque_no_toca_a_los_demas(self):
+        from finanzas import presupuesto
+
+        self.partida_de_bloque('discrecional', '1500')
+        self.partida_de_categoria('Alimentacion', '400')   # variable
+
+        bloques = presupuesto.por_bloque(self.hogar)
+        self.assertEqual(bloques['discrecional'], Decimal('1500'))
+        self.assertEqual(bloques['variable'], Decimal('400'))
+
+    def test_un_techo_anual_se_prorratea_como_cualquier_partida(self):
+        from finanzas import presupuesto
+
+        self.partida_de_bloque('discrecional', '1200', periodicidad='anual')
+        self.assertEqual(presupuesto.por_bloque(self.hogar)['discrecional'], Decimal('100'))
+
+    def test_se_puede_declarar_desde_la_pantalla_de_gastos(self):
+        from finanzas.models import PartidaGasto
+
+        respuesta = self.client.post(reverse('finanzas:crear_partida'), {
+            'categoria_id': 'bloque:discrecional',
+            'nombre': 'Caprichos del mes',
+            'importe': '1500',
+            'periodicidad': 'mensual',
+        })
+        self.assertEqual(respuesta.status_code, 302)
+
+        partida = PartidaGasto.objects.get(hogar=self.hogar, nombre='Caprichos del mes')
+        self.assertIsNone(partida.categoria)
+        self.assertEqual(partida.bloque, 'discrecional')
+        self.assertTrue(partida.es_del_bloque)
+        self.assertEqual(partida.tipo_bloque, 'discrecional')
+
+    def test_un_bloque_inventado_no_cuela(self):
+        respuesta = self.client.post(reverse('finanzas:crear_partida'), {
+            'categoria_id': 'bloque:loquesea',
+            'nombre': 'Invento', 'importe': '10', 'periodicidad': 'mensual',
+        })
+        self.assertEqual(respuesta.status_code, 404)
+
+    def test_la_pantalla_de_gastos_lo_enseña_como_techo(self):
+        self.partida_de_bloque('discrecional', '1500')
+        respuesta = self.client.get(reverse('finanzas:listar_gastos'))
+
+        self.assertContains(respuesta, 'techo sin desglosar')
+        entradas = respuesta.context['gastos_discrecionales']
+        techo = [e for e in entradas if e['categoria'] is None]
+        self.assertEqual(len(techo), 1)
+        self.assertEqual(techo[0]['subtotal_mensual'], Decimal('1500'))
+
+    def test_el_techo_entra_en_el_total_mensual_del_hogar(self):
+        self.partida_de_bloque('discrecional', '1500')
+        respuesta = self.client.get(reverse('finanzas:listar_gastos'))
+        self.assertEqual(respuesta.context['total_discrecionales'], Decimal('1500'))
+        self.assertEqual(respuesta.context['total_mensual'], Decimal('1500'))
+
+    def test_en_el_panel_las_categorias_del_bloque_no_fingen_limite(self):
+        """El caso de la captura: con el presupuesto en una categoría cajón de
+        sastre, esa salía «2.738 € de 20.097 €» —como si le sobrara dinero— y el
+        resto del bloque sin límite. Con el techo en el bloque, las categorías se
+        leen por su peso y el único límite es el de arriba."""
+        from datetime import date
+        from django.urls import reverse as url
+        from extractos.models import ExtractoBancario, MovimientoBancario
+
+        extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        for nombre, importe in [('Restaurantes', '-250'), ('Ocio', '-100')]:
+            MovimientoBancario.objects.create(
+                extracto=extracto, hogar=self.hogar, fecha=date(2026, 8, 5),
+                concepto=f'Gasto {nombre}', importe=Decimal(importe),
+                categoria=self.categoria(nombre),
+            )
+        self.partida_de_bloque('discrecional', '1500')
+
+        panel = self.client.get(url('extractos:listar'), {'anio': 2026, 'mes': 8}).context['panel']
+        bloque = next(b for b in panel['bloques'] if b['tipo'] == 'discrecional')
+
+        self.assertTrue(bloque['techo_propio'])
+        self.assertEqual(bloque['limite'], Decimal('1500'))
+        self.assertTrue(bloque['dentro'])
+        # Ninguna categoría de dentro tiene límite propio que enseñar.
+        self.assertTrue(all(c['limite'] == Decimal('0') for c in bloque['categorias']))
+        # Y no se avisa por categoría de un límite que nadie puso.
+        fuera = panel['fuera_presupuesto']
+        self.assertEqual([f['nombre'] for f in fuera['categorias']], [])
+        self.assertEqual([f['nombre'] for f in fuera['sin_presupuesto']], [])

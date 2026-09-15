@@ -137,7 +137,7 @@ a saltar de una a otra.
 <!-- Todo lo secundario, en una sola tira discreta. -->
 <div class="ext-chips">
     {% if panel.kpi_sin_categorizar %}
-    <a href="{% url 'extractos:sin_categorizar' %}" class="ext-chip alerta">
+    <a href="?categoria=sin" class="ext-chip alerta">
         <svg class="icon"><use href="#i-alert"/></svg>
         {{ panel.kpi_sin_categorizar }} sin categorizar · clasificar
     </a>
@@ -183,7 +183,7 @@ a saltar de una a otra.
             <details class="ext-pilar" style="--bc:{{ b.color }};">
                 <summary>
                     <span class="ext-pilar-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
-                    <span class="ext-pilar-nombre">{{ b.etiqueta }}</span>
+                    <span class="ext-pilar-nombre">{{ b.etiqueta }}{% if b.techo_propio %}<span class="ext-pilar-techo" title="El límite lo declaras para el bloque entero, no categoría a categoría">del bloque</span>{% endif %}</span>
                     <span class="ext-pilar-barra {% if b.dentro == False %}fuera{% elif b.dentro %}dentro{% endif %}"
                           title="{% if b.limite %}{{ b.importe|euro:0 }} de {{ b.limite|euro:0 }} presupuestados{% else %}Sin presupuesto declarado para este bloque{% endif %}">
                         <i style="width:{{ b.pct_barra|unlocalize }}%;"></i>
@@ -207,12 +207,12 @@ a saltar de una a otra.
                                 title="Ver los {{ c.num }} movimiento{{ c.num|pluralize:"s" }} de {{ c.nombre }}">
                             {{ c.nombre }} <em>{{ c.num }}</em>
                         </button>
-                        <span class="ext-cat-barra {% if c.dentro == False %}fuera{% elif c.dentro %}dentro{% endif %}"
+                        <span class="ext-cat-barra {% if not b.techo_propio %}{% if c.dentro == False %}fuera{% elif c.dentro %}dentro{% endif %}{% endif %}"
                               title="{% if c.limite %}{{ c.importe|euro:0 }} de {{ c.limite|euro:0 }} presupuestados{% else %}Sin presupuesto declarado{% endif %}">
                             <i style="width:{{ c.pct_barra|unlocalize }}%;"></i>
                         </span>
                         <span class="ext-cat-cifra">{{ c.importe|euro:0 }}</span>
-                        <span class="ext-cat-pct">{% if c.limite %}de {{ c.limite|euro:0 }}{% else %}{{ c.pct_bloque }}%{% endif %}</span>
+                        <span class="ext-cat-pct">{% if c.limite and not b.techo_propio %}de {{ c.limite|euro:0 }}{% else %}{{ c.pct_bloque }}%{% endif %}</span>
                         {% if c.id %}
                         <select class="ext-bloque-select" data-categoria-id="{{ c.id }}"
                                 title="Mover «{{ c.nombre }}» a otro bloque del presupuesto">
@@ -221,7 +221,7 @@ a saltar de una a otra.
                             {% endfor %}
                         </select>
                         {% else %}
-                        <a class="ext-cat-clasificar" href="{% url 'extractos:sin_categorizar' %}">clasificar →</a>
+                        <a class="ext-cat-clasificar" href="?categoria=sin">clasificar →</a>
                         {% endif %}
                     </div>
                     {% endfor %}
@@ -512,7 +512,8 @@ tiempo.
 </div>
 
 {% for grupo in panel.grupos %}
-<details class="ext-mes"{% if forloop.first %} open{% endif %}>
+<details class="ext-mes"{% if forloop.first %} open{% endif %}
+         {% if grupo.pendiente %}data-pendiente="1" data-anio="{{ grupo.anio }}" data-mes="{{ grupo.mes }}"{% endif %}>
     <summary class="ext-mes-summary">
         <span class="ext-mes-chevron"><svg class="icon"><use href="#i-chevron-right"/></svg></span>
         <span class="ext-mes-nombre">{{ grupo.etiqueta }}</span>
@@ -527,6 +528,9 @@ tiempo.
     </summary>
 
     <div class="ext-lista">
+        {% if grupo.pendiente %}
+        <div class="ext-mes-cargando">Cargando {{ grupo.num }} movimiento{{ grupo.num|pluralize:"s" }}…</div>
+        {% endif %}
         {% for m in grupo.movimientos %}
         {% include "extractos/_movimiento.html" with m=m panel=panel %}
         {% endfor %}
@@ -554,6 +558,47 @@ del listado: así todo lo que se puede cambiar abajo se puede cambiar aquí.
         <div class="ext-modal-cuerpo" id="ext-modal-cuerpo"></div>
     </div>
 </div>
+
+{% comment %}
+Los moldes de los desplegables de una fila. Van UNA vez por página y se clonan
+al vuelo cuando el usuario pincha el campo. Antes se pintaban dentro de cada
+movimiento: con el histórico entero eran 3.240 copias de las mismas cuarenta y
+dos opciones, veinte megas de HTML y cuatro segundos de render.
+{% endcomment %}
+<template id="ext-molde-categoria">
+    <select>
+        <option value="">Sin categorizar</option>
+        {% for b in panel.bloques_categorias %}
+        <optgroup label="{{ b.etiqueta }}">
+            {% for c in b.categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+        </optgroup>
+        {% endfor %}
+    </select>
+</template>
+
+{% if panel.provisiones %}
+<template id="ext-molde-provision">
+    <select>
+        <option value="">— no es un pago anual —</option>
+        {% for p in panel.provisiones %}
+        <option value="{{ p.id }}">{{ p.nombre }} ({{ p.get_periodicidad_display|lower }})</option>
+        {% endfor %}
+    </select>
+</template>
+{% endif %}
+
+{% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
+<template id="ext-molde-activo">
+    <select>
+        <option value="">— sin activo —</option>
+        {% for g in panel.grupos_activos %}{% if g.opciones %}
+        <optgroup label="{{ g.etiqueta }}">
+            {% for o in g.opciones %}<option value="{{ o.clave }}">{{ o.nombre }}</option>{% endfor %}
+        </optgroup>
+        {% endif %}{% endfor %}
+    </select>
+</template>
+{% endif %}
 
 <datalist id="ext-etiquetas-existentes">
     {% for e in panel.etiquetas_hogar %}<option value="{{ e.nombre }}"></option>{% endfor %}
@@ -664,6 +709,11 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-cat-barra i { background:#9aa5a0; }
 .ext-pilar-barra i { background:#9aa5a0; }
 .ext-pilar-cifra { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.9rem; }
+.ext-pilar-techo {
+    font-size:0.58rem; text-transform:uppercase; letter-spacing:.05em; font-weight:700;
+    color:var(--muted); border:1px solid var(--border-strong); border-radius:999px;
+    padding:1px 6px; margin-left:7px; vertical-align:middle;
+}
 .ext-pilar-limite { font-variant-numeric:tabular-nums; color:var(--muted); text-align:right; font-size:0.76rem; white-space:nowrap; }
 .ext-pilar-limite em { font-style:italic; opacity:.75; }
 .ext-pilar-detalle { border-top:1px solid var(--border); padding:10px 13px 12px 29px; display:flex; flex-direction:column; gap:8px; }
@@ -737,6 +787,25 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     padding:2px 6px; max-width:190px; cursor:pointer; appearance:none; -webkit-appearance:none;
 }
 .ext-cat-select:focus { outline:1px solid var(--primary-color); border-radius:6px; }
+/* Los botones que sustituyen a los desplegables hasta que se usan. Comparten
+   estilo con ellos para que la fila no cambie de aspecto al materializarlos. */
+.ext-campo-perezoso { font:inherit; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ext-cat-boton {
+    background:transparent; border:none; color:var(--muted); font-size:0.73rem; font-weight:600;
+    padding:2px 6px; max-width:190px; cursor:pointer;
+}
+.ext-cat-boton:hover, .ext-cat-boton:focus { outline:1px solid var(--primary-color); border-radius:6px; }
+.ext-provision-boton, .ext-activo-boton {
+    background:transparent; border:1px dashed var(--border-strong); color:var(--muted);
+    font-size:0.68rem; padding:1px 5px; border-radius:999px; cursor:pointer;
+    opacity:0; transition:opacity .15s;
+}
+.ext-provision-boton { max-width:170px; }
+.ext-activo-boton { max-width:150px; }
+.ext-mov:hover .ext-provision-boton, .ext-provision-boton:focus, .ext-provision-boton.puesto,
+.ext-mov:hover .ext-activo-boton, .ext-activo-boton:focus, .ext-activo-boton.puesto { opacity:1; }
+.ext-provision-boton.puesto { border-style:solid; border-color:var(--info, #5f8fb0); color:var(--info, #5f8fb0); }
+.ext-activo-boton.puesto { border-style:solid; border-color:var(--primary-color); color:var(--primary-color); }
 .ext-bar-bloque { font-size:0.78rem; color:var(--muted); }
 .ext-tags { display:inline-flex; gap:5px; flex-wrap:wrap; }
 .ext-tag {
@@ -793,6 +862,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-mov.ext-guardada { animation: ext-flash 0.9s ease; }
 @keyframes ext-flash { 0%{ background:color-mix(in srgb, var(--success) 22%, transparent);} 100%{ background:transparent; } }
 
+.ext-mes-cargando, .ext-mes-vacio {
+    padding:16px 18px; font-size:0.82rem; color:var(--muted); font-style:italic;
+}
 .ext-vacio { text-align:center; padding:34px; color:var(--muted); border:1px dashed var(--border-strong); border-radius:14px; }
 .ext-vacio p { margin:0 0 12px; font-style:italic; }
 
@@ -1210,15 +1282,10 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         if (!sel) return;
         quitarAviso();
         var movId = sel.dataset.movId;
+        var fila = sel.closest('.ext-mov');
         guardar(movId, 'categoria_id', sel.value, function(data) {
-            /* La otra copia de la fila tiene que reflejar el cambio. */
-            filasDe(movId).forEach(function(fila) {
-                var otro = fila.querySelector('.ext-cat-select');
-                if (otro && otro !== sel) otro.value = sel.value;
-            });
-            if (!data.sugerencia) return;
-            var fila = sel.closest('.ext-mov');
-            if (fila) mostrarSugerencia(fila, data.sugerencia);
+            sincronizarCampo(movId, 'ext-cat-select', sel.value, textoDe(sel));
+            if (data.sugerencia && fila) mostrarSugerencia(fila, data.sugerencia);
         });
     });
 
@@ -1462,12 +1529,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             body: body.toString()
         }).then(function(r){ return r.json(); }).then(function(data){
             if (!data.ok) return;
-            filasDe(movId).forEach(function(fila) {
-                var otro = fila.querySelector('.ext-activo-select');
-                if (!otro) return;
-                otro.value = sel.value;
-                otro.classList.toggle('puesto', !!data.clave);
-            });
+            sincronizarCampo(movId, 'ext-activo-select', sel.value, textoDe(sel), !!data.clave);
             destacar(movId);
             var fila = sel.closest('.ext-mov');
             if (data.sugerencia && fila) ofrecerImputarComercio(fila, data.sugerencia);
@@ -1492,12 +1554,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             body: body.toString()
         }).then(function(r){ return r.json(); }).then(function(data){
             if (!data.ok) return;
-            filasDe(movId).forEach(function(fila) {
-                var otro = fila.querySelector('.ext-provision-select');
-                if (!otro) return;
-                otro.value = sel.value;
-                otro.classList.toggle('puesto', !!data.partida_id);
-            });
+            sincronizarCampo(movId, 'ext-provision-select', sel.value, textoDe(sel), !!data.partida_id);
             destacar(movId);
         }).catch(function(){});
     });
@@ -1525,11 +1582,50 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         }).catch(function(){});
     });
 
+    /* ---- Meses que se cargan al abrirlos ----
+       Los meses plegados llegan sin sus apuntes. Se piden la primera vez que se
+       despliegan y ya se quedan: así ver el mes de arriba no cuesta cargar tres
+       años de histórico. */
+    var URL_FILAS_MES = "{% url 'extractos:filas_mes' %}";
+    var EXTRACTO_ACTUAL = "{% if extracto %}{{ extracto.id }}{% endif %}";
+
+    function cargarMes(det) {
+        if (!det.dataset.pendiente || det.dataset.cargando) return Promise.resolve();
+        det.dataset.cargando = '1';
+        var params = new URLSearchParams(window.location.search);
+        params.set('anio_mes_anio', det.dataset.anio);
+        params.set('anio_mes_mes', det.dataset.mes);
+        if (EXTRACTO_ACTUAL) params.set('extracto', EXTRACTO_ACTUAL);
+        var lista = det.querySelector('.ext-lista');
+        return fetch(URL_FILAS_MES + '?' + params.toString(), {
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).then(function(r){
+            if (!r.ok) throw new Error('respuesta ' + r.status);
+            return r.text();
+        }).then(function(html){
+            lista.innerHTML = html;
+            delete det.dataset.pendiente;
+            delete det.dataset.cargando;
+            refrescarSeleccion();
+        }).catch(function(){
+            lista.innerHTML = '<div class="ext-mes-vacio">No se han podido cargar los movimientos de este mes.</div>';
+            delete det.dataset.cargando;
+        });
+    }
+
+    document.addEventListener('toggle', function(e) {
+        var det = e.target;
+        if (det.classList && det.classList.contains('ext-mes') && det.open) cargarMes(det);
+    }, true);
+
     /* ---- Plegar / desplegar meses ---- */
     var btnExpandir = document.getElementById('ext-expandir-todo');
     var btnPlegar = document.getElementById('ext-plegar-todo');
     if (btnExpandir) btnExpandir.addEventListener('click', function() {
-        document.querySelectorAll('.ext-mes').forEach(function(d){ d.open = true; });
+        document.querySelectorAll('.ext-mes').forEach(function(d){
+            d.open = true;
+            cargarMes(d);
+        });
     });
     if (btnPlegar) btnPlegar.addEventListener('click', function() {
         document.querySelectorAll('.ext-mes').forEach(function(d){ d.open = false; });
@@ -1552,6 +1648,112 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             });
             refrescarSeleccion();
         }).catch(function(){});
+    });
+
+    /* ---- Campos perezosos ----
+       Los desplegables de una fila (categoría, pago anual, activo) ofrecen las
+       mismas opciones en todas, así que la fila solo trae un botón con el valor
+       actual y el <select> de verdad se clona del molde cuando hace falta. Es
+       lo que baja la página del histórico de veinte megas a cuatro: el resto
+       del código no se entera, porque los gestos ya iban delegados. */
+    function materializar(boton) {
+        var molde = document.getElementById(boton.dataset.molde);
+        if (!molde) return null;
+        var sel = molde.content.firstElementChild.cloneNode(true);
+        sel.className = boton.dataset.clase + (boton.classList.contains('puesto') ? ' puesto' : '');
+        sel.dataset.movId = boton.dataset.movId;
+        sel.value = boton.dataset.valor || '';
+        /* Se recuerda de dónde vino para poder volver al botón si se cierra sin
+           tocar nada; si no, la fila se quedaría con un <select> abierto para
+           siempre y volveríamos al problema del peso. */
+        sel.dataset.textoBoton = boton.textContent;
+        boton.replaceWith(sel);
+        return sel;
+    }
+
+    function desmaterializar(sel, texto) {
+        var boton = document.createElement('button');
+        boton.type = 'button';
+        boton.className = 'ext-campo-perezoso ' + (sel.dataset.clase || claseBoton(sel));
+        if (sel.classList.contains('puesto')) boton.classList.add('puesto');
+        boton.dataset.movId = sel.dataset.movId;
+        boton.dataset.molde = moldeDe(sel);
+        boton.dataset.clase = claseSelect(sel);
+        boton.dataset.valor = sel.value;
+        boton.textContent = texto !== undefined ? texto : textoDe(sel);
+        sel.replaceWith(boton);
+    }
+
+    function claseSelect(sel) {
+        return ['ext-cat-select', 'ext-provision-select', 'ext-activo-select']
+            .filter(function(c){ return sel.classList.contains(c); })[0] || '';
+    }
+    function claseBoton(sel) {
+        return {'ext-cat-select': 'ext-cat-boton',
+                'ext-provision-select': 'ext-provision-boton',
+                'ext-activo-select': 'ext-activo-boton'}[claseSelect(sel)] || '';
+    }
+    function moldeDe(sel) {
+        return {'ext-cat-select': 'ext-molde-categoria',
+                'ext-provision-select': 'ext-molde-provision',
+                'ext-activo-select': 'ext-molde-activo'}[claseSelect(sel)] || '';
+    }
+    function textoDe(sel) {
+        var opcion = sel.options[sel.selectedIndex];
+        if (!opcion) return '';
+        /* Con el valor vacío el botón enseña el rótulo corto, no el «— sin
+           activo —» largo del desplegable, que en una fila estrecha no cabe. */
+        if (!sel.value) {
+            return {'ext-cat-select': 'Sin categorizar',
+                    'ext-provision-select': '— pago anual —',
+                    'ext-activo-select': '— activo —'}[claseSelect(sel)] || opcion.text;
+        }
+        return opcion.text;
+    }
+
+    /* Un mismo movimiento puede estar en pantalla dos veces (listado y modal), y
+       cada copia puede estar en estado botón o en estado desplegable. Esto deja
+       las dos diciendo lo mismo. */
+    function sincronizarCampo(movId, claseSel, valor, texto, puesto) {
+        var claseBtn = {'ext-cat-select': 'ext-cat-boton',
+                        'ext-provision-select': 'ext-provision-boton',
+                        'ext-activo-select': 'ext-activo-boton'}[claseSel];
+        document.querySelectorAll(
+            '.' + claseSel + '[data-mov-id="' + movId + '"], ' +
+            '.' + claseBtn + '[data-mov-id="' + movId + '"]'
+        ).forEach(function(el) {
+            el.dataset.valor = valor;
+            if (puesto !== undefined) el.classList.toggle('puesto', !!puesto);
+            if (el.tagName === 'SELECT') {
+                el.value = valor;
+                el.dataset.textoBoton = texto;
+            } else {
+                el.textContent = texto;
+            }
+        });
+    }
+
+    document.addEventListener('click', function(e) {
+        var boton = e.target.closest('.ext-campo-perezoso');
+        if (!boton) return;
+        e.preventDefault();
+        var sel = materializar(boton);
+        if (!sel) return;
+        sel.focus();
+        /* showPicker abre la lista sin un segundo clic; donde no exista, el
+           focus ya deja el campo listo para teclear. */
+        if (typeof sel.showPicker === 'function') {
+            try { sel.showPicker(); } catch (err) {}
+        }
+    });
+
+    /* Al salir sin cambiar nada, vuelve a ser un botón. */
+    document.addEventListener('focusout', function(e) {
+        var sel = e.target.closest('.ext-cat-select, .ext-provision-select, .ext-activo-select');
+        if (!sel || !sel.dataset.textoBoton) return;
+        setTimeout(function() {
+            if (document.activeElement !== sel && sel.isConnected) desmaterializar(sel);
+        }, 120);
     });
 
     /* ---- Desglose de una categoría, en un modal ----
