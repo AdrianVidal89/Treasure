@@ -189,21 +189,27 @@ def listar_gastos(request):
         }))
 
     for tipo, entrada in entradas:
-        subtotal_mensual = entrada['subtotal_mensual']
-        subtotal_anual = entrada['subtotal_anual']
         if tipo == 'fijo':
             gastos_fijos.append(entrada)
-            total_fijos += subtotal_mensual
         elif tipo == 'anual':
             gastos_anuales.append(entrada)
-            total_anuales_anual += subtotal_anual
-            total_provision += subtotal_mensual
+            total_anuales_anual += entrada['subtotal_anual']
         elif tipo == 'variable':
             gastos_variables.append(entrada)
-            total_variables += subtotal_mensual
         elif tipo == 'discrecional':
             gastos_discrecionales.append(entrada)
-            total_discrecionales += subtotal_mensual
+
+    # Los totales por bloque salen del mismo sitio que los usa el resto de la
+    # aplicación, y no de sumar las tarjetas: con un techo de bloque declarado,
+    # el presupuesto del bloque ES ese techo y sus categorías van por dentro.
+    # Sumarlo todo daba un total que no existe y que además no coincidía con lo
+    # que enseña la conciliación.
+    from . import presupuesto
+    limites = presupuesto.por_bloque(hogar)
+    total_fijos = limites.get('fijo', Decimal('0'))
+    total_provision = limites.get('anual', Decimal('0'))
+    total_variables = limites.get('variable', Decimal('0'))
+    total_discrecionales = limites.get('discrecional', Decimal('0'))
 
     total_mensual = total_fijos + total_provision + total_variables + total_discrecionales
 
@@ -215,8 +221,16 @@ def listar_gastos(request):
     # y qué es compartido, además de la vista por categoría.
     grupos_miembro = _agrupar_por_miembro(hogar, categorias)
 
+    # El techo declarado de cada bloque, para que el botón diga si ya hay uno
+    # puesto en vez de ofrecer siempre crearlo.
+    techos = presupuesto.techo_de_bloque(hogar)
+
     return render(request, 'finanzas/gastos/listar.html', {
         'hogar': hogar,
+        'techo_fijo': techos.get('fijo'),
+        'techo_anual': techos.get('anual'),
+        'techo_variable': techos.get('variable'),
+        'techo_discrecional': techos.get('discrecional'),
         'gastos_fijos': gastos_fijos,
         'gastos_anuales': gastos_anuales,
         'gastos_variables': gastos_variables,
@@ -342,8 +356,15 @@ def crear_partida(request):
                 return redirect(f'/finanzas/gastos/?open={categoria.id}')
             return redirect('finanzas:listar_gastos')
 
+    # Se llega aquí desde «Poner techo al bloque»: el desplegable viene ya en la
+    # opción correcta para que no haya que buscarla dentro.
+    bloque_elegido = request.GET.get('bloque', '')
+    if bloque_elegido not in TIPOS_GASTO:
+        bloque_elegido = ''
+
     return render(request, 'finanzas/gastos/crear.html', {
         'categorias': categorias,
+        'bloque_elegido': bloque_elegido,
         'miembros': miembros,
         'hogar': hogar,
         'meses': MESES_CHOICES,

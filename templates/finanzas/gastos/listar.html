@@ -234,6 +234,14 @@
     color:var(--muted); border:1px solid var(--border-strong); border-radius:999px;
     padding:1px 7px; margin-left:6px; vertical-align:middle;
 }
+.section-label { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.poner-techo {
+    margin-left:auto; font-size:0.72rem; font-weight:600; text-decoration:none;
+    color:var(--muted); border:1px dashed var(--border-strong); border-radius:999px;
+    padding:2px 11px; white-space:nowrap;
+}
+.poner-techo:hover { color:var(--primary-color); border-color:var(--primary-color); }
+.bloque-vacio { color:var(--muted); font-size:0.82rem; font-style:italic; margin:0 2px 22px; }
 </style>
 
 <div class="dashboard-container">
@@ -354,14 +362,18 @@
     {% else %}
 
     <!-- GASTOS FIJOS -->
+    <div class="section-label" style="color: var(--warning);"> Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes
+        <a href="{% url 'finanzas:crear_partida' %}?bloque=fijo" class="poner-techo"
+           title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
+            {% if techo_fijo %}Techo: &euro;{{ techo_fijo|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+        </a></div>
     {% if gastos_fijos %}
-    <div class="section-label" style="color: var(--warning);"> Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_fijos %}
         <div class="gasto-card tipo-fijo {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
@@ -396,17 +408,23 @@
         </div>
         {% endfor %}
     </div>
+    {% else %}
+    <p class="bloque-vacio">Todavía no has declarado nada en este bloque.</p>
     {% endif %}
 
     <!-- GASTOS ANUALES -->
+    <div class="section-label" style="color: var(--info);"> Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision
+        <a href="{% url 'finanzas:crear_partida' %}?bloque=anual" class="poner-techo"
+           title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
+            {% if techo_anual %}Techo: &euro;{{ techo_anual|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+        </a></div>
     {% if gastos_anuales %}
-    <div class="section-label" style="color: var(--info);"> Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision</div>
     <div class="grid-gastos">
         {% for grupo in gastos_anuales %}
         <div class="gasto-card tipo-anual {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div style="text-align: right;">
@@ -441,17 +459,23 @@
         </div>
         {% endfor %}
     </div>
+    {% else %}
+    <p class="bloque-vacio">Todavía no has declarado nada en este bloque.</p>
     {% endif %}
 
     <!-- GASTOS VARIABLES -->
+    <div class="section-label" style="color: var(--primary-color);"> Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes
+        <a href="{% url 'finanzas:crear_partida' %}?bloque=variable" class="poner-techo"
+           title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
+            {% if techo_variable %}Techo: &euro;{{ techo_variable|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+        </a></div>
     {% if gastos_variables %}
-    <div class="section-label" style="color: var(--primary-color);"> Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_variables %}
         <div class="gasto-card tipo-variable {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
@@ -486,17 +510,23 @@
         </div>
         {% endfor %}
     </div>
+    {% else %}
+    <p class="bloque-vacio">Todavía no has declarado nada en este bloque.</p>
     {% endif %}
 
     <!-- GASTOS DISCRECIONALES -->
+    <div class="section-label" style="color: var(--accent-alt);"> Gastos Discrecionales &mdash; &euro;{{ total_discrecionales|floatformat:2 }}/mes
+        <a href="{% url 'finanzas:crear_partida' %}?bloque=discrecional" class="poner-techo"
+           title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
+            {% if techo_discrecional %}Techo: &euro;{{ techo_discrecional|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+        </a></div>
     {% if gastos_discrecionales %}
-    <div class="section-label" style="color: var(--accent-alt);"> Gastos Discrecionales &mdash; &euro;{{ total_discrecionales|floatformat:2 }}/mes</div>
     <div class="grid-gastos">
         {% for grupo in gastos_discrecionales %}
         <div class="gasto-card tipo-discrecional {% if grupo.categoria and open_cat == grupo.categoria.id|stringformat:'s' %}open{% endif %}{% if not grupo.categoria %} es-techo-bloque{% endif %}" data-cat-id="{% if grupo.categoria %}{{ grupo.categoria.id }}{% endif %}" onclick="toggleCard(this)">
             <div class="gasto-card-header">
                 <div>
-                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo sin desglosar</span>{% endif %}</div>
+                    <div class="gasto-card-nombre">{% if grupo.categoria %}{{ grupo.categoria.nombre }}{% else %}Todo el bloque <span class="etiqueta-techo">techo</span>{% endif %}</div>
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>

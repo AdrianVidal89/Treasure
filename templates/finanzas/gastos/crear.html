@@ -40,7 +40,7 @@
             {% csrf_token %}
 
             <div class="form-group">
-                <label>Categoria</label>
+                <label>¿De qué es este gasto?</label>
                 {% comment %}
                 La primera opción de cada bloque es el bloque entero. Está ahí
                 porque hay presupuestos que se saben en total y no por partes
@@ -49,27 +49,28 @@
                 quedaba esa categoría pareciendo que le sobraba y el resto del
                 bloque sin límite ninguno.
                 {% endcomment %}
-                <select name="categoria_id" id="categoria_id">
+                <select name="categoria_id" id="categoria_id" required>
+                    <option value="" {% if not bloque_elegido %}selected{% endif %}>— Elige una —</option>
                     <optgroup label="Fijos">
-                        <option value="bloque:fijo" data-tipo="fijo">— Todo el bloque, sin desglosar —</option>
+                        <option {% if bloque_elegido == "fijo" %}selected{% endif %} value="bloque:fijo" data-tipo="fijo">— Techo de los fijos, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'fijo' %}
                         <option value="{{ cat.id }}" data-tipo="fijo">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
                     <optgroup label="Anuales (provision)">
-                        <option value="bloque:anual" data-tipo="anual">— Todo el bloque, sin desglosar —</option>
+                        <option {% if bloque_elegido == "anual" %}selected{% endif %} value="bloque:anual" data-tipo="anual">— Techo de los anuales, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'anual' %}
                         <option value="{{ cat.id }}" data-tipo="anual">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
                     <optgroup label="Variables">
-                        <option value="bloque:variable" data-tipo="variable">— Todo el bloque, sin desglosar —</option>
+                        <option {% if bloque_elegido == "variable" %}selected{% endif %} value="bloque:variable" data-tipo="variable">— Techo de los variables, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'variable' %}
                         <option value="{{ cat.id }}" data-tipo="variable">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}
                     </optgroup>
                     <optgroup label="Discrecionales">
-                        <option value="bloque:discrecional" data-tipo="discrecional">— Todo el bloque, sin desglosar —</option>
+                        <option {% if bloque_elegido == "discrecional" %}selected{% endif %} value="bloque:discrecional" data-tipo="discrecional">— Techo de los discrecionales, sin desglosar —</option>
                         {% for cat in categorias %}{% if cat.tipo == 'discrecional' %}
                         <option value="{{ cat.id }}" data-tipo="discrecional">{{ cat.nombre }}</option>
                         {% endif %}{% endfor %}

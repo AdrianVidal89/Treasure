@@ -2834,7 +2834,7 @@ class PresupuestoDeBloqueTests(TestCase):
         self.partida_de_bloque('discrecional', '1500')
         respuesta = self.client.get(reverse('finanzas:listar_gastos'))
 
-        self.assertContains(respuesta, 'techo sin desglosar')
+        self.assertContains(respuesta, 'etiqueta-techo')
         entradas = respuesta.context['gastos_discrecionales']
         techo = [e for e in entradas if e['categoria'] is None]
         self.assertEqual(len(techo), 1)
@@ -2876,3 +2876,71 @@ class PresupuestoDeBloqueTests(TestCase):
         fuera = panel['fuera_presupuesto']
         self.assertEqual([f['nombre'] for f in fuera['categorias']], [])
         self.assertEqual([f['nombre'] for f in fuera['sin_presupuesto']], [])
+
+    def test_el_boton_de_poner_techo_esta_en_cada_bloque(self):
+        """No basta con que la opción exista dentro de un desplegable: quien va
+        a poner el tope de sus caprichos lo busca mirando el bloque, no
+        abriendo el selector de categorías de «Nuevo gasto»."""
+        respuesta = self.client.get(reverse('finanzas:listar_gastos'))
+        contenido = respuesta.content.decode()
+
+        self.assertContains(respuesta, 'Poner techo al bloque', count=4)
+        for tipo in ('fijo', 'anual', 'variable', 'discrecional'):
+            self.assertIn(f'?bloque={tipo}', contenido)
+
+    def test_el_boton_dice_el_techo_cuando_ya_esta_puesto(self):
+        self.partida_de_bloque('discrecional', '1500')
+        respuesta = self.client.get(reverse('finanzas:listar_gastos'))
+
+        self.assertEqual(respuesta.context['techo_discrecional'], Decimal('1500'))
+        self.assertContains(respuesta, 'Techo:')
+        self.assertContains(respuesta, 'Poner techo al bloque', count=3)
+
+    def test_el_formulario_llega_con_el_bloque_ya_elegido(self):
+        respuesta = self.client.get(
+            reverse('finanzas:crear_partida'), {'bloque': 'discrecional'},
+        )
+        self.assertEqual(respuesta.context['bloque_elegido'], 'discrecional')
+        self.assertContains(
+            respuesta,
+            '<option selected value="bloque:discrecional" data-tipo="discrecional">',
+            html=False,
+        )
+
+    def test_un_bloque_inventado_en_la_url_se_ignora(self):
+        respuesta = self.client.get(
+            reverse('finanzas:crear_partida'), {'bloque': 'loquesea'},
+        )
+        self.assertEqual(respuesta.context['bloque_elegido'], '')
+
+    def test_sin_elegir_destino_no_se_crea_un_techo_sin_querer(self):
+        """El desplegable arrancaba en «techo de los fijos», así que un gasto
+        normal se guardaba como techo de bloque si no se tocaba el campo."""
+        from finanzas.models import PartidaGasto
+
+        respuesta = self.client.get(reverse('finanzas:crear_partida'))
+        contenido = respuesta.content.decode()
+        self.assertIn('<option value="" selected>— Elige una —</option>', contenido)
+
+        respuesta = self.client.post(reverse('finanzas:crear_partida'), {
+            'categoria_id': '', 'nombre': 'Sin destino',
+            'importe': '100', 'periodicidad': 'mensual',
+        })
+        self.assertEqual(respuesta.status_code, 404)
+        self.assertFalse(PartidaGasto.objects.filter(nombre='Sin destino').exists())
+
+    def test_el_total_del_bloque_es_el_techo_y_no_la_suma_de_las_tarjetas(self):
+        """Si no, la pantalla de Gastos daba un total que no existe y que además
+        no coincidía con el que enseña la conciliación."""
+        self.partida_de_bloque('discrecional', '1500')
+        self.partida_de_categoria('Restaurantes', '200')
+
+        respuesta = self.client.get(reverse('finanzas:listar_gastos'))
+        self.assertEqual(respuesta.context['total_discrecionales'], Decimal('1500'))
+        self.assertEqual(respuesta.context['total_mensual'], Decimal('1500'))
+        # Pero la tarjeta de la categoría sigue estando, como desglose.
+        nombres = [
+            e['categoria'].nombre for e in respuesta.context['gastos_discrecionales']
+            if e['categoria']
+        ]
+        self.assertIn('Restaurantes', nombres)
