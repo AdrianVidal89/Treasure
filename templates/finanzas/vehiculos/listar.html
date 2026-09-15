@@ -63,13 +63,32 @@
                     <span class="veh-cifra-lbl">Real {{ anio }}</span>
                     <span class="veh-cifra {% if f.diferencia_anual > 0 %}text-negative{% endif %}">{{ f.real_anual|euro }}</span>
                     <span class="veh-cifra-sub">
-                        {% if f.meses_con_datos %}{{ f.real_mensual|euro }}/mes en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }}
+                        {% if f.meses_con_datos %}{{ f.real_mensual|euro }}/mes de gasto corriente
+                        {% elif f.num_movimientos %}sin gasto corriente este año
                         {% else %}sin movimientos imputados{% endif %}
+                        {% if f.provisiones_anual %}
+                        <br><span class="veh-provision">+ {{ f.provisiones_anual|euro:0 }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }} de gastos anuales</span>
+                        {% endif %}
                     </span>
                 </div>
             </div>
 
             {% include "finanzas/vehiculos/_barra.html" %}
+
+            {% if f.partidas_sueltas %}
+            {% comment %}
+            El gasto suma en lo real y su provisión no suma en lo teórico, así
+            que el vehículo parece pasarse cuando lo que falta es imputarle la
+            partida. Decirlo evita perseguir un descuadre que no existe.
+            {% endcomment %}
+            <p class="veh-aviso-suelta">
+                Le has imputado pagos de
+                {% for p in f.partidas_sueltas %}<strong>{{ p.nombre }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %},
+                pero {{ f.partidas_sueltas|pluralize:"esa partida no está imputada,esas partidas no están imputadas" }} a este vehículo:
+                su provisión no entra en el teórico y por eso la comparación sale alta.
+                <a href="{% url 'finanzas:listar_gastos' %}">Imputársela →</a>
+            </p>
+            {% endif %}
 
             <a href="{% url 'finanzas:detalle_vehiculo' f.activo.id %}" class="veh-ver">Ver detalle →</a>
         </div>
@@ -134,5 +153,12 @@
 .veh-archivado { display:flex; align-items:center; gap:12px; padding:8px 0; font-size:0.85rem; }
 .veh-mini { background:var(--app-bg); border:1px solid var(--border-strong); color:var(--muted); font-size:0.7rem; font-weight:600; padding:4px 10px; border-radius:8px; cursor:pointer; }
 .msg-toast { background:var(--surface); border-left:3px solid var(--primary-color); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
+.veh-provision { color:var(--info, #5f8fb0); font-size:0.72rem; }
+.veh-aviso-suelta {
+    font-size:0.75rem; line-height:1.5; color:var(--muted); margin:10px 0 0;
+    padding:9px 11px; border-radius:9px;
+    background:color-mix(in srgb, var(--warning) 10%, transparent);
+    border:1px solid color-mix(in srgb, var(--warning) 32%, transparent);
+}
 </style>
 {% endblock %}

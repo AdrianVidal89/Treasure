@@ -47,8 +47,13 @@
             <span class="veh-hero-lbl">Mantenimiento real {{ f.anio }}</span>
             <span class="veh-hero-cifra {% if f.diferencia_anual > 0 %}text-negative{% endif %}">{{ f.real_anual|euro }}</span>
             <span class="veh-hero-sub">
-                {% if f.meses_con_datos %}{{ f.real_mensual|euro }}/mes en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }} con gasto
+                {% if f.meses_con_datos %}{{ f.real_mensual|euro }}/mes de gasto corriente en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }}
+                {% elif f.num_movimientos %}sin gasto corriente este año
                 {% else %}sin movimientos imputados todavía{% endif %}
+                {% if f.provisiones_anual %}
+                <br><span class="veh-provision">+ {{ f.provisiones_anual|euro }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }}
+                de gastos que provisionas todo el año</span>
+                {% endif %}
             </span>
         </div>
         <div class="veh-hero-col ancha">
@@ -67,12 +72,17 @@
     <section class="glass-panel veh-card">
         <div class="veh-card-head">
             <h3>Mes a mes</h3>
-            <span class="veh-card-nota">la línea es la previsión mensual ({{ f.teorico_mensual|euro }})</span>
+            <span class="veh-card-nota">
+                la línea es la previsión mensual ({{ f.teorico_mensual|euro }}){% if f.provisiones_anual %} ·
+                los meses con <span class="veh-leyenda-provision"></span> llevan un pago de un gasto anual,
+                que no se suma a la barra para que no aplaste al resto{% endif %}
+            </span>
         </div>
         <div class="veh-meses">
             {% for m in f.por_mes %}
-            <div class="veh-mes" title="{{ m.etiqueta }}: {{ m.real|euro }}">
+            <div class="veh-mes" title="{{ m.etiqueta }}: {{ m.real|euro }}{% if m.provision %} de gasto corriente + {{ m.provision|euro }} de pagos anuales{% endif %}">
                 <div class="veh-mes-col">
+                    {% if m.provision %}<i class="de-provision" title="Pago de un gasto anual"></i>{% endif %}
                     <i style="height:{{ m.pct|unlocalize }}%;"></i>
                     {% if f.teorico_mensual %}<span class="veh-mes-linea" style="bottom:{{ m.pct_teorico|unlocalize }}%;"></span>{% endif %}
                 </div>
@@ -255,5 +265,16 @@
 .veh-mini:hover { border-color:var(--primary-color); color:var(--primary-color); }
 .veh-mini.peligro:hover { border-color:var(--danger); color:var(--danger); }
 .msg-toast { background:var(--surface); border-left:3px solid var(--primary-color); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
+.veh-provision { color:var(--info, #5f8fb0); font-size:0.74rem; }
+/* El pago de un gasto anual se marca arriba del mes en vez de sumarse a la
+   barra: sumado, septiembre tapaba a los otros once meses. */
+.veh-mes-col i.de-provision {
+    position:absolute; top:0; left:0; right:0; height:5px; border-radius:3px;
+    background:var(--info, #5f8fb0);
+}
+.veh-leyenda-provision {
+    display:inline-block; width:14px; height:4px; border-radius:2px; vertical-align:middle;
+    background:var(--info, #5f8fb0);
+}
 </style>
 {% endblock %}

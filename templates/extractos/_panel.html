@@ -154,6 +154,23 @@ a saltar de una a otra.
     <a href="{% url 'extractos:conciliacion' %}" class="ext-chip">Comparar con el presupuesto →</a>
 </div>
 
+{% if panel.pagos_provision %}
+{% comment %}
+Sin este aviso, el bloque de los anuales desaparece del reparto y nadie
+entiende por qué: parecería que la pantalla se ha comido mil euros.
+{% endcomment %}
+<div class="ext-aviso-provision">
+    <svg class="icon"><use href="#i-check"/></svg>
+    <div>
+        <strong>{{ panel.total_provisiones|euro }}</strong> de este mes son pagos de gastos que
+        provisionas todo el año ({{ panel.pagos_provision|length }} movimiento{{ panel.pagos_provision|length|pluralize:"s" }}).
+        No cuentan aquí —ni su provisión en el límite— porque compararlos contra un solo mes diría
+        que te has pasado cuando lo que has hecho es pagar lo que tenías apartado.
+        <a href="{% url 'extractos:conciliacion' %}?anio={{ panel.anio_sel }}">Ver cuánto llevas pagado en el año →</a>
+    </div>
+</div>
+{% endif %}
+
 <!-- ══════════ EN QUÉ SE VA: LOS CUATRO PILARES ══════════ -->
 {% if panel.bloques %}
 <section class="glass-panel ext-gasto">
@@ -600,6 +617,37 @@ dos opciones, veinte megas de HTML y cuatro segundos de render.
 </template>
 {% endif %}
 
+{% comment %}
+Reparto de un cobro. Un pago en Norauto puede ser neumáticos Y la revisión
+anual: dos partidas distintas del presupuesto que el movimiento, con una sola
+categoría, no podía representar.
+{% endcomment %}
+<div class="ext-modal" id="ext-modal-dividir" hidden>
+    <div class="ext-modal-fondo" data-cerrar-dividir></div>
+    <div class="ext-modal-caja ext-caja-dividir" role="dialog" aria-modal="true" aria-labelledby="ext-dividir-titulo">
+        <div class="ext-modal-head">
+            <span class="ext-modal-titulo" id="ext-dividir-titulo">Repartir el cobro</span>
+            <button type="button" class="ext-modal-cerrar" data-cerrar-dividir aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="ext-modal-cuerpo">
+            <p class="ext-dividir-intro">
+                <strong id="ext-dividir-concepto"></strong> ·
+                <span id="ext-dividir-total"></span>
+                <span class="text-muted">— reparte el cobro en las cosas que de verdad fueron.</span>
+            </p>
+            <div id="ext-dividir-partes"></div>
+            <button type="button" class="ext-mini-btn" id="ext-dividir-anadir">+ Añadir parte</button>
+            <div class="ext-dividir-pie">
+                <span id="ext-dividir-suma" class="ext-dividir-suma"></span>
+                <span class="ext-dividir-btns">
+                    <button type="button" class="btn btn-ghost btn-sm" id="ext-dividir-deshacer" hidden>Deshacer reparto</button>
+                    <button type="button" class="btn btn-primary btn-sm" id="ext-dividir-guardar">Guardar reparto</button>
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+
 <datalist id="ext-etiquetas-existentes">
     {% for e in panel.etiquetas_hogar %}<option value="{{ e.nombre }}"></option>{% endfor %}
 </datalist>
@@ -634,6 +682,13 @@ dos opciones, veinte megas de HTML y cuatro segundos de render.
 }
 @media (max-width:980px){ .ext-hero { grid-template-columns:minmax(190px,0.8fr) 1.2fr; } .ext-hero-media { grid-column:1 / -1; } }
 @media (max-width:720px){ .ext-hero { grid-template-columns:1fr; gap:18px; } }
+.ext-aviso-provision {
+    display:flex; gap:10px; align-items:flex-start; margin:0 0 16px;
+    padding:12px 15px; border-radius:11px; font-size:0.83rem; line-height:1.5;
+    background:color-mix(in srgb, var(--info, #5f8fb0) 10%, transparent);
+    border:1px solid color-mix(in srgb, var(--info, #5f8fb0) 35%, transparent);
+}
+.ext-aviso-provision .icon { flex:0 0 auto; margin-top:2px; color:var(--info, #5f8fb0); }
 .ext-volver { display:inline-block; margin-bottom:12px; font-size:0.82rem; }
 /* La media al mes: la cifra que hace comparables un año y un trimestre. */
 .ext-hero-media {
@@ -1077,6 +1132,42 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .an-grupo-fecha { color:var(--muted); font-variant-numeric:tabular-nums; }
 .an-grupo-concepto { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .an-grupo-importe { font-variant-numeric:tabular-nums; font-weight:700; }
+
+/* ── Repartir un cobro en varias partes ─────────────────────────────── */
+.ext-dividir { background:none; border:none; color:var(--muted); cursor:pointer; opacity:0; transition:opacity .15s, color .15s; padding:4px; }
+.ext-mov:hover .ext-dividir, .ext-mov-dividido .ext-dividir { opacity:1; }
+.ext-dividir:hover { color:var(--primary-color); }
+.ext-dividir .icon { width:15px; height:15px; }
+.ext-mov-dividido { opacity:.72; }
+.ext-mov-parte { background:color-mix(in srgb, var(--primary-color) 4%, transparent); }
+.ext-mov-parte .ext-mov-dia { opacity:.45; }
+.ext-marca-parte { color:var(--muted); margin-right:2px; }
+.ext-badge-dividido {
+    font-size:0.64rem; text-transform:uppercase; letter-spacing:.04em; font-weight:700;
+    color:var(--primary-color); border:1px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
+    background:color-mix(in srgb, var(--primary-color) 10%, transparent);
+    border-radius:999px; padding:1px 8px;
+}
+.ext-caja-dividir { width:min(820px,100%); }
+.ext-dividir-intro { font-size:0.86rem; margin:0 0 14px; }
+.ext-parte { display:grid; grid-template-columns:1.2fr 1fr 1fr 105px 24px; gap:8px; margin-bottom:8px; align-items:center; }
+.ext-parte input, .ext-parte select {
+    background:var(--app-bg); color:var(--text-color); border:1px solid var(--border-strong);
+    border-radius:8px; padding:7px 10px; font-size:0.82rem; width:100%; box-sizing:border-box;
+}
+.ext-parte-importe { text-align:right; font-variant-numeric:tabular-nums; }
+.ext-parte-quitar { background:none; border:none; color:var(--muted); font-size:1.15rem; cursor:pointer; padding:0; }
+.ext-parte-quitar:hover { color:var(--danger); }
+.ext-dividir-pie {
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    margin-top:16px; padding-top:14px; border-top:1px solid var(--border);
+}
+.ext-dividir-suma { font-size:0.82rem; font-weight:600; }
+.ext-dividir-suma.ok { color:var(--success); }
+.ext-dividir-suma.mal { color:var(--danger); }
+.ext-dividir-btns { margin-left:auto; display:flex; gap:8px; }
+#ext-dividir-guardar:disabled { opacity:.5; cursor:not-allowed; }
+@media (max-width:860px){ .ext-parte { grid-template-columns:1fr 1fr; } .ext-parte-quitar { justify-self:end; } }
 </style>
 
 <script>
@@ -1933,6 +2024,181 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         var todasMarcadas = visibles.length > 0 && visibles.every(function(c){ return c.checked; });
         visibles.forEach(function(c){ c.checked = !todasMarcadas; });
         refrescarSeleccion();
+    });
+
+    /* ---- Repartir un cobro en varias partes ----
+       Un pago en Norauto puede ser los neumáticos Y la revisión anual: dos
+       partidas del presupuesto que un movimiento con una sola categoría no
+       podía representar. El apunte del banco se queda como está y deja de
+       contar; lo que suma son sus partes. */
+    var URL_DIVIDIR = "/extractos/movimiento/__ID__/dividir/";
+    var URL_DESHACER = "/extractos/movimiento/__ID__/dividir/deshacer/";
+    var cajaDividir = document.getElementById('ext-modal-dividir');
+    var listaPartes = document.getElementById('ext-dividir-partes');
+    var movDividiendo = null;
+    var totalDividiendo = 0;
+
+    function euroTexto(v) {
+        return Number(v).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
+    }
+
+    function filaParte(concepto, importe, categoriaId, activo) {
+        var fila = document.createElement('div');
+        fila.className = 'ext-parte';
+
+        var txt = document.createElement('input');
+        txt.type = 'text'; txt.className = 'ext-parte-concepto';
+        txt.placeholder = 'Qué fue (neumáticos, revisión…)';
+        txt.value = concepto || '';
+
+        var sel = document.getElementById('ext-molde-categoria')
+            .content.firstElementChild.cloneNode(true);
+        sel.className = 'ext-parte-categoria';
+        sel.value = categoriaId || '';
+
+        /* El recibo de Mybox paga el seguro de los dos coches: cada parte va a
+           su vehículo, y sin esta columna había que repartir, cerrar y volver
+           fila a fila a imputarlas. */
+        var act = null;
+        var moldeActivo = document.getElementById('ext-molde-activo');
+        if (moldeActivo) {
+            act = moldeActivo.content.firstElementChild.cloneNode(true);
+            act.className = 'ext-parte-activo';
+            act.value = activo || '';
+        }
+
+        var num = document.createElement('input');
+        num.type = 'number'; num.step = '0.01'; num.className = 'ext-parte-importe';
+        num.value = importe !== undefined ? importe : '';
+
+        var quitar = document.createElement('button');
+        quitar.type = 'button'; quitar.className = 'ext-parte-quitar';
+        quitar.textContent = '×'; quitar.title = 'Quitar esta parte';
+        quitar.addEventListener('click', function () {
+            fila.remove();
+            repartirRestante();
+        });
+
+        num.addEventListener('input', repartirRestante);
+        fila.append(txt, sel);
+        if (act) fila.appendChild(act);
+        fila.append(num, quitar);
+        return fila;
+    }
+
+    function repartirRestante() {
+        var campos = listaPartes.querySelectorAll('.ext-parte-importe');
+        var suma = 0;
+        campos.forEach(function (c) { suma += parseFloat(c.value) || 0; });
+        var resto = Math.round((totalDividiendo - suma) * 100) / 100;
+        var aviso = document.getElementById('ext-dividir-suma');
+        var guardar = document.getElementById('ext-dividir-guardar');
+
+        if (Math.abs(resto) < 0.005) {
+            aviso.textContent = 'Las partes suman el cobro.';
+            aviso.className = 'ext-dividir-suma ok';
+            guardar.disabled = false;
+        } else {
+            /* Decir cuánto falta es más útil que decir que no cuadra: es el
+               número que hay que escribir en la última parte. Se compara por
+               SIGNO y no por «resto < 0», porque un gasto es negativo y ahí la
+               comparación directa decía «te has pasado» cuando faltaba. */
+            var falta = (totalDividiendo < 0) ? (resto < 0) : (resto > 0);
+            aviso.textContent = (falta ? 'Falta por repartir ' : 'Te has pasado ') +
+                euroTexto(Math.abs(resto));
+            aviso.className = 'ext-dividir-suma mal';
+            guardar.disabled = true;
+        }
+    }
+
+    function abrirDividir(boton) {
+        movDividiendo = boton.dataset.movId;
+        totalDividiendo = parseFloat(boton.dataset.importe) || 0;
+        document.getElementById('ext-dividir-concepto').textContent = boton.dataset.concepto;
+        document.getElementById('ext-dividir-total').textContent = euroTexto(totalDividiendo);
+        listaPartes.innerHTML = '';
+
+        /* Si ya estaba repartido, se abren sus partes para poder corregirlas. */
+        var partes = document.querySelectorAll(
+            '.ext-mov-parte[data-padre="' + movDividiendo + '"]');
+        if (partes.length) {
+            partes.forEach(function (p) {
+                listaPartes.appendChild(filaParte(
+                    p.dataset.concepto, p.dataset.importe, p.dataset.categoria,
+                    p.dataset.activo));
+            });
+            document.getElementById('ext-dividir-deshacer').hidden = false;
+        } else {
+            /* Dos filas de salida: repartir en una sola no es repartir. La
+               primera lleva el total para que solo haya que corregir una. */
+            listaPartes.appendChild(filaParte(
+                '', totalDividiendo.toFixed(2), boton.dataset.categoria || '',
+                boton.dataset.activo || ''));
+            listaPartes.appendChild(filaParte('', '', '', boton.dataset.activo || ''));
+            document.getElementById('ext-dividir-deshacer').hidden = true;
+        }
+        repartirRestante();
+        cajaDividir.hidden = false;
+        document.body.style.overflow = 'hidden';
+    }
+
+    function cerrarDividir() {
+        cajaDividir.hidden = true;
+        document.body.style.overflow = '';
+        movDividiendo = null;
+    }
+
+    document.addEventListener('click', function (e) {
+        var boton = e.target.closest('.ext-dividir');
+        if (boton) { e.preventDefault(); abrirDividir(boton); return; }
+        if (e.target.closest('[data-cerrar-dividir]')) cerrarDividir();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && cajaDividir && !cajaDividir.hidden) cerrarDividir();
+    });
+
+    var btnAnadir = document.getElementById('ext-dividir-anadir');
+    if (btnAnadir) btnAnadir.addEventListener('click', function () {
+        listaPartes.appendChild(filaParte('', '', ''));
+        repartirRestante();
+    });
+
+    var btnGuardarDiv = document.getElementById('ext-dividir-guardar');
+    if (btnGuardarDiv) btnGuardarDiv.addEventListener('click', function () {
+        if (!movDividiendo) return;
+        var body = new URLSearchParams();
+        listaPartes.querySelectorAll('.ext-parte').forEach(function (fila) {
+            body.append('importe', fila.querySelector('.ext-parte-importe').value);
+            body.append('categoria_id', fila.querySelector('.ext-parte-categoria').value);
+            body.append('concepto', fila.querySelector('.ext-parte-concepto').value);
+            var campoActivo = fila.querySelector('.ext-parte-activo');
+            body.append('activo', campoActivo ? campoActivo.value : '');
+        });
+        btnGuardarDiv.disabled = true;
+        fetch(URL_DIVIDIR.replace('__ID__', movDividiendo), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            btnGuardarDiv.disabled = false;
+            if (!data.ok) return;
+            /* Recarga: el reparto mueve los totales, los pilares y el desglose
+               por comercio, y dejarlos desfasados haría mentir a la pantalla
+               justo después de tocarla. */
+            window.location.reload();
+        }).catch(function () { btnGuardarDiv.disabled = false; });
+    });
+
+    var btnDeshacer = document.getElementById('ext-dividir-deshacer');
+    if (btnDeshacer) btnDeshacer.addEventListener('click', function () {
+        if (!movDividiendo) return;
+        if (!confirm('¿Deshacer el reparto? El cobro volverá a contar entero.')) return;
+        fetch(URL_DESHACER.replace('__ID__', movDividiendo), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'X-Requested-With': 'XMLHttpRequest'}
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (data.ok) window.location.reload();
+        }).catch(function () {});
     });
 })();
 </script>
