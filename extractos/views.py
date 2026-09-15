@@ -607,6 +607,41 @@ def _comercios_del_periodo(movimientos, meses_con_datos, tope=14, vista_de_mes=F
     }
 
 
+def _contra_el_limite(neto, bruto, cubierto, limite, es_anual):
+    """Cómo se lee una fila del reparto frente a su límite.
+
+    Dos cosas que `presupuesto.estado` por sí solo no puede decidir:
+
+    * QUÉ se compara. En los bloques normales, lo que pesó en el mes (ya
+      descontada la reserva): si la hucha puso 928 € de una revisión de 929, el
+      mes solo sufrió 1 €. En los ANUALES, el pago entero: lo que consume la
+      provisión del año es el recibo completo, lo pagues con la hucha o no.
+    * CÓMO se pinta. La barra se parte en dos: lo que carga el mes, con su color
+      de dentro/fuera, y a continuación —rayado— lo que puso la reserva. Así se
+      ve de un vistazo que el bloque no está casi vacío porque no se gastara,
+      sino porque el gasto ya estaba pagado de antes.
+    """
+    medido = bruto if es_anual else neto
+    estado = presupuesto.estado(medido, limite)
+
+    if limite and limite > 0:
+        pct_neto = min(float(neto / limite * 100), 100) if neto > 0 else 0
+        pct_cubierto = (
+            min(float(cubierto / limite * 100), max(0.0, 100 - pct_neto))
+            if cubierto > 0 else 0
+        )
+    else:
+        # Sin límite declarado la barra se llena entera: no hay contra qué
+        # medirla, y dejarla a medias sugeriría un techo que nadie ha puesto.
+        pct_neto = 100 if neto > 0 else 0
+        pct_cubierto = 0
+
+    estado['pct_barra'] = round(pct_neto, 1)
+    estado['pct_cubierto'] = round(pct_cubierto, 1)
+    estado['medido'] = medido
+    return estado
+
+
 def _fuera_de_presupuesto(bloques):
     """Lo que se ha salido del presupuesto, a partir de los bloques ya
     calculados: el bloque que se pasa y, dentro, qué categoría lo explica.
@@ -621,7 +656,10 @@ def _fuera_de_presupuesto(bloques):
         if b['dentro'] is False:
             excedidos.append({
                 'tipo': b['tipo'], 'nombre': b['etiqueta'], 'color': b['color'],
-                'importe': b['importe'], 'limite': b['limite'],
+                # `medido` y no `importe`: en los anuales lo que se compara con
+                # el límite es el pago entero, así que enseñar el neto al lado
+                # del exceso daría dos cifras que no se restan entre sí.
+                'importe': b.get('medido', b['importe']), 'limite': b['limite'],
                 'exceso': b['exceso'], 'num_categorias': b['num_categorias'],
                 'categorias': b['categorias'][:5],
             })
@@ -631,7 +669,10 @@ def _fuera_de_presupuesto(bloques):
         if b['tipo'] == 'discrecional' or b.get('techo_propio'):
             continue
         for c in b['categorias']:
-            fila = dict(c, bloque=b['etiqueta'], color=b['color'], tipo=b['tipo'])
+            fila = dict(
+                c, bloque=b['etiqueta'], color=b['color'], tipo=b['tipo'],
+                importe=c.get('medido', c['importe']),
+            )
             if c['dentro'] is False:
                 explican.append(fila)
             elif c['dentro'] is None and c['importe'] > 0 and c['id']:
@@ -774,7 +815,10 @@ def _panel_context(hogar, todos, request):
     #
     # Un abono dentro de una categoría de gasto (una devolución) resta de su
     # propia categoría, así que el total del bloque es su gasto neto.
-    por_bloque = defaultdict(lambda: {'importe': Decimal('0'), 'categorias': {}})
+    por_bloque = defaultdict(
+        lambda: {'importe': Decimal('0'), 'bruto': Decimal('0'),
+                 'cubierto': Decimal('0'), 'categorias': {}},
+    )
     for m in reales:
         if not m.cuenta_como_gasto:
             continue
@@ -786,12 +830,23 @@ def _panel_context(hogar, todos, request):
         # coche sigue siendo 1.200 —eso lo ve su ficha—, pero el presupuesto del
         # mes solo sufre lo que no cubriste.
         peso = peso_de(m)
+        # Y el pago ENTERO se guarda al lado. Sin él la fila decía «1 €» sin más
+        # y no había forma de saber de dónde salía: parecía que el mes se había
+        # comido novecientos euros. Un bloque solo se entiende si se ve el pago,
+        # lo que puso la reserva y la diferencia que queda.
+        bruto = -m.importe
+        cubierto = m.cubierto_por_reserva if vista_de_mes else Decimal('0')
         datos['importe'] += peso
+        datos['bruto'] += bruto
+        datos['cubierto'] += cubierto
         cat = datos['categorias'].setdefault(
             nombre, {'id': m.categoria_id, 'nombre': nombre,
-                     'importe': Decimal('0'), 'num': 0},
+                     'importe': Decimal('0'), 'bruto': Decimal('0'),
+                     'cubierto': Decimal('0'), 'num': 0},
         )
         cat['importe'] += peso
+        cat['bruto'] += bruto
+        cat['cubierto'] += cubierto
         cat['num'] += 1
 
     total_gasto_abs = sum(
@@ -806,6 +861,12 @@ def _panel_context(hogar, todos, request):
     meses_periodo = max(
         len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
     )
+    # Los FIJOS ANUALES no se miden por meses sino por años: lo que declaras es
+    # lo que te va a costar el año, y el pago llega de golpe cuando toca. Su
+    # divisor es el número de años que hay a la vista, no el de meses.
+    anios_periodo = max(
+        len({m.fecha.year for m in todos if _pasa_periodo(m, f)}), 1,
+    )
     # El límite SIEMPRE incluye todas las partidas prorrateadas, también las no
     # mensuales: los 43 €/mes que reservas para el IBI son el presupuesto de ese
     # mes aunque el recibo llegue en junio. Antes se quitaban junto con el pago
@@ -813,6 +874,11 @@ def _panel_context(hogar, todos, request):
     # cuando tiene uno perfectamente definido: lo que apartas cada mes.
     limite_bloque = presupuesto.por_bloque(hogar)
     limite_categoria = presupuesto.por_categoria(hogar)
+    # Y los mismos límites en su unidad anual, que es contra la que se juzga el
+    # bloque de los anuales. No es el mensual por doce: `importe_mensual` viene
+    # redondeado, y multiplicarlo convertía un IBI de 520 € en uno de 519,96.
+    limite_bloque_anual = presupuesto.por_bloque(hogar, anual=True)
+    limite_categoria_anual = presupuesto.por_categoria(hogar, anual=True)
     # Los bloques cuyo límite se declara entero: dentro no se espera presupuesto
     # por categoría, así que las suyas se enseñan con su peso y no con un «de X»
     # que no existe.
@@ -824,6 +890,17 @@ def _panel_context(hogar, todos, request):
         if not datos or datos['importe'] <= 0:
             continue
         importe = datos['importe']
+        # El bloque de los anuales se juzga contra el AÑO. Un límite mensual ahí
+        # no significa nada: los 253 €/mes que apartas para el IBI, la revisión
+        # y los seguros no son un tope de septiembre, son la doceava parte de lo
+        # que te vas a gastar en el año. Comparar el pago de la revisión contra
+        # esos 253 € solo podía decir que te habías pasado. Contra los 3.036 €
+        # del año dice lo que de verdad interesa: cuánto de la provisión llevas
+        # consumido.
+        es_anual = tipo == 'anual'
+        escala = anios_periodo if es_anual else meses_periodo
+        de_bloque = limite_bloque_anual if es_anual else limite_bloque
+        de_categoria = limite_categoria_anual if es_anual else limite_categoria
         categorias = sorted(
             (c for c in datos['categorias'].values() if c['importe'] > 0),
             key=lambda c: c['importe'], reverse=True,
@@ -832,19 +909,26 @@ def _panel_context(hogar, todos, request):
             c['pct_bloque'] = round(float(c['importe'] / importe * 100), 1) if importe else 0
             c['pct_total'] = round(float(c['importe'] / total_gasto_abs * 100), 1) if total_gasto_abs else 0
             c['media_mes'] = c['importe'] / meses_periodo
-            c.update(presupuesto.estado(
-                c['importe'], limite_categoria.get(c['id'], Decimal('0')) * meses_periodo,
+            c['es_anual'] = es_anual
+            c.update(_contra_el_limite(
+                c['importe'], c['bruto'], c['cubierto'],
+                de_categoria.get(c['id'], Decimal('0')) * escala, es_anual,
             ))
+        limite = de_bloque.get(tipo, Decimal('0')) * escala
         bloques.append({
             'tipo': tipo,
             'techo_propio': tipo in techos_propios,
             'etiqueta': ETIQUETAS_TIPO.get(tipo, 'Sin categorizar'),
             'importe': importe,
+            'bruto': datos['bruto'],
+            'cubierto': datos['cubierto'],
+            'es_anual': es_anual,
+            'anios_periodo': anios_periodo,
             'pct': round(float(importe / total_gasto_abs * 100), 1) if total_gasto_abs else 0,
             'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
             'categorias': categorias,
             'num_categorias': len(categorias),
-            **presupuesto.estado(importe, limite_bloque.get(tipo, Decimal('0')) * meses_periodo),
+            **_contra_el_limite(importe, datos['bruto'], datos['cubierto'], limite, es_anual),
         })
 
     # El donut se pinta por BLOQUE, no por categoría: con quince categorías era
@@ -1492,6 +1576,12 @@ def movimientos_de_categoria(request):
 
     meses_periodo = max(
         len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
+    )
+    # Los FIJOS ANUALES no se miden por meses sino por años: lo que declaras es
+    # lo que te va a costar el año, y el pago llega de golpe cuando toca. Su
+    # divisor es el número de años que hay a la vista, no el de meses.
+    anios_periodo = max(
+        len({m.fecha.year for m in todos if _pasa_periodo(m, f)}), 1,
     )
     # Mismo criterio que la pantalla desde la que se abre: si ahí la revisión
     # pesa 272 € porque la reserva puso el resto, aquí dentro también, o el

@@ -31,8 +31,19 @@ def _partidas(hogar, solo_mensuales=False):
     return qs
 
 
-def por_categoria(hogar, solo_mensuales=False):
-    """{categoria_id: importe mensual declarado}.
+def _declarado(partida, anual):
+    """Lo declarado en una partida, al mes o al año.
+
+    El anual NO es el mensual por doce: `importe_mensual` viene redondeado a
+    céntimos, y multiplicarlo convierte un IBI de 520 € en uno de 519,96. Sobre
+    un año esa diferencia se ve, y el bloque de los anuales se juzga justo
+    contra ese número.
+    """
+    return partida.importe_anual if anual else partida.importe_mensual
+
+
+def por_categoria(hogar, solo_mensuales=False, anual=False):
+    """{categoria_id: importe declarado}, al mes o —con `anual`— al año.
 
     Las partidas declaradas para el bloque entero no aportan a ninguna
     categoría: precisamente existen porque el usuario NO sabe en qué categorías
@@ -41,12 +52,12 @@ def por_categoria(hogar, solo_mensuales=False):
     totales = defaultdict(lambda: Decimal('0'))
     for p in _partidas(hogar, solo_mensuales):
         if p.categoria_id:
-            totales[p.categoria_id] += p.importe_mensual
+            totales[p.categoria_id] += _declarado(p, anual)
     return dict(totales)
 
 
-def por_bloque(hogar, solo_mensuales=False):
-    """{tipo de bloque: importe mensual declarado}.
+def por_bloque(hogar, solo_mensuales=False, anual=False):
+    """{tipo de bloque: importe declarado}, al mes o —con `anual`— al año.
 
     Cuando el bloque tiene un presupuesto propio declarado, ESE es su techo y no
     se le suma el de sus categorías: «tengo 1.500 € para caprichos, de los
@@ -63,9 +74,9 @@ def por_bloque(hogar, solo_mensuales=False):
         if not tipo:
             continue
         if p.es_del_bloque:
-            de_bloque[tipo] += p.importe_mensual
+            de_bloque[tipo] += _declarado(p, anual)
         else:
-            de_categorias[tipo] += p.importe_mensual
+            de_categorias[tipo] += _declarado(p, anual)
 
     return {
         tipo: de_bloque.get(tipo) or de_categorias[tipo]

@@ -11,6 +11,21 @@ misma —«¿cuánto me cuesta tener esto?»— y la respuesta se construye igua
 Comparar ambos es lo que convierte una lista de gastos en una respuesta: el
 coche «cuesta 120 €/mes» solo si de verdad se van 120 €/mes.
 
+Y para que la comparación signifique algo, los dos lados se miden IGUAL, en
+DEVENGO: lo declarado ya viene prorrateado (unos neumáticos de 470 € que duran
+tres años son 13 €/mes), así que lo real tiene que venir prorrateado también.
+Poner el pago entero de los neumáticos contra el presupuesto de un año decía
+que el coche se había pasado un 117% el mes en que tocó cambiarlos, cuando lo
+que había pasado es que se pagó de golpe algo que cubre tres años.
+
+De ahí que haya dos cifras de «real» y que no sean la misma:
+
+* `real_anual` es CAJA: lo que salió del banco en el año. Es lo que uno ve en
+  el extracto y con lo que se calcula el neto de un piso alquilado.
+* `devengado_anual` es DEVENGO: la parte de esos pagos que le toca al año, ya
+  repartida entre los meses que cada gasto cubre. Es la que se compara con lo
+  declarado, y la que se enseña como «lo que cuesta al mes».
+
 La clave del activo (`vehiculo:3`, `propiedad:1`) es lo que permite que haya un
 único selector en toda la interfaz en vez de uno por tipo.
 """
@@ -205,6 +220,18 @@ def costes(activo, anio):
     )
     ritmo_mensual = round(ritmo_corriente + ritmo_provisiones, 2)
 
+    # Lo devengado en lo que va de año: el gasto corriente que ya ha pasado por
+    # el banco más la parte de cada pago periódico que le toca a estos meses.
+    # Es `ritmo_mensual` multiplicado por los meses transcurridos, y es la cifra
+    # que se compara con el presupuesto: la única que está en las mismas
+    # unidades que lo declarado.
+    devengado_anual = round(
+        corriente_anual + ritmo_provisiones * meses_transcurridos, 2,
+    )
+    # Lo declarado para esos mismos meses. Comparar lo que llevas devengado en
+    # nueve meses contra el presupuesto de doce siempre te daría por debajo.
+    teorico_periodo = round(teorico_mensual * meses_transcurridos, 2)
+
     return {
         'activo': activo,
         'clave': clave(activo),
@@ -239,11 +266,19 @@ def costes(activo, anio):
         'movimientos_provision': sorted(provisiones, key=lambda m: m.fecha, reverse=True),
         'partidas_sueltas': partidas_sueltas,
         'meses_con_datos': len(meses_con_datos),
-        'diferencia_anual': real_anual - teorico_anual,
-        'pct_ejecucion': _pct(real_anual, teorico_anual),
+        'devengado_anual': devengado_anual,
+        'teorico_periodo': teorico_periodo,
+        # La barra mide DEVENGO contra el presupuesto anual, con la marca de lo
+        # que va de año: así un 70% en septiembre se lee contra el 75% que
+        # tocaría, en vez de contra un 117% que solo decía que ese mes tocaba
+        # pagar los neumáticos de los próximos tres años.
+        'diferencia_anual': devengado_anual - teorico_anual,
+        'pct_ejecucion': _pct(devengado_anual, teorico_anual),
         'pct_transcurrido': _pct_transcurrido(anio),
         'por_mes': _por_mes(corrientes, teorico_mensual, provisiones),
-        'por_categoria': _por_categoria(partidas, del_anio),
+        'por_categoria': _por_categoria(
+            partidas, corrientes, provisiones, meses_transcurridos,
+        ),
         'movimientos': sorted(del_anio, key=lambda m: m.fecha, reverse=True),
         'anios_con_datos': sorted({m.fecha.year for m in movimientos}, reverse=True),
     }
@@ -307,8 +342,19 @@ def _por_mes(movimientos, teorico_mensual, provisiones=None):
     ]
 
 
-def _por_categoria(partidas, movimientos):
-    """Declarado y real por categoría: dónde se desvía el coste del activo."""
+def _por_categoria(partidas, corrientes, provisiones, meses_transcurridos):
+    """Declarado y real por categoría: dónde se desvía el coste del activo.
+
+    Los dos lados van en devengo y sobre los mismos meses, porque si no la
+    comparación no dice nada. Mantenimiento vehicular salía «929 € de 593 €,
+    +336 €» el mes en que se pagaron unos neumáticos que duran tres años: el
+    pago entero contra el presupuesto de un año. Repartido como se declaró
+    —cuota mensual por los meses que van de año— sale lo que de verdad lleva
+    costando.
+
+    `pagado_periodo` se conserva aparte: es lo que salió del banco, y sigue
+    siendo la respuesta a «¿cuánto he pagado ya de esto?».
+    """
     filas = {}
 
     def _fila(categoria):
@@ -317,18 +363,42 @@ def _por_categoria(partidas, movimientos):
             'categoria': nombre,
             'tipo': categoria.tipo if categoria else 'sin',
             'declarado_anual': Decimal('0'),
+            'declarado_periodo': Decimal('0'),
             'real_anual': Decimal('0'),
+            'pagado_periodo': Decimal('0'),
+            'devengo_mensual': Decimal('0'),
         })
 
     for p in partidas:
-        _fila(p.categoria)['declarado_anual'] += p.importe_anual
-    for m in movimientos:
-        _fila(m.categoria)['real_anual'] += -m.importe
+        fila = _fila(p.categoria)
+        fila['declarado_anual'] += p.importe_anual
+        fila['declarado_periodo'] += p.importe_mensual * meses_transcurridos
+
+    for m in corrientes:
+        fila = _fila(m.categoria)
+        fila['real_anual'] += -m.importe
+        fila['pagado_periodo'] += -m.importe
+
+    # Cada pago periódico aporta su cuota: el importe entre los meses que cubre,
+    # por los meses de año que llevamos.
+    for m in provisiones:
+        fila = _fila(m.categoria)
+        cuota = -m.importe / Decimal(m.partida_conciliada.meses_periodo)
+        fila['devengo_mensual'] += cuota
+        fila['real_anual'] += cuota * meses_transcurridos
+        fila['pagado_periodo'] += -m.importe
 
     orden = sorted(filas.values(), key=lambda f: f['real_anual'], reverse=True)
     for f in orden:
-        f['diferencia'] = f['real_anual'] - f['declarado_anual']
-        f['pct'] = _pct(f['real_anual'], f['declarado_anual'])
+        f['real_anual'] = f['real_anual'].quantize(Decimal('0.01'))
+        f['declarado_periodo'] = f['declarado_periodo'].quantize(Decimal('0.01'))
+        f['devengo_mensual'] = f['devengo_mensual'].quantize(Decimal('0.01'))
+        # El +/- se mide contra lo declarado PARA ESTOS MESES, no contra el año
+        # entero: en septiembre, ir por debajo del presupuesto de doce meses no
+        # es una noticia.
+        f['diferencia'] = f['real_anual'] - f['declarado_periodo']
+        f['diferido'] = f['pagado_periodo'] - f['real_anual']
+        f['pct'] = _pct(f['real_anual'], f['declarado_periodo'])
     return orden
 
 
@@ -340,6 +410,8 @@ def resumen(activos, anio):
         'teorico_mensual': sum((f['teorico_mensual'] for f in fichas), Decimal('0')),
         'teorico_anual': sum((f['teorico_anual'] for f in fichas), Decimal('0')),
         'real_anual': sum((f['real_anual'] for f in fichas), Decimal('0')),
+        'devengado_anual': sum((f['devengado_anual'] for f in fichas), Decimal('0')),
+        'teorico_periodo': sum((f['teorico_periodo'] for f in fichas), Decimal('0')),
         'ritmo_mensual': sum((f['ritmo_mensual'] for f in fichas), Decimal('0')),
         'meses_transcurridos': _meses_transcurridos(anio),
         'provisiones_anual': sum((f['provisiones_anual'] for f in fichas), Decimal('0')),
