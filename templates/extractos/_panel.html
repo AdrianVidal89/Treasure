@@ -704,6 +704,20 @@ categoría, no podía representar.
                 </span>
             </div>
         </div>
+
+        {% comment %}
+        Segundo paso, dentro del propio diálogo. Repartir a mano el recibo del
+        taller cada vez que llega es el trabajo que hace que la pantalla se
+        abandone a medias, así que en cuanto hay un reparto guardado se ofrece
+        llevarlo al resto y recordarlo. Va aquí y no en un aviso sobre la fila
+        porque al guardar hay que recargar —el reparto mueve los totales— y la
+        fila de debajo quedaría mintiendo mientras se decide.
+        {% endcomment %}
+        <div class="ext-modal-cuerpo ext-dividir-paso2" id="ext-dividir-paso2" hidden>
+            <p class="ext-dividir-hecho" id="ext-dividir-hecho"></p>
+            <p class="ext-dividir-pregunta" id="ext-dividir-pregunta"></p>
+            <div class="ext-dividir-btns" id="ext-dividir-acciones"></div>
+        </div>
     </div>
 </div>
 
@@ -1088,6 +1102,12 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 /* Igual que el modal: `display:flex` pisaría el `[hidden]` del navegador y la
    barra seguiría ocupando sitio (y tapando clics) sin nada seleccionado. */
 .ext-lote[hidden] { display:none; }
+.ext-lote-aviso {
+    position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:60;
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.82rem;
+    background:var(--surface); border:1px solid var(--border-strong); border-radius:14px;
+    padding:12px 16px; box-shadow:0 8px 28px rgba(0,0,0,.28); max-width:min(680px, 94vw);
+}
 .ext-lote-cuenta { font-size:0.82rem; margin-right:4px; white-space:nowrap; }
 .ext-lote-campo {
     background:var(--app-bg); color:var(--text-color); border:1px solid var(--border-strong);
@@ -1353,6 +1373,12 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-dividir-suma { font-size:0.82rem; font-weight:600; }
 .ext-dividir-suma.ok { color:var(--success); }
 .ext-dividir-suma.mal { color:var(--danger); }
+.ext-dividir-paso2 { border-top:1px solid var(--border); }
+.ext-dividir-paso2[hidden] { display:none; }
+.ext-dividir-hecho { font-size:0.86rem; font-weight:700; margin:0 0 6px; color:var(--success); }
+.ext-dividir-pregunta { font-size:0.84rem; margin:0 0 14px; }
+.ext-dividir-pregunta em { font-style:normal; color:var(--muted); }
+.ext-dividir-paso2 .ext-dividir-btns { display:flex; gap:8px; flex-wrap:wrap; }
 .ext-dividir-btns { margin-left:auto; display:flex; gap:8px; }
 #ext-dividir-guardar:disabled { opacity:.5; cursor:not-allowed; }
 @media (max-width:860px){ .ext-parte { grid-template-columns:1fr 1fr; } .ext-parte-quitar { justify-self:end; } }
@@ -2160,6 +2186,56 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         refrescarSeleccion();
     });
 
+    /* Cambiar veinte apuntes de golpe es el gesto con MÁS criterio detrás, y
+       era el único sitio donde no se preguntaba si ese criterio debía quedarse.
+       Se pregunta sobre la propia barra de selección, que es donde está el ojo. */
+    function preguntarReglasDelLote(sug) {
+        var aviso = document.createElement('div');
+        aviso.className = 'ext-lote-aviso';
+
+        var texto = document.createElement('span');
+        var cuantos = sug.patrones.length;
+        texto.textContent = '¿Quieres que ' +
+            (cuantos === 1 ? '«' + sug.patrones[0] + '» sea' : 'estos ' + cuantos + ' comercios sean') +
+            ' «' + sug.categoria + '» también en lo que importes a partir de ahora?';
+        texto.title = sug.patrones.join(' · ');
+
+        var si = document.createElement('button');
+        si.type = 'button';
+        si.className = 'btn btn-primary btn-sm';
+        si.textContent = 'Sí, recordarlo';
+
+        var no = document.createElement('button');
+        no.type = 'button';
+        no.className = 'btn btn-ghost btn-sm';
+        no.textContent = 'No, solo esta vez';
+
+        si.addEventListener('click', function() {
+            si.disabled = true;
+            var body = new URLSearchParams();
+            body.set('categoria_id', sug.categoria_id);
+            body.set('accion', 'solo_regla');
+            sug.patrones.forEach(function(p){ body.append('patron', p); });
+            fetch(URL_APRENDER, {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+                body: body.toString()
+            }).then(function(){ window.location.reload(); })
+              .catch(function(){ window.location.reload(); });
+        });
+        no.addEventListener('click', function(){ window.location.reload(); });
+
+        aviso.appendChild(texto);
+        aviso.appendChild(si);
+        aviso.appendChild(no);
+        /* Al lado de la barra, no DENTRO: vaciarla se llevaría por delante los
+           desplegables a los que apuntan los manejadores de más abajo. */
+        var previo = document.querySelector('.ext-lote-aviso');
+        if (previo) previo.remove();
+        barra.hidden = true;
+        barra.parentNode.insertBefore(aviso, barra.nextSibling);
+    }
+
     function aplicarLote(datos, confirmacion) {
         var ids = refrescarSeleccion();
         if (!ids || !ids.length) return;
@@ -2175,6 +2251,10 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             body: body.toString()
         }).then(function(r){ return r.json(); }).then(function(data){
             if (!data.ok) return;
+            if (data.sugerencia && data.sugerencia.patrones.length) {
+                preguntarReglasDelLote(data.sugerencia);
+                return;
+            }
             /* Se recarga a propósito: un cambio en bloque mueve los totales, los
                pilares y el reparto por comercio, y dejarlos desfasados haría que
                la pantalla mintiera justo después de tocarla. */
@@ -2355,6 +2435,15 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             document.getElementById('ext-dividir-deshacer').hidden = true;
         }
         repartirRestante();
+        /* Se vuelve siempre al primer paso: si no, reabrir el diálogo después
+           de haber contestado enseñaba la pregunta anterior en vez de las
+           partes. */
+        var paso2Abierto = document.getElementById('ext-dividir-paso2');
+        if (paso2Abierto) {
+            paso2Abierto.hidden = true;
+            document.getElementById('ext-dividir-acciones').innerHTML = '';
+            paso2Abierto.previousElementSibling.hidden = false;
+        }
         cajaDividir.hidden = false;
         document.body.style.overflow = 'hidden';
     }
@@ -2380,9 +2469,103 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         repartirRestante();
     });
 
+    /* ---- Segundo paso: llevar el reparto a los recibos parecidos ----
+       Mismo guion que al cambiar una categoría: primero hasta dónde llega el
+       cambio y, una vez aplicado, si además debe quedarse para lo que se
+       importe a partir de ahora. Ocurre dentro del diálogo porque al guardar
+       hay que recargar y la fila de debajo quedaría desfasada mientras tanto. */
+    var URL_APRENDER_DIV = "{% url 'extractos:aprender_division' %}";
+    var paso2 = document.getElementById('ext-dividir-paso2');
+    var cuerpoDiv = paso2 ? paso2.previousElementSibling : null;
+
+    function pedirDivision(datos) {
+        var body = new URLSearchParams();
+        Object.keys(datos).forEach(function (k) { body.set(k, datos[k]); });
+        return fetch(URL_APRENDER_DIV, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function (r) { return r.json(); });
+    }
+
+    function abrirPaso2(movId, sug) {
+        var hecho = document.getElementById('ext-dividir-hecho');
+        var pregunta = document.getElementById('ext-dividir-pregunta');
+        var acciones = document.getElementById('ext-dividir-acciones');
+        cuerpoDiv.hidden = true;
+        paso2.hidden = false;
+        hecho.textContent = 'Reparto guardado.';
+
+        function boton(clase, etiqueta, titulo) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn ' + clase + ' btn-sm';
+            b.textContent = etiqueta;
+            if (titulo) b.title = titulo;
+            acciones.appendChild(b);
+            return b;
+        }
+
+        /* Tercer paso: ya está aplicado, ahora si se recuerda. */
+        function preguntarRegla(aplicados) {
+            acciones.innerHTML = '';
+            if (aplicados) {
+                hecho.textContent = 'Repartidos ' + aplicados +
+                    (aplicados === 1 ? ' recibo más.' : ' recibos más.');
+            }
+            pregunta.innerHTML = '¿Quieres que los próximos «' + sug.patron +
+                '» que importes se repartan así solos? <em>Se parten en la misma ' +
+                'proporción (' + sug.pesos.map(function (p) { return p + ' %'; }).join(' · ') +
+                '); el total no cambia y siempre puedes deshacerlo.</em>';
+            var si = boton('btn-primary', 'Sí, recordarlo');
+            var no = boton('btn-ghost', 'No, solo esta vez');
+            si.addEventListener('click', function () {
+                si.disabled = true;
+                pedirDivision({modelo: movId, patron: sug.patron, accion: 'solo_regla'})
+                    .then(function () { window.location.reload(); })
+                    .catch(function () { window.location.reload(); });
+            });
+            no.addEventListener('click', function () { window.location.reload(); });
+        }
+
+        if (!sug.n_similares) { preguntarRegla(0); return; }
+
+        pregunta.innerHTML = 'Hay ' + sug.n_similares +
+            (sug.n_similares === 1 ? ' recibo más' : ' recibos más') + ' de «' + sug.patron +
+            '» sin repartir. ¿Los reparto igual? <em>En la misma proporción (' +
+            sug.pesos.map(function (p) { return p + ' %'; }).join(' · ') +
+            '), porque los importes no se repiten.</em>';
+
+        function aplicar(boton_, ambito) {
+            boton_.disabled = true;
+            var datos = {modelo: movId, patron: sug.patron, ambito: ambito, recordar: '0'};
+            if (ambito === 'mes') { datos.anio = sug.anio; datos.mes = sug.mes; }
+            pedirDivision(datos).then(function (data) {
+                if (!data.ok) { boton_.disabled = false; return; }
+                if (sug.ya_hay_regla) { window.location.reload(); return; }
+                preguntarRegla(data.aplicados);
+            }).catch(function () { boton_.disabled = false; });
+        }
+
+        if (sug.n_mes) {
+            var soloMes = boton('btn-secondary', 'Solo ' + sug.etiqueta_mes + ' (' + sug.n_mes + ')',
+                                'Reparte únicamente los de ese mes.');
+            soloMes.addEventListener('click', function () { aplicar(soloMes, 'mes'); });
+        }
+        var todos = boton('btn-primary', 'Todos (' + sug.n_similares + ')',
+                          'Reparte todo el histórico de este comercio.');
+        todos.addEventListener('click', function () { aplicar(todos, 'todos'); });
+        var solo = boton('btn-ghost', 'No, solo este');
+        solo.addEventListener('click', function () {
+            if (sug.ya_hay_regla) { window.location.reload(); return; }
+            preguntarRegla(0);
+        });
+    }
+
     var btnGuardarDiv = document.getElementById('ext-dividir-guardar');
     if (btnGuardarDiv) btnGuardarDiv.addEventListener('click', function () {
         if (!movDividiendo) return;
+        var movId = movDividiendo;
         var body = new URLSearchParams();
         listaPartes.querySelectorAll('.ext-parte').forEach(function (fila) {
             body.append('importe', fila.querySelector('.ext-parte-importe').value);
@@ -2399,9 +2582,16 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         }).then(function (r) { return r.json(); }).then(function (data) {
             btnGuardarDiv.disabled = false;
             if (!data.ok) return;
-            /* Recarga: el reparto mueve los totales, los pilares y el desglose
-               por comercio, y dejarlos desfasados haría mentir a la pantalla
-               justo después de tocarla. */
+            /* Con recibos parecidos o sin regla todavía, se pregunta antes de
+               recargar. Si no hay nada que ofrecer, se recarga y ya: el reparto
+               mueve los totales, los pilares y el desglose por comercio, y
+               dejarlos desfasados haría mentir a la pantalla justo después de
+               tocarla. */
+            var sug = data.sugerencia;
+            if (paso2 && sug && (sug.n_similares || !sug.ya_hay_regla)) {
+                abrirPaso2(movId, sug);
+                return;
+            }
             window.location.reload();
         }).catch(function () { btnGuardarDiv.disabled = false; });
     });
