@@ -8,7 +8,7 @@ Mide lo DEVENGADO, no lo pagado: un pago de neumáticos que cubre tres años
 entraba entero y dejaba la barra en el 117% el mes en que tocó cambiarlos,
 cuando lo que había pasado es que se pagó de una vez algo que dura tres años.
 {% endcomment %}
-<div class="act-barra" title="{{ f.devengado_anual|euro }} devengados de {{ f.teorico_anual|euro }} presupuestados{% if f.real_anual != f.devengado_anual %} · pagados {{ f.real_anual|euro }}{% endif %}">
+<div class="act-barra" title="{{ f.devengado_anual|euro }} imputados al año de {{ f.teorico_anual|euro }} presupuestados{% if f.real_anual != f.devengado_anual %} · pagados {{ f.real_anual|euro }}{% endif %}">
     {% if f.pct_ejecucion == None %}
     <div class="act-barra-track"><i class="sin-presupuesto" style="width:100%;"></i></div>
     <span class="act-barra-txt">sin presupuesto declarado</span>

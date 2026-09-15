@@ -157,7 +157,7 @@
                             <span class="k">Real</span>
                             <span class="coste-val {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
                             <span class="k">
-                                {{ f.devengado_anual|euro:0 }} devengados en {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }}
+                                {{ f.devengado_anual|euro:0 }} imputados a {{ f.anio }}, entre 12 meses
                                 · {{ f.num_movimientos }} movimiento{{ f.num_movimientos|pluralize:"s" }}
                             </span>
                         </div>

@@ -197,40 +197,28 @@ def costes(activo, anio):
         key=lambda p: p.nombre,
     )
 
-    # Lo que de verdad está costando al mes, para poder ponerlo al lado del
-    # presupuesto mensual. Antes la ficha enseñaba «85,27 €/mes» de teórico
-    # junto a «1.249,34 €» de real, que es el total del año: parecía que el
-    # coche costaba mil doscientos al mes cuando eso era lo de nueve meses.
+    # Lo que el año lleva costando. Todo se imputa AL AÑO y la cifra mensual es
+    # ese año entre doce, que es como se hace la cuenta a mano:
     #
-    # El gasto corriente se reparte entre los meses que van de año. Los pagos de
-    # un gasto periódico, NO: se reparten entre los meses que ese gasto cubre.
-    # Unos neumáticos de 470 € que duran tres años cuestan 13 €/mes, no 470
-    # entre los meses que lleve el año; meterlos en el mismo saco decía que el
-    # coche se había puesto carísimo el mes en que tocó cambiarlos.
+    #     (543/3 + 385 + 28,46 + 238 + 54) / 12 = 73,87 €/mes
+    #
+    # Un pago corriente se imputa entero —ya ha pasado, es de este año— y uno
+    # periódico imputa solo la parte del año que le toca: unos neumáticos de
+    # 543 € que duran tres años son 181 € al año, no 543.
     meses_transcurridos = _meses_transcurridos(anio)
-    ritmo_corriente = (
-        corriente_anual / meses_transcurridos if meses_transcurridos else Decimal('0')
-    )
-    ritmo_provisiones = sum(
-        (
-            -m.importe / Decimal(m.partida_conciliada.meses_periodo)
-            for m in provisiones if m.partida_conciliada_id
-        ),
+    provisiones_devengadas = sum(
+        (_cuota_anual(m) for m in provisiones if m.partida_conciliada_id),
         Decimal('0'),
     )
-    ritmo_mensual = round(ritmo_corriente + ritmo_provisiones, 2)
+    devengado_anual = round(corriente_anual + provisiones_devengadas, 2)
 
-    # Lo devengado en lo que va de año: el gasto corriente que ya ha pasado por
-    # el banco más la parte de cada pago periódico que le toca a estos meses.
-    # Es `ritmo_mensual` multiplicado por los meses transcurridos, y es la cifra
-    # que se compara con el presupuesto: la única que está en las mismas
-    # unidades que lo declarado.
-    devengado_anual = round(
-        corriente_anual + ritmo_provisiones * meses_transcurridos, 2,
-    )
-    # Lo declarado para esos mismos meses. Comparar lo que llevas devengado en
-    # nueve meses contra el presupuesto de doce siempre te daría por debajo.
-    teorico_periodo = round(teorico_mensual * meses_transcurridos, 2)
+    # Y el mes, SIEMPRE entre doce. Repartir el gasto corriente entre los meses
+    # transcurridos daba una cifra que no cuadraba con ninguna otra de la
+    # tarjeta: 82,85 €/mes cuando la cuenta a mano da 73,87. Lo que va de año lo
+    # dice la marca de la barra, no el divisor.
+    ritmo_corriente = round(corriente_anual / 12, 2)
+    ritmo_provisiones = round(provisiones_devengadas / 12, 2)
+    ritmo_mensual = round(devengado_anual / 12, 2)
 
     return {
         'activo': activo,
@@ -267,21 +255,34 @@ def costes(activo, anio):
         'partidas_sueltas': partidas_sueltas,
         'meses_con_datos': len(meses_con_datos),
         'devengado_anual': devengado_anual,
-        'teorico_periodo': teorico_periodo,
-        # La barra mide DEVENGO contra el presupuesto anual, con la marca de lo
-        # que va de año: así un 70% en septiembre se lee contra el 75% que
-        # tocaría, en vez de contra un 117% que solo decía que ese mes tocaba
-        # pagar los neumáticos de los próximos tres años.
+        'provisiones_devengadas': round(provisiones_devengadas, 2),
+        # La barra mide lo imputado al año contra el presupuesto del año, con la
+        # marca de lo que va de año: así un 84% en septiembre se lee contra el
+        # 75% que tocaría, en vez de contra un 117% que solo decía que ese mes
+        # tocaba pagar los neumáticos de los próximos tres años.
         'diferencia_anual': devengado_anual - teorico_anual,
         'pct_ejecucion': _pct(devengado_anual, teorico_anual),
         'pct_transcurrido': _pct_transcurrido(anio),
         'por_mes': _por_mes(corrientes, teorico_mensual, provisiones),
-        'por_categoria': _por_categoria(
-            partidas, corrientes, provisiones, meses_transcurridos,
-        ),
+        'por_categoria': _por_categoria(partidas, corrientes, provisiones),
         'movimientos': sorted(del_anio, key=lambda m: m.fecha, reverse=True),
         'anios_con_datos': sorted({m.fecha.year for m in movimientos}, reverse=True),
     }
+
+
+def _cuota_anual(movimiento):
+    """Lo que un pago periódico le imputa al año en el que se pagó.
+
+    Un pago cubre `meses_periodo` meses. Si cubre MÁS de doce, al año solo le
+    toca su parte: unos neumáticos de 543 € que duran tres años son 181 € al
+    año. Si cubre doce o menos, se imputa entero, porque los meses que cubre
+    caen todos dentro del año —y los demás pagos del mismo gasto llegarán
+    también dentro de él—: un recibo trimestral de 100 € son 100 € este año, y
+    los cuatro del año suman los 400 que declaraste. Sin el `max`, ese recibo
+    se multiplicaba por cuatro y luego otra vez por los cuatro pagos.
+    """
+    meses = movimiento.partida_conciliada.meses_periodo
+    return -movimiento.importe * 12 / Decimal(max(meses, 12))
 
 
 def _meses_transcurridos(anio):
@@ -342,18 +343,23 @@ def _por_mes(movimientos, teorico_mensual, provisiones=None):
     ]
 
 
-def _por_categoria(partidas, corrientes, provisiones, meses_transcurridos):
-    """Declarado y real por categoría: dónde se desvía el coste del activo.
+def _por_categoria(partidas, corrientes, provisiones):
+    """Declarado y real por categoría, los dos AL AÑO: dónde se desvía el coste.
 
-    Los dos lados van en devengo y sobre los mismos meses, porque si no la
-    comparación no dice nada. Mantenimiento vehicular salía «929 € de 593 €,
-    +336 €» el mes en que se pagaron unos neumáticos que duran tres años: el
-    pago entero contra el presupuesto de un año. Repartido como se declaró
-    —cuota mensual por los meses que van de año— sale lo que de verdad lleva
-    costando.
+    Mantenimiento vehicular salía «929 € de 593 €, +336 €» el mes en que se
+    pagaron unos neumáticos que duran tres años: el pago entero contra el
+    presupuesto de un año. Y el intento siguiente, prorratear lo declarado a los
+    meses transcurridos, daba «425 € de 444 €»: dos cifras que no son ninguna de
+    las que uno puede comprobar a mano.
 
-    `pagado_periodo` se conserva aparte: es lo que salió del banco, y sigue
-    siendo la respuesta a «¿cuánto he pagado ya de esto?».
+    Las dos columnas son ahora del AÑO, sin prorrateos de por medio. Lo
+    declarado es lo que suman las partidas de la categoría en doce meses
+    (592,56 € en mantenimiento, 468 € en el seguro) y lo real es lo que los
+    pagos de este año le imputan, con los plurianuales repartidos entre los años
+    que cubren (543 € de neumáticos a tres años → 181 €).
+
+    `pagado_anual` se conserva aparte: es lo que salió del banco, y sigue siendo
+    la respuesta a «¿cuánto he pagado ya de esto?».
     """
     filas = {}
 
@@ -363,42 +369,30 @@ def _por_categoria(partidas, corrientes, provisiones, meses_transcurridos):
             'categoria': nombre,
             'tipo': categoria.tipo if categoria else 'sin',
             'declarado_anual': Decimal('0'),
-            'declarado_periodo': Decimal('0'),
             'real_anual': Decimal('0'),
-            'pagado_periodo': Decimal('0'),
-            'devengo_mensual': Decimal('0'),
+            'pagado_anual': Decimal('0'),
         })
 
     for p in partidas:
-        fila = _fila(p.categoria)
-        fila['declarado_anual'] += p.importe_anual
-        fila['declarado_periodo'] += p.importe_mensual * meses_transcurridos
+        _fila(p.categoria)['declarado_anual'] += p.importe_anual
 
     for m in corrientes:
         fila = _fila(m.categoria)
         fila['real_anual'] += -m.importe
-        fila['pagado_periodo'] += -m.importe
+        fila['pagado_anual'] += -m.importe
 
-    # Cada pago periódico aporta su cuota: el importe entre los meses que cubre,
-    # por los meses de año que llevamos.
     for m in provisiones:
         fila = _fila(m.categoria)
-        cuota = -m.importe / Decimal(m.partida_conciliada.meses_periodo)
-        fila['devengo_mensual'] += cuota
-        fila['real_anual'] += cuota * meses_transcurridos
-        fila['pagado_periodo'] += -m.importe
+        fila['real_anual'] += _cuota_anual(m)
+        fila['pagado_anual'] += -m.importe
 
     orden = sorted(filas.values(), key=lambda f: f['real_anual'], reverse=True)
     for f in orden:
         f['real_anual'] = f['real_anual'].quantize(Decimal('0.01'))
-        f['declarado_periodo'] = f['declarado_periodo'].quantize(Decimal('0.01'))
-        f['devengo_mensual'] = f['devengo_mensual'].quantize(Decimal('0.01'))
-        # El +/- se mide contra lo declarado PARA ESTOS MESES, no contra el año
-        # entero: en septiembre, ir por debajo del presupuesto de doce meses no
-        # es una noticia.
-        f['diferencia'] = f['real_anual'] - f['declarado_periodo']
-        f['diferido'] = f['pagado_periodo'] - f['real_anual']
-        f['pct'] = _pct(f['real_anual'], f['declarado_periodo'])
+        f['diferencia'] = f['real_anual'] - f['declarado_anual']
+        # Lo que pagaste por adelantado y cubre años que aún no han llegado.
+        f['diferido'] = f['pagado_anual'] - f['real_anual']
+        f['pct'] = _pct(f['real_anual'], f['declarado_anual'])
     return orden
 
 
@@ -411,7 +405,6 @@ def resumen(activos, anio):
         'teorico_anual': sum((f['teorico_anual'] for f in fichas), Decimal('0')),
         'real_anual': sum((f['real_anual'] for f in fichas), Decimal('0')),
         'devengado_anual': sum((f['devengado_anual'] for f in fichas), Decimal('0')),
-        'teorico_periodo': sum((f['teorico_periodo'] for f in fichas), Decimal('0')),
         'ritmo_mensual': sum((f['ritmo_mensual'] for f in fichas), Decimal('0')),
         'meses_transcurridos': _meses_transcurridos(anio),
         'provisiones_anual': sum((f['provisiones_anual'] for f in fichas), Decimal('0')),

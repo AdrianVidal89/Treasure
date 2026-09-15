@@ -3263,6 +3263,55 @@ class ReservaQueCubreUnPagoTests(TestCase):
         self.assertContains(respuesta, 'los puso la reserva')
         self.assertContains(respuesta, 'que provisionas')
 
+    def test_el_rayado_se_ve_tambien_sin_presupuesto_declarado(self):
+        """«El rayado indica lo que cubrió una reserva, sin embargo no aparece
+        reflejado: sí en texto, no en gráfica.»
+
+        Sin límite no hay contra qué medir, pero la barra sigue teniendo algo
+        que contar: qué parte del pago puso la reserva. Repartida sobre el pago
+        se ve, y antes salía un rayado del 0%."""
+        pago = self.mov('-1000', 12, self.alimentacion, concepto='Super')
+        self.emparejar(self.mov('904', 10, concepto='De la reserva'), pago)
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        variable = bloques['variable']
+        self.assertEqual(variable['limite'], Decimal('0'))     # nada declarado
+        self.assertEqual(variable['cubierto'], Decimal('904'))
+        self.assertEqual(variable['pct_cubierto'], 90.4)
+        self.assertEqual(variable['pct_barra'], 9.6)
+        # Y entre los dos tramos la barra se llena entera, como sin reserva.
+        self.assertEqual(variable['pct_barra'] + variable['pct_cubierto'], 100)
+
+    def test_el_tramo_de_la_reserva_no_se_pinta_como_gasto(self):
+        """Iba escrito antes que `.dentro i` en la hoja de estilos, con la misma
+        especificidad, así que el verde lo pisaba y el rayado no se veía."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        css = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        css = css.content.decode()
+        rayado = css.index('i.de-reserva')
+        self.assertLess(css.index('.ext-pilar-barra.dentro i'), rayado)
+        self.assertLess(css.index('.ext-pilar-barra.fuera i'), rayado)
+
+    def test_el_gasto_de_la_cabecera_y_el_del_reparto_son_el_mismo_numero(self):
+        """Se veían tres cifras —balance -1.390,89, gastos -1.409,13 y un
+        reparto de 1.409— que parecían tres cosas distintas cuando son dos."""
+        self.mov('-1000', 12, self.alimentacion, concepto='Super')
+        self.mov('18.24', 13, concepto='Devolución', categoria=CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Otros ingresos'))
+
+        panel = self.panel(anio=2026, mes=9)
+        self.assertEqual(panel['kpi_gasto_abs'], -panel['kpi_gastos'])
+        self.assertEqual(
+            panel['kpi_neto'], panel['kpi_ingresos'] - panel['kpi_gasto_abs'],
+        )
+
+        # Y la resta se lee en pantalla, que es lo que faltaba.
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'de ingresos')
+        self.assertContains(respuesta, 'el gasto de arriba, repartido')
+
     def test_un_bloque_normal_no_se_mide_contra_el_año(self):
         """Solo los anuales cambian de unidad: alimentación se sigue juzgando
         contra su límite del mes."""

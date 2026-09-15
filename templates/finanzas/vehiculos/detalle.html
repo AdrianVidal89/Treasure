@@ -48,20 +48,21 @@
             <span class="veh-hero-cifra {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
             <span class="veh-hero-sub">
                 {% comment %}
-                La cifra de arriba es la cuota: lo que cuesta el coche al mes con
-                cada gasto repartido entre los meses que cubre. Debajo iba el
-                total pagado del año —«82,85 €/mes» y justo debajo «1.249,34 €
-                en 9 meses»— y no había forma de que salieran las cuentas: son
-                dos cosas distintas. Ahora se dice cuál es cuál.
+                Debajo de la cifra va la cuenta que la produce, sumando: el gasto
+                corriente más lo que imputan los pagos periódicos, y eso entre
+                doce. Antes iba el total pagado del año —«82,85 €/mes» y justo
+                debajo «1.249,34 € en 9 meses»— y no había forma de cuadrarlo a
+                mano ni de saber qué era cada cosa.
                 {% endcomment %}
                 {% if f.num_movimientos %}
-                {{ f.devengado_anual|euro }} devengados en {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }} de {{ f.anio }}
+                <strong>{{ f.devengado_anual|euro }}</strong> imputados a {{ f.anio }}, entre 12 meses
+                <br>{{ f.corriente_anual|euro }} de gasto corriente
+                {% if f.provisiones_devengadas %}+ {{ f.provisiones_devengadas|euro }} de gastos periódicos{% endif %}
                 {% if f.provisiones_anual %}
-                <br><span class="veh-provision">has pagado {{ f.real_anual|euro }}, de los cuales {{ f.provisiones_anual|euro }} en
-                {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }} de gastos que se reparten entre los meses que cubren</span>
-                {% endif %}
-                {% if f.meses_con_datos %}
-                <br>gasto corriente: {{ f.real_mensual|euro }}/mes en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }}
+                <br><span class="veh-provision">has pagado {{ f.real_anual|euro }}: los
+                {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }} de gastos periódicos suman
+                {{ f.provisiones_anual|euro }} y cubren más de un año, así que a este solo le imputan
+                {{ f.provisiones_devengadas|euro }}</span>
                 {% endif %}
                 {% else %}sin movimientos imputados todavía{% endif %}
             </span>
@@ -83,7 +84,7 @@
         <div class="veh-card-head">
             <h3>Mes a mes</h3>
             <span class="veh-card-nota">
-                la línea es la previsión mensual ({{ f.teorico_mensual|euro }}){% if f.provisiones_anual %} ·
+                lo que pasó por el banco cada mes · la línea es la previsión mensual ({{ f.teorico_mensual|euro }}){% if f.provisiones_anual %} ·
                 los meses con <span class="veh-leyenda-provision"></span> llevan un pago de un gasto anual,
                 que no se suma a la barra para que no aplaste al resto{% endif %}
             </span>
@@ -153,9 +154,7 @@
         <section class="glass-panel veh-card">
             <div class="veh-card-head">
                 <h3>Dónde se va</h3>
-                <span class="veh-card-nota">
-                    devengado frente a declarado · {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }} de {{ f.anio }}
-                </span>
+                <span class="veh-card-nota">lo imputado a {{ f.anio }} frente a lo declarado al año</span>
             </div>
             {% if f.por_categoria %}
             {% comment %}
@@ -168,15 +167,19 @@
                 {% for c in f.por_categoria %}
                 <div class="veh-cat">
                     <span class="veh-cat-nombre">{{ c.categoria }}</span>
-                    <span class="veh-cat-real">{{ c.real_anual|euro:0 }}</span>
-                    <span class="veh-cat-decl">de {{ c.declarado_periodo|euro:0 }}</span>
+                    {% comment %}
+                    Con céntimos: son cifras que uno comprueba a mano sumando
+                    sus partidas, y un «de 593 €» donde la suma da 592,56 manda
+                    a buscar un error que no existe.
+                    {% endcomment %}
+                    <span class="veh-cat-real">{{ c.real_anual|euro }}</span>
+                    <span class="veh-cat-decl">de {{ c.declarado_anual|euro }}</span>
                     <span class="veh-cat-dif {% if c.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">
-                        {% if c.diferencia > 0 %}+{% endif %}{{ c.diferencia|euro:0 }}
+                        {% if c.diferencia > 0 %}+{% endif %}{{ c.diferencia|euro }}
                     </span>
                     {% if c.diferido %}
                     <span class="veh-cat-nota">
-                        has pagado {{ c.pagado_periodo|euro:0 }}; {{ c.diferido|euro:0 }} cubren meses que aún no han llegado
-                        · {{ c.declarado_anual|euro:0 }} declarados al año
+                        has pagado {{ c.pagado_anual|euro }}; {{ c.diferido|euro }} cubren años que aún no han llegado
                     </span>
                     {% endif %}
                 </div>

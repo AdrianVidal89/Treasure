@@ -2165,22 +2165,17 @@ class CostesDeActivoTests(TestCase):
         self.assertEqual(self.ficha()['real_anual'], Decimal('65'))
 
     def test_el_desglose_por_categoria_cruza_declarado_y_real(self):
-        """Los dos lados, sobre los mismos meses. Comparar lo que llevas
-        gastado en lo que va de año contra el presupuesto de doce siempre te
-        daría por debajo."""
-        from unittest import mock
-
+        """Las dos columnas son del AÑO: lo que suman las partidas de la
+        categoría en doce meses y lo que los pagos de este año le imputan."""
         self.declarar('Gasolina', '100')
         self.pagar('Repsol', '-1500', mes=1)
-        with mock.patch('finanzas.costes_activo.date') as falso:
-            falso.today.return_value = datetime.date(2026, 9, 15)
-            fila = self.ficha()['por_categoria'][0]
+        fila = self.ficha()['por_categoria'][0]
 
         self.assertEqual(fila['categoria'], 'Gasolina')
         self.assertEqual(fila['declarado_anual'], Decimal('1200'))
-        self.assertEqual(fila['declarado_periodo'], Decimal('900'))   # 100 × 9
         self.assertEqual(fila['real_anual'], Decimal('1500'))
-        self.assertEqual(fila['diferencia'], Decimal('600'))
+        self.assertEqual(fila['pagado_anual'], Decimal('1500'))
+        self.assertEqual(fila['diferencia'], Decimal('300'))
 
     def test_el_ritmo_del_anio_pone_el_porcentaje_en_contexto(self):
         """Un 76% del presupuesto en marzo y en diciembre no son lo mismo."""
@@ -3074,12 +3069,17 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
 
         respuesta = self.client.get(url('finanzas:listar_vehiculos'), {'anio': 2026})
         self.assertContains(respuesta, 'de los cuales')
-        self.assertContains(respuesta, 'pago de gastos anuales')
+        self.assertContains(respuesta, 'pago de gastos periódicos')
 
     def test_el_real_se_da_al_mes_para_poder_compararlo_con_el_teorico(self):
         """La ficha ponía «85,27 €/mes» de teórico al lado de «1.249,34 €» de
         real, que es el total del año: parecía que el coche costaba mil
-        doscientos al mes cuando eso era lo de nueve meses."""
+        doscientos al mes cuando eso era lo de nueve meses.
+
+        El divisor son los DOCE meses del año, no los transcurridos: es la
+        cuenta que uno hace a mano y la única que cuadra con lo declarado, que
+        también es de doce meses. Lo que va de año lo dice la marca de la
+        barra."""
         from unittest import mock
 
         self.mov('-900', 1, self.gasolina)
@@ -3088,10 +3088,10 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
             f = self.ficha()
 
         self.assertEqual(f['meses_transcurridos'], 9)
-        self.assertEqual(f['ritmo_mensual'], Decimal('100'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('75'))    # 900 / 12
         # Y el teórico con el que se compara sigue siendo mensual.
         self.assertEqual(f['teorico_mensual'], Decimal('160'))
-        self.assertEqual(f['diferencia_mensual'], Decimal('-60'))
+        self.assertEqual(f['diferencia_mensual'], Decimal('-85'))
 
     def test_un_gasto_de_tres_años_se_reparte_entre_treinta_y_seis_meses(self):
         """Unos neumáticos de 470 € que duran tres años cuestan 13 €/mes, no 470
@@ -3142,16 +3142,17 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
         self.assertEqual(neumaticos.importe_mensual, Decimal('12'))
         self.assertEqual(self.ficha()['ritmo_provisiones'], Decimal('12'))
 
-    def test_el_gasto_corriente_sigue_repartiéndose_por_el_año(self):
-        """Lo del día a día sí se promedia entre los meses que van de año: es
-        gasto recurrente, no una cuota de algo que dura tres."""
+    def test_el_gasto_corriente_se_reparte_entre_los_doce_meses(self):
+        """Lo del día a día se imputa entero al año —ya ha pasado— y el año se
+        divide entre doce, como todo lo demás."""
         from unittest import mock
 
         self.mov('-900', 1, self.gasolina)
         with mock.patch('finanzas.costes_activo.date') as falso:
             falso.today.return_value = self.date(2026, 9, 15)
             f = self.ficha()
-        self.assertEqual(f['ritmo_corriente'], Decimal('100'))
+        self.assertEqual(f['corriente_anual'], Decimal('900'))
+        self.assertEqual(f['ritmo_corriente'], Decimal('75'))
         self.assertEqual(f['ritmo_provisiones'], Decimal('0'))
 
     def test_un_año_cerrado_se_divide_entre_doce(self):
@@ -3166,15 +3167,22 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
         self.assertEqual(f['ritmo_mensual'], Decimal('100'))
 
 
-class DevengoFrenteACajaEnLaFichaTests(TestCase):
-    """Lo declarado viene prorrateado, así que lo real tiene que venir igual.
+class CosteAnualDeUnActivoTests(TestCase):
+    """Lo que cuesta el coche al año, y ese año entre doce.
 
-    La ficha del Polo decía «82,85 €/mes» de real y, debajo, «1.249,34 € en 9
-    meses»: dos cifras que no se podían cuadrar entre sí. Y la barra remataba
-    con un «117% del presupuesto anual · te has pasado 189 €» porque metía el
-    pago entero de unos neumáticos que duran tres años contra el presupuesto de
-    uno. En «Dónde se va» salía lo mismo: «Mantenimiento vehicular 929 € de
-    593 €, +336 €».
+    Reproduce la ficha del Polo con sus cifras exactas, porque es la cuenta que
+    el usuario hace a mano y la que tiene que salir:
+
+        declarado   2,57 + 4,95 + 16,11 + 25,75 = 49,38 €/mes de mantenimiento
+                    (592,56 €/año) + 39 €/mes de seguro (468 €/año)
+        pagado      543 € de neumáticos (cubren 3 años), 385 € de revisión
+                    (anual), y 238 + 54 + 28,46 € de gasto corriente
+        imputado    543/3 + 385 + 238 + 54 + 28,46 = 886,46 € al año
+        al mes      886,46 / 12 = 73,87 €
+
+    La ficha llegó a decir 82,85 €/mes —el gasto corriente entre los NUEVE
+    meses transcurridos— y «Mantenimiento vehicular 425 € de 444 €», que son
+    dos cifras prorrateadas que no se pueden comprobar contra nada.
     """
 
     def setUp(self):
@@ -3193,24 +3201,45 @@ class DevengoFrenteACajaEnLaFichaTests(TestCase):
         self.client.force_login(self.user)
 
         self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo 1.4', tipo='coche')
-        self.mantenimiento = CategoriaGasto.objects.get(
+        self.mant = CategoriaGasto.objects.get(
             hogar=self.hogar, nombre='Mantenimiento vehicular')
-        # 360 € de neumáticos que duran tres años: 10 €/mes, 120 €/año.
-        self.neumaticos = PartidaGasto.objects.create(
-            hogar=self.hogar, categoria=self.mantenimiento, nombre='Neumáticos Polo',
-            importe=Decimal('360'), periodicidad='trienal', vehiculo=self.coche,
-        )
+        self.seguro = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Seguro coche')
+        self.imprevistos = CategoriaGasto.objects.create(
+            hogar=self.hogar, nombre='Imprevistos', tipo='variable')
+
+        def partida(nombre, importe, periodicidad, categoria):
+            return PartidaGasto.objects.create(
+                hogar=self.hogar, categoria=categoria, nombre=nombre,
+                importe=Decimal(importe), periodicidad=periodicidad, vehiculo=self.coche,
+            )
+
+        partida('Polo ITV', '30.84', 'anual', self.mant)          #  2,57 €/mes
+        partida('Polo IVTM', '59.40', 'anual', self.mant)         #  4,95 €/mes
+        self.neumaticos = partida(
+            'Polo Neumaticos', '579.96', 'trienal', self.mant)    # 16,11 €/mes
+        self.revision = partida(
+            'Polo Revision', '309.00', 'anual', self.mant)        # 25,75 €/mes
+        partida('Seguro Polo', '39.00', 'mensual', self.seguro)   # 39,00 €/mes
+
         self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
         self.MovimientoBancario = MovimientoBancario
         self.date = date
+        self._n = 0
 
-    def pagar(self, importe, mes, provision=None):
+    def pagar(self, importe, mes, categoria, provision=None):
+        self._n += 1
         return self.MovimientoBancario.objects.create(
             extracto=self.extracto, hogar=self.hogar, fecha=self.date(2026, mes, 10),
-            concepto=f'Taller {mes}', importe=Decimal(importe),
-            categoria=self.mantenimiento, vehiculo=self.coche,
-            partida_conciliada=provision,
+            concepto=f'Pago {self._n}', importe=Decimal(importe), categoria=categoria,
+            vehiculo=self.coche, partida_conciliada=provision,
         )
+
+    def pagar_el_año_del_usuario(self):
+        self.pagar('-543', 9, self.mant, self.neumaticos)
+        self.pagar('-385', 9, self.mant, self.revision)
+        self.pagar('-238', 5, self.imprevistos)
+        self.pagar('-54', 6, self.imprevistos)
+        self.pagar('-28.46', 7, self.imprevistos)
 
     def ficha(self, anio=2026, hoy=(2026, 9, 15)):
         from unittest import mock
@@ -3220,68 +3249,110 @@ class DevengoFrenteACajaEnLaFichaTests(TestCase):
             falso.today.return_value = self.date(*hoy)
             return costes_activo.costes(self.coche, anio)
 
-    def test_lo_pagado_y_lo_devengado_son_dos_cifras_distintas(self):
-        self.pagar('-360', 9, provision=self.neumaticos)
+    # ── Lo declarado ─────────────────────────────────────────────────────
+
+    def test_lo_declarado_al_año_es_la_suma_de_las_partidas_por_doce(self):
+        f = self.ficha()
+        self.assertEqual(f['teorico_mensual'], Decimal('88.38'))
+        self.assertEqual(f['teorico_anual'], Decimal('1060.56'))
+
+        por_cat = {c['categoria']: c for c in self.ficha()['por_categoria']}
+        # 49,38 €/mes de mantenimiento son 592,56 al año, no 444.
+        self.assertEqual(por_cat['Mantenimiento vehicular']['declarado_anual'],
+                         Decimal('592.56'))
+        # Y el seguro, 468 al año, no 351.
+        self.assertEqual(por_cat['Seguro coche']['declarado_anual'], Decimal('468.00'))
+
+    # ── Lo real ──────────────────────────────────────────────────────────
+
+    def test_el_coste_del_año_es_la_cuenta_que_sale_a_mano(self):
+        """543/3 + 385 + 238 + 54 + 28,46 = 886,46 · entre 12 = 73,87 €/mes."""
+        self.pagar_el_año_del_usuario()
         f = self.ficha()
 
-        # Caja: los 360 € salieron del banco este año.
-        self.assertEqual(f['real_anual'], Decimal('360'))
-        # Devengo: 10 €/mes × 9 meses de año. Lo demás cubre 2027 y 2028.
-        self.assertEqual(f['devengado_anual'], Decimal('90'))
+        self.assertEqual(f['corriente_anual'], Decimal('320.46'))     # 238+54+28,46
+        self.assertEqual(f['provisiones_devengadas'], Decimal('566.00'))  # 181+385
+        self.assertEqual(f['devengado_anual'], Decimal('886.46'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('73.87'))
+        # Y la caja, aparte: es lo que salió del banco.
+        self.assertEqual(f['real_anual'], Decimal('1248.46'))
 
-    def test_el_real_al_mes_cuadra_con_lo_devengado(self):
-        """La cifra grande y la de debajo tienen que poder dividirse entre sí:
-        antes eran 82,85 €/mes y 1.249,34 € en 9 meses, que no salen."""
-        self.pagar('-360', 9, provision=self.neumaticos)
-        self.pagar('-90', 3)   # gasto corriente, 10 €/mes en 9 meses
+    def test_un_gasto_plurianual_imputa_al_año_solo_su_parte(self):
+        """543 € de neumáticos que duran tres años son 181 € al año."""
+        self.pagar('-543', 9, self.mant, self.neumaticos)
         f = self.ficha()
 
-        self.assertEqual(f['devengado_anual'], Decimal('180'))
-        self.assertEqual(f['ritmo_mensual'], Decimal('20'))
+        self.assertEqual(f['real_anual'], Decimal('543'))         # caja
+        self.assertEqual(f['devengado_anual'], Decimal('181'))    # 543 × 12/36
+        self.assertEqual(f['ritmo_mensual'], Decimal('15.08'))
+
+    def test_un_recibo_de_menos_de_un_año_imputa_entero(self):
+        """Un trimestral cubre tres meses que caen todos dentro del año, y los
+        cuatro del año suman lo declarado. Anualizarlo lo multiplicaría por
+        cuatro, y luego otra vez por los cuatro pagos."""
+        from finanzas.models import PartidaGasto
+
+        trimestral = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mant, nombre='Lavado trimestral',
+            importe=Decimal('100'), periodicidad='trimestral', vehiculo=self.coche,
+        )
+        self.assertEqual(trimestral.importe_anual, Decimal('400'))
+
+        for mes in (1, 4, 7, 10):
+            self.pagar('-100', mes, self.mant, trimestral)
+        f = self.ficha(hoy=(2027, 1, 1))
+
+        self.assertEqual(f['real_anual'], Decimal('400'))
+        self.assertEqual(f['devengado_anual'], Decimal('400'))
+
+    # ── Las dos tarjetas dicen lo mismo ──────────────────────────────────
+
+    def test_donde_se_va_compara_el_año_contra_el_año(self):
+        """«Si sumas las partidas de mantenimiento vehicular y las multiplicas
+        por 12, no salen 444, salen 592.»"""
+        self.pagar_el_año_del_usuario()
+        por_cat = {c['categoria']: c for c in self.ficha()['por_categoria']}
+
+        fila = por_cat['Mantenimiento vehicular']
+        self.assertEqual(fila['real_anual'], Decimal('566.00'))       # 181 + 385
+        self.assertEqual(fila['declarado_anual'], Decimal('592.56'))
+        self.assertEqual(fila['diferencia'], Decimal('-26.56'))
+        # Lo que salió del banco, y lo que de eso cubre años futuros.
+        self.assertEqual(fila['pagado_anual'], Decimal('928.00'))
+        self.assertEqual(fila['diferido'], Decimal('362.00'))         # 543 − 181
+
+        self.assertEqual(por_cat['Imprevistos']['real_anual'], Decimal('320.46'))
+        self.assertEqual(por_cat['Seguro coche']['real_anual'], Decimal('0'))
+
+    def test_la_columna_de_lo_real_suma_el_coste_del_año(self):
+        """Si las filas no suman la cifra de arriba, una de las dos miente."""
+        self.pagar_el_año_del_usuario()
+        f = self.ficha()
+
         self.assertEqual(
-            f['ritmo_mensual'] * f['meses_transcurridos'], f['devengado_anual'],
+            sum(c['real_anual'] for c in f['por_categoria']), f['devengado_anual'],
         )
 
-    def test_la_barra_ya_no_dice_que_te_has_pasado_por_pagar_de_golpe(self):
-        """120 €/año de neumáticos: pagarlos enteros en septiembre no puede
-        dejar la ejecución en el 300%."""
-        self.pagar('-360', 9, provision=self.neumaticos)
+    def test_la_barra_mide_el_año_contra_el_año(self):
+        self.pagar_el_año_del_usuario()
         f = self.ficha()
 
-        self.assertEqual(f['teorico_anual'], Decimal('120'))
-        self.assertEqual(f['pct_ejecucion'], 75)    # 90 de 120
-        self.assertEqual(f['pct_transcurrido'], 75)
-        self.assertEqual(f['diferencia_anual'], Decimal('-30'))
+        self.assertEqual(f['pct_ejecucion'], 83)        # 886,46 de 1.060,56
+        self.assertEqual(f['pct_transcurrido'], 75)     # y van 9 de 12 meses
+        self.assertEqual(f['diferencia_anual'], Decimal('-174.10'))
 
-    def test_donde_se_va_compara_los_mismos_meses_en_los_dos_lados(self):
-        self.pagar('-360', 9, provision=self.neumaticos)
-        fila = self.ficha()['por_categoria'][0]
+    def test_la_pantalla_ensena_las_mismas_cifras(self):
+        from django.urls import reverse as url
 
-        self.assertEqual(fila['categoria'], 'Mantenimiento vehicular')
-        self.assertEqual(fila['real_anual'], Decimal('90'))         # devengado
-        self.assertEqual(fila['pagado_periodo'], Decimal('360'))    # caja
-        self.assertEqual(fila['declarado_periodo'], Decimal('90'))  # 10 × 9
-        self.assertEqual(fila['declarado_anual'], Decimal('120'))
-        self.assertEqual(fila['diferencia'], Decimal('0'))
-        # Lo que pagaste por adelantado y cubre meses que aún no han llegado.
-        self.assertEqual(fila['diferido'], Decimal('270'))
+        self.pagar_el_año_del_usuario()
+        with __import__('unittest').mock.patch('finanzas.costes_activo.date') as falso:
+            falso.today.return_value = self.date(2026, 9, 15)
+            respuesta = self.client.get(
+                url('finanzas:detalle_vehiculo', args=[self.coche.id]), {'anio': 2026},
+            )
 
-    def test_un_gasto_corriente_no_se_difiere(self):
-        """Repostar no cubre los próximos tres años: entra entero."""
-        self.pagar('-90', 3)
-        fila = self.ficha()['por_categoria'][0]
-
-        self.assertEqual(fila['real_anual'], Decimal('90'))
-        self.assertEqual(fila['pagado_periodo'], Decimal('90'))
-        self.assertEqual(fila['diferido'], Decimal('0'))
-
-    def test_en_un_año_cerrado_el_devengo_es_el_de_doce_meses(self):
-        self.pagar('-360', 9, provision=self.neumaticos)
-        f = self.ficha(hoy=(2027, 5, 1))
-
-        self.assertEqual(f['meses_transcurridos'], 12)
-        self.assertEqual(f['devengado_anual'], Decimal('120'))   # 10 × 12
-        self.assertEqual(f['pct_ejecucion'], 100)
+        for cifra in ('73,87', '886,46', '320,46', '566,00', '592,56', '468,00', '1.248,46'):
+            self.assertContains(respuesta, cifra)
 
 
 class PeriodicidadPlurianualTests(TestCase):
