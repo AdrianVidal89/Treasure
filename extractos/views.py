@@ -703,9 +703,16 @@ def _panel_context(hogar, todos, request):
         # simplemente no lo apuntaste, o que la recargues el mes que viene—.
         provisiones_sacadas = [m for m in pagos_provision if not m.cubierto_por_reserva]
         fuera = {m.pk for m in provisiones_sacadas}
-        movimientos = [m for m in movimientos if m.pk not in fuera]
     else:
-        provisiones_sacadas = []
+        provisiones_sacadas, fuera = [], set()
+
+    # Sale de los TOTALES, no de la pantalla. Quitar también la fila dejaba la
+    # revisión del coche invisible en septiembre: justo el movimiento sobre el
+    # que hay que decir que la pagó la hucha, y no había nada que pulsar porque
+    # no estaba. La lista es el registro de lo que pasó; lo que se ajusta es la
+    # comparación con el presupuesto. La fila lleva su chapa «anual» para que se
+    # entienda por qué no suma.
+    contables = [m for m in movimientos if m.pk not in fuera] if fuera else movimientos
 
     # La reserva es un asunto de CUÁNDO, no de cuánto: mueve dinero de los meses
     # en los que ahorraste al mes en el que pagas. En un mes suelto hay que
@@ -715,14 +722,14 @@ def _panel_context(hogar, todos, request):
     def peso_de(m):
         return m.impacto_real if vista_de_mes else -m.importe
 
-    reales = [m for m in movimientos if not m.es_neutro]
+    reales = [m for m in contables if not m.es_neutro]
     ingresos = sum((m.importe for m in reales if m.cuenta_como_ingreso), Decimal('0'))
     gastos = -sum((peso_de(m) for m in reales if m.cuenta_como_gasto), Decimal('0'))
     cubierto_reserva = sum(
         (m.cubierto_por_reserva for m in reales if m.cuenta_como_gasto), Decimal('0'),
     ) if vista_de_mes else Decimal('0')
     sin_categorizar = sum(1 for m in movimientos if not m.categoria_id and not m.es_neutro)
-    traspasos = [m for m in movimientos if m.es_neutro]
+    traspasos = [m for m in contables if m.es_neutro]
     traspaso_neto = sum((m.importe for m in traspasos), Decimal('0'))
 
     # --- El gasto, por los CUATRO PILARES del presupuesto ---
@@ -823,13 +830,18 @@ def _panel_context(hogar, todos, request):
     grupos_mes = defaultdict(lambda: {
         'movimientos': [], 'ingresos': Decimal('0'),
         'gastos': Decimal('0'), 'neutro': Decimal('0'),
+        'provisiones': Decimal('0'),
     })
     for m in movimientos:
         g = grupos_mes[(m.fecha.year, m.fecha.month)]
         g['movimientos'].append(m)
         # Mismo criterio que los KPIs: manda el cómputo de la categoría, para
-        # que el neto del mes no cuente los traspasos como gasto.
-        if m.es_neutro:
+        # que el neto del mes no cuente los traspasos como gasto. Y un pago que
+        # se ha sacado de la comparación se pinta pero no suma, o la cabecera
+        # diría un número y la tarjeta de arriba otro.
+        if m.pk in fuera:
+            g['provisiones'] -= -m.importe
+        elif m.es_neutro:
             g['neutro'] += m.importe
         elif m.cuenta_como_ingreso:
             g['ingresos'] += m.importe
@@ -854,6 +866,7 @@ def _panel_context(hogar, todos, request):
             'ingresos': datos['ingresos'],
             'gastos': datos['gastos'],
             'neutro': datos['neutro'],
+            'provisiones': datos['provisiones'],
             'neto': datos['ingresos'] + datos['gastos'],
             'num': len(datos['movimientos']),
             'pendiente': pendiente,
@@ -887,7 +900,7 @@ def _panel_context(hogar, todos, request):
 
     # --- Lo que explica el periodo (antes, la pestaña «Análisis») ---
     fuera_presupuesto = _fuera_de_presupuesto(bloques)
-    comercios = _comercios_del_periodo(movimientos, meses_periodo, vista_de_mes=vista_de_mes)
+    comercios = _comercios_del_periodo(contables, meses_periodo, vista_de_mes=vista_de_mes)
 
     # La comparación contra la media de los meses anteriores necesita UN mes
     # concreto —es su unidad— y los meses previos, que por definición quedan
@@ -1191,10 +1204,19 @@ def cubrir_con_reserva(request, pk):
 
 
 @login_required
-def pagos_cubribles(request):
-    """Los gastos que una reposición de reserva puede cubrir: los del mismo mes
-    y los del anterior, que es cuando se recarga la hucha —antes o después del
-    pago, pero cerca—."""
+def candidatos_reserva(request):
+    """Con qué se puede emparejar este movimiento, mire desde donde se mire.
+
+    Se entra por los dos lados, porque nadie piensa igual las dos veces: unas
+    desde el ingreso («esto que acabo de meter era para la revisión») y otras
+    desde el gasto («la revisión: 928 € los puse de la hucha»). La primera
+    versión solo ofrecía el camino del ingreso y el botón acababa en la única
+    fila en la que no se te ocurre buscarlo.
+
+    Desde un INGRESO devuelve los gastos cercanos que puede cubrir; desde un
+    GASTO, los ingresos cercanos que pueden cubrirlo a él, más lo que ya tenga
+    emparejado para poder deshacerlo ahí mismo.
+    """
     profile, hogar = _get_hogar(request)
     if not hogar:
         return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
@@ -1202,23 +1224,45 @@ def pagos_cubribles(request):
     mov = get_object_or_404(MovimientoBancario, pk=request.GET.get('mov') or 0, hogar=hogar)
     desde = mov.fecha - timedelta(days=62)
     hasta = mov.fecha + timedelta(days=62)
-    candidatos = (
+    cerca = (
         MovimientoBancario.objects
-        .filter(hogar=hogar, importe__lt=0, fecha__range=(desde, hasta))
-        .exclude(pk=mov.pk).exclude(cubre__isnull=False)
+        .filter(hogar=hogar, fecha__range=(desde, hasta)).exclude(pk=mov.pk)
         .select_related('categoria').prefetch_related('coberturas')
-        .order_by('-fecha')[:60]
+        .order_by('-fecha')
     )
-    return JsonResponse({'ok': True, 'pagos': [
-        {
-            'id': p.pk,
-            'etiqueta': f'{p.fecha.strftime("%d/%m")} · {p.concepto[:48]}',
-            'importe': float(p.importe),
-            'cubierto': float(p.cubierto_por_reserva),
-            'pendiente': float(p.impacto_real),
+
+    def fila(m):
+        return {
+            'id': m.pk,
+            'etiqueta': f'{m.fecha.strftime("%d/%m")} · {m.concepto[:48]}',
+            'importe': float(m.importe),
+            'cubierto': float(m.cubierto_por_reserva),
+            'pendiente': float(m.impacto_real),
         }
-        for p in candidatos
-    ]})
+
+    if mov.importe is not None and mov.importe < 0:
+        # Desde el gasto: quién le puede meter dinero. Se descartan los ingresos
+        # que ya están puestos en OTRO pago, para no robárselo sin avisar.
+        candidatos = cerca.filter(importe__gte=0).filter(
+            Q(cubre__isnull=True) | Q(cubre=mov),
+        )[:60]
+        return JsonResponse({
+            'ok': True,
+            'sentido': 'gasto',
+            'pendiente': float(mov.impacto_real),
+            'candidatos': [fila(m) for m in candidatos],
+            'puestos': [fila(c) for c in mov.coberturas.all()],
+        })
+
+    # Desde el ingreso: qué gasto cubre. Una reposición no cubre otra, o las
+    # coberturas se encadenarían y el impacto real dejaría de significar nada.
+    candidatos = cerca.filter(importe__lt=0, cubre__isnull=True)[:60]
+    return JsonResponse({
+        'ok': True,
+        'sentido': 'ingreso',
+        'candidatos': [fila(m) for m in candidatos],
+        'puestos': [],
+    })
 
 
 @login_required
