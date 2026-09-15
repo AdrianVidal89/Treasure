@@ -2769,6 +2769,28 @@ class PagosAnualesEnElPanelTests(TestCase):
         fuera = self.panel(anio=2026, mes=9)['fuera_presupuesto']
         self.assertEqual([f['nombre'] for f in fuera['categorias']], ['Alimentacion'])
 
+    def test_el_bloque_anual_conserva_su_limite_en_la_vista_del_mes(self):
+        """Los 164 €/mes que apartas para la revisión son el presupuesto de ese
+        mes aunque el recibo llegue en septiembre. Se quitaban junto con el pago
+        y el bloque salía «sin límite», cuando tiene uno bien definido."""
+        # Un gasto del bloque anual SIN marcar como pago de provisión: es lo que
+        # se compara contra lo que se aparta cada mes.
+        self.mov('-200', 8, self.mantenimiento)
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        self.assertEqual(bloques['anual']['limite'], Decimal('164.00'))
+        self.assertFalse(bloques['anual']['dentro'])   # 200 > 164
+
+    def test_el_pago_marcado_sale_del_gasto_pero_el_limite_sigue(self):
+        self.mov('-1249.34', 9, self.mantenimiento, provision=self.revision)
+        self.mov('-50', 9, self.mantenimiento)
+
+        panel = self.panel(anio=2026, mes=9)
+        bloques = {b['tipo']: b for b in panel['bloques']}
+        # Solo cuentan los 50 € no marcados, contra los 164 € que se apartan.
+        self.assertEqual(bloques['anual']['importe'], Decimal('50'))
+        self.assertEqual(bloques['anual']['limite'], Decimal('164.00'))
+        self.assertTrue(bloques['anual']['dentro'])
 
 class DividirMovimientoTests(TestCase):
     """Un cobro puede ser varias cosas a la vez.

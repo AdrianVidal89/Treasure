@@ -11,7 +11,7 @@ from .models import (
     CategoriaGasto, CategoriaPredefinidaDescartada, PartidaGasto, MESES_CHOICES,
     PERIODICIDAD_GASTO_CHOICES, COMPUTO_CHOICES, COMPUTO_NEUTRO, ETIQUETAS_TIPO,
     ORDEN_TIPOS,
-    TIPO_GASTO_CHOICES, TIPOS_GASTO, computo_por_defecto,
+    TIPO_GASTO_CHOICES, TIPOS_GASTO, computo_por_defecto, MESES_POR_PERIODICIDAD,
 )
 
 
@@ -365,10 +365,12 @@ def crear_partida(request):
     return render(request, 'finanzas/gastos/crear.html', {
         'categorias': categorias,
         'bloque_elegido': bloque_elegido,
+        'meses_por_periodicidad': MESES_POR_PERIODICIDAD,
         'miembros': miembros,
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,
+        'meses_por_periodicidad': MESES_POR_PERIODICIDAD,
         'grupos_activos': costes_activo.opciones(hogar),
     })
 
@@ -410,6 +412,7 @@ def editar_partida(request, partida_id):
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,
+        'meses_por_periodicidad': MESES_POR_PERIODICIDAD,
         'grupos_activos': costes_activo.opciones(hogar),
     })
 

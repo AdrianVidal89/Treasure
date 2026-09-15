@@ -684,9 +684,9 @@ def _panel_context(hogar, todos, request):
     # comparación: el IBI o la revisión del coche se provisionan todo el año y
     # se pagan de golpe, así que dejarlos dentro del mes en el que caen dice que
     # te has pasado mil euros cuando lo que has hecho es pagar lo que tenías
-    # provisionado. Se sacan sus pagos del gasto Y su provisión del límite —más
-    # abajo—, o la comparación queda coja por un lado. Sobre varios meses ambos
-    # lados se promedian bien y no hace falta.
+    # provisionado. Se saca el PAGO del gasto observado; el límite se queda,
+    # porque la provisión de ese mes sigue siendo el presupuesto de ese mes.
+    # Sobre varios meses el pago se promedia bien y no hace falta sacarlo.
     vista_de_mes = mes_sel != 'all'
     pagos_provision = [m for m in movimientos if m.es_pago_provision]
     if vista_de_mes and pagos_provision:
@@ -734,9 +734,13 @@ def _panel_context(hogar, todos, request):
     meses_periodo = max(
         len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
     )
-    solo_mensuales = vista_de_mes and bool(pagos_provision)
-    limite_bloque = presupuesto.por_bloque(hogar, solo_mensuales)
-    limite_categoria = presupuesto.por_categoria(hogar, solo_mensuales)
+    # El límite SIEMPRE incluye todas las partidas prorrateadas, también las no
+    # mensuales: los 43 €/mes que reservas para el IBI son el presupuesto de ese
+    # mes aunque el recibo llegue en junio. Antes se quitaban junto con el pago
+    # y el bloque de los anuales se quedaba «sin límite» en la vista mensual,
+    # cuando tiene uno perfectamente definido: lo que apartas cada mes.
+    limite_bloque = presupuesto.por_bloque(hogar)
+    limite_categoria = presupuesto.por_categoria(hogar)
     # Los bloques cuyo límite se declara entero: dentro no se espera presupuesto
     # por categoría, así que las suyas se enseñan con su peso y no con un «de X»
     # que no existe.

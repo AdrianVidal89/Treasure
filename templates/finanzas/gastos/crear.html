@@ -159,13 +159,17 @@
     </div>
 </div>
 
+{{ meses_por_periodicidad|json_script:"meses-por-periodicidad" }}
 <script>
 const periodicidadSelect = document.getElementById('periodicidad');
 const importeInput = document.getElementById('importe');
 const bloqueMesPago = document.getElementById('bloque-mes-pago');
 const calcBox = document.getElementById('calc-box');
 const calcMensual = document.getElementById('calc-mensual');
-const divisores = { 'mensual': 1, 'bimensual': 2, 'trimestral': 3, 'semestral': 6, 'anual': 12 };
+/* Los meses de cada periodicidad los manda el servidor: tenerlos copiados aquí
+   a mano significaba que añadir «cada tres años» dejaba el cálculo en pantalla
+   dividiendo por uno sin que nadie se enterara. */
+const divisores = JSON.parse(document.getElementById('meses-por-periodicidad').textContent);
 
 function actualizar() {
     const p = periodicidadSelect.value;

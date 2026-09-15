@@ -965,9 +965,20 @@ COMPUTO_POR_TIPO = {
 def computo_por_defecto(tipo):
     return COMPUTO_POR_TIPO.get(tipo, COMPUTO_RESTA)
 
+# Cada cuánto se paga un gasto, y a cuántos meses hay que repartirlo. Hay cosas
+# que duran varios años —unos neumáticos, una caldera— y presupuestarlas «al
+# año» obliga a inventarse una cifra: lo honesto es decir lo que cuestan y cada
+# cuánto toca, y que el programa saque la cuota.
+MESES_POR_PERIODICIDAD = {
+    'mensual': 1, 'bimensual': 2, 'trimestral': 3, 'semestral': 6,
+    'anual': 12, 'bienal': 24, 'trienal': 36, 'quinquenal': 60,
+}
+
 PERIODICIDAD_GASTO_CHOICES = [
     ('mensual', 'Mensual'), ('bimensual', 'Bimensual'),
     ('trimestral', 'Trimestral'), ('semestral', 'Semestral'), ('anual', 'Anual'),
+    ('bienal', 'Cada 2 años'), ('trienal', 'Cada 3 años'),
+    ('quinquenal', 'Cada 5 años'),
 ]
 
 
@@ -1094,20 +1105,22 @@ class PartidaGasto(ImputableAActivo):
         return not self.categoria_id and bool(self.bloque)
 
     @property
+    def meses_periodo(self):
+        """A cuántos meses se reparte este gasto.
+
+        Es el único sitio donde se traduce la periodicidad a meses, para que
+        nadie tenga que acordarse de que «trienal» son treinta y seis."""
+        return MESES_POR_PERIODICIDAD.get(self.periodicidad, 1)
+
+    @property
     def importe_mensual(self):
-        divisores = {
-            'mensual': Decimal('1'), 'bimensual': Decimal('2'),
-            'trimestral': Decimal('3'), 'semestral': Decimal('6'), 'anual': Decimal('12'),
-        }
-        return round(self.importe / divisores.get(self.periodicidad, Decimal('1')), 2)
+        return round(self.importe / Decimal(self.meses_periodo), 2)
 
     @property
     def importe_anual(self):
-        multiplicadores = {
-            'mensual': Decimal('12'), 'bimensual': Decimal('6'),
-            'trimestral': Decimal('4'), 'semestral': Decimal('2'), 'anual': Decimal('1'),
-        }
-        return round(self.importe * multiplicadores.get(self.periodicidad, Decimal('12')), 2)
+        """Lo que cuesta AL AÑO. Unos neumáticos de 470 € cada tres años son
+        156,67 € al año, no 470."""
+        return round(self.importe * Decimal('12') / Decimal(self.meses_periodo), 2)
 
 
 ### Modulo de Distribucion y Ahorro ###

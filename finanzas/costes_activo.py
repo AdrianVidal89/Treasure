@@ -106,7 +106,11 @@ def _movimientos(activo):
     campo = 'vehiculo' if clave(activo).startswith('vehiculo') else 'propiedad'
     return (
         MovimientoBancario.objects.filter(**{campo: activo})
-        .select_related('categoria')
+        # `partida_conciliada` porque el prorrateo de cada pago necesita saber
+        # cuántos meses cubre su gasto, y `partes` porque un movimiento dividido
+        # deja de contar por sí mismo.
+        .select_related('categoria', 'partida_conciliada')
+        .prefetch_related('partes')
     )
 
 
@@ -182,10 +186,24 @@ def costes(activo, anio):
     # presupuesto mensual. Antes la ficha enseñaba «85,27 €/mes» de teórico
     # junto a «1.249,34 €» de real, que es el total del año: parecía que el
     # coche costaba mil doscientos al mes cuando eso era lo de nueve meses.
+    #
+    # El gasto corriente se reparte entre los meses que van de año. Los pagos de
+    # un gasto periódico, NO: se reparten entre los meses que ese gasto cubre.
+    # Unos neumáticos de 470 € que duran tres años cuestan 13 €/mes, no 470
+    # entre los meses que lleve el año; meterlos en el mismo saco decía que el
+    # coche se había puesto carísimo el mes en que tocó cambiarlos.
     meses_transcurridos = _meses_transcurridos(anio)
-    ritmo_mensual = (
-        real_anual / meses_transcurridos if meses_transcurridos else Decimal('0')
+    ritmo_corriente = (
+        corriente_anual / meses_transcurridos if meses_transcurridos else Decimal('0')
     )
+    ritmo_provisiones = sum(
+        (
+            -m.importe / Decimal(m.partida_conciliada.meses_periodo)
+            for m in provisiones if m.partida_conciliada_id
+        ),
+        Decimal('0'),
+    )
+    ritmo_mensual = round(ritmo_corriente + ritmo_provisiones, 2)
 
     return {
         'activo': activo,
@@ -211,6 +229,8 @@ def costes(activo, anio):
         'real_anual': real_anual,
         'real_mensual': real_mensual,
         'ritmo_mensual': ritmo_mensual,
+        'ritmo_corriente': round(ritmo_corriente, 2),
+        'ritmo_provisiones': round(ritmo_provisiones, 2),
         'meses_transcurridos': meses_transcurridos,
         'diferencia_mensual': ritmo_mensual - teorico_mensual,
         'corriente_anual': corriente_anual,
