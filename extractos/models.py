@@ -103,6 +103,92 @@ class ReglaCategorizacion(models.Model):
         super().save(*args, **kwargs)
 
 
+class ReglaDivision(models.Model):
+    """División aprendida: si el concepto contiene `patron`, el cobro se parte
+    en estas partidas.
+
+    Es la hermana de ReglaCategorizacion para los cobros que son varias cosas a
+    la vez. En Norauto se pagan de una vez los neumáticos y la revisión: un
+    apunte del banco, dos partidas del presupuesto. Sin esto hay que repartirlo
+    a mano cada vez que llega uno.
+
+    (No confundir con `finanzas.ReglaReparto`, que reparte los INGRESOS entre
+    los fondos. Ésta parte un cobro concreto del extracto; de ahí el nombre.)
+
+    Las partes guardan PROPORCIONES, no importes: la revisión de este año no
+    cuesta lo que la del anterior, pero la forma del recibo se repite. Por eso
+    la división automática es una suposición, se ve en la lista con sus partes y
+    se deshace de un clic —y el total nunca cambia, que es lo que dice el banco.
+    """
+
+    ORIGEN_CHOICES = ReglaCategorizacion.ORIGEN_CHOICES
+
+    hogar = models.ForeignKey(
+        'core.Hogar', on_delete=models.CASCADE, related_name='reglas_division',
+    )
+    patron = models.CharField(
+        max_length=200,
+        help_text='Texto que debe contener el concepto (se compara en minúsculas, sin distinguir acentos de mayúsculas).',
+    )
+    origen = models.CharField(max_length=10, choices=ORIGEN_CHOICES, default='manual')
+    veces_aplicada = models.PositiveIntegerField(default=0)
+    activo = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-creado_en']
+        constraints = [
+            models.UniqueConstraint(fields=['hogar', 'patron'], name='uniq_regla_div_hogar_patron'),
+        ]
+        verbose_name = 'Regla de división'
+        verbose_name_plural = 'Reglas de división'
+
+    def __str__(self):
+        return f"«{self.patron}» → {self.partes.count()} partes"
+
+    def save(self, *args, **kwargs):
+        # Igual que en ReglaCategorizacion: el patrón se guarda normalizado para
+        # que el unique no deje pasar «Norauto» y «NORAUTO» como dos reglas.
+        self.patron = normalizar_texto(self.patron)
+        super().save(*args, **kwargs)
+
+
+class ParteDeDivision(ImputableAActivo):
+    """Una de las partidas en las que se parte un cobro, con su peso.
+
+    Hereda de ImputableAActivo porque un recibo puede pagar de golpe el seguro
+    de dos coches: cada parte va a la ficha que le toca, igual que cuando se
+    divide a mano.
+    """
+
+    regla = models.ForeignKey(
+        ReglaDivision, on_delete=models.CASCADE, related_name='partes',
+    )
+    orden = models.PositiveSmallIntegerField(default=0)
+    # Fracción del cobro, de 0 a 1. Con seis decimales porque un reparto en
+    # tercios necesita más de dos para no descuadrar en cobros grandes.
+    proporcion = models.DecimalField(max_digits=9, decimal_places=6)
+    categoria = models.ForeignKey(
+        'finanzas.CategoriaGasto', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='partes_de_division',
+    )
+    concepto = models.CharField(max_length=200, blank=True, default='')
+
+    class Meta:
+        ordering = ['orden']
+        verbose_name = 'Parte de una división'
+        verbose_name_plural = 'Partes de una división'
+
+    def __str__(self):
+        nombre = self.categoria.nombre if self.categoria else 'Sin categorizar'
+        return f"{self.proporcion:.1%} → {nombre}"
+
+    @property
+    def porcentaje(self):
+        """El peso en tanto por ciento, para poder enseñarlo."""
+        return round(float(self.proporcion) * 100, 1)
+
+
 class Etiqueta(models.Model):
     """Corte transversal sobre los movimientos: «Vacaciones Lisboa», «Obra
     casa», «Regalos Navidad».

@@ -2810,6 +2810,482 @@ class PagosAnualesEnElPanelTests(TestCase):
         self.assertEqual(bloques['anual']['limite'], Decimal('1968.00'))
         self.assertTrue(bloques['anual']['dentro'])
 
+class RepartoAprendidoTests(TestCase):
+    """Repartir a mano el recibo del taller cada vez que llega es el trabajo que
+    hace que la pantalla se abandone a medias.
+
+    Un reparto se puede llevar al resto de recibos del mismo comercio y quedarse
+    como regla, igual que una categoría. Va en PROPORCIONES porque los importes
+    no se repiten: la revisión de este año no cuesta la del anterior.
+    """
+
+    def setUp(self):
+        from finanzas.models import Vehiculo
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        self.itv = CategoriaGasto.objects.get(hogar=self.hogar, nombre='ITV')
+        self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+
+    def mov(self, importe, mes=9, concepto='Norauto', dia=5, vehiculo=None):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, mes, dia),
+            concepto=concepto, importe=Decimal(importe), vehiculo=vehiculo,
+        )
+
+    def dividir(self, mov, partes):
+        """partes: lista de (importe, categoria, concepto)."""
+        datos = {'importe': [], 'categoria_id': [], 'concepto': []}
+        for importe, categoria, concepto in partes:
+            datos['importe'].append(importe)
+            datos['categoria_id'].append(str(categoria.id) if categoria else '')
+            datos['concepto'].append(concepto)
+        return self.client.post(
+            reverse('extractos:dividir_movimiento', args=[mov.id]), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+
+    def aprender(self, modelo, **extra):
+        datos = {'modelo': modelo.id, 'patron': 'norauto'}
+        datos.update(extra)
+        return self.client.post(
+            reverse('extractos:aprender_division'), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+
+    def partes_de(self, mov):
+        return [(p.importe, p.categoria.nombre if p.categoria else None)
+                for p in mov.partes.order_by('orden_parte')]
+
+    # ── Ofrecerlo ────────────────────────────────────────────────────────
+
+    def test_al_repartir_dice_cuantos_recibos_parecidos_hay(self):
+        modelo = self.mov('-800')
+        self.mov('-500', mes=5)
+        self.mov('-300', mes=9, dia=20)
+
+        sug = self.dividir(modelo, [
+            ('-600', self.mantenimiento, 'Neumáticos'),
+            ('-200', self.itv, 'ITV'),
+        ])['sugerencia']
+
+        self.assertEqual(sug['patron'], 'norauto')
+        self.assertEqual(sug['n_similares'], 2)
+        self.assertEqual(sug['n_mes'], 1)          # solo el de septiembre
+        self.assertEqual(sug['pesos'], [75.0, 25.0])
+        self.assertFalse(sug['ya_hay_regla'])
+
+    def test_no_ofrece_repartir_lo_que_ya_esta_repartido(self):
+        """Una división automática no puede pisar un reparto revisado a mano."""
+        otro = self.mov('-500', mes=5)
+        self.dividir(otro, [('-400', self.mantenimiento, ''), ('-100', self.itv, '')])
+
+        modelo = self.mov('-800')
+        sug = self.dividir(modelo, [
+            ('-600', self.mantenimiento, ''), ('-200', self.itv, ''),
+        ])['sugerencia']
+        self.assertEqual(sug['n_similares'], 0)
+
+    # ── Aplicarlo ────────────────────────────────────────────────────────
+
+    def test_reparte_los_parecidos_en_la_misma_proporcion(self):
+        modelo = self.mov('-800')
+        otro = self.mov('-500', mes=5)
+        self.dividir(modelo, [
+            ('-600', self.mantenimiento, 'Neumáticos'),
+            ('-200', self.itv, 'ITV'),
+        ])
+
+        self.assertEqual(self.aprender(modelo, ambito='todos')['aplicados'], 1)
+        self.assertEqual(self.partes_de(otro), [
+            (Decimal('-375.00'), 'Mantenimiento vehicular'),   # 75 % de 500
+            (Decimal('-125.00'), 'ITV'),                       # 25 % de 500
+        ])
+
+    def test_las_partes_siempre_suman_el_cobro(self):
+        """Tres tercios de 100 € dan 33,33 tres veces —99,99— y el reparto se
+        rechazaría por no cuadrar. El último absorbe el resto."""
+        modelo = self.mov('-900')
+        otro = self.mov('-100', mes=5)
+        self.dividir(modelo, [
+            ('-300', self.mantenimiento, ''), ('-300', self.itv, ''),
+            ('-300', self.mantenimiento, ''),
+        ])
+        self.aprender(modelo, ambito='todos')
+
+        importes = [p.importe for p in otro.partes.order_by('orden_parte')]
+        self.assertEqual(importes, [Decimal('-33.33'), Decimal('-33.33'), Decimal('-33.34')])
+        self.assertEqual(sum(importes), otro.importe)
+
+    def test_el_alcance_puede_acotarse_a_un_mes(self):
+        modelo = self.mov('-800')
+        del_mes = self.mov('-400', mes=9, dia=20)
+        de_otro_mes = self.mov('-400', mes=5)
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
+
+        self.assertEqual(
+            self.aprender(modelo, ambito='mes', anio=2026, mes=9)['aplicados'], 1,
+        )
+        self.assertEqual(del_mes.partes.count(), 2)
+        self.assertEqual(de_otro_mes.partes.count(), 0)
+
+    def test_un_cobro_demasiado_pequeño_no_se_reparte(self):
+        """Repartir 1 céntimo en tres dejaría partes a cero: movimientos
+        fantasma que no suman nada y confunden al leer la lista."""
+        modelo = self.mov('-900')
+        calderilla = self.mov('-0.01', mes=5)
+        self.dividir(modelo, [
+            ('-300', self.mantenimiento, ''), ('-300', self.itv, ''),
+            ('-300', self.mantenimiento, ''),
+        ])
+
+        self.assertEqual(self.aprender(modelo, ambito='todos')['aplicados'], 0)
+        self.assertEqual(calderilla.partes.count(), 0)
+
+    def test_las_partes_heredan_el_vehiculo_del_cobro(self):
+        """El padre deja de contar al repartirse: sin heredar el activo, el
+        gasto desaparecía de la ficha del coche."""
+        modelo = self.mov('-800', vehiculo=self.coche)
+        otro = self.mov('-400', mes=5, vehiculo=self.coche)
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
+        self.aprender(modelo, ambito='todos')
+
+        self.assertEqual(
+            [p.vehiculo_id for p in otro.partes.order_by('orden_parte')],
+            [self.coche.id, self.coche.id],
+        )
+
+    # ── Recordarlo ───────────────────────────────────────────────────────
+
+    def test_recordarlo_guarda_la_regla_con_sus_proporciones(self):
+        from extractos.models import ReglaDivision
+
+        modelo = self.mov('-800')
+        self.dividir(modelo, [
+            ('-600', self.mantenimiento, 'Neumáticos'),
+            ('-200', self.itv, 'ITV'),
+        ])
+        self.assertTrue(self.aprender(modelo, accion='solo_regla')['recordada'])
+
+        regla = ReglaDivision.objects.get(hogar=self.hogar, patron='norauto')
+        partes = list(regla.partes.all())
+        self.assertEqual([p.porcentaje for p in partes], [75.0, 25.0])
+        self.assertEqual(
+            [p.categoria.nombre for p in partes], ['Mantenimiento vehicular', 'ITV'],
+        )
+        self.assertEqual([p.concepto for p in partes], ['Neumáticos', 'ITV'])
+
+    def test_solo_recordar_no_toca_ningun_movimiento(self):
+        modelo = self.mov('-800')
+        otro = self.mov('-500', mes=5)
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
+
+        self.assertEqual(self.aprender(modelo, accion='solo_regla')['aplicados'], 0)
+        self.assertEqual(otro.partes.count(), 0)
+
+    def test_volver_a_aprender_reemplaza_las_partes_viejas(self):
+        """Media regla vieja mezclada con media nueva no es lo que pidió nadie."""
+        from extractos.models import ReglaDivision
+
+        modelo = self.mov('-900')
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-300', self.itv, '')])
+        self.aprender(modelo, accion='solo_regla')
+
+        self.dividir(modelo, [
+            ('-300', self.mantenimiento, ''), ('-300', self.itv, ''),
+            ('-300', self.mantenimiento, ''),
+        ])
+        self.aprender(modelo, accion='solo_regla')
+
+        regla = ReglaDivision.objects.get(hogar=self.hogar, patron='norauto')
+        self.assertEqual(regla.partes.count(), 3)
+        self.assertEqual(ReglaDivision.objects.filter(hogar=self.hogar).count(), 1)
+
+    def test_una_vez_hay_regla_ya_no_se_vuelve_a_ofrecer(self):
+        """Y basta con que una regla lo CUBRA: «norauto» ya vale para
+        «norauto sevilla», que es como se aplica luego en la importación."""
+        modelo = self.mov('-800')
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
+        self.aprender(modelo, accion='solo_regla')
+
+        otro = self.mov('-400', mes=5, concepto='Norauto Sevilla Nervion')
+        sug = self.dividir(otro, [
+            ('-300', self.mantenimiento, ''), ('-100', self.itv, ''),
+        ])['sugerencia']
+        self.assertTrue(sug['ya_hay_regla'])
+
+    def test_la_pantalla_de_reglas_ensena_los_repartos(self):
+        modelo = self.mov('-800')
+        self.dividir(modelo, [
+            ('-600', self.mantenimiento, 'Neumáticos'), ('-200', self.itv, 'ITV'),
+        ])
+        self.aprender(modelo, accion='solo_regla')
+
+        respuesta = self.client.get(reverse('extractos:reglas'))
+        self.assertContains(respuesta, 'Repartos aprendidos')
+        self.assertContains(respuesta, 'norauto')
+        self.assertContains(respuesta, '75,0 %')
+
+    def test_se_puede_borrar_un_reparto_aprendido(self):
+        from extractos.models import ReglaDivision
+
+        modelo = self.mov('-800')
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
+        self.aprender(modelo, accion='solo_regla')
+        regla = ReglaDivision.objects.get(hogar=self.hogar)
+
+        self.client.post(reverse('extractos:reglas'), {
+            'accion': 'eliminar_division', 'regla_id': regla.id,
+        })
+        self.assertFalse(ReglaDivision.objects.filter(hogar=self.hogar).exists())
+        # Lo ya repartido no se toca: deshacerlo es cosa de cada fila.
+        self.assertEqual(modelo.partes.count(), 2)
+
+
+class RepartoEnLaImportacionTests(TestCase):
+    """Un reparto aprendido se aplica solo al importar, como una categoría.
+
+    Es la mitad que faltaba: sin esto hay que acordarse de entrar a repartir el
+    recibo del taller cada vez que llega, que es justo lo que no pasa.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        self.itv = CategoriaGasto.objects.get(hogar=self.hogar, nombre='ITV')
+
+    def regla(self, patron, pesos):
+        """pesos: lista de (proporción, categoría)."""
+        from extractos.models import ParteDeDivision, ReglaDivision
+
+        regla = ReglaDivision.objects.create(hogar=self.hogar, patron=patron)
+        for i, (proporcion, categoria) in enumerate(pesos, start=1):
+            ParteDeDivision.objects.create(
+                regla=regla, orden=i, proporcion=Decimal(proporcion), categoria=categoria,
+            )
+        return regla
+
+    def importar(self, filas):
+        analizado = {
+            'nombre': 'extracto.csv',
+            'resultado': {
+                'movimientos': [{
+                    'fecha': f'2026-08-{dia:02d}', 'concepto': concepto,
+                    'concepto_raw': concepto, 'importe': Decimal(importe), 'saldo': None,
+                } for dia, concepto, importe in filas],
+                'filas_error': [], 'filas_omitidas': [],
+            },
+        }
+        return _importar_analizados(self.hogar, self.user, 'Banco', None, [analizado])
+
+    def partes_de(self, concepto):
+        padre = MovimientoBancario.objects.get(
+            hogar=self.hogar, concepto=concepto, dividido_de__isnull=True,
+        )
+        return [(p.importe, p.categoria.nombre if p.categoria else None)
+                for p in padre.partes.order_by('orden_parte')]
+
+    def test_un_recibo_conocido_llega_ya_repartido(self):
+        self.regla('norauto', [('0.75', self.mantenimiento), ('0.25', self.itv)])
+        totales = self.importar([(5, 'Norauto Sevilla', '-800')])
+
+        self.assertEqual(totales['total_divididos'], 1)
+        self.assertEqual(self.partes_de('Norauto Sevilla'), [
+            (Decimal('-600.00'), 'Mantenimiento vehicular'),
+            (Decimal('-200.00'), 'ITV'),
+        ])
+
+    def test_las_partes_no_cuentan_como_movimientos_importados(self):
+        """No vienen del banco: salen de un criterio que puso el usuario, y
+        sumarlas diría que el extracto traía el triple de apuntes."""
+        self.regla('norauto', [('0.75', self.mantenimiento), ('0.25', self.itv)])
+        totales = self.importar([(5, 'Norauto', '-800'), (6, 'Mercadona', '-50')])
+
+        self.assertEqual(totales['total_creados'], 2)
+        self.assertEqual(totales['total_divididos'], 1)
+
+    def test_lo_que_no_encaja_se_queda_entero(self):
+        self.regla('norauto', [('0.75', self.mantenimiento), ('0.25', self.itv)])
+        totales = self.importar([(6, 'Mercadona', '-50')])
+
+        self.assertEqual(totales['total_divididos'], 0)
+        mov = MovimientoBancario.objects.get(hogar=self.hogar, concepto='Mercadona')
+        self.assertEqual(mov.partes.count(), 0)
+
+    def test_gana_el_patron_mas_especifico(self):
+        """Igual que en las reglas de categoría: si hay una para «norauto» y
+        otra para «norauto sevilla», manda la segunda."""
+        self.regla('norauto', [('0.50', self.mantenimiento), ('0.50', self.itv)])
+        self.regla('norauto sevilla', [('0.90', self.mantenimiento), ('0.10', self.itv)])
+        self.importar([(5, 'Norauto Sevilla', '-1000')])
+
+        self.assertEqual(self.partes_de('Norauto Sevilla'), [
+            (Decimal('-900.00'), 'Mantenimiento vehicular'),
+            (Decimal('-100.00'), 'ITV'),
+        ])
+
+    def test_una_regla_desactivada_no_reparte(self):
+        regla = self.regla('norauto', [('0.75', self.mantenimiento), ('0.25', self.itv)])
+        regla.activo = False
+        regla.save(update_fields=['activo'])
+
+        self.assertEqual(self.importar([(5, 'Norauto', '-800')])['total_divididos'], 0)
+
+    def test_el_total_del_extracto_no_cambia_al_repartir(self):
+        """Lo peor que puede pasar es que la forma del reparto no acierte: el
+        dinero es siempre el del banco."""
+        self.regla('norauto', [('0.6666', self.mantenimiento), ('0.3334', self.itv)])
+        self.importar([(5, 'Norauto', '-733.27')])
+
+        padre = MovimientoBancario.objects.get(hogar=self.hogar, concepto='Norauto')
+        self.assertEqual(
+            sum(p.importe for p in padre.partes.all()), Decimal('-733.27'),
+        )
+        # Y el padre deja de contar, para no sumar el mismo dinero dos veces.
+        self.assertFalse(padre.cuenta_como_gasto)
+
+    def test_cuenta_las_veces_que_se_ha_aplicado(self):
+        regla = self.regla('norauto', [('0.75', self.mantenimiento), ('0.25', self.itv)])
+        self.importar([(5, 'Norauto', '-800'), (9, 'Norauto Nervion', '-400')])
+
+        regla.refresh_from_db()
+        self.assertEqual(regla.veces_aplicada, 2)
+
+    def test_el_aviso_de_la_importacion_lo_cuenta(self):
+        self.regla('norauto', [('0.75', self.mantenimiento), ('0.25', self.itv)])
+        totales = self.importar([(5, 'Norauto', '-800')])
+        self.assertEqual(totales['total_divididos'], 1)
+
+
+class PreguntarLaReglaSiempreTests(TestCase):
+    """Cambiar una categoría a mano y que no se ofrezca recordarla es perder el
+    único momento en el que el usuario tiene el criterio en la cabeza.
+
+    Este test recorre las formas de cambiar una categoría que hay en la
+    pantalla, para que ninguna se quede sin preguntar otra vez.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.restaurantes = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Restaurantes')
+
+    def mov(self, concepto, importe='-30', dia=5):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 9, dia),
+            concepto=concepto, importe=Decimal(importe),
+        )
+
+    def test_en_la_fila_suelta_se_ofrece(self):
+        self.mov('Taberna Pepe', dia=4)
+        mov = self.mov('Taberna Pepe', dia=9)
+
+        datos = self.client.post(
+            reverse('extractos:actualizar_movimiento', args=[mov.id]),
+            {'categoria_id': self.restaurantes.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+        self.assertEqual(datos['sugerencia']['n_similares'], 1)
+
+    def test_en_el_cambio_en_bloque_tambien(self):
+        """Era el único que no preguntaba, y es el gesto con MÁS criterio
+        detrás: veinte apuntes marcados a conciencia."""
+        uno = self.mov('Taberna Pepe')
+        dos = self.mov('Kebab Estambul', dia=7)
+
+        datos = self.client.post(reverse('extractos:accion_lote'), {
+            'accion': 'categoria', 'categoria_id': self.restaurantes.id,
+            'ids': [uno.id, dos.id],
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+
+        # Una regla por COMERCIO, no por apunte ni una sola para todos.
+        self.assertEqual(
+            sorted(datos['sugerencia']['patrones']), ['kebab estambul', 'taberna pepe'],
+        )
+        self.assertEqual(datos['sugerencia']['categoria'], 'Restaurantes')
+
+    def test_el_bloque_no_ofrece_lo_que_ya_es_regla(self):
+        ReglaCategorizacion.objects.create(
+            hogar=self.hogar, patron='taberna pepe', categoria=self.restaurantes,
+        )
+        uno = self.mov('Taberna Pepe')
+        dos = self.mov('Kebab Estambul', dia=7)
+
+        datos = self.client.post(reverse('extractos:accion_lote'), {
+            'accion': 'categoria', 'categoria_id': self.restaurantes.id,
+            'ids': [uno.id, dos.id],
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertEqual(datos['sugerencia']['patrones'], ['kebab estambul'])
+
+    def test_quitar_la_categoria_en_bloque_no_pregunta_nada(self):
+        """No hay criterio que recordar: dejar algo en blanco no es un criterio."""
+        uno = self.mov('Taberna Pepe')
+
+        datos = self.client.post(reverse('extractos:accion_lote'), {
+            'accion': 'categoria', 'categoria_id': '', 'ids': [uno.id],
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest').json()
+        self.assertIsNone(datos.get('sugerencia'))
+
+    def test_el_si_del_bloque_crea_una_regla_por_comercio(self):
+        uno = self.mov('Taberna Pepe')
+        dos = self.mov('Kebab Estambul', dia=7)
+        self.client.post(reverse('extractos:accion_lote'), {
+            'accion': 'categoria', 'categoria_id': self.restaurantes.id,
+            'ids': [uno.id, dos.id],
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.client.post(reverse('extractos:aprender_regla'), {
+            'patron': ['taberna pepe', 'kebab estambul'],
+            'categoria_id': self.restaurantes.id, 'accion': 'solo_regla',
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertEqual(
+            sorted(ReglaCategorizacion.objects.filter(
+                hogar=self.hogar, categoria=self.restaurantes,
+            ).values_list('patron', flat=True)),
+            ['kebab estambul', 'taberna pepe'],
+        )
+
+    def test_al_repartir_un_cobro_tambien_se_ofrece(self):
+        """La división era el otro sitio donde se pone criterio a mano y no se
+        preguntaba nada."""
+        self.mov('Norauto', '-400', dia=4)
+        mov = self.mov('Norauto', '-800', dia=9)
+
+        datos = self.client.post(
+            reverse('extractos:dividir_movimiento', args=[mov.id]),
+            {
+                'importe': ['-600', '-200'],
+                'categoria_id': [str(self.restaurantes.id), ''],
+                'concepto': ['', ''],
+            },
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+        self.assertEqual(datos['sugerencia']['n_similares'], 1)
+        self.assertFalse(datos['sugerencia']['ya_hay_regla'])
+
+
 class DividirMovimientoTests(TestCase):
     """Un cobro puede ser varias cosas a la vez.
 
@@ -2850,7 +3326,9 @@ class DividirMovimientoTests(TestCase):
             ('-700.00', self.mantenimiento, 'Neumáticos'),
             ('-228.63', self.gasolina, 'Revisión'),
         ])
-        self.assertEqual(respuesta.json(), {'ok': True, 'partes': 2})
+        datos = respuesta.json()
+        self.assertTrue(datos['ok'])
+        self.assertEqual(datos['partes'], 2)
 
         partes = list(self.mov.partes.order_by('orden_parte'))
         self.assertEqual([p.concepto for p in partes], ['Neumáticos', 'Revisión'])
@@ -3068,7 +3546,9 @@ class DividirMovimientoTests(TestCase):
                 'concepto': ['Seguro Polo', 'Seguro Golf', 'Resto del recibo'],
                 'activo': [polo.clave_activo, golf.clave_activo, ''],
             }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
-        self.assertEqual(respuesta.json(), {'ok': True, 'partes': 3})
+        datos = respuesta.json()
+        self.assertTrue(datos['ok'])
+        self.assertEqual(datos['partes'], 3)
 
         self.assertEqual(costes_activo.costes(polo, 2026)['real_anual'], Decimal('60.00'))
         self.assertEqual(costes_activo.costes(golf, 2026)['real_anual'], Decimal('70.00'))

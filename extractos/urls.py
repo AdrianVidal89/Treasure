@@ -21,6 +21,7 @@ urlpatterns = [
     path('movimiento/reserva/candidatos/', views.candidatos_reserva, name='candidatos_reserva'),
     path('movimiento/<int:pk>/dividir/', views.dividir_movimiento, name='dividir_movimiento'),
     path('movimiento/<int:pk>/dividir/deshacer/', views.deshacer_division, name='deshacer_division'),
+    path('movimiento/dividir/aprender/', views.aprender_division, name='aprender_division'),
     path('movimientos/lote/', views.accion_lote, name='accion_lote'),
     path('etiquetas/', views.etiquetas, name='etiquetas'),
     path('etiquetas/comercio/', views.etiquetar_comercio, name='etiquetar_comercio'),

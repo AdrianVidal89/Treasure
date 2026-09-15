@@ -17,9 +17,12 @@ from finanzas.parsing import leer_tabla
 from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
+from . import reparto
 from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
 from .categorizacion import categorizar_lote
-from .models import Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion
+from .models import (
+    Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion, ReglaDivision,
+)
 from .normalizacion import (
     es_traspaso_interno, nombres_del_hogar, normalizar_comercio, normalizar_texto,
 )
@@ -206,6 +209,7 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
     total_omitidos = 0
     total_no_firmes = 0
     total_traspasos = 0
+    total_divididos = 0
     extractos_ok = 0
 
     for item in analizados:
@@ -287,6 +291,10 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
         extracto.save()
         total_creados += creados
         extractos_ok += 1
+        # Y lo que sea de varias partidas se parte solo. Va DESPUÉS de crear el
+        # extracto para no contar las partes como movimientos importados: no
+        # vienen del banco, salen de un criterio que puso el usuario.
+        total_divididos += _aplicar_divisiones(hogar, extracto)
 
     return {
         'total_creados': total_creados,
@@ -295,8 +303,57 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
         'total_omitidos': total_omitidos,
         'total_no_firmes': total_no_firmes,
         'total_traspasos': total_traspasos,
+        'total_divididos': total_divididos,
         'extractos_ok': extractos_ok,
     }
+
+
+def _aplicar_divisiones(hogar, extracto):
+    """Parte los movimientos recién importados que encajen en una división
+    aprendida. Devuelve cuántos ha partido.
+
+    El total no cambia nunca —las partes suman el cobro— así que lo peor que
+    puede pasar es que la forma del reparto no acierte. Se ve en la lista con
+    sus partes debajo y se deshace de un clic, igual que una categoría puesta
+    por una regla que no era.
+    """
+    from django.db.models import F
+
+    reglas = list(
+        ReglaDivision.objects.filter(hogar=hogar, activo=True)
+        .prefetch_related('partes__categoria', 'partes__vehiculo', 'partes__propiedad')
+    )
+    if not reglas:
+        return 0
+
+    divididos = 0
+    usos = defaultdict(int)
+    for mov in extracto.movimientos.all():
+        regla = _mejor_division(mov, reglas)
+        if regla and reparto.aplicar_regla(regla, mov):
+            usos[regla.pk] += 1
+            divididos += 1
+
+    for pk, veces in usos.items():
+        ReglaDivision.objects.filter(pk=pk).update(
+            veces_aplicada=F('veces_aplicada') + veces,
+        )
+    return divididos
+
+
+def _mejor_division(movimiento, reglas):
+    """La división aprendida más específica que encaja con el movimiento.
+
+    Gana el patrón más largo, igual que en las reglas de categoría: si hay una
+    para «norauto» y otra para «norauto sevilla», manda la segunda.
+    """
+    texto = normalizar_texto(movimiento.concepto)
+    mejor, mejor_len = None, -1
+    for regla in reglas:
+        patron = normalizar_texto(regla.patron)
+        if patron and patron in texto and len(patron) > mejor_len:
+            mejor, mejor_len = regla, len(patron)
+    return mejor
 
 
 @login_required
@@ -355,6 +412,13 @@ def revisar(request):
                     request,
                     f"{totales['total_traspasos']} movimiento(s) detectados como traspaso "
                     "entre cuentas propias: no cuentan como gasto."
+                )
+            if totales['total_divididos']:
+                messages.info(
+                    request,
+                    f"{totales['total_divididos']} recibo(s) se han repartido solos con la "
+                    "misma forma que les diste. El total no cambia; si el reparto no "
+                    "encaja esta vez, en su fila puedes deshacerlo o corregirlo."
                 )
             if totales['total_duplicados']:
                 messages.info(request, f"{totales['total_duplicados']} movimientos duplicados ignorados.")
@@ -1464,37 +1528,165 @@ def dividir_movimiento(request, pk):
         )
     }
 
-    with transaction.atomic():
-        # Dividir de nuevo reemplaza el reparto anterior: si no, cada intento
-        # dejaría partes viejas sumando por detrás.
-        mov.partes.all().delete()
-        for i, p in enumerate(partes, start=1):
-            parte = MovimientoBancario(
-                extracto=mov.extracto, hogar=hogar, dividido_de=mov, orden_parte=i,
-                fecha=mov.fecha,
-                concepto=(p['concepto'] or f'{mov.concepto} ({i})')[:300],
-                concepto_raw=mov.concepto_raw or mov.concepto,
-                importe=p['importe'],
-                # El saldo es del apunte del banco, no de cada trozo: repetirlo
-                # en las partes haría creer que hubo varios movimientos.
-                saldo=None,
-                categoria=validas.get(p['categoria_id']),
-                estado_categorizacion='manual' if p['categoria_id'] else 'sin_categorizar',
-                es_traspaso=mov.es_traspaso,
-            )
-            # Sin activo elegido se hereda el del cobro: el padre deja de contar
-            # al repartirse, así que no heredarlo borraba el gasto de la ficha
-            # del coche o de la casa.
-            if p['activo'] is None:
-                parte.propiedad_id = mov.propiedad_id
-                parte.vehiculo_id = mov.vehiculo_id
-            else:
-                costes_activo.asignar(
-                    parte, costes_activo.resolver(hogar, p['activo']),
-                )
-            parte.save()
+    # Se traduce a la forma que entiende el motor, que es la misma que usan el
+    # reparto de los recibos parecidos y el de la importación. Que no venga el
+    # campo `activo` (None) y que venga vacío ('') son cosas distintas: lo
+    # primero es heredar el del cobro y lo segundo, no imputarlo a ninguno.
+    resueltas = []
+    for p in partes:
+        parte = {
+            'importe': p['importe'],
+            'categoria': validas.get(p['categoria_id']),
+            'concepto': p['concepto'],
+        }
+        if p['activo'] is not None:
+            parte['activo'] = costes_activo.resolver(hogar, p['activo'])
+        resueltas.append(parte)
 
-    return JsonResponse({'ok': True, 'partes': len(partes)})
+    with transaction.atomic():
+        reparto.crear_partes(mov, resueltas)
+
+    respuesta = {'ok': True, 'partes': len(resueltas)}
+
+    # Lo mismo que al cambiar una categoría a mano: se ofrece llevar el criterio
+    # a los demás recibos del comercio y, después, recordarlo. Repartir a mano
+    # el recibo del taller cada vez que llega es el trabajo que hace que la
+    # pantalla se abandone a medias.
+    if mov.comercio:
+        respuesta['sugerencia'] = _sugerencia_division(hogar, mov, resueltas)
+
+    return JsonResponse(respuesta)
+
+
+def _divisibles(hogar, patron, excluir=None, anio=None, mes=None):
+    """Los movimientos del comercio que se pueden repartir, listos para usar.
+
+    Fuera quedan los que ya están divididos —una división automática no puede
+    pisar un reparto que alguien revisó a mano—, las partes de otro y los de
+    importe cero, que no tienen nada que repartir.
+
+    Se vuelven a traer enteros a propósito: `_encajan` devuelve los campos justos
+    para contar, y repartir necesita el extracto, el importe y el activo de cada
+    uno. Sin esto, cada movimiento costaba media docena de consultas sueltas.
+    """
+    ids = [
+        m.id for m in _encajan(hogar, patron, incluir_categorizados=True, anio=anio, mes=mes)
+        if m.id != excluir
+    ]
+    if not ids:
+        return []
+    return [
+        m for m in MovimientoBancario.objects.filter(hogar=hogar, id__in=ids)
+        .select_related('extracto').prefetch_related('partes')
+        if m.importe and not m.es_parte and not m.esta_dividido
+    ]
+
+
+def _sugerencia_division(hogar, mov, partes):
+    """Cuántos recibos del mismo comercio se podrían repartir igual."""
+    similares = _divisibles(hogar, mov.comercio, excluir=mov.pk)
+    fracciones = reparto.proporciones([p['importe'] for p in partes])
+    pesos = [round(float(f) * 100, 1) for f in fracciones]
+
+    return {
+        'patron': mov.comercio,
+        'n_similares': len(similares),
+        'n_mes': sum(
+            1 for m in similares
+            if m.fecha.year == mov.fecha.year and m.fecha.month == mov.fecha.month
+        ),
+        'anio': mov.fecha.year,
+        'mes': mov.fecha.month,
+        'etiqueta_mes': f"{MESES_ES[mov.fecha.month]} {mov.fecha.year}",
+        'pesos': pesos,
+        # Con el MISMO criterio con el que luego se aplica en la importación:
+        # una regla de «norauto» ya cubre a «norauto sevilla», y comparando los
+        # patrones a pelo se ofrecía aprender una regla que no hacía falta.
+        'ya_hay_regla': bool(_mejor_division(
+            mov, list(ReglaDivision.objects.filter(hogar=hogar, activo=True)),
+        )),
+    }
+
+
+@login_required
+def aprender_division(request):
+    """Lleva un reparto al resto de recibos del mismo comercio, y lo recuerda.
+
+    Es el gemelo de `aprender_regla` para los cobros que son varias cosas a la
+    vez: mismo guion —primero hasta dónde llega el cambio, después si además
+    debe quedarse— porque es la misma pregunta y aprenderla dos veces no tiene
+    sentido.
+
+    El reparto viaja en PROPORCIONES, no en importes: la revisión de este año no
+    cuesta lo que la del anterior. Cada recibo se parte en la misma forma.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    modelo = get_object_or_404(
+        MovimientoBancario, pk=request.POST.get('modelo') or 0, hogar=hogar,
+    )
+    # `order_by` explícito: el orden por defecto de los movimientos es por fecha
+    # y las partes comparten fecha, así que salían del revés y el reparto se
+    # aplicaba con las proporciones cruzadas de categoría.
+    partes_modelo = list(
+        modelo.partes.select_related('categoria', 'vehiculo', 'propiedad')
+        .order_by('orden_parte')
+    )
+    if len(partes_modelo) < 2:
+        return JsonResponse({'ok': False, 'error': 'sin_reparto'}, status=400)
+
+    patron = normalizar_texto(request.POST.get('patron') or modelo.comercio)
+    if not patron:
+        return JsonResponse({'ok': False, 'error': 'sin_patron'}, status=400)
+
+    plantilla = [
+        {
+            'importe': p.importe,
+            'categoria': p.categoria,
+            'concepto': p.concepto,
+            'activo': p.activo_imputado or reparto.HEREDAR,
+        }
+        for p in partes_modelo
+    ]
+
+    # «Solo recordar»: crea la regla sin tocar ningún movimiento. Es el segundo
+    # paso del aviso —primero se aplica con el alcance elegido y después se
+    # pregunta si además debe quedar así para siempre—.
+    if request.POST.get('accion') == 'solo_regla':
+        reparto.guardar_regla(hogar, patron, plantilla)
+        return JsonResponse({'ok': True, 'aplicados': 0, 'recordada': True})
+
+    solo_mes = request.POST.get('ambito') == 'mes'
+    anio = _entero_o_none(request.POST.get('anio')) if solo_mes else None
+    mes = _entero_o_none(request.POST.get('mes')) if solo_mes else None
+    if solo_mes and not (anio and mes):
+        return JsonResponse({'ok': False, 'error': 'mes_invalido'}, status=400)
+
+    fracciones = reparto.proporciones([p['importe'] for p in plantilla])
+
+    aplicados = 0
+    with transaction.atomic():
+        for m in _divisibles(hogar, patron, excluir=modelo.pk, anio=anio, mes=mes):
+            importes = reparto.repartir(m.importe, fracciones)
+            partes = [
+                dict(plantilla[i], importe=importe) for i, importe in enumerate(importes)
+            ]
+            if not reparto.es_division_valida(partes):
+                continue
+            reparto.crear_partes(m, partes)
+            aplicados += 1
+
+    if request.POST.get('recordar') == '1':
+        reparto.guardar_regla(hogar, patron, plantilla)
+
+    return JsonResponse({
+        'ok': True, 'aplicados': aplicados,
+        'recordada': request.POST.get('recordar') == '1',
+    })
 
 
 @login_required
@@ -1687,6 +1879,12 @@ def accion_lote(request):
             estado_categorizacion='manual' if categoria else 'sin_categorizar',
         )
         respuesta['etiqueta'] = categoria.nombre if categoria else 'Sin categorizar'
+        # Cambiar veinte apuntes en bloque es exactamente el momento de
+        # preguntar si eso ha de quedarse: es el gesto con MÁS criterio detrás y
+        # era el único sitio donde no se ofrecía. Se pregunta después, como en
+        # la fila suelta: aplicar y recordar son decisiones distintas.
+        if categoria:
+            respuesta['sugerencia'] = _comercios_a_recordar(hogar, movimientos, categoria)
 
     elif accion in ('etiqueta', 'quitar_etiqueta'):
         etiqueta = _etiqueta_para_lote(hogar, request, crear=accion == 'etiqueta')
@@ -1730,6 +1928,33 @@ def accion_lote(request):
             extracto.save(update_fields=['num_movimientos'])
 
     return JsonResponse(respuesta)
+
+
+def _comercios_a_recordar(hogar, movimientos, categoria):
+    """Los comercios del lote que aún no tienen esta categoría como regla.
+
+    Se agrupa por comercio porque la regla se aprende del comercio, no del
+    apunte: marcar doce recibos de tres comercios y ponerles «Restaurantes» son
+    tres reglas, no doce ni una.
+    """
+    comercios = sorted({m.comercio for m in movimientos if m.comercio})
+    if not comercios:
+        return None
+
+    ya_con_regla = set(
+        ReglaCategorizacion.objects.filter(
+            hogar=hogar, patron__in=comercios, categoria=categoria, activo=True,
+        ).values_list('patron', flat=True)
+    )
+    pendientes = [c for c in comercios if c not in ya_con_regla]
+    if not pendientes:
+        return None
+
+    return {
+        'patrones': pendientes,
+        'categoria': categoria.nombre,
+        'categoria_id': categoria.id,
+    }
 
 
 def _etiqueta_para_lote(hogar, request, crear):
@@ -2507,6 +2732,31 @@ def reglas(request):
 
     if request.method == 'POST':
         accion = request.POST.get('accion')
+
+        # Las divisiones aprendidas se gestionan aquí también: sin un sitio
+        # donde verlas y borrarlas, una división mal aprendida seguiría
+        # partiendo recibos en cada importación sin forma de pararla.
+        if accion in ('eliminar_division', 'alternar_division'):
+            division = get_object_or_404(
+                ReglaDivision, pk=request.POST.get('regla_id'), hogar=hogar,
+            )
+            if accion == 'eliminar_division':
+                division.delete()
+                messages.success(
+                    request,
+                    "Regla de reparto eliminada. Los recibos ya repartidos no cambian: "
+                    "para deshacer uno, entra en su fila.",
+                )
+            else:
+                division.activo = not division.activo
+                division.save(update_fields=['activo'])
+                messages.success(
+                    request,
+                    f"Reparto de «{division.patron}» "
+                    f"{'activado' if division.activo else 'desactivado'}.",
+                )
+            return redirect('extractos:reglas')
+
         regla = get_object_or_404(
             ReglaCategorizacion, pk=request.POST.get('regla_id'), hogar=hogar,
         )
@@ -2536,6 +2786,10 @@ def reglas(request):
 
     return render(request, 'extractos/reglas.html', {
         'reglas': ReglaCategorizacion.objects.filter(hogar=hogar).select_related('categoria'),
+        'divisiones': (
+            ReglaDivision.objects.filter(hogar=hogar)
+            .prefetch_related('partes__categoria', 'partes__vehiculo', 'partes__propiedad')
+        ),
         'bloques_categorias': _categorias_por_bloque(hogar),
     })
 
