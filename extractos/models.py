@@ -200,6 +200,21 @@ class MovimientoBancario(ImputableAActivo):
         help_text='Cortes transversales (un viaje, una obra) que cruzan las categorías.',
     )
 
+    # Un cobro puede ser varias cosas a la vez: en Norauto pagas de una vez los
+    # neumáticos y la revisión anual, y son dos partidas distintas del
+    # presupuesto. Dividirlo crea sus partes como movimientos normales colgando
+    # de este, que se queda como el apunte real del banco y deja de contar en
+    # los totales para no sumar dos veces el mismo dinero.
+    dividido_de = models.ForeignKey(
+        'self', on_delete=models.CASCADE, null=True, blank=True, related_name='partes',
+        help_text='Si está relleno, esto es una parte de otro movimiento.',
+    )
+    # Qué parte es, dentro de su movimiento. Existe para el hash: dos partes del
+    # mismo importe y concepto son legítimas, y sin algo que las distinga
+    # chocarían contra el unique (hogar, hash). El pk no sirve porque todavía no
+    # existe cuando se calcula el hash en el primer save().
+    orden_parte = models.PositiveSmallIntegerField(default=0)
+
     hash_dedupe = models.CharField(max_length=64, db_index=True, editable=False)
     creado_en = models.DateTimeField(auto_now_add=True)
 
@@ -250,6 +265,27 @@ class MovimientoBancario(ImputableAActivo):
         )
 
     @property
+    def esta_dividido(self):
+        """Se ha repartido en partes, así que el que cuenta es cada parte.
+
+        El apunte original se conserva —es lo que dice el banco, y es lo que
+        evita que reimportar el extracto lo duplique— pero deja de sumar, o el
+        mismo dinero contaría dos veces.
+
+        Lo mira sobre el prefetch si lo hay: esto se consulta para CADA
+        movimiento al calcular los totales, y un `.exists()` por fila devolvía
+        la pantalla a las nueve mil consultas de las que acaba de salir.
+        """
+        cache = getattr(self, '_prefetched_objects_cache', None)
+        if cache is not None and 'partes' in cache:
+            return bool(cache['partes'])
+        return self.partes.exists()
+
+    @property
+    def es_parte(self):
+        return self.dividido_de_id is not None
+
+    @property
     def es_neutro(self):
         from finanzas.models import COMPUTO_NEUTRO
 
@@ -259,13 +295,13 @@ class MovimientoBancario(ImputableAActivo):
     def cuenta_como_gasto(self):
         from finanzas.models import COMPUTO_RESTA
 
-        return self.computo == COMPUTO_RESTA
+        return self.computo == COMPUTO_RESTA and not self.esta_dividido
 
     @property
     def cuenta_como_ingreso(self):
         from finanzas.models import COMPUTO_SUMA
 
-        return self.computo == COMPUTO_SUMA
+        return self.computo == COMPUTO_SUMA and not self.esta_dividido
 
     @staticmethod
     def _importe_canonico(valor):
@@ -284,13 +320,19 @@ class MovimientoBancario(ImputableAActivo):
             return str(valor)
 
     @staticmethod
-    def calcular_hash(fecha, concepto, importe, saldo):
+    def calcular_hash(fecha, concepto, importe, saldo, parte_de=None, orden=None):
         base = '|'.join([
             str(fecha),
             (concepto or '').strip().lower(),
             MovimientoBancario._importe_canonico(importe),
             MovimientoBancario._importe_canonico(saldo),
         ])
+        # Las partes de un movimiento dividido no vienen del banco, así que no
+        # hay nada que deduplicar entre ellas: dos partes del mismo importe y
+        # concepto son legítimas y el unique (hogar, hash) las rechazaría. Se
+        # les añade de quién son parte y cuál es.
+        if parte_de is not None:
+            base += f'|parte:{parte_de}:{orden}'
         return hashlib.sha256(base.encode('utf-8')).hexdigest()
 
     def save(self, *args, **kwargs):
@@ -302,6 +344,7 @@ class MovimientoBancario(ImputableAActivo):
         # compararía contra datos que ya no existen.
         self.hash_dedupe = self.calcular_hash(
             self.fecha, self.concepto, self.importe, self.saldo,
+            parte_de=self.dividido_de_id, orden=self.orden_parte,
         )
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:

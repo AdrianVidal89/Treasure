@@ -11,7 +11,8 @@ algo desde ahí obligaba a volver al listado para terminar.
 Espera `m` (el movimiento) y `panel` (el contexto de edición: colores,
 categorías por bloque, provisiones y activos).
 {% endcomment %}
-<div class="ext-mov{% if m.es_neutro %} neutro{% endif %}" data-mov-id="{{ m.id }}"
+<div class="ext-mov{% if m.es_neutro %} neutro{% endif %}{% if m.esta_dividido %} ext-mov-dividido{% endif %}{% if m.es_parte %} ext-mov-parte{% endif %}" data-mov-id="{{ m.id }}"
+     {% if m.es_parte %}data-padre="{{ m.dividido_de_id }}" data-concepto="{{ m.concepto }}" data-importe="{{ m.importe|unlocalize }}" data-categoria="{{ m.categoria_id|default_if_none:'' }}"{% endif %}
      {% if m.saldo != None %}title="Saldo tras el apunte: {{ m.saldo|euro }}"{% endif %}>
     <label class="ext-mov-check" title="Seleccionar para un cambio en bloque">
         <input type="checkbox" class="ext-check" data-mov-id="{{ m.id }}">
@@ -23,7 +24,7 @@ categorías por bloque, provisiones y activos).
     </div>
 
     <div class="ext-mov-cuerpo">
-        <div class="ext-mov-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</div>
+        <div class="ext-mov-concepto" data-campo="concepto" title="Clic para editar">{% if m.es_parte %}<span class="ext-marca-parte" title="Es una parte de un cobro repartido">↳</span> {% endif %}{{ m.concepto }}</div>
         <div class="ext-mov-meta">
             {% comment %}
             El desplegable NO se pinta aquí. Las opciones son las mismas para
@@ -33,11 +34,15 @@ categorías por bloque, provisiones y activos).
             con el valor actual y el <select> de verdad se clona del molde que
             hay al final de la página cuando el usuario va a usarlo.
             {% endcomment %}
+            {% if m.esta_dividido %}
+            <span class="ext-badge-dividido" title="Este cobro está repartido en partes; cada una lleva su categoría">repartido en {{ m.partes.all|length }}</span>
+            {% else %}
             <span class="ext-cat-chip" style="--cc:{% if m.categoria %}{{ panel.colores_tipo|get_item:m.categoria.tipo }}{% else %}#9aa5a0{% endif %};">
                 <button type="button" class="ext-campo-perezoso ext-cat-boton" data-mov-id="{{ m.id }}"
                         data-molde="ext-molde-categoria" data-clase="ext-cat-select"
                         data-valor="{{ m.categoria_id|default_if_none:'' }}">{% if m.categoria %}{{ m.categoria.nombre }}{% else %}Sin categorizar{% endif %}</button>
             </span>
+            {% endif %}
             {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
             {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
             {% if m.es_pago_provision %}<span class="ext-badge-provision" title="Pago de {{ m.partida_conciliada.nombre }}: se compara en el año, no en el mes">anual</span>{% endif %}
@@ -72,6 +77,15 @@ categorías por bloque, provisiones y activos).
          data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">
         {% if m.importe > 0 %}+{% endif %}{{ m.importe|euro }}
     </div>
+
+    {% if not m.es_parte %}
+    <button type="button" class="ext-dividir" data-mov-id="{{ m.id }}"
+            data-concepto="{{ m.concepto }}" data-importe="{{ m.importe|unlocalize }}"
+            data-categoria="{{ m.categoria_id|default_if_none:'' }}"
+            title="{% if m.esta_dividido %}Ver o cambiar el reparto de este cobro{% else %}Un cobro, varias cosas: repártelo en partes con su propia categoría{% endif %}">
+        <svg class="icon"><use href="#i-grip"/></svg>
+    </button>
+    {% endif %}
 
     <button type="button" class="ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento">
         <svg class="icon"><use href="#i-trash"/></svg>

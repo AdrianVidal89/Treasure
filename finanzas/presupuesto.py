@@ -12,13 +12,26 @@ from collections import defaultdict
 from decimal import Decimal
 
 
-def _partidas(hogar):
+def _partidas(hogar, solo_mensuales=False):
+    """Las partidas activas del hogar.
+
+    `solo_mensuales` deja fuera los gastos que se pagan de golpe (IBI, seguro,
+    revisión del coche). Se usa al mirar UN mes: ese gasto se provisiona todo el
+    año y se paga en uno, así que compararlo contra el mes en el que cae dice
+    que te has arruinado, y contra los otros once, que eres un ahorrador. En esa
+    vista se sacan sus pagos del gasto Y su provisión del límite, o la
+    comparación queda coja por un lado. Sobre doce meses ambos lados se
+    promedian bien y no hace falta.
+    """
     from .models import PartidaGasto
 
-    return PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria')
+    qs = PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria')
+    if solo_mensuales:
+        qs = qs.filter(periodicidad='mensual')
+    return qs
 
 
-def por_categoria(hogar):
+def por_categoria(hogar, solo_mensuales=False):
     """{categoria_id: importe mensual declarado}.
 
     Las partidas declaradas para el bloque entero no aportan a ninguna
@@ -26,13 +39,13 @@ def por_categoria(hogar):
     se va a repartir ese dinero.
     """
     totales = defaultdict(lambda: Decimal('0'))
-    for p in _partidas(hogar):
+    for p in _partidas(hogar, solo_mensuales):
         if p.categoria_id:
             totales[p.categoria_id] += p.importe_mensual
     return dict(totales)
 
 
-def por_bloque(hogar):
+def por_bloque(hogar, solo_mensuales=False):
     """{tipo de bloque: importe mensual declarado}.
 
     Cuando el bloque tiene un presupuesto propio declarado, ESE es su techo y no
@@ -45,7 +58,7 @@ def por_bloque(hogar):
     """
     de_bloque = defaultdict(lambda: Decimal('0'))
     de_categorias = defaultdict(lambda: Decimal('0'))
-    for p in _partidas(hogar):
+    for p in _partidas(hogar, solo_mensuales):
         tipo = p.tipo_bloque
         if not tipo:
             continue

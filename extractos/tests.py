@@ -2678,3 +2678,299 @@ class ListadoLigeroTests(TestCase):
             f'la pantalla de movimientos pesa {len(contenido)//1024} KB: '
             'algo ha vuelto a pintar de más por fila o por mes.',
         )
+
+
+class PagosAnualesEnElPanelTests(TestCase):
+    """Un gasto que se provisiona todo el año y se paga de golpe no puede
+    compararse contra el mes en el que cae.
+
+    La conciliación ya lo hacía; el panel de movimientos no, así que pagar la
+    revisión del coche en septiembre decía «te has pasado 1.085 €» cuando lo
+    que habías hecho era pagar exactamente lo que tenías apartado.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        # 1.968 €/año de revisión = 164 €/mes de provisión.
+        self.revision = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Revisión Polo',
+            importe=Decimal('1968'), periodicidad='anual',
+        )
+        self.alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.alimentacion, nombre='Compra',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+
+    def mov(self, importe, dia, categoria, provision=None, concepto='Norauto'):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 9, dia),
+            concepto=f'{concepto} {dia}', importe=Decimal(importe),
+            categoria=categoria, partida_conciliada=provision,
+        )
+
+    def panel(self, **params):
+        return self.client.get(reverse('extractos:listar'), params).context['panel']
+
+    def test_el_pago_anual_no_cuenta_contra_el_limite_del_mes(self):
+        self.mov('-1249.34', 5, self.mantenimiento, provision=self.revision)
+        self.mov('-380', 10, self.alimentacion)
+
+        panel = self.panel(anio=2026, mes=9)
+
+        # El gasto del mes es solo lo mensual.
+        self.assertEqual(panel['kpi_gastos'], Decimal('-380'))
+        bloques = {b['tipo']: b for b in panel['bloques']}
+        self.assertNotIn('anual', bloques)
+        self.assertTrue(bloques['variable']['dentro'])
+
+    def test_y_tampoco_se_avisa_de_que_esa_categoria_se_ha_pasado(self):
+        """Era el aviso que no tenía sentido: «Mantenimiento vehicular
+        1.249 € de 164 €»."""
+        self.mov('-1249.34', 5, self.mantenimiento, provision=self.revision)
+
+        fuera = self.panel(anio=2026, mes=9)['fuera_presupuesto']
+        self.assertEqual([f['nombre'] for f in fuera['categorias']], [])
+        self.assertEqual([b['nombre'] for b in fuera['bloques']], [])
+
+    def test_la_pantalla_explica_a_dónde_ha_ido_ese_dinero(self):
+        """Si no, el bloque de los anuales desaparece y parece que la pantalla
+        se ha comido mil euros."""
+        self.mov('-1249.34', 5, self.mantenimiento, provision=self.revision)
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertEqual(respuesta.context['panel']['total_provisiones'], Decimal('1249.34'))
+        self.assertContains(respuesta, 'pagos de gastos que')
+
+    def test_sobre_todo_el_año_el_pago_anual_sí_cuenta(self):
+        """Con doce meses a la vista los dos lados se promedian bien y sacarlo
+        sería esconder gasto real."""
+        self.mov('-1249.34', 5, self.mantenimiento, provision=self.revision)
+
+        panel = self.panel(anio=2026)
+        self.assertEqual(panel['kpi_gastos'], Decimal('-1249.34'))
+        self.assertIn('anual', {b['tipo'] for b in panel['bloques']})
+        self.assertEqual(panel['pagos_provision'], [])
+
+    def test_un_gasto_del_mes_sin_marcar_sigue_avisando(self):
+        """Solo se perdona lo que está marcado como pago de una provisión: un
+        gasto normal que se pasa tiene que seguir saltando."""
+        self.mov('-900', 5, self.alimentacion)
+
+        fuera = self.panel(anio=2026, mes=9)['fuera_presupuesto']
+        self.assertEqual([f['nombre'] for f in fuera['categorias']], ['Alimentacion'])
+
+
+class DividirMovimientoTests(TestCase):
+    """Un cobro puede ser varias cosas a la vez.
+
+    En Norauto se paga de una vez los neumáticos y la revisión anual: son dos
+    partidas distintas del presupuesto, y el movimiento solo admite una
+    categoría."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        self.gasolina = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gasolina')
+        self.mov = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 9, 5),
+            concepto='Norauto', importe=Decimal('-928.63'), saldo=Decimal('1500.00'),
+        )
+
+    def dividir(self, mov, partes):
+        datos = {'importe': [], 'categoria_id': [], 'concepto': []}
+        for importe, categoria, concepto in partes:
+            datos['importe'].append(importe)
+            datos['categoria_id'].append(str(categoria.id) if categoria else '')
+            datos['concepto'].append(concepto)
+        return self.client.post(
+            reverse('extractos:dividir_movimiento', args=[mov.id]), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_reparte_el_cobro_en_partes_con_su_propia_categoria(self):
+        respuesta = self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        self.assertEqual(respuesta.json(), {'ok': True, 'partes': 2})
+
+        partes = list(self.mov.partes.order_by('orden_parte'))
+        self.assertEqual([p.concepto for p in partes], ['Neumáticos', 'Revisión'])
+        self.assertEqual([p.importe for p in partes], [Decimal('-700.00'), Decimal('-228.63')])
+        self.assertEqual([p.categoria for p in partes], [self.mantenimiento, self.gasolina])
+
+    def test_el_original_se_conserva_pero_deja_de_contar(self):
+        """Es lo que dice el banco y lo que evita que reimportar el extracto lo
+        duplique, pero si siguiera sumando contaríamos el dinero dos veces."""
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        self.mov.refresh_from_db()
+
+        self.assertTrue(self.mov.esta_dividido)
+        self.assertFalse(self.mov.cuenta_como_gasto)
+        self.assertTrue(MovimientoBancario.objects.filter(pk=self.mov.pk).exists())
+
+    def test_los_totales_no_cuentan_el_dinero_dos_veces(self):
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        panel = self.client.get(
+            reverse('extractos:listar'), {'anio': 2026, 'mes': 9},
+        ).context['panel']
+
+        self.assertEqual(panel['kpi_gastos'], Decimal('-928.63'))
+        por_categoria = {
+            c['nombre']: c['importe']
+            for b in panel['bloques'] for c in b['categorias']
+        }
+        self.assertEqual(por_categoria['Mantenimiento vehicular'], Decimal('700.00'))
+        self.assertEqual(por_categoria['Gasolina'], Decimal('228.63'))
+
+    def test_las_partes_tienen_que_sumar_el_cobro(self):
+        """Si no cuadran, el reparto no representa lo que pasó."""
+        respuesta = self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-100.00', self.gasolina, 'Revisión'),
+        ])
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.json()['error'], 'no_cuadra')
+        self.assertEqual(self.mov.partes.count(), 0)
+
+    def test_dividir_de_nuevo_reemplaza_el_reparto_anterior(self):
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        self.dividir(self.mov, [
+            ('-500.00', self.mantenimiento, 'Neumáticos'),
+            ('-428.63', self.gasolina, 'Revisión'),
+        ])
+        self.assertEqual(self.mov.partes.count(), 2)
+        self.assertEqual(
+            sorted(p.importe for p in self.mov.partes.all()),
+            [Decimal('-500.00'), Decimal('-428.63')],
+        )
+
+    def test_dos_partes_iguales_no_chocan_entre_si(self):
+        """Pagar dos ruedas del mismo precio es legítimo, y el unique por hash
+        las rechazaría sin algo que las distinga."""
+        respuesta = self.dividir(self.mov, [
+            ('-464.315', self.mantenimiento, 'Rueda'),
+            ('-464.315', self.mantenimiento, 'Rueda'),
+        ])
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(self.mov.partes.count(), 2)
+
+    def test_deshacer_devuelve_el_movimiento_a_contar_solo(self):
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        respuesta = self.client.post(
+            reverse('extractos:deshacer_division', args=[self.mov.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertTrue(respuesta.json()['ok'])
+
+        self.mov.refresh_from_db()
+        self.assertFalse(self.mov.esta_dividido)
+        self.assertTrue(self.mov.cuenta_como_gasto)
+        self.assertEqual(self.mov.partes.count(), 0)
+
+    def test_una_sola_parte_no_es_dividir(self):
+        respuesta = self.dividir(self.mov, [('-928.63', self.mantenimiento, 'Todo')])
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.json()['error'], 'minimo_dos')
+
+    def test_no_se_divide_una_parte(self):
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        parte = self.mov.partes.first()
+        respuesta = self.dividir(parte, [
+            ('-350.00', self.mantenimiento, 'A'), ('-350.00', self.gasolina, 'B'),
+        ])
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.json()['error'], 'ya_es_parte')
+
+    def test_borrar_el_original_se_lleva_sus_partes(self):
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        self.mov.delete()
+        self.assertEqual(MovimientoBancario.objects.filter(hogar=self.hogar).count(), 0)
+
+    def test_una_parte_puede_ser_el_pago_de_un_gasto_anual(self):
+        """El caso de Norauto entero: los neumáticos son gasto del mes y la
+        revisión es el pago de la provisión anual."""
+        revision = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Revisión Polo',
+            importe=Decimal('1968'), periodicidad='anual',
+        )
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.mantenimiento, 'Revisión anual'),
+        ])
+        parte = self.mov.partes.get(concepto='Revisión anual')
+        self.client.post(
+            reverse('extractos:marcar_provision', args=[parte.id]),
+            {'partida_id': revision.id}, HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        parte.refresh_from_db()
+        self.assertTrue(parte.es_pago_provision)
+
+        # En la vista del mes solo cuentan los neumáticos.
+        panel = self.client.get(
+            reverse('extractos:listar'), {'anio': 2026, 'mes': 9},
+        ).context['panel']
+        self.assertEqual(panel['kpi_gastos'], Decimal('-700.00'))
+        self.assertEqual(panel['total_provisiones'], Decimal('228.63'))
+
+    def test_el_reparto_no_devuelve_la_pantalla_al_n_mas_uno(self):
+        """Saber si un movimiento está dividido se consulta para CADA fila al
+        calcular los totales: sin prefetch eran miles de consultas."""
+        for i in range(60):
+            MovimientoBancario.objects.create(
+                extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 9, 1 + i % 28),
+                concepto=f'Compra {i}', importe=Decimal('-12.00'), saldo=Decimal(str(900 + i)),
+            )
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        with CaptureQueriesContext(connection) as ctx:
+            self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+
+        # Umbral, no número exacto: lo que importa es que NO crezca con el
+        # número de movimientos, no cuántas consultas hace hoy la pantalla.
+        self.assertLess(
+            len(ctx.captured_queries), 40,
+            f'{len(ctx.captured_queries)} consultas para 61 movimientos: '
+            'algo vuelve a preguntar por fila.',
+        )

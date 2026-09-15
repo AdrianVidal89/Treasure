@@ -1,10 +1,11 @@
 import difflib
 from collections import defaultdict
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -65,7 +66,7 @@ def listar(request):
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
         .select_related('categoria', 'partida_conciliada')
-        .prefetch_related('etiquetas').order_by('-fecha')
+        .prefetch_related('etiquetas', 'partes').order_by('-fecha')
     )
     panel = _panel_context(hogar, todos, request)
 
@@ -679,6 +680,18 @@ def _panel_context(hogar, todos, request):
     # categoría, no el signo del importe: los traspasos entre cuentas propias
     # (y cualquier categoría marcada como neutra) salen en negativo pero no son
     # gasto, y sumarlos inflaba el gasto del mes.
+    # Mirando UN mes, los pagos de gastos no mensuales se sacan de la
+    # comparación: el IBI o la revisión del coche se provisionan todo el año y
+    # se pagan de golpe, así que dejarlos dentro del mes en el que caen dice que
+    # te has pasado mil euros cuando lo que has hecho es pagar lo que tenías
+    # provisionado. Se sacan sus pagos del gasto Y su provisión del límite —más
+    # abajo—, o la comparación queda coja por un lado. Sobre varios meses ambos
+    # lados se promedian bien y no hace falta.
+    vista_de_mes = mes_sel != 'all'
+    pagos_provision = [m for m in movimientos if m.es_pago_provision]
+    if vista_de_mes and pagos_provision:
+        movimientos = [m for m in movimientos if not m.es_pago_provision]
+
     reales = [m for m in movimientos if not m.es_neutro]
     ingresos = sum((m.importe for m in reales if m.cuenta_como_ingreso), Decimal('0'))
     gastos = sum((m.importe for m in reales if m.cuenta_como_gasto), Decimal('0'))
@@ -721,8 +734,9 @@ def _panel_context(hogar, todos, request):
     meses_periodo = max(
         len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
     )
-    limite_bloque = presupuesto.por_bloque(hogar)
-    limite_categoria = presupuesto.por_categoria(hogar)
+    solo_mensuales = vista_de_mes and bool(pagos_provision)
+    limite_bloque = presupuesto.por_bloque(hogar, solo_mensuales)
+    limite_categoria = presupuesto.por_categoria(hogar, solo_mensuales)
     # Los bloques cuyo límite se declara entero: dentro no se espera presupuesto
     # por categoría, así que las suyas se enseñan con su peso y no con un «de X»
     # que no existe.
@@ -880,6 +894,8 @@ def _panel_context(hogar, todos, request):
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'meses_periodo': meses_periodo,
         'media': media,
+        'pagos_provision': pagos_provision if vista_de_mes else [],
+        'total_provisiones': sum((-m.importe for m in pagos_provision), Decimal('0')),
         'fuera_presupuesto': fuera_presupuesto,
         'comercios': comercios,
         'comparativa': comparativa,
@@ -960,7 +976,7 @@ def detalle(request, pk):
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
     todos = list(
         extracto.movimientos.select_related('categoria', 'partida_conciliada')
-        .prefetch_related('etiquetas').all()
+        .prefetch_related('etiquetas', 'partes').all()
     )
     panel = _panel_context(hogar, todos, request)
     return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
@@ -1089,6 +1105,99 @@ def eliminar_movimiento(request, pk):
 
 
 @login_required
+def dividir_movimiento(request, pk):
+    """Reparte un cobro en varias partes, cada una con su propia categoría.
+
+    En Norauto pagas de una vez los neumáticos y la revisión anual: son dos
+    partidas distintas del presupuesto y hasta ahora no había forma de decirlo,
+    porque el movimiento solo admite una categoría.
+
+    El apunte original NO se borra: es lo que dice el banco, es lo que evita que
+    reimportar el extracto lo duplique, y es donde se ve el cobro tal cual fue.
+    Simplemente deja de sumar y pasan a contar sus partes.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+    if mov.es_parte:
+        return JsonResponse({'ok': False, 'error': 'ya_es_parte'}, status=400)
+
+    importes = request.POST.getlist('importe')
+    categorias = request.POST.getlist('categoria_id')
+    conceptos = request.POST.getlist('concepto')
+    if len(importes) < 2:
+        return JsonResponse({'ok': False, 'error': 'minimo_dos'}, status=400)
+
+    partes = []
+    for i, crudo in enumerate(importes):
+        try:
+            importe = Decimal((crudo or '').replace(',', '.'))
+        except InvalidOperation:
+            return JsonResponse({'ok': False, 'error': 'importe_invalido'}, status=400)
+        if importe == 0:
+            return JsonResponse({'ok': False, 'error': 'importe_cero'}, status=400)
+        partes.append({
+            'importe': importe,
+            'categoria_id': (categorias[i] if i < len(categorias) else '') or '',
+            'concepto': ((conceptos[i] if i < len(conceptos) else '') or '').strip(),
+        })
+
+    # Las partes tienen que sumar el cobro. Si no cuadran, el reparto no
+    # representa lo que pasó y todos los totales quedarían mal.
+    suma = sum(p['importe'] for p in partes)
+    if suma != mov.importe:
+        return JsonResponse({
+            'ok': False, 'error': 'no_cuadra',
+            'suma': float(suma), 'total': float(mov.importe),
+        }, status=400)
+
+    validas = {
+        str(c.id): c for c in CategoriaGasto.objects.filter(
+            hogar=hogar, id__in=[p['categoria_id'] for p in partes if p['categoria_id']],
+        )
+    }
+
+    with transaction.atomic():
+        # Dividir de nuevo reemplaza el reparto anterior: si no, cada intento
+        # dejaría partes viejas sumando por detrás.
+        mov.partes.all().delete()
+        for i, p in enumerate(partes, start=1):
+            MovimientoBancario.objects.create(
+                extracto=mov.extracto, hogar=hogar, dividido_de=mov, orden_parte=i,
+                fecha=mov.fecha,
+                concepto=(p['concepto'] or f'{mov.concepto} ({i})')[:300],
+                concepto_raw=mov.concepto_raw or mov.concepto,
+                importe=p['importe'],
+                # El saldo es del apunte del banco, no de cada trozo: repetirlo
+                # en las partes haría creer que hubo varios movimientos.
+                saldo=None,
+                categoria=validas.get(p['categoria_id']),
+                estado_categorizacion='manual' if p['categoria_id'] else 'sin_categorizar',
+                es_traspaso=mov.es_traspaso,
+            )
+
+    return JsonResponse({'ok': True, 'partes': len(partes)})
+
+
+@login_required
+def deshacer_division(request, pk):
+    """Quita las partes y devuelve el movimiento a contar por sí mismo."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+    borradas, _ = mov.partes.all().delete()
+    return JsonResponse({'ok': True, 'borradas': borradas})
+
+
+@login_required
 def filas_del_mes(request):
     """Las filas de un mes concreto, para cuando se despliega en el listado.
 
@@ -1114,7 +1223,7 @@ def filas_del_mes(request):
         base = base.filter(extracto_id=extracto_id)
     todos = list(
         base.select_related('categoria', 'partida_conciliada')
-            .prefetch_related('etiquetas').order_by('-fecha')
+            .prefetch_related('etiquetas', 'partes').order_by('-fecha')
     )
 
     # El año y el mes de la fila mandan sobre los de la URL: se está pidiendo
@@ -1152,7 +1261,7 @@ def movimientos_de_categoria(request):
 
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada').prefetch_related('etiquetas')
+        .select_related('categoria', 'partida_conciliada').prefetch_related('etiquetas', 'partes')
     )
     # El bloque se quita: la categoría ya es más concreta que su pilar, y
     # dejarlo puesto vaciaría la lista justo cuando se entra desde otro bloque
@@ -1382,6 +1491,9 @@ def conciliacion(request):
     todos = [
         m for m in MovimientoBancario.objects.filter(hogar=hogar)
         .select_related('categoria', 'partida_conciliada')
+        # `partes` porque un movimiento dividido deja de contar por sí mismo, y
+        # saberlo fila a fila son mil consultas.
+        .prefetch_related('partes')
         if not m.es_neutro
     ]
     periodo = _periodo_conciliacion(request, todos)
