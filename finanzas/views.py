@@ -361,7 +361,9 @@ def buscar_ticker(request):
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.urls import reverse_lazy
 from django.views.generic import ListView, DetailView, CreateView, UpdateView
-from .models import Inversion, MovimientoInversion, ValorActualInversion, GrupoInversion, TIPOS_INVERSION, AportacionRecurrente
+from django.db.models import Prefetch
+from .models import (Inversion, MovimientoInversion, ValorActualInversion, GrupoInversion,
+                     TIPOS_INVERSION, AportacionRecurrente, posicion_desde_movimientos)
 from .forms import InversionForm, MovimientoInversionForm, AportacionRecurrenteForm, MovimientoDepositoForm
 from .models import ResumenInversionesMensual
 
@@ -381,7 +383,12 @@ class InversionDetailView(LoginRequiredMixin, DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['movimientos'] = MovimientoInversion.objects.filter(inversion=self.object).order_by('-fecha')
+        # select_related('grupo'): la plantilla pinta el badge de cartera en cada
+        # fila, y sin esto cada movimiento pedía su grupo por separado —cinco mil
+        # consultas en un activo con cinco mil apuntes.
+        context['movimientos'] = (MovimientoInversion.objects
+                                  .filter(inversion=self.object)
+                                  .select_related('grupo').order_by('-fecha'))
         reglas = list(self.object.aportaciones_recurrentes.all())
         for regla in reglas:
             regla.pendientes = regla.meses_pendientes()
@@ -770,6 +777,15 @@ class InversionListView(LoginRequiredMixin, ListView):
             qs = Inversion.objects.filter(usuario_id__in=miembros_ids)
         else:
             qs = Inversion.objects.filter(usuario=self.request.user)
+        # Todo lo que la pantalla lee de cada activo, en las mismas consultas:
+        # el dueño y el valor actual por JOIN, y los movimientos en un único
+        # prefetch ordenado (el orden importa: la ganancia realizada usa el
+        # precio medio vigente en cada venta).
+        qs = qs.select_related('usuario', 'valor_actual', 'grupo', 'fondo').prefetch_related(
+            Prefetch('movimientos',
+                     queryset=MovimientoInversion.objects.select_related('grupo')
+                                                         .order_by('fecha', 'id')),
+        )
         # Filtro por cartera (grupo de inversión): las carteras son del propio usuario.
         # La cartera es a nivel de COMPRA, así que incluimos los activos que tengan
         # al menos una compra asignada a esa cartera (no solo la "cartera por defecto").
@@ -793,16 +809,23 @@ class InversionListView(LoginRequiredMixin, ListView):
             except AttributeError:
                 valor_unitario = None
 
-            cantidad = inv.total_activos
-            valor_total = inv.valor_total_actual
-            coste_base = inv.coste_base_actual
-            rentabilidad = inv.rentabilidad_latente_pct
-            ganancia_real = inv.ganancia_realizada
+            # Una sola pasada sobre los movimientos ya prefetcheados. Antes esto
+            # eran seis consultas por activo (una por propiedad), más una
+            # séptima para la tabla: con veinte activos, casi trescientas.
+            movimientos = list(inv.movimientos.all())
+            pos = posicion_desde_movimientos(movimientos, valor_unitario)
+            cantidad = pos['total_activos']
+            valor_total = pos['valor_total_actual']
+            coste_base = pos['coste_base_actual']
+            rentabilidad = pos['rentabilidad_latente_pct']
+            ganancia_real = pos['ganancia_realizada']
 
             movs = []
             carteras_activo = []
             carteras_vistas = set()
-            for m in inv.movimientos.select_related('grupo').order_by('-fecha'):
+            # El prefetch viene en orden ascendente porque lo necesita el AVCO;
+            # la tabla se lee al revés.
+            for m in reversed(movimientos):
                 movs.append({
                     'id': m.id,
                     'fecha': m.fecha,
@@ -829,6 +852,7 @@ class InversionListView(LoginRequiredMixin, ListView):
                 'coste_base': coste_base,
                 'rentabilidad': rentabilidad,
                 'ganancia_realizada': ganancia_real,
+                'aportado': pos['valor_aportado'],
                 'carteras': carteras_activo,
                 'movimientos': movs,
             })
@@ -853,7 +877,7 @@ class InversionListView(LoginRequiredMixin, ListView):
         # ─── Totales cartera (sin depósitos) ─────────────────────────────────
         total_valor_actual = sum(d['valor_total'] for d in inv_data)
         total_coste_base = sum(d['coste_base'] for d in inv_data)
-        total_aportado = sum(d['inv'].valor_aportado for d in inv_data)
+        total_aportado = sum(d['aportado'] for d in inv_data)
         total_ganancia_realizada = sum(d['ganancia_realizada'] for d in inv_data)
 
         rentabilidad_total = 0

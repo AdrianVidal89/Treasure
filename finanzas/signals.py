@@ -7,6 +7,7 @@ from django.utils import timezone
 from .models import (
     ValorActualInversion, HistorialValorInversion, MovimientoInversion,
     FuenteIngreso, PartidaGasto, ReglaReparto, AjusteIngresoMensual,
+    TablaIRPF, CotizacionSS,
 )
 
 
@@ -73,3 +74,14 @@ def rehacer_cierre_del_mes_ajustado(sender, instance, **kwargs):
     if hogar is None:
         return
     congelar_mes(hogar, instance.año, instance.mes, forzar=True)
+
+
+# ── Tablas fiscales ─────────────────────────────────────────────────────────
+# Se memorizan en proceso porque son datos de referencia que se consultan
+# decenas de veces por pantalla. Aquí se tira esa memoria cuando alguien las
+# cambia: sin esto, corregir un tramo en el admin no se notaría hasta reiniciar.
+@receiver([post_save, post_delete], sender=TablaIRPF)
+@receiver([post_save, post_delete], sender=CotizacionSS)
+def invalidar_cache_fiscal(sender, **kwargs):
+    from .fiscal import limpiar_cache_fiscal
+    limpiar_cache_fiscal()

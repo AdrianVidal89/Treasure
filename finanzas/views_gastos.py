@@ -74,31 +74,52 @@ CATEGORIA_OTROS_INGRESOS = 'Otros ingresos'
 
 
 def _crear_categorias_predefinidas(hogar):
+    """Siembra las categorías de fábrica que le falten al hogar.
+
+    Se llama al abrir media aplicación, y en el 99,9 % de las visitas no hay
+    nada que crear. Por eso primero se lee de una vez lo que YA existe y solo
+    se escribe lo que falta: antes hacía un get_or_create por categoría —treinta
+    consultas en cada carga de Gastos, Categorías, Sin categorizar y
+    Conciliación— para no crear nada.
+    """
     # Las que el hogar ha eliminado no se vuelven a crear: sin esto, «eliminar»
     # una categoría de fábrica duraba hasta la siguiente visita.
     descartadas = set(
         CategoriaPredefinidaDescartada.objects
         .filter(hogar=hogar).values_list('nombre', flat=True)
     )
-    for tipo, nombre in CATEGORIAS_PREDEFINIDAS:
-        if nombre in descartadas:
-            continue
-        # Ojo: el get_or_create busca por nombre SIN filtrar por `activo`. Es
-        # deliberado: una predefinida que el usuario ha archivado no debe
-        # resucitar en la siguiente visita.
-        categoria, creada = CategoriaGasto.objects.get_or_create(
-            hogar=hogar, nombre=nombre,
-            defaults={'tipo': tipo, 'computo': computo_por_defecto(tipo),
-                      'es_predefinida': True}
+    # Ojo: se leen SIN filtrar por `activo`. Es deliberado: una predefinida que
+    # el usuario ha archivado no debe resucitar en la siguiente visita.
+    existentes = {
+        c.nombre: c for c in CategoriaGasto.objects.filter(
+            hogar=hogar,
+            nombre__in=[n for _, n in CATEGORIAS_PREDEFINIDAS],
         )
-        # Recolocar las predefinidas que cambiaron de bloque. Solo se tocan las
-        # que siguen marcadas como predefinidas: si el usuario creó una propia
-        # con ese nombre, su criterio manda.
-        if (not creada and categoria.es_predefinida
-                and nombre in TIPOS_CORREGIDOS
-                and categoria.tipo != TIPOS_CORREGIDOS[nombre]):
-            categoria.tipo = TIPOS_CORREGIDOS[nombre]
-            categoria.save(update_fields=['tipo'])
+    }
+
+    faltan = [
+        CategoriaGasto(hogar=hogar, nombre=nombre, tipo=tipo,
+                       computo=computo_por_defecto(tipo), es_predefinida=True)
+        for tipo, nombre in CATEGORIAS_PREDEFINIDAS
+        if nombre not in descartadas and nombre not in existentes
+    ]
+    if faltan:
+        # ignore_conflicts: dos pestañas abiertas a la vez pueden intentar
+        # sembrar el mismo hogar; la segunda no debe reventar.
+        CategoriaGasto.objects.bulk_create(faltan, ignore_conflicts=True)
+
+    # Recolocar las predefinidas que cambiaron de bloque. Solo se tocan las que
+    # siguen marcadas como predefinidas: si el usuario creó una propia con ese
+    # nombre, su criterio manda.
+    recolocar = [
+        c for nombre, c in existentes.items()
+        if c.es_predefinida and nombre in TIPOS_CORREGIDOS
+        and c.tipo != TIPOS_CORREGIDOS[nombre]
+    ]
+    if recolocar:
+        for c in recolocar:
+            c.tipo = TIPOS_CORREGIDOS[c.nombre]
+        CategoriaGasto.objects.bulk_update(recolocar, ['tipo'])
 
 
 @login_required
