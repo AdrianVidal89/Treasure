@@ -3065,5 +3065,33 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
         self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
 
         respuesta = self.client.get(url('finanzas:listar_vehiculos'), {'anio': 2026})
-        self.assertContains(respuesta, 'de gasto corriente')
+        self.assertContains(respuesta, 'de los cuales')
         self.assertContains(respuesta, 'pago de gastos anuales')
+
+    def test_el_real_se_da_al_mes_para_poder_compararlo_con_el_teorico(self):
+        """La ficha ponía «85,27 €/mes» de teórico al lado de «1.249,34 €» de
+        real, que es el total del año: parecía que el coche costaba mil
+        doscientos al mes cuando eso era lo de nueve meses."""
+        from unittest import mock
+
+        self.mov('-900', 1, self.gasolina)
+        with mock.patch('finanzas.costes_activo.date') as falso:
+            falso.today.return_value = self.date(2026, 9, 15)
+            f = self.ficha()
+
+        self.assertEqual(f['meses_transcurridos'], 9)
+        self.assertEqual(f['ritmo_mensual'], Decimal('100'))
+        # Y el teórico con el que se compara sigue siendo mensual.
+        self.assertEqual(f['teorico_mensual'], Decimal('160'))
+        self.assertEqual(f['diferencia_mensual'], Decimal('-60'))
+
+    def test_un_año_cerrado_se_divide_entre_doce(self):
+        from unittest import mock
+
+        self.mov('-1200', 3, self.gasolina)
+        with mock.patch('finanzas.costes_activo.date') as falso:
+            falso.today.return_value = self.date(2027, 5, 1)
+            f = self.ficha(2026)
+
+        self.assertEqual(f['meses_transcurridos'], 12)
+        self.assertEqual(f['ritmo_mensual'], Decimal('100'))

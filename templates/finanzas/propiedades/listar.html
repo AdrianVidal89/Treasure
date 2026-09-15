@@ -155,8 +155,11 @@
                         </div>
                         <div>
                             <span class="k">Real</span>
-                            <span class="coste-val {% if f.diferencia_anual > 0 %}text-negative{% endif %}">{{ f.real_anual|euro }}</span>
-                            <span class="k">{{ f.num_movimientos }} movimiento{{ f.num_movimientos|pluralize:"s" }}</span>
+                            <span class="coste-val {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
+                            <span class="k">
+                                {{ f.real_anual|euro:0 }} en {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }}
+                                · {{ f.num_movimientos }} movimiento{{ f.num_movimientos|pluralize:"s" }}
+                            </span>
                         </div>
                     </div>
                     {% include "finanzas/vehiculos/_barra.html" %}

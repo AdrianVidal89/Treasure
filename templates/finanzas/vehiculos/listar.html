@@ -34,8 +34,10 @@
         </div>
         <div class="veh-total">
             <span class="veh-total-lbl">Real {{ anio }}</span>
-            <span class="veh-total-val">{{ total_real_anual|euro }}</span>
-            <span class="veh-total-sub">lo que ha pasado por el banco</span>
+            <span class="veh-total-val">{{ total_ritmo_mensual|euro }}<small>/mes</small></span>
+            <span class="veh-total-sub">
+                {{ total_real_anual|euro:0 }} en {{ meses_transcurridos }} mes{{ meses_transcurridos|pluralize:"es" }}
+            </span>
         </div>
     </div>
 
@@ -61,14 +63,14 @@
                 </div>
                 <div>
                     <span class="veh-cifra-lbl">Real {{ anio }}</span>
-                    <span class="veh-cifra {% if f.diferencia_anual > 0 %}text-negative{% endif %}">{{ f.real_anual|euro }}</span>
+                    <span class="veh-cifra {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
                     <span class="veh-cifra-sub">
-                        {% if f.meses_con_datos %}{{ f.real_mensual|euro }}/mes de gasto corriente
-                        {% elif f.num_movimientos %}sin gasto corriente este año
-                        {% else %}sin movimientos imputados{% endif %}
+                        {% if f.num_movimientos %}
+                        {{ f.real_anual|euro:0 }} en {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }}
                         {% if f.provisiones_anual %}
-                        <br><span class="veh-provision">+ {{ f.provisiones_anual|euro:0 }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }} de gastos anuales</span>
+                        <br><span class="veh-provision">de los cuales {{ f.provisiones_anual|euro:0 }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }} de gastos anuales</span>
                         {% endif %}
+                        {% else %}sin movimientos imputados{% endif %}
                     </span>
                 </div>
             </div>

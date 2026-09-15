@@ -16,6 +16,7 @@ La clave del activo (`vehiculo:3`, `propiedad:1`) es lo que permite que haya un
 """
 
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 
 MESES_ES = [
@@ -177,6 +178,15 @@ def costes(activo, anio):
         key=lambda p: p.nombre,
     )
 
+    # Lo que de verdad está costando al mes, para poder ponerlo al lado del
+    # presupuesto mensual. Antes la ficha enseñaba «85,27 €/mes» de teórico
+    # junto a «1.249,34 €» de real, que es el total del año: parecía que el
+    # coche costaba mil doscientos al mes cuando eso era lo de nueve meses.
+    meses_transcurridos = _meses_transcurridos(anio)
+    ritmo_mensual = (
+        real_anual / meses_transcurridos if meses_transcurridos else Decimal('0')
+    )
+
     return {
         'activo': activo,
         'clave': clave(activo),
@@ -200,6 +210,9 @@ def costes(activo, anio):
         'teorico_anual': teorico_anual,
         'real_anual': real_anual,
         'real_mensual': real_mensual,
+        'ritmo_mensual': ritmo_mensual,
+        'meses_transcurridos': meses_transcurridos,
+        'diferencia_mensual': ritmo_mensual - teorico_mensual,
         'corriente_anual': corriente_anual,
         'provisiones_anual': provisiones_anual,
         'num_provisiones': len(provisiones),
@@ -216,13 +229,21 @@ def costes(activo, anio):
     }
 
 
+def _meses_transcurridos(anio):
+    """Meses del año que ya han pasado. Un año cerrado son doce."""
+    hoy = date.today()
+    if anio < hoy.year:
+        return 12
+    if anio > hoy.year:
+        return 0
+    return hoy.month
+
+
 def _pct_transcurrido(anio):
     """Qué parte del año va consumida.
 
     Sin esto, un 76% del presupuesto no dice nada: en diciembre es ir sobrado y
     en marzo es ir camino de duplicarlo."""
-    from datetime import date
-
     hoy = date.today()
     if anio < hoy.year:
         return 100
@@ -299,6 +320,8 @@ def resumen(activos, anio):
         'teorico_mensual': sum((f['teorico_mensual'] for f in fichas), Decimal('0')),
         'teorico_anual': sum((f['teorico_anual'] for f in fichas), Decimal('0')),
         'real_anual': sum((f['real_anual'] for f in fichas), Decimal('0')),
+        'ritmo_mensual': sum((f['ritmo_mensual'] for f in fichas), Decimal('0')),
+        'meses_transcurridos': _meses_transcurridos(anio),
         'provisiones_anual': sum((f['provisiones_anual'] for f in fichas), Decimal('0')),
         'partidas_sueltas': sorted(
             {p for f in fichas for p in f['partidas_sueltas']}, key=lambda p: p.nombre,
