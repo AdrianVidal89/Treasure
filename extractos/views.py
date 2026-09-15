@@ -65,8 +65,9 @@ def listar(request):
     # los movimientos del hogar (todos los extractos juntos).
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre')
-        .prefetch_related('etiquetas', 'partes', 'coberturas').order_by('-fecha')
+        .select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
+        .prefetch_related('etiquetas', 'partes', 'coberturas',
+                          'dividido_de__partes', 'dividido_de__coberturas').order_by('-fecha')
     )
     panel = _panel_context(hogar, todos, request)
 
@@ -662,6 +663,34 @@ def _fuera_de_presupuesto(bloques):
     }
 
 
+def _con_las_partes_debajo(movimientos):
+    """Reordena para que las partes de un cobro repartido salgan pegadas a él.
+
+    Ordenados solo por fecha, un Norauto repartido en neumáticos y revisión
+    aparece con una parte tres filas más arriba, el cobro en medio y la otra
+    más abajo, con dos apuntes ajenos entre medias. Parecen tres gastos
+    distintos de la misma tienda —y la pregunta inmediata es si se están
+    contando tres veces—, cuando son un cobro y su desglose.
+    """
+    por_padre = defaultdict(list)
+    for m in movimientos:
+        if m.es_parte:
+            por_padre[m.dividido_de_id].append(m)
+    if not por_padre:
+        return movimientos
+    for partes in por_padre.values():
+        partes.sort(key=lambda m: m.orden_parte)
+
+    ordenados = []
+    for m in movimientos:
+        if m.es_parte and m.dividido_de_id in {x.pk for x in movimientos}:
+            # Se emite junto a su cobro, no aquí.
+            continue
+        ordenados.append(m)
+        ordenados.extend(por_padre.get(m.pk, ()))
+    return ordenados
+
+
 def _panel_context(hogar, todos, request):
     """Construye el panel de análisis de movimientos (KPIs, donut, ingresos vs
     gastos, filtros año/mes/categoría y listado agrupado por mes) que comparten
@@ -678,7 +707,7 @@ def _panel_context(hogar, todos, request):
     bloque_sel, etiqueta_sel, activo_sel = f['bloque'], f['etiqueta'], f['activo']
     busqueda, ver_traspasos = f['busqueda'], f['ver_traspasos']
 
-    movimientos = [m for m in todos if _pasa_filtro(m, f)]
+    movimientos = _con_las_partes_debajo([m for m in todos if _pasa_filtro(m, f)])
 
     # --- KPIs sobre el conjunto filtrado ---
     # Quién suma, quién resta y quién no cuenta lo dice el cómputo de la
@@ -693,7 +722,12 @@ def _panel_context(hogar, todos, request):
     # porque la provisión de ese mes sigue siendo el presupuesto de ese mes.
     # Sobre varios meses el pago se promedia bien y no hace falta sacarlo.
     vista_de_mes = mes_sel != 'all'
-    pagos_provision = [m for m in movimientos if m.es_pago_provision]
+    # `cuenta_como_gasto` deja fuera los cobros repartidos: el que cuenta es
+    # cada parte, y sumar también el original metía el dinero dos veces en la
+    # cifra de «esto es de gastos anuales» de la cabecera.
+    pagos_provision = [
+        m for m in movimientos if m.es_pago_provision and m.cuenta_como_gasto
+    ]
     if vista_de_mes and pagos_provision:
         # Salvo que hayas dicho de dónde salió el dinero. Si emparejaste 928 €
         # de la reserva con una revisión de 1.200, lo que sabemos es que 928
@@ -1027,8 +1061,9 @@ def detalle(request, pk):
 
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
     todos = list(
-        extracto.movimientos.select_related('categoria', 'partida_conciliada', 'cubre')
-        .prefetch_related('etiquetas', 'partes', 'coberturas').all()
+        extracto.movimientos.select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
+        .prefetch_related('etiquetas', 'partes', 'coberturas',
+                          'dividido_de__partes', 'dividido_de__coberturas').all()
     )
     panel = _panel_context(hogar, todos, request)
     return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
@@ -1227,7 +1262,9 @@ def candidatos_reserva(request):
     cerca = (
         MovimientoBancario.objects
         .filter(hogar=hogar, fecha__range=(desde, hasta)).exclude(pk=mov.pk)
-        .select_related('categoria').prefetch_related('coberturas')
+        .select_related('categoria', 'dividido_de')
+        .prefetch_related('coberturas', 'partes',
+                          'dividido_de__partes', 'dividido_de__coberturas')
         .order_by('-fecha')
     )
 
@@ -1256,6 +1293,9 @@ def candidatos_reserva(request):
 
     # Desde el ingreso: qué gasto cubre. Una reposición no cubre otra, o las
     # coberturas se encadenarían y el impacto real dejaría de significar nada.
+    # Se ofrecen tanto el cobro entero como sus partes: hay quien empareja la
+    # hucha con el recibo de Norauto y quien la empareja con la revisión de
+    # dentro. Cubrir el cobro reparte el dinero entre sus partes a prorrata.
     candidatos = cerca.filter(importe__lt=0, cubre__isnull=True)[:60]
     return JsonResponse({
         'ok': True,
@@ -1399,8 +1439,9 @@ def filas_del_mes(request):
         # desplegar un mes ahí traería los apuntes de todos los extractos.
         base = base.filter(extracto_id=extracto_id)
     todos = list(
-        base.select_related('categoria', 'partida_conciliada', 'cubre')
-            .prefetch_related('etiquetas', 'partes', 'coberturas').order_by('-fecha')
+        base.select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
+            .prefetch_related('etiquetas', 'partes', 'coberturas',
+                          'dividido_de__partes', 'dividido_de__coberturas').order_by('-fecha')
     )
 
     # El año y el mes de la fila mandan sobre los de la URL: se está pidiendo
@@ -1438,7 +1479,8 @@ def movimientos_de_categoria(request):
 
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre').prefetch_related('etiquetas', 'partes', 'coberturas')
+        .select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de').prefetch_related('etiquetas', 'partes', 'coberturas',
+                          'dividido_de__partes', 'dividido_de__coberturas')
     )
     # El bloque se quita: la categoría ya es más concreta que su pilar, y
     # dejarlo puesto vaciaría la lista justo cuando se entra desde otro bloque
@@ -1676,11 +1718,12 @@ def conciliacion(request):
     # tienen nada contra lo que compararse en el presupuesto.
     todos = [
         m for m in MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre')
+        .select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
         # `partes` porque un movimiento dividido deja de contar por sí mismo, y
         # saberlo fila a fila son mil consultas. `coberturas` por lo mismo, para
         # saber cuánto puso la reserva en cada pago.
-        .prefetch_related('partes', 'coberturas')
+        .prefetch_related('partes', 'coberturas',
+                          'dividido_de__partes', 'dividido_de__coberturas')
         if not m.es_neutro
     ]
     periodo = _periodo_conciliacion(request, todos)

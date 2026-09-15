@@ -3122,6 +3122,8 @@ class ReservaQueCubreUnPagoTests(TestCase):
         self.client.force_login(self.user)
         self.mantenimiento = CategoriaGasto.objects.get(
             hogar=self.hogar, nombre='Mantenimiento vehicular')
+        self.alimentacion = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Alimentacion')
         # 1.200 €/año de revisión = 100 €/mes apartados.
         self.revision = PartidaGasto.objects.create(
             hogar=self.hogar, categoria=self.mantenimiento, nombre='Revisión del coche',
@@ -3408,6 +3410,139 @@ class ReservaQueCubreUnPagoTests(TestCase):
         respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
         self.assertContains(respuesta, f'data-mov-id="{pago.pk}"')
         self.assertContains(respuesta, '¿Pagaste parte de esto con dinero que tenías apartado?')
+
+    # ── Un cobro repartido ───────────────────────────────────────────────
+
+    def repartir(self, pago, partes):
+        """partes: lista de (importe, concepto)."""
+        return self.client.post(
+            reverse('extractos:dividir_movimiento', args=[pago.id]), {
+                'importe': [p[0] for p in partes],
+                'concepto': [p[1] for p in partes],
+                'categoria_id': [str(self.mantenimiento.id)] * len(partes),
+                'activo': [''] * len(partes),
+            }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+    def test_la_parte_de_un_cobro_repartido_si_admite_reserva(self):
+        """El caso real: el Norauto llevaba los neumáticos Y la revisión, así
+        que está repartido, y era justo el pago que había que marcar. Ni el
+        cobro ni sus partes ofrecían el botón: la reserva no se podía declarar
+        en ninguna parte."""
+        pago = self.mov('-928.63', 5, self.mantenimiento, provision=self.revision)
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+        revision = pago.partes.get(concepto='Revisión')
+
+        respuesta = self.emparejar(self.mov('300', 4, concepto='Hucha'), revision)
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(revision.impacto_real, Decimal('85.63'))
+
+    def test_cubrir_el_cobro_entero_reparte_el_dinero_entre_sus_partes(self):
+        """Es lo natural: la hucha se empareja con el recibo de Norauto, que es
+        lo que hay en el banco. Pero el que cuenta en el presupuesto es cada
+        línea de dentro, así que el dinero tiene que bajar hasta ellas."""
+        pago = self.mov('-928.63', 5, self.mantenimiento)
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+        self.emparejar(self.mov('928.63', 4, concepto='Hucha'), pago)
+
+        neumaticos = pago.partes.get(concepto='Neumáticos')
+        revision = pago.partes.get(concepto='Revisión')
+        self.assertEqual(neumaticos.cubierto_por_reserva, Decimal('543.00'))
+        self.assertEqual(revision.cubierto_por_reserva, Decimal('385.63'))
+        self.assertEqual(neumaticos.impacto_real, Decimal('0'))
+        self.assertEqual(revision.impacto_real, Decimal('0'))
+        self.assertEqual(self.panel(anio=2026, mes=9)['kpi_gastos'], Decimal('0'))
+
+    def test_una_cobertura_parcial_del_cobro_se_prorratea(self):
+        """500 € sobre un recibo de 928,63 dejan el 53,8 % de cada parte
+        cubierto, no la primera entera y la segunda a cero."""
+        pago = self.mov('-928.63', 5, self.mantenimiento)
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+        self.emparejar(self.mov('500', 4, concepto='Hucha'), pago)
+
+        neumaticos = pago.partes.get(concepto='Neumáticos')
+        revision = pago.partes.get(concepto='Revisión')
+        self.assertEqual(neumaticos.cubierto_por_reserva, Decimal('292.37'))
+        self.assertEqual(revision.cubierto_por_reserva, Decimal('207.63'))
+        # Y las dos porciones suman exactamente lo que metiste: ni un céntimo
+        # perdido por el redondeo.
+        self.assertEqual(
+            neumaticos.cubierto_por_reserva + revision.cubierto_por_reserva,
+            Decimal('500.00'))
+        # Y lo que pesa el mes es lo que quedó sin cubrir, entero.
+        self.assertEqual(
+            neumaticos.impacto_real + revision.impacto_real, Decimal('428.63'))
+
+    def test_una_parte_puede_llevar_ademas_su_propia_cobertura(self):
+        pago = self.mov('-928.63', 5, self.mantenimiento)
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+        revision = pago.partes.get(concepto='Revisión')
+        self.emparejar(self.mov('200', 4, concepto='Hucha del recibo'), pago)
+        self.emparejar(self.mov('100', 3, concepto='Hucha de la revisión'), revision)
+
+        # 200 × 385,63/928,63 = 83,05, más los 100 suyos.
+        self.assertEqual(revision.cubierto_por_reserva, Decimal('183.05'))
+
+    def test_el_cobro_repartido_se_ofrece_junto_a_sus_partes(self):
+        pago = self.mov('-928.63', 5, self.mantenimiento)
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+        hucha = self.mov('300', 4, concepto='Hucha')
+
+        ids = {c['id'] for c in self.candidatos(hucha)['candidatos']}
+        self.assertIn(pago.pk, ids)
+        self.assertTrue({p.pk for p in pago.partes.all()} <= ids)
+
+    def test_el_cobro_repartido_no_se_cuenta_tres_veces(self):
+        """Lo que se ve en pantalla —el cobro y sus dos partes— parecen tres
+        gastos. Solo suman las partes."""
+        pago = self.mov('-928.63', 5, self.mantenimiento)
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+
+        panel = self.panel(anio=2026, mes=9)
+        self.assertEqual(panel['kpi_gastos'], Decimal('-928.63'))
+        bloques = {b['tipo']: b for b in panel['bloques']}
+        self.assertEqual(bloques['anual']['importe'], Decimal('928.63'))
+
+    def test_ni_en_la_cifra_de_pagos_anuales_de_la_cabecera(self):
+        """El cobro repartido es «anual» y sus partes también: contarlo a él
+        además de a ellas metía el dinero dos veces."""
+        pago = self.mov('-928.63', 5, self.mantenimiento, provision=self.revision)
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+        for parte in pago.partes.all():
+            parte.partida_conciliada = self.revision
+            parte.save(update_fields=['partida_conciliada'])
+
+        panel = self.panel(anio=2026, mes=9)
+        self.assertEqual(panel['total_provisiones'], Decimal('928.63'))
+
+    def test_el_cobro_repartido_dice_que_su_reserva_va_a_las_partes(self):
+        """En su fila, «pesó X» no significaría nada: el cobro no cuenta."""
+        pago = self.mov('-928.63', 5, self.mantenimiento, concepto='Norauto')
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+        self.emparejar(self.mov('928.63', 4, concepto='Hucha'), pago)
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'va a las partes')
+
+    def test_las_partes_salen_pegadas_a_su_cobro(self):
+        """Ordenadas solo por fecha, una parte salía tres filas más arriba y la
+        otra más abajo, con apuntes ajenos en medio."""
+        self.mov('-45.43', 5, self.alimentacion, concepto='Mercadona')
+        pago = self.mov('-928.63', 5, self.mantenimiento, concepto='Norauto')
+        self.mov('1.16', 5, concepto='Interés')
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+
+        filas = [m for g in self.panel(anio=2026, mes=9)['grupos'] for m in g['movimientos']]
+        donde = filas.index(next(m for m in filas if m.pk == pago.pk))
+        siguientes = [m.concepto for m in filas[donde + 1:donde + 3]]
+        self.assertEqual(siguientes, ['Neumáticos', 'Revisión'])
+
+    def test_el_cobro_repartido_dice_en_pantalla_que_no_cuenta(self):
+        pago = self.mov('-928.63', 5, self.mantenimiento, concepto='Norauto')
+        self.repartir(pago, [('-543.00', 'Neumáticos'), ('-385.63', 'Revisión')])
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'repartido en 2 · no cuenta')
+        self.assertContains(respuesta, 'ext-importe-repartido')
 
     # ── Entrar desde el gasto, que es donde se mira ──────────────────────
 

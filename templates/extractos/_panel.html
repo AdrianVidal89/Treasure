@@ -1211,8 +1211,19 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-mov:hover .ext-dividir, .ext-mov-dividido .ext-dividir { opacity:1; }
 .ext-dividir:hover { color:var(--primary-color); }
 .ext-dividir .icon { width:15px; height:15px; }
-.ext-mov-dividido { opacity:.72; }
-.ext-mov-parte { background:color-mix(in srgb, var(--primary-color) 4%, transparent); }
+/* El cobro repartido pasa a segundo plano a propósito: se queda en la lista
+   porque es lo que dice el banco —y lo que evita que reimportar el extracto lo
+   duplique— pero no suma. Con solo bajarle la opacidad parecían tres gastos de
+   la misma tienda y lo primero que se piensa es que se están contando tres
+   veces. Ahora lo dice su chapa, y el importe va tachado. */
+.ext-mov-dividido { opacity:.62; }
+.ext-importe-repartido { text-decoration:line-through; text-decoration-thickness:1.5px; font-weight:600; }
+/* Las partes van pegadas a su cobro, con una guía a la izquierda que las ata
+   visualmente a él. */
+.ext-mov-parte {
+    background:color-mix(in srgb, var(--primary-color) 4%, transparent);
+    box-shadow:inset 3px 0 0 color-mix(in srgb, var(--primary-color) 45%, transparent);
+}
 .ext-mov-parte .ext-mov-dia { opacity:.45; }
 .ext-marca-parte { color:var(--muted); margin-right:2px; }
 .ext-badge-dividido {
