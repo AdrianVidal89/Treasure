@@ -1,6 +1,6 @@
 import difflib
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
@@ -65,8 +65,8 @@ def listar(request):
     # los movimientos del hogar (todos los extractos juntos).
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada')
-        .prefetch_related('etiquetas', 'partes').order_by('-fecha')
+        .select_related('categoria', 'partida_conciliada', 'cubre')
+        .prefetch_related('etiquetas', 'partes', 'coberturas').order_by('-fecha')
     )
     panel = _panel_context(hogar, todos, request)
 
@@ -546,7 +546,7 @@ def _contexto_edicion(hogar):
     }
 
 
-def _comercios_del_periodo(movimientos, meses_con_datos, tope=14):
+def _comercios_del_periodo(movimientos, meses_con_datos, tope=14, vista_de_mes=False):
     """Ranking de comercios de lo que se está mirando: cuánto, cuántas veces y
     de cuánto cada vez.
 
@@ -554,6 +554,9 @@ def _comercios_del_periodo(movimientos, meses_con_datos, tope=14):
     de 190 € pesan parecido en el total y no son el mismo problema. Se calcula
     sobre los movimientos YA FILTRADOS, así que respeta el año, el mes, la
     categoría y el buscador que haya puestos.
+
+    `vista_de_mes` pesa los pagos por lo que la reserva no cubrió, para que este
+    ranking sume lo mismo que el resto de la pantalla.
     """
     grupos = defaultdict(list)
     for m in movimientos:
@@ -563,7 +566,9 @@ def _comercios_del_periodo(movimientos, meses_con_datos, tope=14):
 
     filas = []
     for comercio, movs in grupos.items():
-        total = sum((-m.importe for m in movs), Decimal('0'))
+        total = sum(
+            ((m.impacto_real if vista_de_mes else -m.importe) for m in movs), Decimal('0'),
+        )
         if total <= 0:
             continue
         conceptos = defaultdict(int)
@@ -684,17 +689,38 @@ def _panel_context(hogar, todos, request):
     # comparación: el IBI o la revisión del coche se provisionan todo el año y
     # se pagan de golpe, así que dejarlos dentro del mes en el que caen dice que
     # te has pasado mil euros cuando lo que has hecho es pagar lo que tenías
-    # provisionado. Se sacan sus pagos del gasto Y su provisión del límite —más
-    # abajo—, o la comparación queda coja por un lado. Sobre varios meses ambos
-    # lados se promedian bien y no hace falta.
+    # provisionado. Se saca el PAGO del gasto observado; el límite se queda,
+    # porque la provisión de ese mes sigue siendo el presupuesto de ese mes.
+    # Sobre varios meses el pago se promedia bien y no hace falta sacarlo.
     vista_de_mes = mes_sel != 'all'
     pagos_provision = [m for m in movimientos if m.es_pago_provision]
     if vista_de_mes and pagos_provision:
-        movimientos = [m for m in movimientos if not m.es_pago_provision]
+        # Salvo que hayas dicho de dónde salió el dinero. Si emparejaste 928 €
+        # de la reserva con una revisión de 1.200, lo que sabemos es que 928
+        # estaban provisionados y 272 no: esos 272 sí se pasaron del
+        # presupuesto de este mes y tienen que verse. Sin emparejar no se sabe,
+        # y el pago se sigue sacando entero —puede que la hucha lo cubriera y
+        # simplemente no lo apuntaste, o que la recargues el mes que viene—.
+        provisiones_sacadas = [m for m in pagos_provision if not m.cubierto_por_reserva]
+        fuera = {m.pk for m in provisiones_sacadas}
+        movimientos = [m for m in movimientos if m.pk not in fuera]
+    else:
+        provisiones_sacadas = []
+
+    # La reserva es un asunto de CUÁNDO, no de cuánto: mueve dinero de los meses
+    # en los que ahorraste al mes en el que pagas. En un mes suelto hay que
+    # descontarla, porque el golpe fue solo lo que no cubrió. Sobre un periodo
+    # largo se compensa sola —el ahorro salió de meses que están dentro— y lo
+    # que cuesta la revisión del coche al año son 1.200 €, no 272.
+    def peso_de(m):
+        return m.impacto_real if vista_de_mes else -m.importe
 
     reales = [m for m in movimientos if not m.es_neutro]
     ingresos = sum((m.importe for m in reales if m.cuenta_como_ingreso), Decimal('0'))
-    gastos = sum((m.importe for m in reales if m.cuenta_como_gasto), Decimal('0'))
+    gastos = -sum((peso_de(m) for m in reales if m.cuenta_como_gasto), Decimal('0'))
+    cubierto_reserva = sum(
+        (m.cubierto_por_reserva for m in reales if m.cuenta_como_gasto), Decimal('0'),
+    ) if vista_de_mes else Decimal('0')
     sin_categorizar = sum(1 for m in movimientos if not m.categoria_id and not m.es_neutro)
     traspasos = [m for m in movimientos if m.es_neutro]
     traspaso_neto = sum((m.importe for m in traspasos), Decimal('0'))
@@ -714,12 +740,17 @@ def _panel_context(hogar, todos, request):
         tipo = m.categoria.tipo if m.categoria else 'sin'
         nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
         datos = por_bloque[tipo]
-        datos['importe'] += -m.importe
+        # Lo que pesó de verdad: si sacaste 928 € de la reserva para pagar una
+        # revisión de 1.200, el golpe del mes fueron 272, no 1.200. El coste del
+        # coche sigue siendo 1.200 —eso lo ve su ficha—, pero el presupuesto del
+        # mes solo sufre lo que no cubriste.
+        peso = peso_de(m)
+        datos['importe'] += peso
         cat = datos['categorias'].setdefault(
             nombre, {'id': m.categoria_id, 'nombre': nombre,
                      'importe': Decimal('0'), 'num': 0},
         )
-        cat['importe'] += -m.importe
+        cat['importe'] += peso
         cat['num'] += 1
 
     total_gasto_abs = sum(
@@ -734,9 +765,13 @@ def _panel_context(hogar, todos, request):
     meses_periodo = max(
         len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
     )
-    solo_mensuales = vista_de_mes and bool(pagos_provision)
-    limite_bloque = presupuesto.por_bloque(hogar, solo_mensuales)
-    limite_categoria = presupuesto.por_categoria(hogar, solo_mensuales)
+    # El límite SIEMPRE incluye todas las partidas prorrateadas, también las no
+    # mensuales: los 43 €/mes que reservas para el IBI son el presupuesto de ese
+    # mes aunque el recibo llegue en junio. Antes se quitaban junto con el pago
+    # y el bloque de los anuales se quedaba «sin límite» en la vista mensual,
+    # cuando tiene uno perfectamente definido: lo que apartas cada mes.
+    limite_bloque = presupuesto.por_bloque(hogar)
+    limite_categoria = presupuesto.por_categoria(hogar)
     # Los bloques cuyo límite se declara entero: dentro no se espera presupuesto
     # por categoría, así que las suyas se enseñan con su peso y no con un «de X»
     # que no existe.
@@ -799,7 +834,7 @@ def _panel_context(hogar, todos, request):
         elif m.cuenta_como_ingreso:
             g['ingresos'] += m.importe
         else:
-            g['gastos'] += m.importe
+            g['gastos'] -= peso_de(m)
 
     # Con el histórico entero a la vista, pintar los apuntes de los treinta y
     # seis meses eran veinte megas de HTML y cuatro segundos de render para ver
@@ -852,7 +887,7 @@ def _panel_context(hogar, todos, request):
 
     # --- Lo que explica el periodo (antes, la pestaña «Análisis») ---
     fuera_presupuesto = _fuera_de_presupuesto(bloques)
-    comercios = _comercios_del_periodo(movimientos, meses_periodo)
+    comercios = _comercios_del_periodo(movimientos, meses_periodo, vista_de_mes=vista_de_mes)
 
     # La comparación contra la media de los meses anteriores necesita UN mes
     # concreto —es su unidad— y los meses previos, que por definición quedan
@@ -894,8 +929,12 @@ def _panel_context(hogar, todos, request):
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'meses_periodo': meses_periodo,
         'media': media,
-        'pagos_provision': pagos_provision if vista_de_mes else [],
-        'total_provisiones': sum((-m.importe for m in pagos_provision), Decimal('0')),
+        'cubierto_reserva': cubierto_reserva,
+        # El aviso habla de lo que se ha SACADO del mes, así que lista solo eso:
+        # un pago que se queda —porque dijiste cuánto puso la reserva— ya se ve
+        # en su bloque con el peso que le corresponde.
+        'pagos_provision': provisiones_sacadas,
+        'total_provisiones': sum((-m.importe for m in provisiones_sacadas), Decimal('0')),
         'fuera_presupuesto': fuera_presupuesto,
         'comercios': comercios,
         'comparativa': comparativa,
@@ -975,8 +1014,8 @@ def detalle(request, pk):
 
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
     todos = list(
-        extracto.movimientos.select_related('categoria', 'partida_conciliada')
-        .prefetch_related('etiquetas', 'partes').all()
+        extracto.movimientos.select_related('categoria', 'partida_conciliada', 'cubre')
+        .prefetch_related('etiquetas', 'partes', 'coberturas').all()
     )
     panel = _panel_context(hogar, todos, request)
     return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
@@ -1102,6 +1141,84 @@ def eliminar_movimiento(request, pk):
     extracto.num_movimientos = extracto.movimientos.count()
     extracto.save(update_fields=['num_movimientos'])
     return JsonResponse({'ok': True})
+
+
+@login_required
+def cubrir_con_reserva(request, pk):
+    """Dice que un movimiento aporta dinero de la reserva a un pago concreto.
+
+    Ahorras todo el año para la revisión del coche y, cuando llega, metes esa
+    reserva en la cuenta. El golpe real del mes no son los 1.200 € del recibo:
+    son los 272 € que la reserva no cubrió. Emparejarlo con el pago —y no
+    limitarse a mirar el saldo de un fondo— es lo que permite decir exactamente
+    cuánto puso el ahorro y cuánto el bolsillo.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+
+    crudo = request.POST.get('cubre') or ''
+    if not crudo:
+        mov.cubre = None
+        mov.save(update_fields=['cubre'])
+        return JsonResponse({'ok': True, 'cubre': None})
+
+    pago = MovimientoBancario.objects.filter(hogar=hogar, pk=crudo or 0).first()
+    if not pago:
+        return JsonResponse({'ok': False, 'error': 'pago_invalido'}, status=400)
+    if pago.pk == mov.pk:
+        return JsonResponse({'ok': False, 'error': 'a_si_mismo'}, status=400)
+    # Una reserva cubre GASTOS. Dejar que cubra otra reposición encadenaría
+    # coberturas y el impacto real dejaría de significar nada.
+    if pago.es_cobertura:
+        return JsonResponse({'ok': False, 'error': 'ya_es_cobertura'}, status=400)
+    if pago.importe >= 0:
+        return JsonResponse({'ok': False, 'error': 'no_es_un_gasto'}, status=400)
+
+    mov.cubre = pago
+    mov.save(update_fields=['cubre'])
+    return JsonResponse({
+        'ok': True,
+        'cubre': pago.pk,
+        'concepto': pago.concepto,
+        'cubierto': float(pago.cubierto_por_reserva),
+        'impacto': float(pago.impacto_real),
+    })
+
+
+@login_required
+def pagos_cubribles(request):
+    """Los gastos que una reposición de reserva puede cubrir: los del mismo mes
+    y los del anterior, que es cuando se recarga la hucha —antes o después del
+    pago, pero cerca—."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+
+    mov = get_object_or_404(MovimientoBancario, pk=request.GET.get('mov') or 0, hogar=hogar)
+    desde = mov.fecha - timedelta(days=62)
+    hasta = mov.fecha + timedelta(days=62)
+    candidatos = (
+        MovimientoBancario.objects
+        .filter(hogar=hogar, importe__lt=0, fecha__range=(desde, hasta))
+        .exclude(pk=mov.pk).exclude(cubre__isnull=False)
+        .select_related('categoria').prefetch_related('coberturas')
+        .order_by('-fecha')[:60]
+    )
+    return JsonResponse({'ok': True, 'pagos': [
+        {
+            'id': p.pk,
+            'etiqueta': f'{p.fecha.strftime("%d/%m")} · {p.concepto[:48]}',
+            'importe': float(p.importe),
+            'cubierto': float(p.cubierto_por_reserva),
+            'pendiente': float(p.impacto_real),
+        }
+        for p in candidatos
+    ]})
 
 
 @login_required
@@ -1238,8 +1355,8 @@ def filas_del_mes(request):
         # desplegar un mes ahí traería los apuntes de todos los extractos.
         base = base.filter(extracto_id=extracto_id)
     todos = list(
-        base.select_related('categoria', 'partida_conciliada')
-            .prefetch_related('etiquetas', 'partes').order_by('-fecha')
+        base.select_related('categoria', 'partida_conciliada', 'cubre')
+            .prefetch_related('etiquetas', 'partes', 'coberturas').order_by('-fecha')
     )
 
     # El año y el mes de la fila mandan sobre los de la URL: se está pidiendo
@@ -1277,7 +1394,7 @@ def movimientos_de_categoria(request):
 
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada').prefetch_related('etiquetas', 'partes')
+        .select_related('categoria', 'partida_conciliada', 'cubre').prefetch_related('etiquetas', 'partes', 'coberturas')
     )
     # El bloque se quita: la categoría ya es más concreta que su pilar, y
     # dejarlo puesto vaciaría la lista justo cuando se entra desde otro bloque
@@ -1290,7 +1407,15 @@ def movimientos_de_categoria(request):
     meses_periodo = max(
         len({(m.fecha.year, m.fecha.month) for m in todos if _pasa_periodo(m, f)}), 1,
     )
-    total = sum((-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
+    # Mismo criterio que la pantalla desde la que se abre: si ahí la revisión
+    # pesa 272 € porque la reserva puso el resto, aquí dentro también, o el
+    # desglose contradice a la fila que se acaba de pinchar.
+    vista_de_mes = f['mes'] != 'all'
+
+    def peso_de(m):
+        return m.impacto_real if vista_de_mes else -m.importe
+
+    total = sum((peso_de(m) for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
     limite_mensual = (
         presupuesto.por_categoria(hogar).get(categoria.id, Decimal('0'))
         if categoria else Decimal('0')
@@ -1299,7 +1424,7 @@ def movimientos_de_categoria(request):
     por_mes = defaultdict(lambda: Decimal('0'))
     for m in movimientos:
         if m.cuenta_como_gasto:
-            por_mes[(m.fecha.year, m.fecha.month)] += -m.importe
+            por_mes[(m.fecha.year, m.fecha.month)] += peso_de(m)
     meses = [
         {'etiqueta': f"{MESES_ES[mes]} {anio}", 'importe': importe,
          'pct': float(importe / max(por_mes.values()) * 100) if por_mes else 0}
@@ -1321,7 +1446,8 @@ def movimientos_de_categoria(request):
         'media_mes': total / meses_periodo,
         'periodo_etiqueta': _etiqueta_periodo(f['anio'], f['mes']),
         'meses': meses,
-        'comercios': _comercios_del_periodo(movimientos, meses_periodo, tope=8),
+        'comercios': _comercios_del_periodo(
+            movimientos, meses_periodo, tope=8, vista_de_mes=vista_de_mes),
         **presupuesto.estado(total, limite_mensual * meses_periodo),
         'limite_mensual': limite_mensual,
         # Anidado, no expandido: la plantilla de una fila de movimiento espera
@@ -1506,10 +1632,11 @@ def conciliacion(request):
     # tienen nada contra lo que compararse en el presupuesto.
     todos = [
         m for m in MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada')
+        .select_related('categoria', 'partida_conciliada', 'cubre')
         # `partes` porque un movimiento dividido deja de contar por sí mismo, y
-        # saberlo fila a fila son mil consultas.
-        .prefetch_related('partes')
+        # saberlo fila a fila son mil consultas. `coberturas` por lo mismo, para
+        # saber cuánto puso la reserva en cada pago.
+        .prefetch_related('partes', 'coberturas')
         if not m.es_neutro
     ]
     periodo = _periodo_conciliacion(request, todos)
@@ -1524,22 +1651,34 @@ def conciliacion(request):
     #
     # Solo en la vista de UN MES: sobre doce meses ambos lados se promedian
     # bien y la comparación vuelve a tener sentido tal cual.
+    #
+    # Un pago que SÍ dice cuánto puso la reserva se queda: ahí no hay que
+    # suponer nada, se sabe que 928 € estaban provisionados y que 272 € no, y
+    # esos 272 son del mes. Igual que en Movimientos, para que las dos
+    # pantallas cuenten lo mismo.
     solo_mes = periodo['es_mes']
-    pagos_provision = [m for m in movimientos if m.es_pago_provision]
-    gastos = [
+    pagos_provision = [
         m for m in movimientos
-        if m.cuenta_como_gasto and not (solo_mes and m.es_pago_provision)
+        if m.es_pago_provision and not (solo_mes and m.cubierto_por_reserva)
     ]
+    sacados = {m.pk for m in pagos_provision} if solo_mes else set()
+    gastos = [m for m in movimientos if m.cuenta_como_gasto and m.pk not in sacados]
     total_provisiones_periodo = sum((-m.importe for m in pagos_provision), Decimal('0'))
+
+    # La reserva solo se descuenta en la vista de un mes: sobre el año se
+    # compensa con los meses en los que se ahorró, y la revisión del coche
+    # vuelve a costar lo que costó.
+    def peso_de(m):
+        return m.impacto_real if solo_mes else -m.importe
 
     # Observado por categoría (gasto absoluto, media mensual).
     observado = defaultdict(lambda: Decimal('0'))
     sin_cat = Decimal('0')
     for m in gastos:
         if m.categoria_id:
-            observado[m.categoria_id] += -m.importe
+            observado[m.categoria_id] += peso_de(m)
         else:
-            sin_cat += -m.importe
+            sin_cat += peso_de(m)
 
     # Declarado por categoría: suma de importe_mensual de sus partidas activas.
     # Se agrupa por BLOQUE del presupuesto (Fijos / Fijos anuales / Variables /

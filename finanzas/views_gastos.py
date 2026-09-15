@@ -11,7 +11,7 @@ from .models import (
     CategoriaGasto, CategoriaPredefinidaDescartada, PartidaGasto, MESES_CHOICES,
     PERIODICIDAD_GASTO_CHOICES, COMPUTO_CHOICES, COMPUTO_NEUTRO, ETIQUETAS_TIPO,
     ORDEN_TIPOS,
-    TIPO_GASTO_CHOICES, TIPOS_GASTO, computo_por_defecto,
+    TIPO_GASTO_CHOICES, TIPOS_GASTO, computo_por_defecto, MESES_POR_PERIODICIDAD, normalizar_periodicidad,
 )
 
 
@@ -327,7 +327,10 @@ def crear_partida(request):
         categoria_id = request.POST.get('categoria_id')
         nombre = request.POST.get('nombre', '').strip()
         importe = request.POST.get('importe', '0')
-        periodicidad = request.POST.get('periodicidad', 'mensual')
+        periodicidad, meses_personalizados = normalizar_periodicidad(
+            request.POST.get('periodicidad', 'mensual'),
+            request.POST.get('meses_personalizados'),
+        )
         mes_pago = request.POST.get('mes_pago') or None
         responsable_id = request.POST.get('responsable_id') or None
 
@@ -342,6 +345,7 @@ def crear_partida(request):
                 nombre=nombre,
                 importe=Decimal(importe),
                 periodicidad=periodicidad,
+                meses_personalizados=meses_personalizados,
                 mes_pago=int(mes_pago) if mes_pago else None,
                 responsable_id=int(responsable_id) if responsable_id else None,
             )
@@ -369,6 +373,7 @@ def crear_partida(request):
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,
+        'meses_por_periodicidad': MESES_POR_PERIODICIDAD,
         'grupos_activos': costes_activo.opciones(hogar),
     })
 
@@ -391,7 +396,10 @@ def editar_partida(request, partida_id):
         partida.categoria_id = request.POST.get('categoria_id')
         partida.nombre = request.POST.get('nombre', '').strip()
         partida.importe = Decimal(request.POST.get('importe', '0'))
-        partida.periodicidad = request.POST.get('periodicidad', 'mensual')
+        partida.periodicidad, partida.meses_personalizados = normalizar_periodicidad(
+            request.POST.get('periodicidad', 'mensual'),
+            request.POST.get('meses_personalizados'),
+        )
         mes_pago = request.POST.get('mes_pago')
         partida.mes_pago = int(mes_pago) if mes_pago else None
         responsable_id = request.POST.get('responsable_id')
@@ -410,6 +418,7 @@ def editar_partida(request, partida_id):
         'hogar': hogar,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDAD_GASTO_CHOICES,
+        'meses_por_periodicidad': MESES_POR_PERIODICIDAD,
         'grupos_activos': costes_activo.opciones(hogar),
     })
 

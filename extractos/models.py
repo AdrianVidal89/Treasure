@@ -200,6 +200,16 @@ class MovimientoBancario(ImputableAActivo):
         help_text='Cortes transversales (un viaje, una obra) que cruzan las categorías.',
     )
 
+    # Dinero que sacas de lo que tenías apartado para cubrir un pago concreto.
+    # Ahorras todo el año para la revisión del coche; cuando llega, metes esa
+    # reserva en la cuenta y el golpe real del mes es solo lo que la reserva no
+    # cubrió. Sin esto, la reposición entraba como un traspaso suelto y el pago
+    # aparecía entero: un mes que parecía un desastre cuando no lo fue.
+    cubre = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='coberturas',
+        help_text='Pago al que este movimiento aporta dinero de la reserva.',
+    )
+
     # Un cobro puede ser varias cosas a la vez: en Norauto pagas de una vez los
     # neumáticos y la revisión anual, y son dos partidas distintas del
     # presupuesto. Dividirlo crea sus partes como movimientos normales colgando
@@ -286,9 +296,43 @@ class MovimientoBancario(ImputableAActivo):
         return self.dividido_de_id is not None
 
     @property
+    def cubierto_por_reserva(self):
+        """Cuánto de este pago salió de dinero apartado, en positivo."""
+        cache = getattr(self, '_prefetched_objects_cache', None)
+        if cache is not None and 'coberturas' in cache:
+            coberturas = cache['coberturas']
+        else:
+            coberturas = self.coberturas.all()
+        return sum((abs(c.importe) for c in coberturas), Decimal('0'))
+
+    @property
+    def impacto_real(self):
+        """Lo que de verdad pesó en el mes: el pago menos lo que puso la reserva.
+
+        Va en las mismas unidades que `-importe`, es decir, el gasto en
+        positivo. Eso importa porque una devolución dentro de una categoría de
+        gasto llega en positivo y tiene que seguir RESTANDO de su categoría: con
+        un abs() aquí, devolver 30 € se contaba como gastar 30 €.
+
+        Cubrir de más no convierte un gasto en ingreso: se queda en cero."""
+        bruto = -self.importe
+        cubierto = self.cubierto_por_reserva
+        if bruto <= 0 or not cubierto:
+            return bruto
+        return max(bruto - cubierto, Decimal('0'))
+
+    @property
+    def es_cobertura(self):
+        return self.cubre_id is not None
+
+    @property
     def es_neutro(self):
         from finanzas.models import COMPUTO_NEUTRO
 
+        # Una reposición de la reserva no es ingreso: es dinero tuyo cambiando
+        # de sitio. Lo que hace es rebajar el pago que cubre.
+        if self.es_cobertura:
+            return True
         return self.computo == COMPUTO_NEUTRO
 
     @property
@@ -300,6 +344,13 @@ class MovimientoBancario(ImputableAActivo):
     @property
     def cuenta_como_ingreso(self):
         from finanzas.models import COMPUTO_SUMA
+
+        # Sacar dinero de la hucha no es ganarlo: entra en la cuenta, sí, pero
+        # es ahorro tuyo volviendo al flujo para pagar algo concreto. Contarlo
+        # como ingreso inflaría el mes y, si el pago está imputado a un coche,
+        # haría que el coche pareciera que renta.
+        if self.es_cobertura:
+            return False
 
         return self.computo == COMPUTO_SUMA and not self.esta_dividido
 

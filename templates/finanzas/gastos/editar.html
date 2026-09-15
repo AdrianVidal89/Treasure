@@ -27,6 +27,9 @@
     padding: 14px 16px; margin-bottom: 16px; display: flex; justify-content: space-between;
 }
 .calc-label { color: var(--muted); font-size: 0.85rem; }
+/* Sin esto, cualquier regla de display en .form-group ganaría al
+   atributo hidden y el campo saldría siempre. */
+#bloque-meses[hidden] { display:none; }
 .calc-value { color: var(--info); font-weight: 700; font-size: 1rem; }
 </style>
 
@@ -85,6 +88,22 @@
                 </div>
             </div>
 
+            {% comment %}
+            El número de meses solo aparece con «Cada N meses…». La vida útil de
+            una cosa no viene en años redondos: unos neumáticos duran 36 meses
+            en un coche que hace kilómetros y 50 en el que apenas sale.
+            {% endcomment %}
+            <div class="form-group" id="bloque-meses" hidden>
+                <label for="meses_personalizados">¿Cada cuántos meses?</label>
+                <input type="number" name="meses_personalizados" id="meses_personalizados"
+                       min="1" max="600" step="1" placeholder="Ej: 36"
+                       value="{{ partida.meses_personalizados|default_if_none:"" }}">
+                <small style="display:block;margin-top:6px;font-size:0.75rem;color:var(--muted);">
+                    Los meses que tiene que durar, o cada cuántos toca pagarlo. Treasure
+                    reparte el importe entre ellos para saber lo que te cuesta al mes.
+                </small>
+            </div>
+
             <!-- Responsable -->
             <div class="form-group">
                 <label>Quien paga este gasto?</label>
@@ -95,6 +114,7 @@
                     {% endfor %}
                 </select>
             </div>
+
 
 
             <!-- Imputación a un activo -->
@@ -140,25 +160,40 @@
     </div>
 </div>
 
+{{ meses_por_periodicidad|json_script:"meses-por-periodicidad" }}
 <script>
 const periodicidadSelect = document.getElementById('periodicidad');
 const importeInput = document.getElementById('importe');
 const bloqueMesPago = document.getElementById('bloque-mes-pago');
 const calcBox = document.getElementById('calc-box');
 const calcMensual = document.getElementById('calc-mensual');
-const divisores = { 'mensual': 1, 'bimensual': 2, 'trimestral': 3, 'semestral': 6, 'anual': 12 };
+/* Los mismos meses que usa el servidor, para que no se desincronicen. */
+const divisores = JSON.parse(document.getElementById('meses-por-periodicidad').textContent);
+
+const bloqueMeses = document.getElementById('bloque-meses');
+const mesesInput = document.getElementById('meses_personalizados');
+
+/* Cuántos meses dura un periodo. Con «Cada N meses» manda lo que se escriba;
+   con el resto, la tabla que manda el servidor. */
+function mesesDelPeriodo(p) {
+    if (p === 'personalizada') return Math.max(parseInt(mesesInput.value, 10) || 0, 1);
+    return divisores[p] || 1;
+}
 
 function actualizar() {
     const p = periodicidadSelect.value;
     const i = parseFloat(importeInput.value) || 0;
-    bloqueMesPago.style.display = p === 'mensual' ? 'none' : 'block';
-    if (i > 0 && p !== 'mensual') {
+    const meses = mesesDelPeriodo(p);
+    bloqueMeses.hidden = p !== 'personalizada';
+    bloqueMesPago.style.display = meses === 1 ? 'none' : 'block';
+    if (i > 0 && meses > 1) {
         calcBox.style.display = 'flex';
-        calcMensual.textContent = '\u20ac' + (i / (divisores[p] || 1)).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        calcMensual.textContent = '\u20ac' + (i / meses).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     } else { calcBox.style.display = 'none'; }
 }
 periodicidadSelect.addEventListener('change', actualizar);
 importeInput.addEventListener('input', actualizar);
+mesesInput.addEventListener('input', actualizar);
 actualizar();
 </script>
 {% endblock %}

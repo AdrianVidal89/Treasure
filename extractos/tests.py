@@ -2769,6 +2769,28 @@ class PagosAnualesEnElPanelTests(TestCase):
         fuera = self.panel(anio=2026, mes=9)['fuera_presupuesto']
         self.assertEqual([f['nombre'] for f in fuera['categorias']], ['Alimentacion'])
 
+    def test_el_bloque_anual_conserva_su_limite_en_la_vista_del_mes(self):
+        """Los 164 €/mes que apartas para la revisión son el presupuesto de ese
+        mes aunque el recibo llegue en septiembre. Se quitaban junto con el pago
+        y el bloque salía «sin límite», cuando tiene uno bien definido."""
+        # Un gasto del bloque anual SIN marcar como pago de provisión: es lo que
+        # se compara contra lo que se aparta cada mes.
+        self.mov('-200', 8, self.mantenimiento)
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        self.assertEqual(bloques['anual']['limite'], Decimal('164.00'))
+        self.assertFalse(bloques['anual']['dentro'])   # 200 > 164
+
+    def test_el_pago_marcado_sale_del_gasto_pero_el_limite_sigue(self):
+        self.mov('-1249.34', 9, self.mantenimiento, provision=self.revision)
+        self.mov('-50', 9, self.mantenimiento)
+
+        panel = self.panel(anio=2026, mes=9)
+        bloques = {b['tipo']: b for b in panel['bloques']}
+        # Solo cuentan los 50 € no marcados, contra los 164 € que se apartan.
+        self.assertEqual(bloques['anual']['importe'], Decimal('50'))
+        self.assertEqual(bloques['anual']['limite'], Decimal('164.00'))
+        self.assertTrue(bloques['anual']['dentro'])
 
 class DividirMovimientoTests(TestCase):
     """Un cobro puede ser varias cosas a la vez.
@@ -3072,3 +3094,311 @@ class DividirMovimientoTests(TestCase):
             ('-428.63', 'Dos', ''),
         ])
         self.assertTrue(all(p.vehiculo_id is None for p in self.mov.partes.all()))
+
+
+class ReservaQueCubreUnPagoTests(TestCase):
+    """El dinero que tenías apartado no es un ingreso: rebaja un pago concreto.
+
+    Ahorras todo el año, sin que se vea, para la revisión del coche. Cuando
+    llega el recibo de 1.200 €, metes 928 € de esa hucha en la cuenta. El golpe
+    real del mes fueron 272 €, pero el banco solo sabe de un cargo de 1.200 y un
+    abono de 928 sin relación entre ellos: septiembre parecía un desastre y el
+    mes de la recarga, un milagro.
+
+    Emparejando el abono con el pago —pago a pago, no por fondos— se puede decir
+    exactamente cuánto puso el ahorro. Con dos reglas que son el fondo del
+    asunto: el coche sigue costando 1.200 €, y un gasto SIN contraparte no es
+    automáticamente un exceso, porque puede que aún no hubieras recargado.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        # 1.200 €/año de revisión = 100 €/mes apartados.
+        self.revision = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Revisión del coche',
+            importe=Decimal('1200'), periodicidad='anual',
+        )
+
+    def mov(self, importe, dia=5, categoria=None, provision=None, concepto='Norauto'):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 9, dia),
+            concepto=f'{concepto} {dia}', importe=Decimal(importe),
+            categoria=categoria, partida_conciliada=provision,
+        )
+
+    def emparejar(self, reposicion, pago):
+        return self.client.post(
+            reverse('extractos:cubrir_con_reserva', args=[reposicion.id]),
+            {'cubre': str(pago.id) if pago else ''},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def panel(self, **params):
+        return self.client.get(reverse('extractos:listar'), params).context['panel']
+
+    # ── Lo que pesó de verdad ────────────────────────────────────────────
+
+    def test_el_impacto_real_es_el_pago_menos_lo_que_puso_la_reserva(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        reposicion = self.mov('928', 10, concepto='Traspaso de la hucha')
+        self.emparejar(reposicion, pago)
+
+        pago.refresh_from_db()
+        self.assertEqual(pago.cubierto_por_reserva, Decimal('928'))
+        self.assertEqual(pago.impacto_real, Decimal('272'))
+
+    def test_cubrir_de_mas_no_convierte_un_gasto_en_ingreso(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('1500', 10, concepto='Hucha'), pago)
+
+        self.assertEqual(pago.impacto_real, Decimal('0'))
+
+    def test_la_reposicion_no_cuenta_como_ingreso(self):
+        """Es dinero tuyo cambiando de sitio. Contarlo como ingreso inflaría el
+        mes y descuadraría el ahorro."""
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        reposicion = self.mov('928', 10, concepto='Hucha')
+        self.emparejar(reposicion, pago)
+
+        reposicion.refresh_from_db()
+        self.assertTrue(reposicion.es_neutro)
+        self.assertFalse(reposicion.cuenta_como_ingreso)
+        self.assertEqual(self.panel(anio=2026, mes=9)['kpi_ingresos'], Decimal('0'))
+
+    # ── Lo que pide el usuario ver en septiembre ─────────────────────────
+
+    def test_septiembre_ensena_los_272_que_se_pasaron_y_no_los_1200(self):
+        """El caso entero, tal cual: «que cuando vaya a septiembre, gastos fijos
+        anuales y lo despliegue, me salga reflejado ahí que me excedí»."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        panel = self.panel(anio=2026, mes=9)
+        bloques = {b['tipo']: b for b in panel['bloques']}
+        self.assertEqual(bloques['anual']['importe'], Decimal('272'))
+        self.assertEqual(bloques['anual']['limite'], Decimal('100.00'))
+        self.assertFalse(bloques['anual']['dentro'])
+        self.assertEqual(panel['kpi_gastos'], Decimal('-272'))
+        self.assertEqual(panel['cubierto_reserva'], Decimal('928'))
+
+    def test_y_se_despliega_con_su_categoria_dentro(self):
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        categorias = {c['nombre']: c['importe'] for c in bloques['anual']['categorias']}
+        self.assertEqual(categorias['Mantenimiento vehicular'], Decimal('272'))
+
+    def test_un_pago_emparejado_ya_no_se_saca_del_mes(self):
+        """Sin emparejar se saca entero, porque no se sabe qué lo pagó. En
+        cuanto lo dices, se queda: los 272 € que no cubriste son del mes."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        panel = self.panel(anio=2026, mes=9)
+        self.assertEqual(panel['pagos_provision'], [])
+        self.assertEqual(panel['total_provisiones'], Decimal('0'))
+
+    # ── Lo que NO debe pasar ─────────────────────────────────────────────
+
+    def test_un_gasto_sin_contraparte_no_es_automaticamente_un_exceso(self):
+        """«Puede que no haya recargado el dinero lo suficientemente rápido.»
+        Sin emparejar no se sabe nada, así que se sigue tratando como hasta
+        ahora: fuera del mes, a comparar con el año."""
+        self.mov('-50', 20, self.mantenimiento, provision=self.revision, concepto='Otro coche')
+
+        panel = self.panel(anio=2026, mes=9)
+        self.assertEqual(panel['kpi_gastos'], Decimal('0'))
+        self.assertEqual(panel['total_provisiones'], Decimal('50'))
+
+    def test_el_pago_cubierto_no_esconde_el_gasto_de_otro_coche(self):
+        """Cada activo es independiente: emparejar la revisión de uno no puede
+        arrastrar el gasto del otro."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+        suelto = self.mov('-50', 20, self.mantenimiento, concepto='Otro coche')
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        self.assertEqual(bloques['anual']['importe'], Decimal('322'))   # 272 + 50
+        self.assertEqual(suelto.impacto_real, Decimal('50'))
+
+    def test_en_el_año_la_revision_vuelve_a_costar_1200(self):
+        """La reserva es cosa de CUÁNDO, no de cuánto: sobre doce meses el
+        ahorro salió de meses que están dentro, y descontarlo diría que el coche
+        costó 272 €."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        panel = self.panel(anio=2026)
+        bloques = {b['tipo']: b for b in panel['bloques']}
+        self.assertEqual(bloques['anual']['importe'], Decimal('1200'))
+        self.assertEqual(panel['kpi_gastos'], Decimal('-1200'))
+
+    def test_la_ficha_del_coche_sigue_diciendo_1200(self):
+        """Lo que cuesta mantener el coche no depende de con qué dinero se
+        pagó. Es la respuesta que dio el usuario cuando se le preguntó."""
+        from finanzas.costes_activo import costes
+        from finanzas.models import Vehiculo
+
+        coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        pago.vehiculo = coche
+        pago.save(update_fields=['vehiculo'])
+        self.emparejar(self.mov('928', 10, concepto='De la reserva'), pago)
+
+        self.assertEqual(costes(coche, 2026)['real_anual'], Decimal('1200'))
+
+    def test_una_devolucion_sigue_restando_de_su_categoria(self):
+        """`impacto_real` va en las mismas unidades que `-importe`. Con un abs()
+        ahí dentro, devolver 30 € se contaba como gastarlos."""
+        self.mov('-200', 5, self.mantenimiento)
+        self.mov('30', 6, self.mantenimiento, concepto='Devolución')
+
+        bloques = {b['tipo']: b for b in self.panel(anio=2026, mes=9)['bloques']}
+        self.assertEqual(bloques['anual']['importe'], Decimal('170'))
+
+    # ── Lo que la vista no deja hacer ────────────────────────────────────
+
+    def test_no_se_puede_cubrir_a_si_mismo(self):
+        mov = self.mov('928', 10, concepto='Hucha')
+        respuesta = self.emparejar(mov, mov)
+
+        self.assertEqual(respuesta.status_code, 400)
+        mov.refresh_from_db()
+        self.assertIsNone(mov.cubre_id)
+
+    def test_no_se_pueden_encadenar_coberturas(self):
+        """Si una reposición pudiera cubrir a otra reposición, el impacto real
+        dejaría de significar nada."""
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        primera = self.mov('928', 10, concepto='Hucha')
+        self.emparejar(primera, pago)
+
+        segunda = self.mov('100', 11, concepto='Más hucha')
+        self.assertEqual(self.emparejar(segunda, primera).status_code, 400)
+
+    def test_una_reserva_no_cubre_un_ingreso(self):
+        nomina = self.mov('2000', 1, concepto='Nómina')
+        respuesta = self.emparejar(self.mov('928', 10, concepto='Hucha'), nomina)
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_se_puede_deshacer_el_emparejamiento(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        reposicion = self.mov('928', 10, concepto='Hucha')
+        self.emparejar(reposicion, pago)
+        self.emparejar(reposicion, None)
+
+        reposicion.refresh_from_db()
+        self.assertIsNone(reposicion.cubre_id)
+        self.assertEqual(pago.impacto_real, Decimal('1200'))
+
+    def test_no_se_puede_cubrir_un_pago_de_otro_hogar(self):
+        otro_hogar = Hogar.objects.create(nombre='Otro')
+        otro_usuario = User.objects.create_user(username='ajeno', password='x')
+        otro_extracto = ExtractoBancario.objects.create(hogar=otro_hogar, usuario=otro_usuario)
+        ajeno = MovimientoBancario.objects.create(
+            extracto=otro_extracto, hogar=otro_hogar, fecha=date(2026, 9, 12),
+            concepto='Pago ajeno', importe=Decimal('-500'),
+        )
+        respuesta = self.emparejar(self.mov('928', 10, concepto='Hucha'), ajeno)
+
+        self.assertEqual(respuesta.status_code, 400)
+
+    # ── La lista de pagos que se pueden cubrir ───────────────────────────
+
+    def test_los_candidatos_son_gastos_cercanos(self):
+        cercano = self.mov('-1200', 12, self.mantenimiento)
+        lejano = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 1, 5),
+            concepto='Muy lejos', importe=Decimal('-300'),
+        )
+        reposicion = self.mov('928', 10, concepto='Hucha')
+
+        datos = self.client.get(
+            reverse('extractos:pagos_cubribles'), {'mov': reposicion.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+        ids = {p['id'] for p in datos['pagos']}
+        self.assertIn(cercano.id, ids)
+        self.assertNotIn(lejano.id, ids)
+        self.assertNotIn(reposicion.id, ids)
+
+    def test_el_candidato_dice_cuanto_le_falta_por_cubrir(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('400', 9, concepto='Primera hucha'), pago)
+        otra = self.mov('528', 11, concepto='Segunda hucha')
+
+        datos = self.client.get(
+            reverse('extractos:pagos_cubribles'), {'mov': otra.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+        fila = next(p for p in datos['pagos'] if p['id'] == pago.id)
+        self.assertEqual(fila['cubierto'], 400)
+        self.assertEqual(fila['pendiente'], 800)
+
+    def test_dos_reposiciones_suman_sobre_el_mismo_pago(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('400', 9, concepto='Una'), pago)
+        self.emparejar(self.mov('528', 11, concepto='Otra'), pago)
+
+        self.assertEqual(pago.impacto_real, Decimal('272'))
+
+    def test_la_comparativa_con_la_media_tambien_pesa_lo_real(self):
+        """Los pilares decían 272 € y la tarjeta de «frente a tu media», 1.200:
+        dos números para el mismo mes en la misma pantalla."""
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('928', 10, concepto='Hucha'), pago)
+
+        comparativa = self.panel(anio=2026, mes=9)['comparativa']
+        self.assertEqual(comparativa['total'], Decimal('272'))
+
+    def test_el_desglose_de_la_categoria_dice_lo_mismo_que_su_pilar(self):
+        """Se abre pinchando en la fila: si ahí pone 272 €, dentro no puede
+        poner 1.200."""
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('928', 10, concepto='Hucha'), pago)
+
+        respuesta = self.client.get(
+            reverse('extractos:desglose_categoria'),
+            {'categoria': self.mantenimiento.id, 'anio': 2026, 'mes': 9},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        # El total del desglose, no el importe del recibo: el banco cobró
+        # 1.200 y su fila tiene que seguir diciéndolo.
+        self.assertContains(respuesta, '<span class="mc-total">272,00 €</span>')
+
+    def test_la_cabecera_del_mes_suma_lo_mismo_que_el_kpi(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('928', 10, concepto='Hucha'), pago)
+
+        panel = self.panel(anio=2026, mes=9)
+        septiembre = panel['grupos'][0]
+        self.assertEqual(septiembre['gastos'], panel['kpi_gastos'])
+        self.assertEqual(septiembre['gastos'], Decimal('-272'))
+
+    # ── Lo que se ve en pantalla ─────────────────────────────────────────
+
+    def test_la_fila_ofrece_emparejar_un_ingreso(self):
+        self.mov('928', 10, concepto='Traspaso de la hucha')
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'ext-cubre-boton')
+        self.assertContains(respuesta, '— de la reserva —')
+
+    def test_el_pago_cubierto_dice_en_su_fila_lo_que_peso(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('928', 10, concepto='Hucha'), pago)
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'ext-badge-reserva')
+        self.assertContains(respuesta, 'pesó')

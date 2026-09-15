@@ -3085,6 +3085,67 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
         self.assertEqual(f['teorico_mensual'], Decimal('160'))
         self.assertEqual(f['diferencia_mensual'], Decimal('-60'))
 
+    def test_un_gasto_de_tres_años_se_reparte_entre_treinta_y_seis_meses(self):
+        """Unos neumáticos de 470 € que duran tres años cuestan 13 €/mes, no 470
+        entre los meses que lleve el año."""
+        from finanzas.models import PartidaGasto
+
+        neumaticos = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Neumáticos Polo',
+            importe=Decimal('470'), periodicidad='trienal', vehiculo=self.coche,
+        )
+        self.assertEqual(neumaticos.meses_periodo, 36)
+        self.assertEqual(neumaticos.importe_mensual, Decimal('13.06'))
+        self.assertEqual(neumaticos.importe_anual, Decimal('156.67'))
+
+        self.mov('-470', 9, self.mantenimiento, provision=neumaticos)
+        f = self.ficha()
+        self.assertEqual(f['ritmo_provisiones'], Decimal('13.06'))
+        self.assertEqual(f['ritmo_corriente'], Decimal('0'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('13.06'))
+
+    def test_cada_pago_se_reparte_según_su_propio_gasto(self):
+        """La revisión es anual y los neumáticos trienales: cada uno con su
+        divisor, no los dos con el mismo."""
+        from finanzas.models import PartidaGasto
+
+        neumaticos = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Neumáticos',
+            importe=Decimal('360'), periodicidad='trienal', vehiculo=self.coche,
+        )
+        self.mov('-360', 9, self.mantenimiento, provision=neumaticos)    # 360/36 = 10
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)  # 1200/12 = 100
+
+        self.assertEqual(self.ficha()['ritmo_provisiones'], Decimal('110'))
+
+    def test_la_ficha_respeta_los_meses_que_pusiste_a_mano(self):
+        """Los mismos neumáticos duran 36 meses en el coche que hace kilómetros
+        y 50 en el que apenas sale. La ficha tiene que usar el número de cada
+        uno, no una tabla de periodicidades cerrada."""
+        from finanzas.models import PartidaGasto
+
+        neumaticos = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Neumáticos Polo',
+            importe=Decimal('600'), periodicidad='personalizada',
+            meses_personalizados=50, vehiculo=self.coche,
+        )
+        self.mov('-600', 9, self.mantenimiento, provision=neumaticos)
+
+        self.assertEqual(neumaticos.importe_mensual, Decimal('12'))
+        self.assertEqual(self.ficha()['ritmo_provisiones'], Decimal('12'))
+
+    def test_el_gasto_corriente_sigue_repartiéndose_por_el_año(self):
+        """Lo del día a día sí se promedia entre los meses que van de año: es
+        gasto recurrente, no una cuota de algo que dura tres."""
+        from unittest import mock
+
+        self.mov('-900', 1, self.gasolina)
+        with mock.patch('finanzas.costes_activo.date') as falso:
+            falso.today.return_value = self.date(2026, 9, 15)
+            f = self.ficha()
+        self.assertEqual(f['ritmo_corriente'], Decimal('100'))
+        self.assertEqual(f['ritmo_provisiones'], Decimal('0'))
+
     def test_un_año_cerrado_se_divide_entre_doce(self):
         from unittest import mock
 
@@ -3095,3 +3156,180 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
 
         self.assertEqual(f['meses_transcurridos'], 12)
         self.assertEqual(f['ritmo_mensual'], Decimal('100'))
+
+
+class PeriodicidadPlurianualTests(TestCase):
+    """Hay gastos que duran varios años —unos neumáticos, una caldera— y
+    presupuestarlos «al año» obliga a inventarse una cifra."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.models import CategoriaGasto
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.categoria = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+
+    def partida(self, importe, periodicidad):
+        from finanzas.models import PartidaGasto
+        return PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.categoria, nombre='Prueba',
+            importe=Decimal(importe), periodicidad=periodicidad,
+        )
+
+    def test_los_meses_de_cada_periodicidad(self):
+        for periodicidad, meses in [
+            ('mensual', 1), ('bimensual', 2), ('trimestral', 3), ('semestral', 6),
+            ('anual', 12), ('bienal', 24), ('trienal', 36), ('quinquenal', 60),
+        ]:
+            with self.subTest(periodicidad=periodicidad):
+                self.assertEqual(self.partida('100', periodicidad).meses_periodo, meses)
+
+    def test_unos_neumaticos_de_tres_años(self):
+        neumaticos = self.partida('470', 'trienal')
+        self.assertEqual(neumaticos.importe_mensual, Decimal('13.06'))
+        self.assertEqual(neumaticos.importe_anual, Decimal('156.67'))
+
+    def test_las_periodicidades_de_siempre_no_cambian(self):
+        self.assertEqual(self.partida('520', 'anual').importe_mensual, Decimal('43.33'))
+        self.assertEqual(self.partida('520', 'anual').importe_anual, Decimal('520'))
+        self.assertEqual(self.partida('60', 'mensual').importe_mensual, Decimal('60'))
+        self.assertEqual(self.partida('60', 'mensual').importe_anual, Decimal('720'))
+        self.assertEqual(self.partida('90', 'trimestral').importe_mensual, Decimal('30'))
+
+    def test_entran_en_el_presupuesto_prorrateadas(self):
+        from finanzas import presupuesto
+
+        self.partida('470', 'trienal')
+        self.assertEqual(
+            presupuesto.por_categoria(self.hogar)[self.categoria.id], Decimal('13.06'),
+        )
+
+    # ── Cada N meses, escrito a mano ─────────────────────────────────────
+
+    def partida_a_medida(self, importe, meses):
+        from finanzas.models import PartidaGasto, normalizar_periodicidad
+
+        periodicidad, personalizados = normalizar_periodicidad('personalizada', meses)
+        return PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.categoria, nombre='A medida',
+            importe=Decimal(importe), periodicidad=periodicidad,
+            meses_personalizados=personalizados,
+        )
+
+    def test_los_meses_los_pone_el_usuario(self):
+        """La vida útil de unos neumáticos no viene en años redondos: 36 en el
+        coche que hace kilómetros y 50 en el que apenas sale."""
+        self.assertEqual(self.partida_a_medida('470', 36).meses_periodo, 36)
+        self.assertEqual(self.partida_a_medida('470', 50).meses_periodo, 50)
+        self.assertEqual(self.partida_a_medida('470', 7).meses_periodo, 7)
+
+    def test_cada_coche_puede_llevar_los_suyos(self):
+        uno = self.partida_a_medida('600', 36)
+        otro = self.partida_a_medida('600', 50)
+        self.assertEqual(uno.importe_mensual, Decimal('16.67'))
+        self.assertEqual(otro.importe_mensual, Decimal('12'))
+
+    def test_un_numero_que_ya_tiene_nombre_se_guarda_con_su_nombre(self):
+        """Escribir 12 es «Anual». Si no, la pantalla diría «Cada 12 meses» y,
+        peor, habría dos formas distintas de decir lo mismo en la base."""
+        from finanzas.models import normalizar_periodicidad
+
+        self.assertEqual(normalizar_periodicidad('personalizada', 12), ('anual', None))
+        self.assertEqual(normalizar_periodicidad('personalizada', 1), ('mensual', None))
+        self.assertEqual(normalizar_periodicidad('personalizada', 36), ('trienal', None))
+        self.assertEqual(normalizar_periodicidad('personalizada', 50), ('personalizada', 50))
+
+    def test_un_numero_imposible_no_rompe_nada(self):
+        from finanzas.models import normalizar_periodicidad
+
+        self.assertEqual(normalizar_periodicidad('personalizada', 0), ('mensual', None))
+        self.assertEqual(normalizar_periodicidad('personalizada', -3), ('mensual', None))
+        self.assertEqual(normalizar_periodicidad('personalizada', 'ocho'), ('mensual', None))
+        self.assertEqual(normalizar_periodicidad('personalizada', None), ('mensual', None))
+        self.assertEqual(normalizar_periodicidad('personalizada', 9999), ('personalizada', 600))
+
+    def test_la_pantalla_lo_llama_por_su_numero(self):
+        """Veinte plantillas piden `get_periodicidad_display`; ninguna debería
+        acabar enseñando «Cada N meses…» con la N literal."""
+        self.assertEqual(
+            self.partida_a_medida('470', 50).get_periodicidad_display(), 'Cada 50 meses')
+        self.assertEqual(self.partida('520', 'anual').get_periodicidad_display(), 'Anual')
+
+    def test_se_declara_desde_la_pantalla(self):
+        from finanzas.models import PartidaGasto
+
+        respuesta = self.client.get(reverse('finanzas:crear_partida'))
+        self.assertContains(respuesta, 'meses_personalizados')
+        self.assertContains(respuesta, 'Cada N meses')
+
+        self.client.post(reverse('finanzas:crear_partida'), {
+            'categoria_id': str(self.categoria.id), 'nombre': 'Neumáticos del Ibiza',
+            'importe': '600', 'periodicidad': 'personalizada',
+            'meses_personalizados': '50',
+        })
+        creada = PartidaGasto.objects.get(hogar=self.hogar, nombre='Neumáticos del Ibiza')
+        self.assertEqual(creada.periodicidad, 'personalizada')
+        self.assertEqual(creada.meses_personalizados, 50)
+        self.assertEqual(creada.importe_mensual, Decimal('12'))
+
+    def test_se_cambia_desde_la_pantalla(self):
+        partida = self.partida_a_medida('600', 50)
+
+        self.client.post(reverse('finanzas:editar_partida', args=[partida.id]), {
+            'categoria_id': str(self.categoria.id), 'nombre': 'A medida',
+            'importe': '600', 'periodicidad': 'personalizada',
+            'meses_personalizados': '36',
+        })
+        partida.refresh_from_db()
+        self.assertEqual(partida.meses_periodo, 36)
+
+    def test_al_volver_a_una_periodicidad_normal_se_olvidan_los_meses(self):
+        """Si no, quedarían 50 meses guardados en una partida anual esperando a
+        confundir a alguien el día que vuelva a tocar «Cada N meses»."""
+        partida = self.partida_a_medida('600', 50)
+
+        self.client.post(reverse('finanzas:editar_partida', args=[partida.id]), {
+            'categoria_id': str(self.categoria.id), 'nombre': 'A medida',
+            'importe': '600', 'periodicidad': 'anual',
+        })
+        partida.refresh_from_db()
+        self.assertEqual(partida.periodicidad, 'anual')
+        self.assertIsNone(partida.meses_personalizados)
+        self.assertEqual(partida.meses_periodo, 12)
+
+    def test_entra_en_el_presupuesto_prorrateada(self):
+        from finanzas import presupuesto
+
+        self.partida_a_medida('600', 50)
+        self.assertEqual(
+            presupuesto.por_categoria(self.hogar)[self.categoria.id], Decimal('12'),
+        )
+
+    def test_se_puede_editar_el_numero_de_meses_desde_la_pantalla(self):
+        partida = self.partida_a_medida('600', 50)
+        respuesta = self.client.get(reverse('finanzas:editar_partida', args=[partida.id]))
+        self.assertContains(respuesta, 'value="50"')
+
+    def test_se_pueden_declarar_desde_la_pantalla(self):
+        from finanzas.models import PartidaGasto
+
+        respuesta = self.client.get(reverse('finanzas:crear_partida'))
+        self.assertContains(respuesta, 'Cada 3 años')
+        # El cálculo en pantalla usa los mismos meses que el servidor.
+        self.assertContains(respuesta, 'meses-por-periodicidad')
+
+        self.client.post(reverse('finanzas:crear_partida'), {
+            'categoria_id': str(self.categoria.id), 'nombre': 'Neumáticos',
+            'importe': '470', 'periodicidad': 'trienal',
+        })
+        creada = PartidaGasto.objects.get(hogar=self.hogar, nombre='Neumáticos')
+        self.assertEqual(creada.periodicidad, 'trienal')
+        self.assertEqual(creada.importe_mensual, Decimal('13.06'))
