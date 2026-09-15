@@ -19,12 +19,6 @@
 
     {% extractos_nav 'sin_categorizar' %}
 
-    {% if messages %}
-        {% for message in messages %}
-        <div class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" style="display:block;padding:10px 14px;margin-bottom:8px;">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
-
     {% if not grupos %}
     <div class="empty-state">
         <svg class="icon icon-xl empty-icon"><use href="#i-check"/></svg>

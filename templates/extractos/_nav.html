@@ -6,9 +6,6 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
     <a href="{% url 'extractos:listar' %}{{ periodo }}" class="ext-nav-tab {% if activo == 'movimientos' %}activa{% endif %}">
         <svg class="icon"><use href="#i-statements"/></svg> Movimientos
     </a>
-    <a href="{% url 'extractos:analisis' %}{{ periodo }}" class="ext-nav-tab {% if activo == 'analisis' %}activa{% endif %}">
-        <svg class="icon"><use href="#i-evolution"/></svg> Análisis
-    </a>
     <a href="{% url 'extractos:conciliacion' %}{{ periodo }}" class="ext-nav-tab {% if activo == 'conciliacion' %}activa{% endif %}">
         <svg class="icon"><use href="#i-distribution"/></svg> Conciliación
     </a>
@@ -33,7 +30,7 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
 
 <style>
 .ext-nav {
-    /* Una sola fila siempre: con siete pestañas y el botón, dejar que envuelva
+    /* Una sola fila siempre: con las pestañas y el botón, dejar que envuelva
        tiraba «Importar» a una segunda línea con un hueco raro al lado. Si no
        cabe, se desplaza en horizontal, que es lo que se espera de unas
        pestañas. */

@@ -19,10 +19,6 @@
     <button onclick="abrirModalFondo()" class="btn btn-primary">＋ Nuevo fondo</button>
 </div>
 
-{% for msg in messages %}
-<div class="msg-toast msg-{{ msg.tags }}">{{ msg }}</div>
-{% endfor %}
-
 {% if gastos_sin_asignar %}
 <div class="fondos-aviso">
     <strong>{{ gastos_sin_asignar|length }} gasto{{ gastos_sin_asignar|pluralize:"s" }} del hogar sin fondo que lo cubra</strong>

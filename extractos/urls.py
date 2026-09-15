@@ -9,7 +9,14 @@ urlpatterns = [
     path('subir/', views.subir, name='subir'),
     path('subir/revisar/', views.revisar, name='revisar'),
     path('conciliacion/', views.conciliacion, name='conciliacion'),
+    # La pantalla de Análisis se fundió con Movimientos: su contenido —la
+    # comparación con la media, el desglose por comercio y lo que se sale del
+    # presupuesto— vive ahora en la vista principal. La ruta se mantiene
+    # redirigiendo, para que los enlaces guardados y los de la conciliación
+    # sigan llevando a algún sitio.
     path('analisis/', views.analisis, name='analisis'),
+    path('categoria/desglose/', views.movimientos_de_categoria, name='desglose_categoria'),
+    path('movimientos/lote/', views.accion_lote, name='accion_lote'),
     path('etiquetas/', views.etiquetas, name='etiquetas'),
     path('etiquetas/comercio/', views.etiquetar_comercio, name='etiquetar_comercio'),
     path('sin-categorizar/', views.sin_categorizar, name='sin_categorizar'),

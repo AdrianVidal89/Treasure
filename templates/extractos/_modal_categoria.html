@@ -1,0 +1,85 @@
+{% load custom_filters %}{% load l10n %}
+{% comment %}
+El desglose de una categoría, tal y como se ve dentro del modal. Es un trozo de
+HTML que se pide por AJAX, no una página: la idea es abrir «Restaurantes», ver
+de qué está hecho y arreglar lo que haga falta sin perder la pantalla en la que
+estabas.
+{% endcomment %}
+<div class="mc-cabecera" style="--cc:{{ color }};">
+    <div class="mc-identidad">
+        <span class="mc-bloque">{{ bloque_etiqueta }}</span>
+        <h3 class="mc-nombre">{{ nombre }}</h3>
+        <span class="mc-periodo">{{ periodo_etiqueta }} · {{ num }} movimiento{{ num|pluralize:"s" }}</span>
+    </div>
+    <div class="mc-cifras">
+        <span class="mc-total">{{ total|euro }}</span>
+        {% if meses_periodo > 1 %}
+        <span class="mc-media">{{ media_mes|euro }}/mes de media en {{ meses_periodo }} meses</span>
+        {% endif %}
+    </div>
+</div>
+
+{% if limite %}
+<div class="mc-presupuesto">
+    <div class="mc-barra {% if dentro %}dentro{% else %}fuera{% endif %}"
+         title="{{ total|euro:0 }} de {{ limite|euro:0 }} presupuestados">
+        <i style="width:{{ pct_barra|unlocalize }}%;"></i>
+    </div>
+    <span class="mc-presupuesto-txt">
+        {% if dentro %}
+        Dentro del presupuesto: {{ total|euro:0 }} de {{ limite|euro:0 }}
+        {% else %}
+        <strong class="text-negative">{{ exceso|euro:0 }} por encima</strong> de los {{ limite|euro:0 }} presupuestados
+        {% endif %}
+        {% if meses_periodo > 1 %}<span class="text-muted">· {{ limite_mensual|euro:0 }}/mes × {{ meses_periodo }}</span>{% endif %}
+    </span>
+</div>
+{% else %}
+<p class="mc-sin-limite">
+    Esta categoría no tiene presupuesto declarado, así que no hay nada contra lo que
+    compararla. <a href="{% url 'finanzas:crear_partida' %}">Declararlo en Gastos</a> es lo que
+    hace que aparezca en la conciliación.
+</p>
+{% endif %}
+
+{% if meses|length > 1 %}
+<div class="mc-seccion">
+    <h4>Mes a mes</h4>
+    <div class="mc-meses">
+        {% for mes in meses %}
+        <div class="mc-mes">
+            <span class="mc-mes-lbl">{{ mes.etiqueta }}</span>
+            <span class="mc-mes-barra"><i style="width:{{ mes.pct|unlocalize }}%;"></i></span>
+            <span class="mc-mes-val">{{ mes.importe|euro:0 }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if comercios.filas|length > 1 %}
+<div class="mc-seccion">
+    <h4>En qué comercios</h4>
+    <div class="mc-comercios">
+        {% for c in comercios.filas %}
+        <div class="mc-comercio">
+            <span class="mc-comercio-nombre" title="{{ c.etiqueta }}">{{ c.etiqueta }}</span>
+            <span class="mc-comercio-barra"><i style="width:{{ c.pct|unlocalize }}%;"></i></span>
+            <span class="mc-comercio-val">{{ c.total|euro:0 }}</span>
+            <span class="mc-comercio-veces">{{ c.num }} × {{ c.ticket_medio|euro }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="mc-seccion">
+    <h4>Los {{ num }} movimiento{{ num|pluralize:"s" }}</h4>
+    <div class="ext-lista mc-lista">
+        {% for m in movimientos %}
+        {% include "extractos/_movimiento.html" with m=m panel=contexto_edicion %}
+        {% empty %}
+        <p class="mc-vacio">No hay movimientos de esta categoría con los filtros puestos.</p>
+        {% endfor %}
+    </div>
+</div>

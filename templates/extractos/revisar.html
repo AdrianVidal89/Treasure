@@ -15,6 +15,24 @@
         </div>
     </div>
 
+    {% if total_duplicados %}
+    {% comment %}Reimportar el mismo mes varias veces para ver cómo va es lo normal, así
+       que el aviso va antes de los números: se dice en una frase qué se omite
+       y por qué, sin obligar a interpretar los recuadros.{% endcomment %}
+    <div class="revisar-aviso-duplicados">
+        <svg class="icon"><use href="#i-check"/></svg>
+        <div>
+            <strong>{{ total_duplicados }} movimiento{{ total_duplicados|pluralize }} ya {% if total_duplicados == 1 %}está{% else %}están{% endif %} en Treasure y no se volver{{ total_duplicados|pluralize:"á,án" }} a importar.</strong>
+            {% if total_nuevos %}
+            Se importarán solo {{ total_nuevos }} apunte{{ total_nuevos|pluralize }} nuevo{{ total_nuevos|pluralize }}.
+            {% else %}
+            No queda nada nuevo que importar en estos archivos.
+            {% endif %}
+            Los repetidos aparecen tachados en la vista previa.
+        </div>
+    </div>
+    {% endif %}
+
     <div class="stat-row" style="margin-bottom:20px;">
         <div class="card stat-tile">
             <span class="stat-tile-label">Se importarán</span>
@@ -30,12 +48,6 @@
             <span class="stat-tile-valor num {% if total_error %}text-negative{% endif %}">{{ total_error }}</span>
         </div>
     </div>
-
-    {% if messages %}
-        {% for message in messages %}
-        <div class="badge badge-{% if message.tags == 'error' %}danger{% elif message.tags == 'warning' %}warning{% elif message.tags == 'success' %}success{% else %}info{% endif %}" style="display:block;padding:10px 14px;margin-bottom:8px;">{{ message }}</div>
-        {% endfor %}
-    {% endif %}
 
     <form method="post" id="form-revisar">
         {% csrf_token %}
@@ -156,6 +168,12 @@
 .revisar-mas { font-size:0.78rem; color:var(--muted); padding:8px 2px; font-style:italic; }
 .revisar-errores { margin-top:14px; font-size:0.85rem; }
 /* Filas que ya están en la base de datos: se ven, pero no se importarán. */
+.revisar-aviso-duplicados {
+    display:flex; gap:10px; align-items:flex-start; margin-bottom:16px;
+    padding:12px 14px; border-radius:10px; font-size:0.85rem; line-height:1.45;
+    background:rgba(96,165,250,.10); border:1px solid rgba(96,165,250,.35);
+}
+.revisar-aviso-duplicados .icon { flex:0 0 auto; margin-top:2px; color:#60a5fa; }
 tr.revisar-duplicado td { opacity:.5; text-decoration:line-through; }
 tr.revisar-duplicado .badge { text-decoration:none; opacity:1; }
 .revisar-errores summary { cursor:pointer; color:var(--danger); font-weight:600; }

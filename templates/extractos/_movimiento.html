@@ -1,0 +1,88 @@
+{% load custom_filters %}{% load l10n %}
+{% comment %}
+Una fila de movimiento con todo lo que se puede cambiar sin salir de ella:
+categoría, concepto, importe, etiquetas, activo y pago anual.
+
+Vive en su propia plantilla porque se pinta en DOS sitios —el listado por meses
+y el desglose que se abre al pinchar una categoría— y las dos tienen que ofrecer
+exactamente lo mismo. Cuando el modal tenía su propia versión reducida, cambiar
+algo desde ahí obligaba a volver al listado para terminar.
+
+Espera `m` (el movimiento) y `panel` (el contexto de edición: colores,
+categorías por bloque, provisiones y activos).
+{% endcomment %}
+<div class="ext-mov{% if m.es_neutro %} neutro{% endif %}" data-mov-id="{{ m.id }}"
+     {% if m.saldo != None %}title="Saldo tras el apunte: {{ m.saldo|euro }}"{% endif %}>
+    <label class="ext-mov-check" title="Seleccionar para un cambio en bloque">
+        <input type="checkbox" class="ext-check" data-mov-id="{{ m.id }}">
+    </label>
+
+    <div class="ext-mov-dia">
+        <span class="ext-mov-dd">{{ m.fecha|date:"d" }}</span>
+        <span class="ext-mov-mmm">{{ m.fecha|date:"M"|lower }}</span>
+    </div>
+
+    <div class="ext-mov-cuerpo">
+        <div class="ext-mov-concepto" data-campo="concepto" title="Clic para editar">{{ m.concepto }}</div>
+        <div class="ext-mov-meta">
+            <span class="ext-cat-chip" style="--cc:{% if m.categoria %}{{ panel.colores_tipo|get_item:m.categoria.tipo }}{% else %}#9aa5a0{% endif %};">
+                <select class="ext-cat-select" data-mov-id="{{ m.id }}">
+                    <option value="" {% if not m.categoria_id %}selected{% endif %}>Sin categorizar</option>
+                    {% for b in panel.bloques_categorias %}
+                    <optgroup label="{{ b.etiqueta }}">
+                        {% for c in b.categorias %}
+                        <option value="{{ c.id }}" {% if m.categoria_id == c.id %}selected{% endif %}>{{ c.nombre }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+            </span>
+            {% if m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
+            {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
+            {% if m.es_pago_provision %}<span class="ext-badge-provision" title="Pago de {{ m.partida_conciliada.nombre }}: se compara en el año, no en el mes">anual</span>{% endif %}
+
+            <span class="ext-tags" data-mov-id="{{ m.id }}">
+                {% for e in m.etiquetas.all %}
+                <span class="ext-tag" style="--tc:{{ e.color }};" data-etiqueta-id="{{ e.id }}">
+                    {{ e.nombre }}<button type="button" class="ext-tag-quitar" title="Quitar etiqueta">×</button>
+                </span>
+                {% endfor %}
+            </span>
+            <button type="button" class="ext-tag-add" data-mov-id="{{ m.id }}"
+                    title="Etiquetar (un viaje, una obra…)">+</button>
+
+            {% if panel.provisiones %}
+            <select class="ext-provision-select {% if m.partida_conciliada_id %}puesto{% endif %}" data-mov-id="{{ m.id }}"
+                    title="¿Es uno de los pagos de un gasto no mensual (IBI, seguro…)? Así no descuadra el mes.">
+                <option value="">— no es un pago anual —</option>
+                {% for p in panel.provisiones %}
+                <option value="{{ p.id }}" {% if m.partida_conciliada_id == p.id %}selected{% endif %}>{{ p.nombre }} ({{ p.get_periodicidad_display|lower }})</option>
+                {% endfor %}
+            </select>
+            {% endif %}
+
+            {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
+            <select class="ext-activo-select {% if m.clave_activo %}puesto{% endif %}" data-mov-id="{{ m.id }}"
+                    title="¿Este gasto es de un vehículo o de una propiedad?">
+                <option value="">— sin activo —</option>
+                {% for g in panel.grupos_activos %}{% if g.opciones %}
+                <optgroup label="{{ g.etiqueta }}">
+                    {% for o in g.opciones %}
+                    <option value="{{ o.clave }}" {% if m.clave_activo == o.clave %}selected{% endif %}>{{ o.nombre }}</option>
+                    {% endfor %}
+                </optgroup>
+                {% endif %}{% endfor %}
+            </select>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="ext-mov-importe {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}"
+         data-campo="importe" data-valor="{{ m.importe|unlocalize }}" title="Clic para editar">
+        {% if m.importe > 0 %}+{% endif %}{{ m.importe|euro }}
+    </div>
+
+    <button type="button" class="ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento">
+        <svg class="icon"><use href="#i-trash"/></svg>
+    </button>
+</div>

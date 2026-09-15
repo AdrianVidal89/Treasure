@@ -8,14 +8,6 @@
     <h1 style="color: var(--danger); margin-bottom: 8px;">Restaurar base de datos</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">Esta acción no se puede deshacer.</p>
 
-    {% if messages %}
-        {% for message in messages %}
-        <div style="background: var(--surface); border-left: 3px solid var(--danger); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
-            {{ message }}
-        </div>
-        {% endfor %}
-    {% endif %}
-
     <div class="glass-panel" style="border-color: var(--danger); padding: 32px;">
         <p style="color: var(--text-color); font-size: 0.95rem; line-height: 1.6; margin-top: 0;">
             Vas a <strong>sobreescribir por completo</strong> la base de datos actual con el contenido del archivo

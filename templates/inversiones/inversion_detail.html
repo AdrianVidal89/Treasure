@@ -88,15 +88,6 @@
         </div>
     </div>
 
-    {% if messages %}
-        {% for message in messages %}
-        <div style="background: var(--surface); border-left: 3px solid var(--primary-color);
-                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.85rem;">
-            {{ message }}
-        </div>
-        {% endfor %}
-    {% endif %}
-
     {% if deposito %}
     <!-- Resumen del depósito -->
     <div class="det-card" style="border-color: color-mix(in srgb, var(--info) 27%, transparent);">

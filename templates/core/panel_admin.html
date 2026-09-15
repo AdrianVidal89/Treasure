@@ -8,14 +8,6 @@
     <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;">Panel de Administración</h1>
     <p style="color: var(--muted); margin-bottom: 32px;">Gestiona hogares y usuarios de la plataforma.</p>
 
-    {% if messages %}
-        {% for message in messages %}
-        <div style="background: var(--surface); border-left: 3px solid var(--primary-color); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; color: var(--text-color);">
-            {{ message }}
-        </div>
-        {% endfor %}
-    {% endif %}
-
     <!-- BASE DE DATOS -->
     <div class="glass-panel glass-panel--accent" style="--accent: var(--info); padding: 24px; margin-bottom: 32px;">
         <h2 style="color: var(--text-color); margin: 0 0 6px;">Base de datos</h2>

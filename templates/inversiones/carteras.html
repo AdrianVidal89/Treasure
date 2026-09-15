@@ -50,16 +50,6 @@
         </a>
     </div>
 
-    {% if messages %}
-        {% for message in messages %}
-        <div style="background: var(--surface); border-left: 3px solid var(--primary-color);
-                    padding: 10px 16px; border-radius: 8px; margin-bottom: 16px;
-                    font-size: 0.85rem; color: var(--text-color);">
-            {{ message }}
-        </div>
-        {% endfor %}
-    {% endif %}
-
     <p style="color: var(--muted); font-size: 0.9rem; margin-bottom: 20px;">
         Una cartera agrupa activos de distintas plataformas (Revolut, Uptevia…) para ver su
         rentabilidad conjunta, con independencia del vehículo de compra.
