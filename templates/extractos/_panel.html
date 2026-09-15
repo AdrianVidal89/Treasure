@@ -98,6 +98,14 @@ a saltar de una a otra.
         <span class="ext-hero-cifra {% if panel.kpi_neto < 0 %}text-negative{% else %}text-positive{% endif %}">
             {% if panel.kpi_neto > 0 %}+{% endif %}{{ panel.kpi_neto|euro }}
         </span>
+        {% comment %}
+        La resta, escrita. Sin ella la pantalla enseñaba un -1.390,89 € encima
+        de un -1.409,13 € sin decir en ninguna parte que el primero es el
+        segundo más los ingresos, y parecían dos cifras que no cuadran.
+        {% endcomment %}
+        <span class="ext-hero-sub">
+            {{ panel.kpi_ingresos|euro }} de ingresos − {{ panel.kpi_gasto_abs|euro }} de gastos
+        </span>
         <span class="ext-hero-sub">{{ panel.kpi_num }} movimiento{{ panel.kpi_num|pluralize:"s" }}</span>
     </div>
 
@@ -187,14 +195,19 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
         <div>
             <h3>En qué se va</h3>
             <span class="ext-gasto-nota">
-                por los bloques con los que declaras el presupuesto · abre uno para ver su reparto ·
+                el gasto de arriba, repartido por los bloques con los que declaras el presupuesto ·
+                abre uno para ver su reparto ·
                 <span class="ext-leyenda-color dentro">verde</span> dentro del presupuesto,
                 <span class="ext-leyenda-color fuera">rojo</span> pasado,
                 <span class="ext-leyenda-reserva"><i></i> rayado</span> lo que puso la reserva ·
                 los <strong>fijos anuales</strong> se miden contra el presupuesto del año, no del mes
             </span>
         </div>
-        <span class="ext-gasto-total">{{ panel.donut_total|euro:0 }}</span>
+        {% comment %}
+        La MISMA cifra que los gastos de la cabecera, con sus céntimos: esta
+        tarjeta enseñaba su propia suma redondeada y parecía un tercer número.
+        {% endcomment %}
+        <span class="ext-gasto-total">{{ panel.kpi_gasto_abs|euro }}</span>
     </div>
 
     <div class="ext-gasto-grid">
@@ -806,7 +819,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-gasto { padding:22px 24px; margin-bottom:26px; }
 .ext-gasto-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:16px; }
 .ext-gasto-head h3 { margin:0; font-size:1rem; }
-.ext-gasto-total { font-size:1.15rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.ext-gasto-total { font-size:1.15rem; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .ext-gasto-grid { display:grid; grid-template-columns:170px 1fr; gap:26px; align-items:start; }
 @media (max-width:720px){ .ext-gasto-grid { grid-template-columns:1fr; gap:18px; } .ext-donut-wrap { margin:0 auto; } }
 .ext-donut-wrap { position:relative; width:170px; height:170px; }
@@ -838,11 +851,10 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-pilar-chevron { display:flex; color:var(--muted); transition:transform .2s; }
 .ext-pilar[open] .ext-pilar-chevron { transform:rotate(90deg); }
 .ext-pilar-nombre { font-weight:700; font-size:0.86rem; }
-/* La barra dice si cabe en el presupuesto: verde sí, rojo no. Sin presupuesto
-   declarado se queda del color del bloque, porque no hay nada que juzgar. */
-/* La barra es de dos tramos: lo que carga el mes y, detrás, lo que puso la
-   reserva. El segundo va rayado y no se colorea de dentro/fuera porque no es
-   gasto que se esté juzgando: es dinero que ya habías apartado. */
+/* La barra dice si cabe en el presupuesto: verde sí, rojo no. Y es de dos
+   tramos: lo que carga el periodo y, detrás, lo que puso la reserva. El
+   segundo va rayado y no se colorea de dentro/fuera porque no es gasto que se
+   esté juzgando: es dinero que ya habías apartado. */
 .ext-pilar-barra { height:8px; background:var(--app-bg); border-radius:999px; overflow:hidden; display:flex; }
 .ext-pilar-barra i, .ext-cat-barra i { display:block; height:100%; flex:0 0 auto; border-radius:0; }
 /* El redondeo lo ponen los extremos, no cada tramo: con dos tramos redondos se
@@ -850,16 +862,20 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-pilar-barra i:first-child, .ext-cat-barra i:first-child { border-radius:999px 0 0 999px; }
 .ext-pilar-barra i:last-child, .ext-cat-barra i:last-child { border-radius:0 999px 999px 0; }
 .ext-pilar-barra i:only-child, .ext-cat-barra i:only-child { border-radius:999px; }
-.ext-pilar-barra i.de-reserva, .ext-cat-barra i.de-reserva {
-    background:repeating-linear-gradient(115deg,
-        color-mix(in srgb, var(--primary-color) 55%, transparent) 0 3px, transparent 3px 6px);
-}
-.ext-pilar-barra.dentro i, .ext-cat-barra.dentro i { background:var(--success); }
-.ext-pilar-barra.fuera i, .ext-cat-barra.fuera i { background:var(--danger); }
 /* Sin presupuesto declarado: gris. Pintarla del color del bloque —verde en
    Variables— la haría parecer «dentro del presupuesto» sin haberlo declarado. */
-.ext-cat-barra i { background:#9aa5a0; }
-.ext-pilar-barra i { background:#9aa5a0; }
+.ext-pilar-barra i, .ext-cat-barra i { background:#9aa5a0; }
+.ext-pilar-barra.dentro i, .ext-cat-barra.dentro i { background:var(--success); }
+.ext-pilar-barra.fuera i, .ext-cat-barra.fuera i { background:var(--danger); }
+/* El rayado va DESPUÉS de dentro/fuera y con `:where()` para no depender del
+   orden: escrito antes, `.ext-pilar-barra.dentro i` lo pisaba con el verde
+   —misma especificidad, gana el último— y el tramo de la reserva se veía como
+   un tramo de gasto más. En pantalla el rayado solo salía en el texto. */
+.ext-pilar-barra i.de-reserva, .ext-cat-barra i.de-reserva {
+    background:repeating-linear-gradient(115deg,
+        color-mix(in srgb, var(--primary-color) 60%, transparent) 0 3px,
+        color-mix(in srgb, var(--primary-color) 12%, transparent) 3px 6px);
+}
 .ext-pilar-cifra { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.9rem; }
 .ext-pilar-techo {
     font-size:0.58rem; text-transform:uppercase; letter-spacing:.05em; font-weight:700;

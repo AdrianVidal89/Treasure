@@ -630,9 +630,17 @@ def _contra_el_limite(neto, bruto, cubierto, limite, es_anual):
             min(float(cubierto / limite * 100), max(0.0, 100 - pct_neto))
             if cubierto > 0 else 0
         )
+    elif cubierto > 0 and bruto > 0:
+        # Sin límite no hay contra qué medir, pero la barra sigue teniendo algo
+        # que contar: qué parte del pago puso la reserva. Repartida sobre el
+        # pago, la barra se llena entera y el rayado se ve. Antes esto daba un
+        # rayado del 0%: la fila decía en texto que la reserva había puesto 904 €
+        # y en la gráfica no aparecía por ningún lado.
+        pct_cubierto = min(float(cubierto / bruto * 100), 100)
+        pct_neto = 100 - pct_cubierto
     else:
-        # Sin límite declarado la barra se llena entera: no hay contra qué
-        # medirla, y dejarla a medias sugeriría un techo que nadie ha puesto.
+        # Sin límite y sin reserva la barra se llena entera: dejarla a medias
+        # sugeriría un techo que nadie ha puesto.
         pct_neto = 100 if neto > 0 else 0
         pct_cubierto = 0
 
@@ -1042,6 +1050,11 @@ def _panel_context(hogar, todos, request):
         'donut_total': float(total_gasto_abs),
         'kpi_ingresos': ingresos,
         'kpi_gastos': gastos,
+        # El mismo gasto que la cabecera, en positivo. «En qué se va» enseñaba
+        # su propia suma redondeada a euros (1.409 €) al lado de unos gastos de
+        # -1.409,13 € y de un balance de -1.390,89 €: tres cifras que parecían
+        # tres cosas distintas cuando son dos, y una repetida.
+        'kpi_gasto_abs': -gastos,
         'kpi_neto': ingresos + gastos,
         'kpi_num': len(movimientos),
         'kpi_sin_categorizar': sin_categorizar,
