@@ -2944,3 +2944,126 @@ class PresupuestoDeBloqueTests(TestCase):
             if e['categoria']
         ]
         self.assertIn('Restaurantes', nombres)
+
+
+class CosteDeActivoConPagosAnualesTests(TestCase):
+    """Un pago que se provisiona todo el año y se paga de golpe no puede entrar
+    en la media mensual de lo que cuesta un coche.
+
+    La tarjeta decía «1.249,34 €/mes en 1 mes» porque en septiembre tocaba la
+    revisión: literalmente, que el coche cuesta mil doscientos euros al mes."""
+
+    def setUp(self):
+        from datetime import date
+        from core.models import Hogar
+        from extractos.models import ExtractoBancario, MovimientoBancario
+        from finanzas.models import CategoriaGasto, PartidaGasto, Vehiculo
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+        self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo 1.4', tipo='coche')
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        self.gasolina = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gasolina')
+        # Gasto corriente del coche: 60 €/mes de gasolina.
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.gasolina, nombre='Gasolina Polo',
+            importe=Decimal('60'), periodicidad='mensual', vehiculo=self.coche,
+        )
+        # Y la revisión, que se provisiona y se paga de golpe.
+        self.revision = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Revisión Polo',
+            importe=Decimal('1200'), periodicidad='anual', vehiculo=self.coche,
+        )
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self._dia = 0
+        self.MovimientoBancario = MovimientoBancario
+        self.date = date
+
+    def mov(self, importe, mes, categoria, provision=None):
+        self._dia += 1
+        return self.MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar,
+            fecha=self.date(2026, mes, (self._dia % 28) + 1),
+            concepto=f'Gasto {mes}-{self._dia}', importe=Decimal(importe),
+            categoria=categoria, vehiculo=self.coche, partida_conciliada=provision,
+        )
+
+    def ficha(self, anio=2026):
+        from finanzas import costes_activo
+        return costes_activo.costes(self.coche, anio)
+
+    def test_la_media_mensual_es_solo_del_gasto_corriente(self):
+        self.mov('-60', 7, self.gasolina)
+        self.mov('-60', 8, self.gasolina)
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
+
+        f = self.ficha()
+        self.assertEqual(f['real_mensual'], Decimal('60'))
+        self.assertEqual(f['meses_con_datos'], 2)
+        self.assertEqual(f['corriente_anual'], Decimal('120'))
+
+    def test_el_pago_anual_se_cuenta_aparte_pero_no_se_pierde(self):
+        self.mov('-60', 7, self.gasolina)
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
+
+        f = self.ficha()
+        self.assertEqual(f['provisiones_anual'], Decimal('1200'))
+        self.assertEqual(f['num_provisiones'], 1)
+        # Contra el AÑO sí cuenta: ahí la comparación tiene sentido.
+        self.assertEqual(f['real_anual'], Decimal('1260'))
+
+    def test_sin_pagos_anuales_todo_sigue_igual(self):
+        self.mov('-60', 7, self.gasolina)
+        self.mov('-80', 8, self.gasolina)
+
+        f = self.ficha()
+        self.assertEqual(f['provisiones_anual'], Decimal('0'))
+        self.assertEqual(f['real_mensual'], Decimal('70'))
+        self.assertEqual(f['partidas_sueltas'], [])
+
+    def test_la_serie_mensual_separa_el_pago_de_golpe(self):
+        """Sumado al mes en el que cae, septiembre era un rascacielos al lado
+        del que ningún otro mes se distinguía."""
+        self.mov('-60', 7, self.gasolina)
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
+
+        por_mes = {m['mes']: m for m in self.ficha()['por_mes']}
+        self.assertEqual(por_mes[7]['real'], Decimal('60'))
+        self.assertEqual(por_mes[9]['real'], Decimal('0'))
+        self.assertEqual(por_mes[9]['provision'], Decimal('1200'))
+
+    def test_avisa_si_la_partida_del_pago_no_está_imputada_al_activo(self):
+        """El gasto suma en lo real y su provisión no suma en lo teórico: el
+        vehículo parece pasarse cuando lo que falta es imputarle la partida."""
+        from finanzas.models import PartidaGasto
+
+        suelta = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='ITV Polo',
+            importe=Decimal('50'), periodicidad='anual',   # sin vehiculo
+        )
+        self.mov('-50', 9, self.mantenimiento, provision=suelta)
+
+        f = self.ficha()
+        self.assertEqual([p.nombre for p in f['partidas_sueltas']], ['ITV Polo'])
+
+    def test_la_partida_bien_imputada_no_genera_aviso(self):
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
+        self.assertEqual(self.ficha()['partidas_sueltas'], [])
+
+    def test_la_pantalla_lo_cuenta(self):
+        from django.urls import reverse as url
+
+        self.mov('-60', 7, self.gasolina)
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
+
+        respuesta = self.client.get(url('finanzas:listar_vehiculos'), {'anio': 2026})
+        self.assertContains(respuesta, 'de gasto corriente')
+        self.assertContains(respuesta, 'pago de gastos anuales')

@@ -147,12 +147,34 @@ def costes(activo, anio):
     teorico_anual = sum((p.importe_anual for p in partidas), Decimal('0'))
     real_anual = sum((-m.importe for m in del_anio), Decimal('0'))
 
-    # Meses del año con algún movimiento del activo: la media mensual real se
-    # calcula sobre ellos, no sobre doce, o un activo estrenado en noviembre
-    # parecería baratísimo.
-    meses_con_datos = {m.fecha.month for m in del_anio}
+    # Los pagos de gastos que se provisionan todo el año y se pagan de golpe
+    # —la revisión del coche, el seguro— van aparte del gasto corriente. Contra
+    # el AÑO se comparan igual que todo lo demás, pero meterlos en la media
+    # mensual dice que el coche cuesta mil doscientos euros al mes porque en
+    # septiembre pasó por el taller.
+    provisiones = [m for m in del_anio if m.es_pago_provision]
+    corrientes = [m for m in del_anio if not m.es_pago_provision]
+    provisiones_anual = sum((-m.importe for m in provisiones), Decimal('0'))
+    corriente_anual = sum((-m.importe for m in corrientes), Decimal('0'))
+
+    # Meses del año con algún gasto CORRIENTE del activo: la media se calcula
+    # sobre ellos, no sobre doce, o un activo estrenado en noviembre parecería
+    # baratísimo.
+    meses_con_datos = {m.fecha.month for m in corrientes}
     real_mensual = (
-        real_anual / len(meses_con_datos) if meses_con_datos else Decimal('0')
+        corriente_anual / len(meses_con_datos) if meses_con_datos else Decimal('0')
+    )
+
+    # Un pago imputado al activo cuya PARTIDA no lo está deja la comparación
+    # coja: el gasto suma en lo real y su provisión no suma en lo teórico, así
+    # que el activo parece pasarse cuando lo que falta es imputar la partida.
+    imputadas = {p.id for p in partidas}
+    partidas_sueltas = sorted(
+        {
+            m.partida_conciliada for m in provisiones
+            if m.partida_conciliada_id and m.partida_conciliada_id not in imputadas
+        },
+        key=lambda p: p.nombre,
     )
 
     return {
@@ -178,11 +200,16 @@ def costes(activo, anio):
         'teorico_anual': teorico_anual,
         'real_anual': real_anual,
         'real_mensual': real_mensual,
+        'corriente_anual': corriente_anual,
+        'provisiones_anual': provisiones_anual,
+        'num_provisiones': len(provisiones),
+        'movimientos_provision': sorted(provisiones, key=lambda m: m.fecha, reverse=True),
+        'partidas_sueltas': partidas_sueltas,
         'meses_con_datos': len(meses_con_datos),
         'diferencia_anual': real_anual - teorico_anual,
         'pct_ejecucion': _pct(real_anual, teorico_anual),
         'pct_transcurrido': _pct_transcurrido(anio),
-        'por_mes': _por_mes(del_anio, teorico_mensual),
+        'por_mes': _por_mes(corrientes, teorico_mensual, provisiones),
         'por_categoria': _por_categoria(partidas, del_anio),
         'movimientos': sorted(del_anio, key=lambda m: m.fecha, reverse=True),
         'anios_con_datos': sorted({m.fecha.year for m in movimientos}, reverse=True),
@@ -210,11 +237,20 @@ def _pct(real, teorico):
     return int(min(real / teorico * 100, 999))
 
 
-def _por_mes(movimientos, teorico_mensual):
-    """Serie de doce meses: lo real de cada uno contra la previsión mensual."""
+def _por_mes(movimientos, teorico_mensual, provisiones=None):
+    """Serie de doce meses: lo real de cada uno contra la previsión mensual.
+
+    Los pagos de gastos anuales se dibujan aparte: sumados al mes en el que
+    caen convertían septiembre en un rascacielos al lado del que ningún otro
+    mes se distingue, cuando lo que pasó es que tocaba pagar la revisión.
+    """
     totales = defaultdict(lambda: Decimal('0'))
     for m in movimientos:
         totales[m.fecha.month] += -m.importe
+
+    de_provision = defaultdict(lambda: Decimal('0'))
+    for m in (provisiones or []):
+        de_provision[m.fecha.month] += -m.importe
 
     tope = max(list(totales.values()) + [teorico_mensual, Decimal('0')])
     return [
@@ -222,6 +258,7 @@ def _por_mes(movimientos, teorico_mensual):
             'mes': n,
             'etiqueta': MESES_ES[n],
             'real': totales[n],
+            'provision': de_provision[n],
             'pct': float(totales[n] / tope * 100) if tope else 0,
             'pct_teorico': float(teorico_mensual / tope * 100) if tope else 0,
         }
@@ -262,6 +299,10 @@ def resumen(activos, anio):
         'teorico_mensual': sum((f['teorico_mensual'] for f in fichas), Decimal('0')),
         'teorico_anual': sum((f['teorico_anual'] for f in fichas), Decimal('0')),
         'real_anual': sum((f['real_anual'] for f in fichas), Decimal('0')),
+        'provisiones_anual': sum((f['provisiones_anual'] for f in fichas), Decimal('0')),
+        'partidas_sueltas': sorted(
+            {p for f in fichas for p in f['partidas_sueltas']}, key=lambda p: p.nombre,
+        ),
         'ingreso_real_anual': sum((f['ingreso_real_anual'] for f in fichas), Decimal('0')),
         'neto_real_anual': sum((f['neto_real_anual'] for f in fichas), Decimal('0')),
     }
