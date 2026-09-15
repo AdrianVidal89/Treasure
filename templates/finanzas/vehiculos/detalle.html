@@ -45,15 +45,18 @@
         </div>
         <div class="veh-hero-col">
             <span class="veh-hero-lbl">Mantenimiento real {{ f.anio }}</span>
-            <span class="veh-hero-cifra {% if f.diferencia_anual > 0 %}text-negative{% endif %}">{{ f.real_anual|euro }}</span>
+            <span class="veh-hero-cifra {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
             <span class="veh-hero-sub">
-                {% if f.meses_con_datos %}{{ f.real_mensual|euro }}/mes de gasto corriente en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }}
-                {% elif f.num_movimientos %}sin gasto corriente este año
-                {% else %}sin movimientos imputados todavía{% endif %}
+                {% if f.num_movimientos %}
+                {{ f.real_anual|euro }} en {{ f.meses_transcurridos }} mes{{ f.meses_transcurridos|pluralize:"es" }} de {{ f.anio }}
                 {% if f.provisiones_anual %}
-                <br><span class="veh-provision">+ {{ f.provisiones_anual|euro }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }}
+                <br><span class="veh-provision">de los cuales {{ f.provisiones_anual|euro }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }}
                 de gastos que provisionas todo el año</span>
                 {% endif %}
+                {% if f.meses_con_datos %}
+                <br>gasto corriente: {{ f.real_mensual|euro }}/mes en {{ f.meses_con_datos }} mes{{ f.meses_con_datos|pluralize:"es" }}
+                {% endif %}
+                {% else %}sin movimientos imputados todavía{% endif %}
             </span>
         </div>
         <div class="veh-hero-col ancha">

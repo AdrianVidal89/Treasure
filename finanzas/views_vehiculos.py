@@ -59,6 +59,8 @@ def listar_vehiculos(request):
         'total_teorico_mensual': datos['teorico_mensual'],
         'total_teorico_anual': datos['teorico_anual'],
         'total_real_anual': datos['real_anual'],
+        'total_ritmo_mensual': datos['ritmo_mensual'],
+        'meses_transcurridos': datos['meses_transcurridos'],
         'anio': anio,
         'anios_disponibles': anios_disponibles,
         'tipos': Vehiculo.TIPO_CHOICES,
