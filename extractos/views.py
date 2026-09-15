@@ -1132,6 +1132,7 @@ def dividir_movimiento(request, pk):
     if len(importes) < 2:
         return JsonResponse({'ok': False, 'error': 'minimo_dos'}, status=400)
 
+    activos = request.POST.getlist('activo')
     partes = []
     for i, crudo in enumerate(importes):
         try:
@@ -1144,6 +1145,10 @@ def dividir_movimiento(request, pk):
             'importe': importe,
             'categoria_id': (categorias[i] if i < len(categorias) else '') or '',
             'concepto': ((conceptos[i] if i < len(conceptos) else '') or '').strip(),
+            # Un recibo puede pagar de golpe el seguro de dos coches: cada parte
+            # va a su activo. Si no viene nada, hereda el del cobro, o repartir
+            # un gasto imputado a un coche lo borraría de su ficha.
+            'activo': (activos[i] if i < len(activos) else None),
         })
 
     # Las partes tienen que sumar el cobro. Si no cuadran, el reparto no
@@ -1166,7 +1171,7 @@ def dividir_movimiento(request, pk):
         # dejaría partes viejas sumando por detrás.
         mov.partes.all().delete()
         for i, p in enumerate(partes, start=1):
-            MovimientoBancario.objects.create(
+            parte = MovimientoBancario(
                 extracto=mov.extracto, hogar=hogar, dividido_de=mov, orden_parte=i,
                 fecha=mov.fecha,
                 concepto=(p['concepto'] or f'{mov.concepto} ({i})')[:300],
@@ -1179,6 +1184,17 @@ def dividir_movimiento(request, pk):
                 estado_categorizacion='manual' if p['categoria_id'] else 'sin_categorizar',
                 es_traspaso=mov.es_traspaso,
             )
+            # Sin activo elegido se hereda el del cobro: el padre deja de contar
+            # al repartirse, así que no heredarlo borraba el gasto de la ficha
+            # del coche o de la casa.
+            if p['activo'] is None:
+                parte.propiedad_id = mov.propiedad_id
+                parte.vehiculo_id = mov.vehiculo_id
+            else:
+                costes_activo.asignar(
+                    parte, costes_activo.resolver(hogar, p['activo']),
+                )
+            parte.save()
 
     return JsonResponse({'ok': True, 'partes': len(partes)})
 

@@ -1148,9 +1148,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     background:color-mix(in srgb, var(--primary-color) 10%, transparent);
     border-radius:999px; padding:1px 8px;
 }
-.ext-caja-dividir { width:min(680px,100%); }
+.ext-caja-dividir { width:min(820px,100%); }
 .ext-dividir-intro { font-size:0.86rem; margin:0 0 14px; }
-.ext-parte { display:grid; grid-template-columns:1.3fr 1fr 110px 24px; gap:8px; margin-bottom:8px; align-items:center; }
+.ext-parte { display:grid; grid-template-columns:1.2fr 1fr 1fr 105px 24px; gap:8px; margin-bottom:8px; align-items:center; }
 .ext-parte input, .ext-parte select {
     background:var(--app-bg); color:var(--text-color); border:1px solid var(--border-strong);
     border-radius:8px; padding:7px 10px; font-size:0.82rem; width:100%; box-sizing:border-box;
@@ -1167,7 +1167,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .ext-dividir-suma.mal { color:var(--danger); }
 .ext-dividir-btns { margin-left:auto; display:flex; gap:8px; }
 #ext-dividir-guardar:disabled { opacity:.5; cursor:not-allowed; }
-@media (max-width:640px){ .ext-parte { grid-template-columns:1fr 1fr; } .ext-parte-quitar { grid-column:2; justify-self:end; } }
+@media (max-width:860px){ .ext-parte { grid-template-columns:1fr 1fr; } .ext-parte-quitar { justify-self:end; } }
 </style>
 
 <script>
@@ -2042,7 +2042,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         return Number(v).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
     }
 
-    function filaParte(concepto, importe, categoriaId) {
+    function filaParte(concepto, importe, categoriaId, activo) {
         var fila = document.createElement('div');
         fila.className = 'ext-parte';
 
@@ -2055,6 +2055,17 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             .content.firstElementChild.cloneNode(true);
         sel.className = 'ext-parte-categoria';
         sel.value = categoriaId || '';
+
+        /* El recibo de Mybox paga el seguro de los dos coches: cada parte va a
+           su vehículo, y sin esta columna había que repartir, cerrar y volver
+           fila a fila a imputarlas. */
+        var act = null;
+        var moldeActivo = document.getElementById('ext-molde-activo');
+        if (moldeActivo) {
+            act = moldeActivo.content.firstElementChild.cloneNode(true);
+            act.className = 'ext-parte-activo';
+            act.value = activo || '';
+        }
 
         var num = document.createElement('input');
         num.type = 'number'; num.step = '0.01'; num.className = 'ext-parte-importe';
@@ -2069,7 +2080,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         });
 
         num.addEventListener('input', repartirRestante);
-        fila.append(txt, sel, num, quitar);
+        fila.append(txt, sel);
+        if (act) fila.appendChild(act);
+        fila.append(num, quitar);
         return fila;
     }
 
@@ -2111,15 +2124,17 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         if (partes.length) {
             partes.forEach(function (p) {
                 listaPartes.appendChild(filaParte(
-                    p.dataset.concepto, p.dataset.importe, p.dataset.categoria));
+                    p.dataset.concepto, p.dataset.importe, p.dataset.categoria,
+                    p.dataset.activo));
             });
             document.getElementById('ext-dividir-deshacer').hidden = false;
         } else {
             /* Dos filas de salida: repartir en una sola no es repartir. La
                primera lleva el total para que solo haya que corregir una. */
             listaPartes.appendChild(filaParte(
-                '', totalDividiendo.toFixed(2), boton.dataset.categoria || ''));
-            listaPartes.appendChild(filaParte('', '', ''));
+                '', totalDividiendo.toFixed(2), boton.dataset.categoria || '',
+                boton.dataset.activo || ''));
+            listaPartes.appendChild(filaParte('', '', '', boton.dataset.activo || ''));
             document.getElementById('ext-dividir-deshacer').hidden = true;
         }
         repartirRestante();
@@ -2156,6 +2171,8 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             body.append('importe', fila.querySelector('.ext-parte-importe').value);
             body.append('categoria_id', fila.querySelector('.ext-parte-categoria').value);
             body.append('concepto', fila.querySelector('.ext-parte-concepto').value);
+            var campoActivo = fila.querySelector('.ext-parte-activo');
+            body.append('activo', campoActivo ? campoActivo.value : '');
         });
         btnGuardarDiv.disabled = true;
         fetch(URL_DIVIDIR.replace('__ID__', movDividiendo), {

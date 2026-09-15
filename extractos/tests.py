@@ -2974,3 +2974,101 @@ class DividirMovimientoTests(TestCase):
             f'{len(ctx.captured_queries)} consultas para 61 movimientos: '
             'algo vuelve a preguntar por fila.',
         )
+
+    def test_las_partes_heredan_el_activo_del_cobro(self):
+        """El cobro deja de contar al repartirse, así que si sus partes no
+        heredan el coche, el gasto desaparece de su ficha."""
+        from finanzas.models import Vehiculo
+
+        coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+        self.mov.vehiculo = coche
+        self.mov.save()
+
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        self.assertEqual(
+            [p.vehiculo_id for p in self.mov.partes.all()], [coche.id, coche.id],
+        )
+
+    def test_el_gasto_no_se_pierde_de_la_ficha_del_coche(self):
+        from finanzas import costes_activo
+        from finanzas.models import Vehiculo
+
+        coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+        self.mov.vehiculo = coche
+        self.mov.save()
+        antes = costes_activo.costes(coche, 2026)['real_anual']
+
+        self.dividir(self.mov, [
+            ('-700.00', self.mantenimiento, 'Neumáticos'),
+            ('-228.63', self.gasolina, 'Revisión'),
+        ])
+        self.assertEqual(costes_activo.costes(coche, 2026)['real_anual'], antes)
+
+    def test_un_recibo_puede_repartirse_entre_dos_vehiculos(self):
+        """El caso de Mybox: un solo recibo paga el seguro de dos coches y algo
+        más, y cada parte tiene que ir a su ficha."""
+        from finanzas import costes_activo
+        from finanzas.models import Vehiculo
+
+        polo = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+        golf = Vehiculo.objects.create(hogar=self.hogar, nombre='Golf', tipo='coche')
+        seguros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Seguros')
+        recibo = MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 4, 3),
+            concepto='Mybox', importe=Decimal('-180.00'), saldo=Decimal('900'),
+        )
+
+        respuesta = self.client.post(
+            reverse('extractos:dividir_movimiento', args=[recibo.id]), {
+                'importe': ['-60.00', '-70.00', '-50.00'],
+                'categoria_id': [str(seguros.id), str(seguros.id), str(seguros.id)],
+                'concepto': ['Seguro Polo', 'Seguro Golf', 'Resto del recibo'],
+                'activo': [polo.clave_activo, golf.clave_activo, ''],
+            }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(respuesta.json(), {'ok': True, 'partes': 3})
+
+        self.assertEqual(costes_activo.costes(polo, 2026)['real_anual'], Decimal('60.00'))
+        self.assertEqual(costes_activo.costes(golf, 2026)['real_anual'], Decimal('70.00'))
+        # El resto no es de ningún coche y no se le cuela a ninguno.
+        resto = recibo.partes.get(concepto='Resto del recibo')
+        self.assertIsNone(resto.vehiculo_id)
+        self.assertIsNone(resto.propiedad_id)
+
+    def test_una_parte_puede_ir_a_una_propiedad_y_otra_a_un_coche(self):
+        from finanzas import costes_activo
+        from finanzas.models import Propiedad, Vehiculo
+
+        coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+        piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=date(2020, 1, 1),
+            precio_compra=Decimal('100000'), valor_actual=Decimal('120000'),
+        )
+        self.dividir_con_activos([
+            ('-500.00', 'Coche', coche.clave_activo),
+            ('-428.63', 'Casa', piso.clave_activo),
+        ])
+        self.assertEqual(costes_activo.costes(coche, 2026)['real_anual'], Decimal('500.00'))
+        self.assertEqual(costes_activo.costes(piso, 2026)['real_anual'], Decimal('428.63'))
+
+    def dividir_con_activos(self, partes):
+        return self.client.post(
+            reverse('extractos:dividir_movimiento', args=[self.mov.id]), {
+                'importe': [p[0] for p in partes],
+                'categoria_id': [str(self.mantenimiento.id)] * len(partes),
+                'concepto': [p[1] for p in partes],
+                'activo': [p[2] for p in partes],
+            }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+    def test_un_activo_de_otro_hogar_no_cuela(self):
+        from finanzas.models import Vehiculo
+
+        otro = Hogar.objects.create(nombre='Otro')
+        ajeno = Vehiculo.objects.create(hogar=otro, nombre='Ajeno', tipo='coche')
+        self.dividir_con_activos([
+            ('-500.00', 'Uno', ajeno.clave_activo),
+            ('-428.63', 'Dos', ''),
+        ])
+        self.assertTrue(all(p.vehiculo_id is None for p in self.mov.partes.all()))

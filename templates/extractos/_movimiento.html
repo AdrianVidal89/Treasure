@@ -12,7 +12,7 @@ Espera `m` (el movimiento) y `panel` (el contexto de edición: colores,
 categorías por bloque, provisiones y activos).
 {% endcomment %}
 <div class="ext-mov{% if m.es_neutro %} neutro{% endif %}{% if m.esta_dividido %} ext-mov-dividido{% endif %}{% if m.es_parte %} ext-mov-parte{% endif %}" data-mov-id="{{ m.id }}"
-     {% if m.es_parte %}data-padre="{{ m.dividido_de_id }}" data-concepto="{{ m.concepto }}" data-importe="{{ m.importe|unlocalize }}" data-categoria="{{ m.categoria_id|default_if_none:'' }}"{% endif %}
+     {% if m.es_parte %}data-padre="{{ m.dividido_de_id }}" data-concepto="{{ m.concepto }}" data-importe="{{ m.importe|unlocalize }}" data-categoria="{{ m.categoria_id|default_if_none:'' }}" data-activo="{{ m.clave_activo }}"{% endif %}
      {% if m.saldo != None %}title="Saldo tras el apunte: {{ m.saldo|euro }}"{% endif %}>
     <label class="ext-mov-check" title="Seleccionar para un cambio en bloque">
         <input type="checkbox" class="ext-check" data-mov-id="{{ m.id }}">
@@ -81,7 +81,7 @@ categorías por bloque, provisiones y activos).
     {% if not m.es_parte %}
     <button type="button" class="ext-dividir" data-mov-id="{{ m.id }}"
             data-concepto="{{ m.concepto }}" data-importe="{{ m.importe|unlocalize }}"
-            data-categoria="{{ m.categoria_id|default_if_none:'' }}"
+            data-categoria="{{ m.categoria_id|default_if_none:'' }}" data-activo="{{ m.clave_activo }}"
             title="{% if m.esta_dividido %}Ver o cambiar el reparto de este cobro{% else %}Un cobro, varias cosas: repártelo en partes con su propia categoría{% endif %}">
         <svg class="icon"><use href="#i-grip"/></svg>
     </button>
