@@ -72,11 +72,11 @@ categorías por bloque, provisiones y activos).
             concreto. Emparejarlo con ese pago es lo que deja el mes contando
             solo la diferencia.
             {% endcomment %}
-            {% if m.importe >= 0 and not m.es_parte and not m.esta_dividido %}
-            <button type="button" class="ext-cubre-boton {% if m.es_cobertura %}puesto{% endif %}"
+            {% if not m.es_parte and not m.esta_dividido %}
+            <button type="button" class="ext-cubre-boton {% if m.es_cobertura or m.cubierto_por_reserva %}puesto{% endif %}"
                     data-mov-id="{{ m.id }}" data-importe="{{ m.importe|unlocalize }}"
                     data-concepto="{{ m.concepto }}" data-valor="{{ m.cubre_id|default_if_none:'' }}"
-                    title="¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% else %}— de la reserva —{% endif %}</button>
+                    title="{% if m.importe < 0 %}¿Pagaste parte de esto con dinero que tenías apartado? Dilo aquí y el mes solo cargará la diferencia.{% else %}¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.{% endif %}">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% elif m.cubierto_por_reserva %}reserva puesta{% else %}— de la reserva —{% endif %}</button>
             {% endif %}
 
             {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}

@@ -3325,10 +3325,10 @@ class ReservaQueCubreUnPagoTests(TestCase):
         reposicion = self.mov('928', 10, concepto='Hucha')
 
         datos = self.client.get(
-            reverse('extractos:pagos_cubribles'), {'mov': reposicion.id},
+            reverse('extractos:candidatos_reserva'), {'mov': reposicion.id},
             HTTP_X_REQUESTED_WITH='XMLHttpRequest',
         ).json()
-        ids = {p['id'] for p in datos['pagos']}
+        ids = {p['id'] for p in datos['candidatos']}
         self.assertIn(cercano.id, ids)
         self.assertNotIn(lejano.id, ids)
         self.assertNotIn(reposicion.id, ids)
@@ -3339,10 +3339,10 @@ class ReservaQueCubreUnPagoTests(TestCase):
         otra = self.mov('528', 11, concepto='Segunda hucha')
 
         datos = self.client.get(
-            reverse('extractos:pagos_cubribles'), {'mov': otra.id},
+            reverse('extractos:candidatos_reserva'), {'mov': otra.id},
             HTTP_X_REQUESTED_WITH='XMLHttpRequest',
         ).json()
-        fila = next(p for p in datos['pagos'] if p['id'] == pago.id)
+        fila = next(p for p in datos['candidatos'] if p['id'] == pago.id)
         self.assertEqual(fila['cubierto'], 400)
         self.assertEqual(fila['pendiente'], 800)
 
@@ -3385,6 +3385,97 @@ class ReservaQueCubreUnPagoTests(TestCase):
         septiembre = panel['grupos'][0]
         self.assertEqual(septiembre['gastos'], panel['kpi_gastos'])
         self.assertEqual(septiembre['gastos'], Decimal('-272'))
+
+    def test_el_pago_anual_sigue_en_la_lista_aunque_no_cuente(self):
+        """El fallo que dejó todo esto sin usar: el pago se sacaba de la
+        PANTALLA, no solo de los totales. En septiembre no había ninguna fila
+        de la revisión, así que no había nada que pulsar para decir que la
+        había pagado la hucha."""
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+
+        panel = self.panel(anio=2026, mes=9)
+        filas = [m.pk for g in panel['grupos'] for m in g['movimientos']]
+        self.assertIn(pago.pk, filas)
+        # Pero no suma, y la cabecera lo dice aparte.
+        self.assertEqual(panel['kpi_gastos'], Decimal('0'))
+        self.assertEqual(panel['grupos'][0]['gastos'], Decimal('0'))
+        self.assertEqual(panel['grupos'][0]['provisiones'], Decimal('-1200'))
+
+    def test_y_desde_esa_fila_se_puede_emparejar(self):
+        pago = self.mov('-1200', 12, self.mantenimiento, provision=self.revision)
+        self.mov('928', 10, concepto='TRASPASO DESDE HUCHA')
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, f'data-mov-id="{pago.pk}"')
+        self.assertContains(respuesta, '¿Pagaste parte de esto con dinero que tenías apartado?')
+
+    # ── Entrar desde el gasto, que es donde se mira ──────────────────────
+
+    def candidatos(self, mov):
+        return self.client.get(
+            reverse('extractos:candidatos_reserva'), {'mov': mov.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+
+    def test_desde_el_gasto_se_ofrecen_los_ingresos_cercanos(self):
+        """Nadie piensa «voy a la fila del traspaso»: mira la revisión de 1.200
+        y quiere decir ahí que 928 salieron de la hucha."""
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        hucha = self.mov('928', 10, concepto='Traspaso de la hucha')
+        otro_gasto = self.mov('-40', 11, self.mantenimiento, concepto='Otra cosa')
+
+        datos = self.candidatos(pago)
+        self.assertEqual(datos['sentido'], 'gasto')
+        ids = {c['id'] for c in datos['candidatos']}
+        self.assertIn(hucha.id, ids)
+        self.assertNotIn(otro_gasto.id, ids)
+        self.assertNotIn(pago.id, ids)
+        self.assertEqual(datos['pendiente'], 1200)
+
+    def test_desde_el_ingreso_se_siguen_ofreciendo_los_gastos(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        hucha = self.mov('928', 10, concepto='Hucha')
+
+        datos = self.candidatos(hucha)
+        self.assertEqual(datos['sentido'], 'ingreso')
+        self.assertEqual({c['id'] for c in datos['candidatos']}, {pago.id})
+
+    def test_un_ingreso_ya_puesto_en_otro_pago_no_se_ofrece(self):
+        """Si no, emparejarlo aquí se lo robaría al otro pago sin avisar."""
+        otro_pago = self.mov('-500', 3, self.mantenimiento, concepto='Otro pago')
+        hucha = self.mov('928', 10, concepto='Hucha')
+        self.emparejar(hucha, otro_pago)
+
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        ids = {c['id'] for c in self.candidatos(pago)['candidatos']}
+        self.assertNotIn(hucha.id, ids)
+
+    def test_el_gasto_ve_lo_que_ya_tiene_puesto_para_poder_quitarlo(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        hucha = self.mov('928', 10, concepto='Hucha')
+        self.emparejar(hucha, pago)
+
+        datos = self.candidatos(pago)
+        self.assertEqual([c['id'] for c in datos['puestos']], [hucha.id])
+        self.assertEqual(datos['pendiente'], 272)
+        # Y sigue ofreciéndose, para poder cambiarlo de sitio sin soltarlo antes.
+        self.assertIn(hucha.id, {c['id'] for c in datos['candidatos']})
+
+    def test_el_gasto_lleva_su_propio_boton(self):
+        """El error de la primera versión: el control existía solo en la fila
+        del ingreso, que es la única en la que no se te ocurre buscarlo."""
+        self.mov('-1200', 12, self.mantenimiento, concepto='Norauto revisión')
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'ext-cubre-boton')
+        self.assertContains(respuesta, '¿Pagaste parte de esto con dinero que tenías apartado?')
+
+    def test_el_gasto_ya_cubierto_lo_dice_en_su_boton(self):
+        pago = self.mov('-1200', 12, self.mantenimiento)
+        self.emparejar(self.mov('928', 10, concepto='Hucha'), pago)
+
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'reserva puesta')
 
     # ── Lo que se ve en pantalla ─────────────────────────────────────────
 
