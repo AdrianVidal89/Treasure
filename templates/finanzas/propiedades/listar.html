@@ -23,6 +23,7 @@
 .prop-anio { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:6px; padding:2px 6px; font-size:0.72rem; margin-left:6px; }
 .coste-box { margin-top:14px; padding:12px 14px; background:var(--app-bg); border-radius:10px; }
 .coste-title { font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin-bottom:8px; }
+.coste-grafico { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
 .coste-cifras { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px; }
 .coste-cifras .k { display:block; font-size:0.68rem; color:var(--muted); }
 .coste-val { display:block; font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; }
@@ -164,6 +165,18 @@
                     </div>
                     {% include "finanzas/vehiculos/_barra.html" %}
 
+                    {% comment %}
+                    La misma línea que en la ficha del coche: en qué mes se fue
+                    el dinero de esta casa, y qué fue. La pregunta es la misma,
+                    así que la respuesta se enseña igual.
+                    {% endcomment %}
+                    {% if f.num_movimientos %}
+                    <div class="coste-grafico">
+                        <div class="coste-title">Mes a mes · lo que pasó por el banco</div>
+                        {% include "finanzas/_linea_mensual.html" with g=f.grafico_mensual gid=f.clave|slugify %}
+                    </div>
+                    {% endif %}
+
                     {% if f.renta %}
                     <div class="coste-balance">
                         <span class="k">Ingresa</span>
@@ -286,4 +299,5 @@
     </div>
     {% endif %}
 </div>
+{% include "finanzas/_linea_mensual_recursos.html" %}
 {% endblock %}

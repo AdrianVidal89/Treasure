@@ -2883,8 +2883,10 @@ class RepartoAprendidoTests(TestCase):
         self.assertEqual(sug['pesos'], [75.0, 25.0])
         self.assertFalse(sug['ya_hay_regla'])
 
-    def test_no_ofrece_repartir_lo_que_ya_esta_repartido(self):
-        """Una división automática no puede pisar un reparto revisado a mano."""
+    def test_los_ya_repartidos_se_cuentan_aparte(self):
+        """Entran en la cuenta —son los que hay que corregir cuando el reparto
+        estaba mal— pero se dicen aparte, para que quede claro que aceptar
+        significa volver a repartirlos."""
         otro = self.mov('-500', mes=5)
         self.dividir(otro, [('-400', self.mantenimiento, ''), ('-100', self.itv, '')])
 
@@ -2892,7 +2894,35 @@ class RepartoAprendidoTests(TestCase):
         sug = self.dividir(modelo, [
             ('-600', self.mantenimiento, ''), ('-200', self.itv, ''),
         ])['sugerencia']
-        self.assertEqual(sug['n_similares'], 0)
+        self.assertEqual(sug['n_similares'], 1)
+        self.assertEqual(sug['n_repartidos'], 1)
+
+    def test_la_importacion_nunca_pisa_un_reparto_hecho(self):
+        """Propagar a mano sí alcanza a lo ya repartido, porque lo pide quien
+        está corrigiendo. Una importación, no: ahí nadie ha dicho nada."""
+        from extractos.models import ReglaDivision
+
+        modelo = self.mov('-800')
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
+        self.aprender(modelo, accion='solo_regla', ambito='todos')
+        self.assertTrue(ReglaDivision.objects.filter(hogar=self.hogar).exists())
+
+        a_mano = self.mov('-500', mes=5)
+        self.dividir(a_mano, [('-250', self.itv, 'mitad'), ('-250', self.itv, 'mitad')])
+
+        _importar_analizados(self.hogar, self.user, 'Banco', None, [{
+            'nombre': 'x.csv',
+            'resultado': {'movimientos': [
+                {'fecha': '2026-07-02', 'concepto': 'Norauto', 'concepto_raw': '',
+                 'importe': Decimal('-900'), 'saldo': None},
+            ], 'filas_error': [], 'filas_omitidas': []},
+        }])
+
+        # El repartido a mano sigue con SU reparto, no con el de la regla.
+        self.assertEqual(
+            [p.importe for p in a_mano.partes.order_by('orden_parte')],
+            [Decimal('-250.00'), Decimal('-250.00')],
+        )
 
     # ── Aplicarlo ────────────────────────────────────────────────────────
 
@@ -3009,18 +3039,32 @@ class RepartoAprendidoTests(TestCase):
         self.assertEqual(regla.partes.count(), 3)
         self.assertEqual(ReglaDivision.objects.filter(hogar=self.hogar).count(), 1)
 
-    def test_una_vez_hay_regla_ya_no_se_vuelve_a_ofrecer(self):
+    def test_si_la_regla_ya_hace_esto_no_se_vuelve_a_ofrecer(self):
         """Y basta con que una regla lo CUBRA: «norauto» ya vale para
         «norauto sevilla», que es como se aplica luego en la importación."""
         modelo = self.mov('-800')
         self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
-        self.aprender(modelo, accion='solo_regla')
+        self.aprender(modelo, accion='solo_regla', ambito='todos')
 
         otro = self.mov('-400', mes=5, concepto='Norauto Sevilla Nervion')
         sug = self.dividir(otro, [
             ('-300', self.mantenimiento, ''), ('-100', self.itv, ''),
         ])['sugerencia']
         self.assertTrue(sug['ya_hay_regla'])
+        self.assertFalse(sug['regla_desfasada'])
+
+    def test_una_regla_fechada_no_alcanza_a_los_recibos_anteriores(self):
+        """«Solo este» fecha la regla en ese recibo: lo anterior no era así y no
+        se toca, que es lo que se pide al fecharla."""
+        modelo = self.mov('-800', mes=9)
+        self.dividir(modelo, [('-600', self.mantenimiento, ''), ('-200', self.itv, '')])
+        self.aprender(modelo, accion='solo_regla')      # sin ámbito: desde este
+
+        anterior = self.mov('-400', mes=5)
+        sug = self.dividir(anterior, [
+            ('-300', self.mantenimiento, ''), ('-100', self.itv, ''),
+        ])['sugerencia']
+        self.assertFalse(sug['ya_hay_regla'])
 
     def test_la_pantalla_de_reglas_ensena_los_repartos(self):
         modelo = self.mov('-800')
@@ -3048,6 +3092,307 @@ class RepartoAprendidoTests(TestCase):
         self.assertFalse(ReglaDivision.objects.filter(hogar=self.hogar).exists())
         # Lo ya repartido no se toca: deshacerlo es cosa de cada fila.
         self.assertEqual(modelo.partes.count(), 2)
+
+
+class CorregirUnRepartoTests(TestCase):
+    """Corregir un reparto ya hecho, y poder fecharlo.
+
+    El bug: un recibo repartido en cuatro, tres partes al piso y la cuarta al
+    coche. Se podía repartir, pero no CORREGIR. Dos causas:
+
+    * los recibos parecidos que ya estaban repartidos no se contaban —y después
+      de la primera vez lo están todos—, así que «hay N recibos más» salía cero
+      y la corrección se quedaba en ese único apunte;
+    * «¿ya hay regla?» solo miraba si existía alguna para el comercio, no si
+      seguía haciendo lo mismo, así que tampoco se ofrecía actualizarla.
+
+    Y el encargo: un recibo que cambia de forma —el seguro pasa de tres
+    coberturas a cuatro— tiene que poder corregirse de esa fecha en adelante sin
+    reescribir lo de antes.
+    """
+
+    def setUp(self):
+        from finanzas.models import Propiedad, Vehiculo
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+
+        self.luz = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Luz')
+        self.agua = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Agua')
+        self.comunidad = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Comunidad')
+        self.seguro = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Seguro coche')
+        self.piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=date(2019, 1, 1),
+            precio_compra=Decimal('180000'), valor_actual=Decimal('200000'),
+        )
+        self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+
+    def mov(self, importe, mes, dia=10, concepto='Mapfre'):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, mes, dia),
+            concepto=concepto, importe=Decimal(importe), propiedad=self.piso,
+        )
+
+    def dividir(self, m, partes):
+        """partes: lista de (importe, categoria, concepto, clave_activo)."""
+        datos = {'importe': [], 'categoria_id': [], 'concepto': [], 'activo': []}
+        for importe, categoria, concepto, activo in partes:
+            datos['importe'].append(importe)
+            datos['categoria_id'].append(str(categoria.id))
+            datos['concepto'].append(concepto)
+            datos['activo'].append(activo)
+        return self.client.post(
+            reverse('extractos:dividir_movimiento', args=[m.id]), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+
+    def aprender(self, m, **extra):
+        datos = {'modelo': m.id, 'patron': 'mapfre'}
+        datos.update(extra)
+        return self.client.post(
+            reverse('extractos:aprender_division'), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+
+    def de_tres(self):
+        return [
+            ('-120', self.luz, 'Luz', self.piso.clave_activo),
+            ('-100', self.agua, 'Agua', self.piso.clave_activo),
+            ('-80', self.comunidad, 'Comunidad', self.piso.clave_activo),
+        ]
+
+    def de_cuatro(self):
+        return [
+            ('-120', self.luz, 'Luz', self.piso.clave_activo),
+            ('-100', self.agua, 'Agua', self.piso.clave_activo),
+            ('-80', self.comunidad, 'Comunidad', self.piso.clave_activo),
+            ('-60', self.seguro, 'Seguro coche', self.coche.clave_activo),
+        ]
+
+    def activos_de(self, m):
+        return [str(p.activo_imputado) for p in m.partes.order_by('orden_parte')]
+
+    # ── Tres al piso y una al coche ──────────────────────────────────────
+
+    def test_cada_parte_va_a_su_activo(self):
+        nov = self.mov('-360', 11)
+        self.dividir(nov, self.de_cuatro())
+
+        self.assertEqual(
+            self.activos_de(nov), ['Piso (Vivienda)'] * 3 + ['Polo'],
+        )
+
+    def test_al_propagarlo_cada_parte_llega_a_su_activo(self):
+        marzo = self.mov('-360', 3)
+        nov = self.mov('-360', 11)
+        self.dividir(nov, self.de_cuatro())
+        self.aprender(nov, ambito='todos', recordar='1')
+
+        self.assertEqual(
+            self.activos_de(marzo), ['Piso (Vivienda)'] * 3 + ['Polo'],
+        )
+
+    # ── El bug: corregir lo ya repartido ─────────────────────────────────
+
+    def test_corregir_un_reparto_hecho_si_se_puede_propagar(self):
+        """Antes salía «hay 0 recibos más» porque ya estaban todos repartidos,
+        y la corrección se quedaba en el apunte que se tocaba."""
+        marzo = self.mov('-300', 3)
+        junio = self.mov('-300', 6)
+        self.dividir(junio, self.de_tres())
+        self.aprender(junio, ambito='todos', recordar='1')
+
+        # Corrijo: la comunidad era en realidad el seguro del coche.
+        corregido = self.de_tres()
+        corregido[2] = ('-80', self.seguro, 'Seguro coche', self.coche.clave_activo)
+        sug = self.dividir(junio, corregido)['sugerencia']
+
+        self.assertEqual(sug['n_similares'], 1)
+        self.assertEqual(sug['n_repartidos'], 1)
+        self.assertFalse(sug['ya_hay_regla'])
+        self.assertTrue(sug['regla_desfasada'])
+
+        datos = self.aprender(junio, ambito='todos', recordar='1')
+        self.assertEqual(datos['aplicados'], 1)
+        self.assertEqual(datos['rehechos'], 1)     # marzo ya estaba repartido
+        self.assertEqual(
+            self.activos_de(marzo), ['Piso (Vivienda)', 'Piso (Vivienda)', 'Polo'],
+        )
+
+    def test_la_regla_se_actualiza_con_la_correccion(self):
+        from extractos.models import ReglaDivision
+
+        junio = self.mov('-300', 6)
+        self.dividir(junio, self.de_tres())
+        self.aprender(junio, ambito='todos', recordar='1')
+
+        corregido = self.de_tres()
+        corregido[2] = ('-80', self.seguro, 'Seguro coche', self.coche.clave_activo)
+        self.dividir(junio, corregido)
+        self.aprender(junio, accion='solo_regla', ambito='todos')
+
+        regla = ReglaDivision.objects.get(hogar=self.hogar, patron='mapfre', desde=None)
+        self.assertEqual(
+            [str(p.activo_imputado) for p in regla.partes.all()],
+            ['Piso (Vivienda)', 'Piso (Vivienda)', 'Polo'],
+        )
+
+    def test_si_la_regla_ya_hace_esto_no_se_pregunta_nada(self):
+        """Volver a guardar el MISMO reparto no tiene nada que ofrecer."""
+        junio = self.mov('-300', 6)
+        self.dividir(junio, self.de_tres())
+        self.aprender(junio, ambito='todos', recordar='1')
+
+        sug = self.dividir(junio, self.de_tres())['sugerencia']
+        self.assertTrue(sug['ya_hay_regla'])
+        self.assertFalse(sug['regla_desfasada'])
+
+    # ── De esta fecha en adelante ────────────────────────────────────────
+
+    def test_corregir_de_una_fecha_en_adelante_no_toca_el_pasado(self):
+        """El recibo sube de valor porque se añade una cobertura. Lo de antes
+        no era así y tiene que quedarse como estaba."""
+        marzo = self.mov('-300', 3)
+        octubre = self.mov('-360', 10)
+        nov = self.mov('-360', 11)
+        self.dividir(marzo, self.de_tres())
+        self.aprender(marzo, ambito='todos', recordar='1')
+        self.assertEqual(octubre.partes.count(), 3)
+
+        # Ahora el de noviembre lleva cuatro: se corrige de esa fecha en adelante.
+        self.dividir(nov, self.de_cuatro())
+        datos = self.aprender(nov, ambito='adelante', recordar='1')
+
+        self.assertEqual(datos['desde'], '2026-11-10')
+        # Marzo y octubre son anteriores: intactos.
+        self.assertEqual(marzo.partes.count(), 3)
+        self.assertEqual(octubre.partes.count(), 3)
+        self.assertEqual(self.activos_de(marzo), ['Piso (Vivienda)'] * 3)
+
+    def test_de_aqui_en_adelante_si_alcanza_a_los_posteriores(self):
+        marzo = self.mov('-300', 3)
+        junio = self.mov('-360', 6)
+        diciembre = self.mov('-360', 12)
+        self.dividir(junio, self.de_cuatro())
+        self.aprender(junio, ambito='adelante', recordar='1')
+
+        self.assertEqual(marzo.partes.count(), 0)          # anterior: intacto
+        self.assertEqual(diciembre.partes.count(), 4)      # posterior: repartido
+
+    def test_conviven_dos_versiones_del_mismo_comercio(self):
+        from extractos.models import ReglaDivision
+
+        junio = self.mov('-300', 6)
+        nov = self.mov('-360', 11)
+        self.dividir(junio, self.de_tres())
+        self.aprender(junio, accion='solo_regla', ambito='todos')
+        self.dividir(nov, self.de_cuatro())
+        self.aprender(nov, accion='solo_regla', ambito='adelante')
+
+        versiones = ReglaDivision.objects.filter(hogar=self.hogar, patron='mapfre')
+        self.assertEqual(versiones.count(), 2)
+        self.assertEqual(
+            sorted(((v.desde, v.partes.count()) for v in versiones),
+                   key=lambda par: par[0] or date.min),
+            [(None, 3), (date(2026, 11, 10), 4)],
+        )
+
+    def test_al_importar_cada_recibo_usa_la_version_de_su_fecha(self):
+        """Lo que de verdad pedía el encargo: de ahí en adelante, sin tocar el
+        pasado, también para lo que se importe después."""
+        junio = self.mov('-300', 6)
+        nov = self.mov('-360', 11)
+        self.dividir(junio, self.de_tres())
+        self.aprender(junio, accion='solo_regla', ambito='todos')
+        self.dividir(nov, self.de_cuatro())
+        self.aprender(nov, accion='solo_regla', ambito='adelante')
+
+        _importar_analizados(self.hogar, self.user, 'Banco', None, [{
+            'nombre': 'x.csv',
+            'resultado': {'movimientos': [
+                {'fecha': '2026-05-04', 'concepto': 'MAPFRE recibo', 'concepto_raw': '',
+                 'importe': Decimal('-300'), 'saldo': None},
+                {'fecha': '2026-12-04', 'concepto': 'MAPFRE recibo', 'concepto_raw': '',
+                 'importe': Decimal('-360'), 'saldo': None},
+            ], 'filas_error': [], 'filas_omitidas': []},
+        }])
+
+        # `dividido_de__isnull` porque las partes comparten la fecha del padre.
+        viejo = MovimientoBancario.objects.get(
+            hogar=self.hogar, fecha=date(2026, 5, 4), dividido_de__isnull=True)
+        nuevo = MovimientoBancario.objects.get(
+            hogar=self.hogar, fecha=date(2026, 12, 4), dividido_de__isnull=True)
+        self.assertEqual(viejo.partes.count(), 3)
+        self.assertEqual(nuevo.partes.count(), 4)
+        self.assertEqual(self.activos_de(nuevo)[-1], 'Polo')
+
+    def test_un_recibo_anterior_a_la_primera_version_no_se_reparte(self):
+        """Si la única versión empieza en noviembre, un recibo de mayo no tiene
+        ninguna que le valga: se queda entero, que es lo que se pidió."""
+        nov = self.mov('-360', 11)
+        self.dividir(nov, self.de_cuatro())
+        self.aprender(nov, accion='solo_regla', ambito='adelante')
+
+        _importar_analizados(self.hogar, self.user, 'Banco', None, [{
+            'nombre': 'x.csv',
+            'resultado': {'movimientos': [
+                {'fecha': '2026-05-04', 'concepto': 'MAPFRE recibo', 'concepto_raw': '',
+                 'importe': Decimal('-300'), 'saldo': None},
+            ], 'filas_error': [], 'filas_omitidas': []},
+        }])
+        mayo = MovimientoBancario.objects.get(
+            hogar=self.hogar, fecha=date(2026, 5, 4), dividido_de__isnull=True)
+        self.assertEqual(mayo.partes.count(), 0)
+
+    def test_se_puede_fechar_aunque_no_haya_recibos_posteriores(self):
+        """El caso exacto: el recibo cambia de forma HOY y todavía no ha llegado
+        ninguno más. No hay nada que repartir hacia adelante, pero es justo
+        cuando hace falta fechar la regla, así que la opción se ofrece igual.
+
+        Sin esto la única salida era «Todos», que reescribe el pasado."""
+        marzo = self.mov('-300', 3)
+        nov = self.mov('-360', 11)
+        self.dividir(marzo, self.de_tres())
+        self.aprender(marzo, ambito='todos', recordar='1')
+
+        sug = self.dividir(nov, self.de_cuatro())['sugerencia']
+        self.assertEqual(sug['n_adelante'], 0)      # no hay ninguno posterior
+        self.assertEqual(sug['n_similares'], 1)     # pero sí uno anterior
+
+        datos = self.aprender(nov, ambito='adelante', recordar='1')
+        self.assertEqual(datos['aplicados'], 0)             # no se toca nada
+        self.assertEqual(datos['desde'], '2026-11-10')      # y la regla queda fechada
+        self.assertEqual(marzo.partes.count(), 3)
+
+    def test_la_pantalla_ofrece_siempre_el_alcance_por_fecha(self):
+        """El botón se pinta en el navegador a partir de la sugerencia; lo que
+        se comprueba aquí es que el dato para pintarlo viaja siempre."""
+        self.mov('-300', 3)
+        nov = self.mov('-360', 11)
+        sug = self.dividir(nov, self.de_cuatro())['sugerencia']
+
+        self.assertIn('fecha_texto', sug)
+        self.assertEqual(sug['fecha_texto'], '10/11/2026')
+        self.assertEqual(sug['fecha'], '2026-11-10')
+
+    def test_la_pantalla_de_reglas_ensena_desde_cuando_vale_cada_una(self):
+        junio = self.mov('-300', 6)
+        nov = self.mov('-360', 11)
+        self.dividir(junio, self.de_tres())
+        self.aprender(junio, accion='solo_regla', ambito='todos')
+        self.dividir(nov, self.de_cuatro())
+        self.aprender(nov, accion='solo_regla', ambito='adelante')
+
+        respuesta = self.client.get(reverse('extractos:reglas'))
+        self.assertContains(respuesta, 'Vale desde')
+        self.assertContains(respuesta, '10/11/2026')
+        self.assertContains(respuesta, 'siempre')
 
 
 class RepartoEnLaImportacionTests(TestCase):

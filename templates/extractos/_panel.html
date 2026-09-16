@@ -2506,35 +2506,36 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             return b;
         }
 
-        /* Tercer paso: ya está aplicado, ahora si se recuerda. */
-        function preguntarRegla(aplicados) {
+        var pesos = sug.pesos.map(function (p) { return p + ' %'; }).join(' · ');
+
+        /* Tercer paso: ya está aplicado, ahora si se recuerda. Y desde cuándo:
+           la fecha sale del alcance que se acaba de elegir, no se vuelve a
+           preguntar. Es la misma decisión dicha con otras palabras. */
+        function preguntarRegla(ambito, aplicados) {
             acciones.innerHTML = '';
             if (aplicados) {
                 hecho.textContent = 'Repartidos ' + aplicados +
                     (aplicados === 1 ? ' recibo más.' : ' recibos más.');
             }
-            pregunta.innerHTML = '¿Quieres que los próximos «' + sug.patron +
-                '» que importes se repartan así solos? <em>Se parten en la misma ' +
-                'proporción (' + sug.pesos.map(function (p) { return p + ' %'; }).join(' · ') +
-                '); el total no cambia y siempre puedes deshacerlo.</em>';
+            var cuando = ambito === 'todos'
+                ? 'los próximos «' + sug.patron + '» que importes'
+                : 'los «' + sug.patron + '» del ' + sug.fecha_texto + ' en adelante';
+            pregunta.innerHTML = '¿Quieres que ' + cuando + ' se repartan así solos? ' +
+                '<em>Se parten en la misma proporción (' + pesos + '); el total no cambia, ' +
+                'lo anterior a esa fecha se queda como está y siempre puedes deshacerlo.</em>';
+
             var si = boton('btn-primary', 'Sí, recordarlo');
             var no = boton('btn-ghost', 'No, solo esta vez');
             si.addEventListener('click', function () {
                 si.disabled = true;
-                pedirDivision({modelo: movId, patron: sug.patron, accion: 'solo_regla'})
-                    .then(function () { window.location.reload(); })
-                    .catch(function () { window.location.reload(); });
+                pedirDivision({
+                    modelo: movId, patron: sug.patron,
+                    accion: 'solo_regla', ambito: ambito
+                }).then(function () { window.location.reload(); })
+                  .catch(function () { window.location.reload(); });
             });
             no.addEventListener('click', function () { window.location.reload(); });
         }
-
-        if (!sug.n_similares) { preguntarRegla(0); return; }
-
-        pregunta.innerHTML = 'Hay ' + sug.n_similares +
-            (sug.n_similares === 1 ? ' recibo más' : ' recibos más') + ' de «' + sug.patron +
-            '» sin repartir. ¿Los reparto igual? <em>En la misma proporción (' +
-            sug.pesos.map(function (p) { return p + ' %'; }).join(' · ') +
-            '), porque los importes no se repiten.</em>';
 
         function aplicar(boton_, ambito) {
             boton_.disabled = true;
@@ -2542,24 +2543,51 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             if (ambito === 'mes') { datos.anio = sug.anio; datos.mes = sug.mes; }
             pedirDivision(datos).then(function (data) {
                 if (!data.ok) { boton_.disabled = false; return; }
-                if (sug.ya_hay_regla) { window.location.reload(); return; }
-                preguntarRegla(data.aplicados);
+                preguntarRegla(ambito, data.aplicados);
             }).catch(function () { boton_.disabled = false; });
         }
+
+        /* Sin recibos a los que llevarlo solo queda la pregunta de la regla. */
+        if (!sug.n_similares) { preguntarRegla('adelante', 0); return; }
+
+        var yaRepartidos = sug.n_repartidos
+            ? ' <em>(' + sug.n_repartidos + (sug.n_repartidos === 1
+                ? ' ya repartido, que se volverá a repartir)</em>'
+                : ' ya repartidos, que se volverán a repartir)</em>')
+            : ' <em>sin repartir</em>';
+        pregunta.innerHTML = 'Hay ' + sug.n_similares +
+            (sug.n_similares === 1 ? ' recibo más' : ' recibos más') + ' de «' + sug.patron +
+            '»' + yaRepartidos + '. ¿Los reparto igual? <em>En la misma proporción (' +
+            pesos + '), porque los importes no se repiten.</em>';
+
+        /* «De esta fecha en adelante» va primero y es el botón principal: es lo
+           que se quiere cuando el recibo cambia de forma —el seguro pasa de tres
+           coberturas a cuatro— y lo de antes tiene que quedarse como estaba.
+           «Todos» reescribe también el pasado, así que va en segundo plano.
+
+           Se ofrece SIEMPRE, también cuando no hay ningún recibo posterior que
+           repartir: ahí no cambia nada hoy, pero es lo que fecha la regla, y es
+           justo el caso en que el recibo acaba de cambiar de forma y todavía no
+           ha llegado ninguno más. Sin este botón la única salida era «Todos»,
+           que reescribe el pasado, o adivinar que «solo este» también fechaba la
+           regla. */
+        var adelante = boton('btn-primary',
+            sug.n_adelante
+                ? 'Del ' + sug.fecha_texto + ' en adelante (' + sug.n_adelante + ')'
+                : 'De aquí en adelante',
+            'Reparte así los de esta fecha en adelante y deja el pasado como está.');
+        adelante.addEventListener('click', function () { aplicar(adelante, 'adelante'); });
 
         if (sug.n_mes) {
             var soloMes = boton('btn-secondary', 'Solo ' + sug.etiqueta_mes + ' (' + sug.n_mes + ')',
                                 'Reparte únicamente los de ese mes.');
             soloMes.addEventListener('click', function () { aplicar(soloMes, 'mes'); });
         }
-        var todos = boton('btn-primary', 'Todos (' + sug.n_similares + ')',
-                          'Reparte todo el histórico de este comercio.');
+        var todos = boton('btn-secondary', 'Todos, también los anteriores (' + sug.n_similares + ')',
+                          'Reparte todo el histórico de este comercio, también lo anterior.');
         todos.addEventListener('click', function () { aplicar(todos, 'todos'); });
         var solo = boton('btn-ghost', 'No, solo este');
-        solo.addEventListener('click', function () {
-            if (sug.ya_hay_regla) { window.location.reload(); return; }
-            preguntarRegla(0);
-        });
+        solo.addEventListener('click', function () { preguntarRegla('adelante', 0); });
     }
 
     var btnGuardarDiv = document.getElementById('ext-dividir-guardar');
@@ -2588,7 +2616,11 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
                dejarlos desfasados haría mentir a la pantalla justo después de
                tocarla. */
             var sug = data.sugerencia;
-            if (paso2 && sug && (sug.n_similares || !sug.ya_hay_regla)) {
+            /* Se pregunta siempre que la regla NO haga ya exactamente esto: con
+               «existe alguna regla» bastaba, así que corregir un reparto ya
+               aprendido recargaba sin ofrecer nada y la corrección se quedaba en
+               ese único recibo. */
+            if (paso2 && sug && !sug.ya_hay_regla) {
                 abrirPaso2(movId, sug);
                 return;
             }

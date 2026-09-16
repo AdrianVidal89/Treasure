@@ -342,18 +342,27 @@ def _aplicar_divisiones(hogar, extracto):
 
 
 def _mejor_division(movimiento, reglas):
-    """La división aprendida más específica que encaja con el movimiento.
+    """La división aprendida que le toca a un movimiento, o None.
 
-    Gana el patrón más largo, igual que en las reglas de categoría: si hay una
-    para «norauto» y otra para «norauto sevilla», manda la segunda.
+    Dos criterios, en este orden:
+
+    1. El patrón más específico, igual que en las reglas de categoría: si hay
+       uno para «norauto» y otro para «norauto sevilla», manda el segundo.
+    2. Dentro de ese patrón, la VERSIÓN que regía el día del recibo. Elegir el
+       patrón primero y la versión después —y no al revés— es lo que hace que
+       fechar un reparto no cambie a qué comercio pertenece el recibo.
     """
     texto = normalizar_texto(movimiento.concepto)
-    mejor, mejor_len = None, -1
+    por_patron = defaultdict(list)
     for regla in reglas:
         patron = normalizar_texto(regla.patron)
-        if patron and patron in texto and len(patron) > mejor_len:
-            mejor, mejor_len = regla, len(patron)
-    return mejor
+        if patron and patron in texto:
+            por_patron[patron].append(regla)
+    if not por_patron:
+        return None
+
+    mejor = max(por_patron, key=len)
+    return reparto.version_vigente(por_patron[mejor], movimiento.fecha)
 
 
 @login_required
@@ -1558,19 +1567,27 @@ def dividir_movimiento(request, pk):
     return JsonResponse(respuesta)
 
 
-def _divisibles(hogar, patron, excluir=None, anio=None, mes=None):
+def _divisibles(hogar, patron, excluir=None, anio=None, mes=None, desde=None,
+                incluir_repartidos=False):
     """Los movimientos del comercio que se pueden repartir, listos para usar.
 
-    Fuera quedan los que ya están divididos —una división automática no puede
-    pisar un reparto que alguien revisó a mano—, las partes de otro y los de
-    importe cero, que no tienen nada que repartir.
+    Fuera quedan siempre las partes de otro y los de importe cero, que no tienen
+    nada que repartir.
+
+    Los que YA están repartidos entran solo con `incluir_repartidos`. Al aprender
+    un reparto nuevo se dejan fuera, porque una división automática no puede
+    pisar un reparto que alguien revisó a mano. Pero al CORREGIR uno hacen falta:
+    son justo los que llevan el reparto equivocado, y sin ellos corregir la parte
+    del coche no se podía llevar a ningún sitio.
 
     Se vuelven a traer enteros a propósito: `_encajan` devuelve los campos justos
     para contar, y repartir necesita el extracto, el importe y el activo de cada
     uno. Sin esto, cada movimiento costaba media docena de consultas sueltas.
     """
     ids = [
-        m.id for m in _encajan(hogar, patron, incluir_categorizados=True, anio=anio, mes=mes)
+        m.id for m in _encajan(
+            hogar, patron, incluir_categorizados=True, anio=anio, mes=mes, desde=desde,
+        )
         if m.id != excluir
     ]
     if not ids:
@@ -1578,33 +1595,48 @@ def _divisibles(hogar, patron, excluir=None, anio=None, mes=None):
     return [
         m for m in MovimientoBancario.objects.filter(hogar=hogar, id__in=ids)
         .select_related('extracto').prefetch_related('partes')
-        if m.importe and not m.es_parte and not m.esta_dividido
+        if m.importe and not m.es_parte and (incluir_repartidos or not m.esta_dividido)
     ]
 
 
 def _sugerencia_division(hogar, mov, partes):
-    """Cuántos recibos del mismo comercio se podrían repartir igual."""
-    similares = _divisibles(hogar, mov.comercio, excluir=mov.pk)
-    fracciones = reparto.proporciones([p['importe'] for p in partes])
-    pesos = [round(float(f) * 100, 1) for f in fracciones]
+    """Qué se puede ofrecer tras repartir: a cuántos recibos llevarlo y desde
+    cuándo, y si la regla se queda como está.
 
+    Los recibos YA repartidos cuentan aquí. Antes no, y por eso corregir un
+    reparto aprendido no ofrecía nada: los demás recibos ya estaban partidos,
+    así que «recibos parecidos» salía cero y la corrección se quedaba en ese
+    único apunte.
+    """
+    similares = _divisibles(hogar, mov.comercio, excluir=mov.pk, incluir_repartidos=True)
+    en_adelante = [m for m in similares if m.fecha >= mov.fecha]
+    fracciones = reparto.proporciones([p['importe'] for p in partes])
+
+    # La regla que HOY se le aplicaría a este recibo, con el mismo criterio que
+    # usa la importación: una de «norauto» ya cubre a «norauto sevilla».
+    vigente = _mejor_division(
+        mov, list(ReglaDivision.objects.filter(hogar=hogar, activo=True)),
+    )
     return {
         'patron': mov.comercio,
         'n_similares': len(similares),
+        'n_repartidos': sum(1 for m in similares if m.esta_dividido),
+        'n_adelante': len(en_adelante),
         'n_mes': sum(
             1 for m in similares
             if m.fecha.year == mov.fecha.year and m.fecha.month == mov.fecha.month
         ),
         'anio': mov.fecha.year,
         'mes': mov.fecha.month,
+        'fecha': mov.fecha.isoformat(),
+        'fecha_texto': mov.fecha.strftime('%d/%m/%Y'),
         'etiqueta_mes': f"{MESES_ES[mov.fecha.month]} {mov.fecha.year}",
-        'pesos': pesos,
-        # Con el MISMO criterio con el que luego se aplica en la importación:
-        # una regla de «norauto» ya cubre a «norauto sevilla», y comparando los
-        # patrones a pelo se ofrecía aprender una regla que no hacía falta.
-        'ya_hay_regla': bool(_mejor_division(
-            mov, list(ReglaDivision.objects.filter(hogar=hogar, activo=True)),
-        )),
+        'pesos': [round(float(f) * 100, 1) for f in fracciones],
+        # Y si ya produce EXACTAMENTE este reparto. Antes bastaba con que
+        # existiera alguna, así que después de aprenderla una vez ya no se
+        # ofrecía corregirla nunca más.
+        'ya_hay_regla': bool(vigente) and reparto.coincide(vigente, partes),
+        'regla_desfasada': bool(vigente) and not reparto.coincide(vigente, partes),
     }
 
 
@@ -1619,6 +1651,14 @@ def aprender_division(request):
 
     El reparto viaja en PROPORCIONES, no en importes: la revisión de este año no
     cuesta lo que la del anterior. Cada recibo se parte en la misma forma.
+
+    Tres alcances, y el que se elige es también desde cuándo vale la regla:
+
+    * `todos`: todo el histórico del comercio, y la regla vale desde siempre.
+    * `adelante`: de la fecha de este recibo en adelante. Es el caso de un
+      recibo que cambia de forma —el seguro pasa de tres coberturas a cuatro—:
+      lo de antes se queda como estaba y la versión nueva rige a partir de ahí.
+    * `mes`: solo ese mes.
     """
     profile, hogar = _get_hogar(request)
     if not hogar:
@@ -1653,39 +1693,63 @@ def aprender_division(request):
         for p in partes_modelo
     ]
 
-    # «Solo recordar»: crea la regla sin tocar ningún movimiento. Es el segundo
-    # paso del aviso —primero se aplica con el alcance elegido y después se
-    # pregunta si además debe quedar así para siempre—.
-    if request.POST.get('accion') == 'solo_regla':
-        reparto.guardar_regla(hogar, patron, plantilla)
-        return JsonResponse({'ok': True, 'aplicados': 0, 'recordada': True})
+    ambito = request.POST.get('ambito') or ''
+    # La fecha de efecto SALE DEL ALCANCE, no se pregunta aparte: quien decide
+    # «de este recibo en adelante» está diciendo exactamente desde cuándo vale.
+    # Preguntarlo dos veces sería pedir la misma decisión con otras palabras.
+    if ambito == 'todos':
+        desde = None                       # la versión de siempre
+    elif ambito == 'mes':
+        desde = modelo.fecha.replace(day=1)
+    else:
+        desde = modelo.fecha               # «de aquí en adelante», y «solo este»
 
-    solo_mes = request.POST.get('ambito') == 'mes'
-    anio = _entero_o_none(request.POST.get('anio')) if solo_mes else None
-    mes = _entero_o_none(request.POST.get('mes')) if solo_mes else None
-    if solo_mes and not (anio and mes):
+    # «Solo recordar»: guarda la versión sin tocar ningún movimiento. Es el
+    # segundo paso del aviso —primero se aplica con el alcance elegido y después
+    # se pregunta si además debe quedar así para lo que venga—.
+    if request.POST.get('accion') == 'solo_regla':
+        reparto.guardar_regla(hogar, patron, plantilla, desde=desde)
+        return JsonResponse({
+            'ok': True, 'aplicados': 0, 'recordada': True,
+            'desde': desde.isoformat() if desde else None,
+        })
+
+    anio = _entero_o_none(request.POST.get('anio')) if ambito == 'mes' else None
+    mes = _entero_o_none(request.POST.get('mes')) if ambito == 'mes' else None
+    if ambito == 'mes' and not (anio and mes):
         return JsonResponse({'ok': False, 'error': 'mes_invalido'}, status=400)
 
     fracciones = reparto.proporciones([p['importe'] for p in plantilla])
 
     aplicados = 0
+    rehechos = 0
     with transaction.atomic():
-        for m in _divisibles(hogar, patron, excluir=modelo.pk, anio=anio, mes=mes):
+        candidatos = _divisibles(
+            hogar, patron, excluir=modelo.pk, anio=anio, mes=mes,
+            desde=modelo.fecha if ambito == 'adelante' else None,
+            # Corregir un reparto tiene que alcanzar a los que ya lo llevan mal:
+            # son justo los que hay que arreglar.
+            incluir_repartidos=True,
+        )
+        for m in candidatos:
             importes = reparto.repartir(m.importe, fracciones)
             partes = [
                 dict(plantilla[i], importe=importe) for i, importe in enumerate(importes)
             ]
             if not reparto.es_division_valida(partes):
                 continue
+            ya_estaba = m.esta_dividido
             reparto.crear_partes(m, partes)
             aplicados += 1
+            rehechos += 1 if ya_estaba else 0
 
-    if request.POST.get('recordar') == '1':
-        reparto.guardar_regla(hogar, patron, plantilla)
+    recordar = request.POST.get('recordar') == '1'
+    if recordar:
+        reparto.guardar_regla(hogar, patron, plantilla, desde=desde)
 
     return JsonResponse({
-        'ok': True, 'aplicados': aplicados,
-        'recordada': request.POST.get('recordar') == '1',
+        'ok': True, 'aplicados': aplicados, 'rehechos': rehechos,
+        'recordada': recordar, 'desde': desde.isoformat() if desde else None,
     })
 
 
@@ -2561,7 +2625,7 @@ def _categorias_por_bloque(hogar):
     ]
 
 
-def _encajan(hogar, patron, incluir_categorizados=False, anio=None, mes=None):
+def _encajan(hogar, patron, incluir_categorizados=False, anio=None, mes=None, desde=None):
     """Movimientos del hogar cuyo comercio o concepto contiene `patron`.
 
     Es el criterio ÚNICO de «este movimiento es de ese comercio»: lo usan tanto
@@ -2571,7 +2635,9 @@ def _encajan(hogar, patron, incluir_categorizados=False, anio=None, mes=None):
     Por defecto solo mira lo que está sin categorizar, para que aprender una
     regla nueva no pise clasificaciones que el usuario ya había dado por buenas.
     Con `anio` y `mes` se acota a ese mes: el caso de quien revisa un mes
-    concreto y no quiere tocar el histórico.
+    concreto y no quiere tocar el histórico. Con `desde`, de esa fecha en
+    adelante: el caso de un recibo que ha cambiado de forma y hay que corregir
+    a partir de ahí sin reescribir lo de antes.
     """
     patron = normalizar_texto(patron)
     if not patron:
@@ -2582,6 +2648,8 @@ def _encajan(hogar, patron, incluir_categorizados=False, anio=None, mes=None):
         candidatos = candidatos.filter(categoria__isnull=True)
     if anio and mes:
         candidatos = candidatos.filter(fecha__year=anio, fecha__month=mes)
+    if desde:
+        candidatos = candidatos.filter(fecha__gte=desde)
 
     # El filtrado va en Python porque hay que comparar contra el texto
     # normalizado (sin acentos ni signos), que no es lo que hay en la columna.

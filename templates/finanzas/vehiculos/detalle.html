@@ -84,23 +84,11 @@
         <div class="veh-card-head">
             <h3>Mes a mes</h3>
             <span class="veh-card-nota">
-                lo que pasó por el banco cada mes · la línea es la previsión mensual ({{ f.teorico_mensual|euro }}){% if f.provisiones_anual %} ·
-                los meses con <span class="veh-leyenda-provision"></span> llevan un pago de un gasto anual,
-                que no se suma a la barra para que no aplaste al resto{% endif %}
+                lo que pasó por el banco cada mes · pasa el ratón por un mes para ver qué fue
+                {% if f.teorico_mensual %}· la línea de puntos es la previsión ({{ f.teorico_mensual|euro }}/mes){% endif %}
             </span>
         </div>
-        <div class="veh-meses">
-            {% for m in f.por_mes %}
-            <div class="veh-mes" title="{{ m.etiqueta }}: {{ m.real|euro }}{% if m.provision %} de gasto corriente + {{ m.provision|euro }} de pagos anuales{% endif %}">
-                <div class="veh-mes-col">
-                    {% if m.provision %}<i class="de-provision" title="Pago de un gasto anual"></i>{% endif %}
-                    <i style="height:{{ m.pct|unlocalize }}%;"></i>
-                    {% if f.teorico_mensual %}<span class="veh-mes-linea" style="bottom:{{ m.pct_teorico|unlocalize }}%;"></span>{% endif %}
-                </div>
-                <span class="veh-mes-lbl">{{ m.etiqueta }}</span>
-            </div>
-            {% endfor %}
-        </div>
+        {% include "finanzas/_linea_mensual.html" with g=f.grafico_mensual gid=f.clave|slugify %}
     </section>
     {% endif %}
 
@@ -273,13 +261,6 @@
 .veh-cat-decl { color:var(--muted); }
 .veh-cat-dif { font-weight:700; min-width:62px; text-align:right; }
 
-.veh-meses { display:flex; gap:6px; align-items:flex-end; height:130px; }
-.veh-mes { flex:1; display:flex; flex-direction:column; align-items:center; gap:5px; height:100%; }
-.veh-mes-col { position:relative; flex:1; width:100%; background:var(--app-bg); border-radius:6px 6px 0 0; display:flex; align-items:flex-end; overflow:hidden; }
-.veh-mes-col i { display:block; width:100%; background:var(--vc); border-radius:6px 6px 0 0; }
-.veh-mes-linea { position:absolute; left:0; right:0; height:2px; background:var(--danger); opacity:.65; }
-.veh-mes-lbl { font-size:0.62rem; color:var(--muted); text-transform:uppercase; }
-
 .veh-movs { display:flex; flex-direction:column; }
 .veh-mov { display:grid; grid-template-columns:82px 1fr 130px auto; gap:12px; align-items:center;
     font-size:0.83rem; padding:8px 0; border-bottom:1px solid var(--border); }
@@ -296,15 +277,6 @@
 .veh-mini.peligro:hover { border-color:var(--danger); color:var(--danger); }
 .msg-toast { background:var(--surface); border-left:3px solid var(--primary-color); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
 .veh-provision { color:var(--info, #5f8fb0); font-size:0.74rem; }
-/* El pago de un gasto anual se marca arriba del mes en vez de sumarse a la
-   barra: sumado, septiembre tapaba a los otros once meses. */
-.veh-mes-col i.de-provision {
-    position:absolute; top:0; left:0; right:0; height:5px; border-radius:3px;
-    background:var(--info, #5f8fb0);
-}
-.veh-leyenda-provision {
-    display:inline-block; width:14px; height:4px; border-radius:2px; vertical-align:middle;
-    background:var(--info, #5f8fb0);
-}
 </style>
+{% include "finanzas/_linea_mensual_recursos.html" %}
 {% endblock %}

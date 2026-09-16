@@ -3032,15 +3032,22 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
         self.assertEqual(f['real_mensual'], Decimal('70'))
         self.assertEqual(f['partidas_sueltas'], [])
 
-    def test_la_serie_mensual_separa_el_pago_de_golpe(self):
-        """Sumado al mes en el que cae, septiembre era un rascacielos al lado
-        del que ningún otro mes se distinguía."""
+    def test_la_serie_mensual_lleva_todo_lo_que_paso_por_el_banco(self):
+        """La serie es de CAJA: para saber en qué mes se fue el dinero hay que
+        ver el dinero, incluido el mes en que tocó pagar la revisión.
+
+        Las doce barras de antes sacaban el pago anual de la barra para que no
+        aplastase al resto, y así contaban dos cosas a la vez sin dejar leer
+        ninguna. El desglose se sigue dando —corriente y anual van aparte en
+        cada mes—, pero el total del mes es el total del mes."""
         self.mov('-60', 7, self.gasolina)
         self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
 
         por_mes = {m['mes']: m for m in self.ficha()['por_mes']}
-        self.assertEqual(por_mes[7]['real'], Decimal('60'))
-        self.assertEqual(por_mes[9]['real'], Decimal('0'))
+        self.assertEqual(por_mes[7]['total'], Decimal('60'))
+        self.assertEqual(por_mes[7]['provision'], Decimal('0'))
+        self.assertEqual(por_mes[9]['total'], Decimal('1200'))
+        self.assertEqual(por_mes[9]['corriente'], Decimal('0'))
         self.assertEqual(por_mes[9]['provision'], Decimal('1200'))
 
     def test_avisa_si_la_partida_del_pago_no_está_imputada_al_activo(self):
@@ -3353,6 +3360,217 @@ class CosteAnualDeUnActivoTests(TestCase):
 
         for cifra in ('73,87', '886,46', '320,46', '566,00', '592,56', '468,00', '1.248,46'):
             self.assertContains(respuesta, cifra)
+
+
+class LineaMesAMesTests(TestCase):
+    """La gráfica del año: en qué mes se fue el dinero, y en qué.
+
+    Eran doce barras con los pagos anuales dibujados aparte para que no
+    aplastasen al resto. No se leía: ni el mes del pico, ni de qué era. Una
+    línea con su escala y una tarjeta al pasar por encima responde las dos.
+    """
+
+    def setUp(self):
+        from datetime import date
+        from core.models import Hogar
+        from extractos.models import ExtractoBancario, MovimientoBancario
+        from finanzas.models import CategoriaGasto, PartidaGasto, Vehiculo
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+        self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+        self.gasolina = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gasolina')
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        self.revision = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Revisión',
+            importe=Decimal('1200'), periodicidad='anual', vehiculo=self.coche,
+        )
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.MovimientoBancario = MovimientoBancario
+        self.date = date
+        self._n = 0
+
+    def mov(self, importe, mes, categoria=None, provision=None, concepto=None):
+        self._n += 1
+        return self.MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=self.date(2026, mes, 10),
+            concepto=concepto or f'Gasto {self._n}', importe=Decimal(importe),
+            categoria=categoria or self.gasolina, vehiculo=self.coche,
+            partida_conciliada=provision,
+        )
+
+    def grafico(self, hoy=(2026, 9, 15)):
+        from unittest import mock
+        from finanzas import costes_activo
+
+        with mock.patch('finanzas.costes_activo.date') as falso:
+            falso.today.return_value = self.date(*hoy)
+            return costes_activo.costes(self.coche, 2026)['grafico_mensual']
+
+    # ── El eje ───────────────────────────────────────────────────────────
+
+    def test_el_eje_sube_a_una_cifra_redonda(self):
+        """Sin redondear, el eje decía «1.249,34» y «624,67»: cifras que nadie
+        lee en un eje."""
+        self.mov('-1249.34', 9)
+        g = self.grafico()
+
+        self.assertEqual(g['tope'], Decimal('1500.00'))
+        self.assertEqual(
+            [m['valor'] for m in g['marcas']],
+            [Decimal('0'), Decimal('500'), Decimal('1000'), Decimal('1500')],
+        )
+
+    def test_el_eje_deja_sitio_a_la_prevision(self):
+        """Con un gasto pequeño y una previsión alta, la línea de referencia se
+        salía por arriba del marco."""
+        from finanzas.models import PartidaGasto
+
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.gasolina, nombre='Gasolina',
+            importe=Decimal('300'), periodicidad='mensual', vehiculo=self.coche,
+        )
+        self.mov('-20', 3)
+        g = self.grafico()
+
+        self.assertGreaterEqual(g['tope'], Decimal('300'))
+        self.assertGreaterEqual(g['y_teorico'], 0)
+
+    # ── La línea ─────────────────────────────────────────────────────────
+
+    def test_la_linea_se_corta_en_el_mes_en_curso(self):
+        """Un mes que aún no ha llegado no es un mes de cero euros: dibujarlo
+        desplomaba el año en curso a cero en octubre."""
+        self.mov('-100', 3)
+        g = self.grafico(hoy=(2026, 9, 15))
+
+        futuros = [m['etiqueta'] for m in g['meses'] if m['futuro']]
+        self.assertEqual(futuros, ['Oct', 'Nov', 'Dic'])
+        self.assertEqual(g['linea'].count(','), 9)      # de enero a septiembre
+
+    def test_un_año_cerrado_dibuja_los_doce_meses(self):
+        self.mov('-100', 3)
+        g = self.grafico(hoy=(2027, 4, 1))
+
+        self.assertEqual([m for m in g['meses'] if m['futuro']], [])
+        self.assertEqual(g['linea'].count(','), 12)
+
+    def test_un_mes_sin_gasto_es_un_cero_de_verdad(self):
+        self.mov('-100', 3)
+        por_mes = {m['mes']: m for m in self.grafico()['meses']}
+
+        self.assertEqual(por_mes[4]['total'], Decimal('0'))
+        self.assertEqual(por_mes[4]['num'], 0)
+        self.assertFalse(por_mes[4]['futuro'])
+
+    def test_se_etiqueta_el_mes_del_pico_y_solo_ese(self):
+        """Un número en cada punto es ruido que nadie lee; el del pico responde
+        a «¿en qué mes se me fue?» sin pasar el ratón."""
+        self.mov('-60', 3)
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
+
+        self.assertEqual(self.grafico()['pico']['etiqueta'], 'Sep')
+
+    # ── La tarjeta ───────────────────────────────────────────────────────
+
+    def test_cada_mes_lleva_sus_movimientos_para_la_tarjeta(self):
+        self.mov('-60', 3, concepto='Repsol')
+        self.mov('-25', 3, self.mantenimiento, concepto='Autolavado')
+        datos = {m['mes']: m for m in self.grafico()['datos']}
+
+        marzo = datos[3]
+        self.assertEqual(marzo['total'], 85.0)
+        self.assertEqual(marzo['num'], 2)
+        self.assertEqual(
+            sorted(x['concepto'] for x in marzo['movimientos']), ['Autolavado', 'Repsol'],
+        )
+        self.assertEqual(
+            sorted(x['categoria'] for x in marzo['movimientos']),
+            ['Gasolina', 'Mantenimiento vehicular'],
+        )
+
+    def test_la_tarjeta_separa_el_gasto_corriente_del_pago_anual(self):
+        self.mov('-60', 9)
+        self.mov('-1200', 9, self.mantenimiento, provision=self.revision)
+        septiembre = {m['mes']: m for m in self.grafico()['datos']}[9]
+
+        self.assertEqual(septiembre['total'], 1260.0)
+        self.assertEqual(septiembre['corriente'], 60.0)
+        self.assertEqual(septiembre['provision'], 1200.0)
+        self.assertTrue(
+            any(x['provision'] for x in septiembre['movimientos']),
+        )
+
+    def test_un_mes_con_muchos_movimientos_no_desborda_la_tarjeta(self):
+        from finanzas.costes_activo import MAXIMO_EN_LA_TARJETA
+
+        for _ in range(MAXIMO_EN_LA_TARJETA + 4):
+            self.mov('-10', 3)
+        marzo = {m['mes']: m for m in self.grafico()['datos']}[3]
+
+        self.assertEqual(len(marzo['movimientos']), MAXIMO_EN_LA_TARJETA)
+        self.assertEqual(marzo['ocultos'], 4)
+        # Pero el total sigue siendo el de todos.
+        self.assertEqual(marzo['total'], float(10 * (MAXIMO_EN_LA_TARJETA + 4)))
+
+    # ── En pantalla ──────────────────────────────────────────────────────
+
+    def test_la_ficha_del_vehiculo_pinta_la_linea(self):
+        from django.urls import reverse as url
+
+        self.mov('-60', 3)
+        respuesta = self.client.get(
+            url('finanzas:detalle_vehiculo', args=[self.coche.id]), {'anio': 2026},
+        )
+        self.assertContains(respuesta, 'lmes-linea')
+        self.assertContains(respuesta, 'lmes-datos-vehiculo')
+        # Y la tabla, que es lo que se lee sin ratón y sin JS.
+        self.assertContains(respuesta, 'Ver los meses en una tabla')
+
+    def test_la_pantalla_de_propiedades_pinta_la_suya(self):
+        from datetime import date as dia
+        from django.urls import reverse as url
+        from finanzas.models import CategoriaGasto, Propiedad
+
+        casa = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=dia(2020, 1, 1),
+            precio_compra=Decimal('100000'), valor_actual=Decimal('120000'),
+        )
+        self.MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=dia(2026, 5, 3),
+            concepto='Comunidad', importe=Decimal('-62'),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='Comunidad'),
+            propiedad=casa,
+        )
+
+        respuesta = self.client.get(url('finanzas:listar_propiedades'), {'anio': 2026})
+        self.assertContains(respuesta, 'lmes-linea')
+        self.assertContains(respuesta, 'lmes-datos-propiedad')
+
+    def test_los_recursos_del_grafico_van_una_sola_vez(self):
+        """En propiedades hay un gráfico por tarjeta: si el JS se incluyese con
+        cada uno, cada gesto se manejaría tantas veces como casas haya."""
+        from datetime import date as dia
+        from django.urls import reverse as url
+        from finanzas.models import Propiedad
+
+        for n in range(3):
+            Propiedad.objects.create(
+                hogar=self.hogar, nombre=f'Piso {n}', fecha_compra=dia(2020, 1, 1),
+                precio_compra=Decimal('100000'), valor_actual=Decimal('120000'),
+            )
+        cuerpo = self.client.get(
+            url('finanzas:listar_propiedades'), {'anio': 2026},
+        ).content.decode()
+        self.assertEqual(cuerpo.count('function mostrar(figura'), 1)
 
 
 class PeriodicidadPlurianualTests(TestCase):
