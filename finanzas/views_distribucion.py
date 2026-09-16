@@ -78,6 +78,7 @@ def vista_distribucion(request):
         'gastos_hogar': gastos_hogar,
         'profile': profile,
         'meses': MESES,
+        'bloques_gasto': SubsobreFondo._meta.get_field('bloque').choices,
         'mes_actual': mes,
         'anio_actual': anio,
         'anios': anios,
@@ -305,6 +306,13 @@ def crear_subsobres(request, fondo_id):
         solo_mes_raw = request.POST.get('solo_mes', '')
         solo_mes = int(solo_mes_raw) if solo_mes_raw.isdigit() else None
 
+        # Seguir un bloque del presupuesto o teclear una cifra, pero no las dos:
+        # guardar las dos deja un importe de adorno que no se aplica y que al
+        # leer la ficha parece el bueno.
+        bloque = request.POST.get('bloque', '') if request.POST.get('modo_importe') == 'bloque' else ''
+        if bloque not in dict(SubsobreFondo._meta.get_field('bloque').choices):
+            bloque = ''
+
         try:
             importe_manual = Decimal(request.POST.get('importe_manual', '0') or '0')
         except Exception:
@@ -320,12 +328,19 @@ def crear_subsobres(request, fondo_id):
 
             max_orden = SubsobreFondo.objects.filter(fondo=fondo).count()
             SubsobreFondo.objects.create(
-                fondo=fondo, nombre=nombre, tipo=tipo,
-                importe_manual=importe_manual if importe_manual > 0 else None,
+                fondo=fondo, nombre=nombre, tipo=tipo, bloque=bloque,
+                importe_manual=None if bloque else (importe_manual if importe_manual > 0 else None),
                 fondo_destino=fondo_destino, orden=max_orden,
                 solo_mes=solo_mes,
             )
-            messages.success(request, f"Distribución interna '{nombre}' añadida.")
+            if bloque:
+                messages.success(
+                    request,
+                    f"«{nombre}» añadido: sigue al bloque de gastos y se actualiza "
+                    "solo cuando lo cambies.",
+                )
+            else:
+                messages.success(request, f"Distribución interna '{nombre}' añadida.")
 
     return redirect('finanzas:vista_distribucion')
 

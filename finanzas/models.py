@@ -1325,7 +1325,17 @@ class SubsobreFondo(models.Model):
     partidas_vinculadas = models.ManyToManyField('PartidaGasto', blank=True,
         help_text='Si vinculas partidas, el importe se calcula sumando su importe_mensual.')
     importe_manual = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True,
-        help_text='Importe mensual fijo si no hay partidas vinculadas.')
+        help_text='Importe mensual fijo si no sigue a un bloque ni a unas partidas.')
+    # Seguir un bloque del presupuesto en vez de teclear una cifra. Es el caso
+    # del «Aporte Gastos Anuales»: lo que se aparta cada mes para los gastos
+    # anuales ES la provisión de ese bloque, y si se teclea a mano deja de
+    # cuadrar en cuanto se añade un gasto anual nuevo.
+    bloque = models.CharField(
+        max_length=20, blank=True, default='',
+        choices=[(t, ETIQUETAS_TIPO[t]) for t in TIPOS_GASTO],
+        help_text='Si se indica, el importe es lo que suma ese bloque del presupuesto, '
+                  'y se actualiza solo al añadir o cambiar gastos.',
+    )
     fondo_destino = models.ForeignKey('FondoFamiliar', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='subsobres_entrantes',
         help_text="Si se indica, el importe de este sobre se transfiere a otro fondo.")
@@ -1340,14 +1350,37 @@ class SubsobreFondo(models.Model):
     def __str__(self):
         return f"{self.fondo.nombre} → {self.nombre}"
 
-    @property
-    def importe_calculado(self):
-        if self.fondo_destino_id:
-            return self.importe_manual or Decimal('0')
+    def importe_en(self, limites_bloque=None):
+        """Lo que mueve este movimiento al mes, de más automático a más manual.
+
+        `limites_bloque` es el `{bloque: importe/mes}` del presupuesto ya
+        calculado. Se pasa desde fuera porque el motor de distribución recorre
+        todos los subsobres y consultarlo dentro sería una consulta por cada uno.
+
+        Antes, un movimiento HACIA OTRO FONDO devolvía el importe tecleado y
+        punto: ni miraba las partidas vinculadas, aunque el propio campo promete
+        que lo hace. Es lo que dejaba el «Aporte Gastos Anuales» clavado en la
+        cifra del día que se creó mientras el bloque de anuales seguía subiendo.
+        """
+        if self.bloque:
+            if limites_bloque is None:
+                from . import presupuesto
+                limites_bloque = presupuesto.por_bloque(self.fondo.hogar_id)
+            return limites_bloque.get(self.bloque) or Decimal('0')
+
         partidas = self.partidas_vinculadas.filter(activo=True)
         if partidas.exists():
             return sum(p.importe_mensual for p in partidas)
         return self.importe_manual or Decimal('0')
+
+    @property
+    def importe_calculado(self):
+        return self.importe_en()
+
+    @property
+    def sigue_al_presupuesto(self):
+        """¿El importe lo pone el presupuesto o lo tecleó el usuario?"""
+        return bool(self.bloque) or self.partidas_vinculadas.filter(activo=True).exists()
 
     @property
     def es_transferencia(self):

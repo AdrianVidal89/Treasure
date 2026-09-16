@@ -154,6 +154,11 @@
                     <span class="cascada-ruta">{{ fa.fondo.nombre }} → {% if ss.fondo_destino %}{{ ss.fondo_destino.nombre }}{% else %}reserva dentro del fondo{% endif %}{% if ss.solo_mes %} · solo {{ ss.solo_mes_display }}{% endif %}</span>
                 </div>
                 <div class="cascada-acciones">
+                    {% comment %}Decir de dónde sale la cifra es lo que evita mirarla
+                       dos veces: una que se actualiza sola y una tecleada se leen
+                       igual y no son lo mismo.{% endcomment %}
+                    {% if ss.bloque %}<span class="cascada-auto" title="Sigue al presupuesto: se actualiza solo al añadir o cambiar gastos de ese bloque.">= {{ ss.bloque_display }}</span>
+                    {% else %}<span class="cascada-auto fijo" title="Importe fijo que escribiste tú: NO cambia al tocar el presupuesto. Para que siga a un bloque, bórralo y créalo de nuevo eligiendo el bloque.">fijo</span>{% endif %}
                     <span class="cascada-importe">€{{ ss.importe|floatformat:2 }}</span>
                     <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
                 </div>
@@ -390,7 +395,29 @@
             </div>
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" required></div>
             <div class="fg"><label>Tipo</label><select name="tipo"><option value="libre">Libre</option><option value="gasto_fijo">Gasto fijo</option><option value="gasto_variable">Gasto variable</option><option value="discrecional">Discrecional</option></select></div>
-            <div class="fg"><label>Importe (€/mes)</label><input type="number" name="importe_manual" step="0.01" min="0" value="0"></div>
+            {% comment %}
+            Un importe tecleado deja de cuadrar en cuanto se toca el presupuesto.
+            Lo que se aparta cada mes para los gastos anuales ES la provisión de
+            ese bloque, así que se puede decir eso y olvidarse.
+            {% endcomment %}
+            <div class="fg">
+                <label>¿De dónde sale el importe?</label>
+                <select name="modo_importe" id="ss-modo">
+                    <option value="bloque">Lo que suma un bloque del presupuesto</option>
+                    <option value="fijo">Un importe fijo que escribo yo</option>
+                </select>
+            </div>
+            <div class="fg" id="ss-fg-bloque">
+                <label>Bloque</label>
+                <select name="bloque">
+                    {% for valor, etiqueta in bloques_gasto %}<option value="{{ valor }}" {% if valor == 'anual' %}selected{% endif %}>{{ etiqueta }}</option>{% endfor %}
+                </select>
+                <p class="fg-nota">Se actualiza solo cuando añadas o cambies gastos de ese bloque.</p>
+            </div>
+            <div class="fg" id="ss-fg-fijo" hidden>
+                <label>Importe (€/mes)</label>
+                <input type="number" name="importe_manual" step="0.01" min="0" value="0">
+            </div>
             <div class="fg"><label>Fondo de destino</label><select name="fondo_destino_id"><option value="">— Se queda reservado en el fondo de origen —</option>{% for f in fondos %}<option value="{{ f.id }}">{{ f.nombre }}</option>{% endfor %}</select></div>
             <div class="fg">
                 <label>¿Cuándo aplica?</label>
@@ -432,6 +459,14 @@
 .paso-sub-bloque { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 .btn-mini { font-size:0.75rem; padding:7px 12px; }
 
+.fg-nota { font-size:0.72rem; color:var(--muted); margin:5px 0 0; }
+.cascada-auto {
+    font-size:0.68rem; color:var(--muted); border:1px solid var(--border-strong);
+    border-radius:999px; padding:2px 8px; white-space:nowrap;
+}
+/* Una cifra que se actualiza sola y una tecleada se leen igual y no son lo
+   mismo: la que no sigue a nada lo dice, para no tener que mirarla dos veces. */
+.cascada-auto.fijo { border-style:dashed; opacity:.75; }
 /* Movimientos entre fondos */
 .cascada-row {
     display:flex; justify-content:space-between; align-items:center; gap:12px;
@@ -674,6 +709,15 @@ function abrirModalSubsobre(){
     document.getElementById('ss-fondo-origen').value='';
     document.getElementById('modal-subsobre').style.display='flex';
 }
+/* Enseña solo el campo del modo elegido: con los dos a la vista, uno siempre
+   está de adorno y se rellena sin efecto. */
+document.addEventListener('change', function (e) {
+    if (!e.target || e.target.id !== 'ss-modo') return;
+    var porBloque = e.target.value === 'bloque';
+    document.getElementById('ss-fg-bloque').hidden = !porBloque;
+    document.getElementById('ss-fg-fijo').hidden = porBloque;
+});
+
 function prepararSubsobre(){
     /* El fondo de origen va en la URL, no en el formulario. */
     var origen=document.getElementById('ss-fondo-origen').value;
