@@ -1,0 +1,86 @@
+{% load custom_filters %}
+{% comment %}
+Apuntar a mano lo que no pasa por el banco: el bar, el mercadillo, lo que se
+pagó en efectivo. Sin esto el mes dice que gastaste menos de lo que gastaste.
+
+El importe se pide EN POSITIVO y aparte si es gasto o ingreso: escribir el signo
+a mano es la forma más fácil de meter un ingreso de 40 € donde iba un gasto, y
+el error no se ve hasta que los totales no cuadran.
+{% endcomment %}
+<div class="ext-modal" id="ext-modal-manual" hidden>
+    <div class="ext-modal-fondo" data-cerrar-manual></div>
+    <div class="ext-modal-caja ext-caja-manual" role="dialog" aria-modal="true"
+         aria-labelledby="ext-manual-titulo">
+        <div class="ext-modal-head">
+            <span class="ext-modal-titulo" id="ext-manual-titulo">Apuntar un movimiento</span>
+            <button type="button" class="ext-modal-cerrar" data-cerrar-manual aria-label="Cerrar">&times;</button>
+        </div>
+        <form method="post" action="{% url 'extractos:crear_movimiento' %}" class="ext-modal-cuerpo">
+            {% csrf_token %}
+            <input type="hidden" name="volver_a" value="{{ request.get_full_path }}">
+
+            <p class="ext-manual-intro">
+                Para lo que pagas en efectivo y no aparece en ningún extracto.
+                Después se edita desde su fila como cualquier otro.
+            </p>
+
+            <div class="ext-manual-rejilla">
+                <label class="ext-manual-campo">
+                    <span>Fecha</span>
+                    <input type="date" name="fecha" required value="{{ panel.fecha_hoy|date:'Y-m-d' }}">
+                </label>
+
+                <label class="ext-manual-campo tipo">
+                    <span>Qué es</span>
+                    <select name="tipo">
+                        <option value="gasto" selected>Gasto</option>
+                        <option value="ingreso">Ingreso</option>
+                    </select>
+                </label>
+
+                <label class="ext-manual-campo">
+                    <span>Importe</span>
+                    <input type="number" name="importe" step="0.01" min="0.01"
+                           inputmode="decimal" placeholder="12,40" required>
+                </label>
+
+                <label class="ext-manual-campo ancho">
+                    <span>Concepto</span>
+                    <input type="text" name="concepto" maxlength="300" required
+                           placeholder="Bar Manolo, mercadillo, taxi…">
+                </label>
+
+                <label class="ext-manual-campo ancho">
+                    <span>Categoría <em>si la dejas en blanco se intenta adivinar</em></span>
+                    <select name="categoria_id">
+                        <option value="">— que la decida la aplicación —</option>
+                        {% for b in panel.bloques_categorias %}
+                        <optgroup label="{{ b.etiqueta }}">
+                            {% for c in b.categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}
+                        </optgroup>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
+                <label class="ext-manual-campo ancho">
+                    <span>¿Es de un vehículo o una propiedad?</span>
+                    <select name="activo">
+                        <option value="">— de ninguno —</option>
+                        {% for g in panel.grupos_activos %}{% if g.opciones %}
+                        <optgroup label="{{ g.etiqueta }}">
+                            {% for o in g.opciones %}<option value="{{ o.clave }}">{{ o.nombre }}</option>{% endfor %}
+                        </optgroup>
+                        {% endif %}{% endfor %}
+                    </select>
+                </label>
+                {% endif %}
+            </div>
+
+            <div class="ext-manual-pie">
+                <button type="button" class="btn btn-ghost btn-sm" data-cerrar-manual>Cancelar</button>
+                <button type="submit" class="btn btn-primary btn-sm">Apuntar</button>
+            </div>
+        </form>
+    </div>
+</div>

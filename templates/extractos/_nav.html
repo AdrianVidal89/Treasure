@@ -19,6 +19,16 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
         <svg class="icon"><use href="#i-refresh"/></svg> Reglas
         {% if num_reglas %}<span class="ext-nav-badge suave">{{ num_reglas }}</span>{% endif %}
     </a>
+    {% comment %}
+    Lo pagado en efectivo no está en ningún extracto, y sin poder apuntarlo el
+    mes dice que gastaste menos de lo que gastaste. Va al lado de «Importar»
+    porque son las dos formas de meter un movimiento.
+    {% endcomment %}
+    {% if activo == 'movimientos' %}
+    <button type="button" class="ext-nav-manual btn btn-secondary" id="ext-abrir-manual">
+        <svg class="icon"><use href="#i-plus"/></svg> A mano
+    </button>
+    {% endif %}
     <a href="{% url 'extractos:subir' %}" class="ext-nav-importar btn btn-primary">
         <svg class="icon"><use href="#i-upload"/></svg> Importar
     </a>
@@ -48,7 +58,10 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
     padding:1px 7px; border-radius:999px; line-height:1.5;
 }
 .ext-nav-badge.suave { background:var(--surface-2, var(--app-bg)); color:var(--muted); }
-.ext-nav-importar { margin-left:auto; margin-bottom:6px; flex-shrink:0; }
+.ext-nav-importar { margin-bottom:6px; flex-shrink:0; }
+.ext-nav-manual { margin-left:auto; margin-right:8px; margin-bottom:6px; flex-shrink:0; }
+/* Sin el botón «a mano» delante, «Importar» es quien se separa del resto. */
+.ext-nav > .ext-nav-importar:first-of-type { margin-left:auto; }
 @media (max-width:760px) {
     .ext-nav-tab { padding:10px 9px; font-size:0.8rem; }
     .ext-nav-tab .icon { display:none; }

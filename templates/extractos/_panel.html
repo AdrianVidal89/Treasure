@@ -1038,6 +1038,13 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     border:1px solid var(--primary-color); background:var(--app-bg); color:var(--text-color); width:150px;
 }
 .ext-badge-neutro { font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); border:1px solid var(--border-strong); border-radius:999px; padding:1px 7px; }
+/* Saber qué dato viene del banco y cuál has puesto tú es la diferencia entre
+   fiarte de una cifra y tener que comprobarla. */
+.ext-badge-manual {
+    font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; font-weight:700;
+    color:var(--info, #5f8fb0); border:1px solid color-mix(in srgb, var(--info, #5f8fb0) 45%, transparent);
+    border-radius:999px; padding:1px 7px;
+}
 .ext-badge-reserva {
     font-size:0.64rem; font-weight:700; letter-spacing:.02em;
     color:var(--success, #4f8a5b); border:1px solid color-mix(in srgb, var(--success, #4f8a5b) 45%, transparent);
@@ -1357,6 +1364,22 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     font-size:0.76rem; text-decoration:underline; cursor:pointer; white-space:nowrap;
 }
 .ext-cubrir-soltar:hover { color:var(--danger); }
+.ext-manual-intro { font-size:0.82rem; color:var(--muted); margin:0 0 16px; }
+.ext-manual-rejilla { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+.ext-manual-campo { display:flex; flex-direction:column; gap:5px; font-size:0.78rem; }
+.ext-manual-campo.ancho { grid-column:1/-1; }
+.ext-manual-campo > span { color:var(--muted); font-weight:600; }
+.ext-manual-campo > span em { font-style:normal; font-weight:400; opacity:.8; }
+.ext-manual-campo input, .ext-manual-campo select {
+    background:var(--app-bg); color:var(--text-color); border:1px solid var(--border-strong);
+    border-radius:8px; padding:9px 11px; font-size:0.86rem; width:100%;
+}
+.ext-manual-campo input:focus, .ext-manual-campo select:focus {
+    outline:none; border-color:var(--primary-color);
+}
+.ext-manual-pie { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+@media (max-width:560px){ .ext-manual-rejilla { grid-template-columns:1fr 1fr; } }
+
 .ext-dividir-intro { font-size:0.86rem; margin:0 0 14px; }
 .ext-parte { display:grid; grid-template-columns:1.2fr 1fr 1fr 105px 24px; gap:8px; margin-bottom:8px; align-items:center; }
 .ext-parte input, .ext-parte select {

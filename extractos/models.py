@@ -1,5 +1,6 @@
 import hashlib
 from decimal import Decimal, InvalidOperation
+from uuid import uuid4
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -282,8 +283,19 @@ class MovimientoBancario(ImputableAActivo):
         ('manual', 'Categorizado manualmente'),
     ]
 
+    # En blanco para los apuntes metidos A MANO: un pago en efectivo no viene de
+    # ningún archivo, y obligarlo a colgar de un extracto inventado ensuciaría la
+    # lista de extractos importados con uno que nadie subió.
     extracto = models.ForeignKey(
         ExtractoBancario, on_delete=models.CASCADE, related_name='movimientos',
+        null=True, blank=True,
+    )
+    # Lo metió el usuario, no salió de un extracto. Se marca en la fila porque
+    # saber qué dato viene del banco y cuál has puesto tú es la diferencia entre
+    # fiarte de una cifra y tener que comprobarla.
+    manual = models.BooleanField(
+        default=False,
+        help_text='Apunte introducido a mano (un pago en efectivo), no importado.',
     )
     # Denormalizado para consultas y para la restricción de deduplicación por hogar.
     hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='movimientos_bancarios')
@@ -536,14 +548,23 @@ class MovimientoBancario(ImputableAActivo):
     def save(self, *args, **kwargs):
         if not self.comercio:
             self.comercio = normalizar_comercio(self.concepto)
-        # El hash se recalcula siempre a partir de los valores actuales: si solo
-        # se rellenara cuando está vacío, editar el concepto o el importe
-        # dejaría un hash obsoleto y la deduplicación de futuras importaciones
-        # compararía contra datos que ya no existen.
-        self.hash_dedupe = self.calcular_hash(
-            self.fecha, self.concepto, self.importe, self.saldo,
-            parte_de=self.dividido_de_id, orden=self.orden_parte,
-        )
+        if self.manual:
+            # Un apunte a mano no se deduplica contra nada: no va a llegar en
+            # ningún extracto. Y dos cafés de 1,50 € el mismo día son dos cafés,
+            # no un duplicado: con el hash normal el segundo chocaría contra el
+            # unique (hogar, hash) y no se podría guardar. Se le da una huella
+            # propia la primera vez y ya no se toca.
+            if not self.hash_dedupe:
+                self.hash_dedupe = uuid4().hex
+        else:
+            # El hash se recalcula siempre a partir de los valores actuales: si
+            # solo se rellenara cuando está vacío, editar el concepto o el
+            # importe dejaría un hash obsoleto y la deduplicación de futuras
+            # importaciones compararía contra datos que ya no existen.
+            self.hash_dedupe = self.calcular_hash(
+                self.fecha, self.concepto, self.importe, self.saldo,
+                parte_de=self.dividido_de_id, orden=self.orden_parte,
+            )
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             kwargs['update_fields'] = set(update_fields) | {'comercio', 'hash_dedupe'}

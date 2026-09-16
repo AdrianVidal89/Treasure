@@ -3094,6 +3094,190 @@ class RepartoAprendidoTests(TestCase):
         self.assertEqual(modelo.partes.count(), 2)
 
 
+class ApuntarAManoTests(TestCase):
+    """Lo pagado en efectivo no está en ningún extracto.
+
+    Sin poder apuntarlo, el mes dice que gastaste menos de lo que gastaste: la
+    cifra es «lo que movió la cuenta» y no «lo que gastaste», que es la que se
+    quiere.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.restaurantes = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Restaurantes')
+
+    def apuntar(self, **campos):
+        datos = {
+            'fecha': '2026-09-14', 'concepto': 'Bar Manolo',
+            'importe': '12.40', 'tipo': 'gasto',
+        }
+        datos.update(campos)
+        return self.client.post(reverse('extractos:crear_movimiento'), datos, follow=True)
+
+    def ultimo(self):
+        return MovimientoBancario.objects.filter(hogar=self.hogar).order_by('-id').first()
+
+    # ── Lo básico ────────────────────────────────────────────────────────
+
+    def test_apunta_un_gasto_en_efectivo(self):
+        self.apuntar()
+        m = self.ultimo()
+
+        self.assertEqual(m.concepto, 'Bar Manolo')
+        self.assertEqual(m.importe, Decimal('-12.40'))     # el signo lo pone «tipo»
+        self.assertEqual(m.fecha, date(2026, 9, 14))
+        self.assertTrue(m.manual)
+        self.assertIsNone(m.extracto)                      # no viene de ningún archivo
+        self.assertTrue(m.cuenta_como_gasto)
+
+    def test_un_ingreso_entra_en_positivo(self):
+        self.apuntar(tipo='ingreso', concepto='Venta de la bici', importe='80')
+        self.assertEqual(self.ultimo().importe, Decimal('80'))
+
+    def test_el_importe_se_pide_en_positivo(self):
+        """Escribir el signo a mano es la forma más fácil de meter un ingreso
+        donde iba un gasto, y no se ve hasta que los totales no cuadran."""
+        self.apuntar(importe='-12.40')
+        self.assertIsNone(self.ultimo())
+
+    def test_sin_fecha_concepto_o_importe_no_se_guarda_nada(self):
+        for falta in ('fecha', 'concepto', 'importe'):
+            with self.subTest(falta=falta):
+                self.apuntar(**{falta: ''})
+                self.assertIsNone(self.ultimo())
+
+    def test_una_fecha_inventada_no_se_guarda(self):
+        self.apuntar(fecha='31/02/2026')
+        self.assertIsNone(self.ultimo())
+
+    # ── Dos cafés iguales el mismo día ───────────────────────────────────
+
+    def test_dos_apuntes_identicos_el_mismo_dia_son_dos_apuntes(self):
+        """Dos cafés de 1,50 € el martes son dos cafés, no un duplicado. Con el
+        hash de deduplicación normal, el segundo chocaba contra el unique del
+        hogar y no se podía guardar."""
+        self.apuntar(concepto='Café', importe='1.50')
+        self.apuntar(concepto='Café', importe='1.50')
+
+        cafes = MovimientoBancario.objects.filter(hogar=self.hogar, concepto='Café')
+        self.assertEqual(cafes.count(), 2)
+        self.assertNotEqual(*[c.hash_dedupe for c in cafes])
+
+    def test_editarlo_no_le_cambia_la_huella(self):
+        """No hay nada contra lo que deduplicar un apunte a mano: su huella es
+        suya y no se recalcula al tocarlo."""
+        self.apuntar()
+        m = self.ultimo()
+        huella = m.hash_dedupe
+
+        m.concepto = 'Bar Manolo (cena)'
+        m.save()
+        m.refresh_from_db()
+        self.assertEqual(m.hash_dedupe, huella)
+
+    # ── Se integra con el resto ──────────────────────────────────────────
+
+    def test_la_categoria_elegida_manda(self):
+        self.apuntar(categoria_id=self.restaurantes.id)
+        m = self.ultimo()
+        self.assertEqual(m.categoria, self.restaurantes)
+        self.assertEqual(m.estado_categorizacion, 'manual')
+
+    def test_sin_categoria_se_intenta_adivinar(self):
+        """El mismo criterio que al importar: meter «Mercadona» a mano tiene que
+        acabar donde acaban los demás Mercadona."""
+        self.apuntar(concepto='Mercadona centro', categoria_id='')
+        m = self.ultimo()
+        self.assertEqual(m.categoria.nombre, 'Alimentacion')
+        self.assertEqual(m.estado_categorizacion, 'por_codigo')
+
+    def test_una_regla_aprendida_tambien_vale(self):
+        ReglaCategorizacion.objects.create(
+            hogar=self.hogar, patron='bar manolo', categoria=self.restaurantes,
+        )
+        self.apuntar(categoria_id='')
+        m = self.ultimo()
+        self.assertEqual(m.categoria, self.restaurantes)
+        self.assertEqual(m.estado_categorizacion, 'por_regla')
+
+    def test_se_puede_imputar_a_un_vehiculo(self):
+        from finanzas.models import Vehiculo
+
+        coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Polo', tipo='coche')
+        self.apuntar(concepto='Lavadero a mano', activo=coche.clave_activo)
+        self.assertEqual(self.ultimo().vehiculo, coche)
+
+    def test_cuenta_en_los_totales_del_mes(self):
+        self.apuntar(importe='12.40', categoria_id=self.restaurantes.id)
+        panel = self.client.get(
+            reverse('extractos:listar'), {'anio': 2026, 'mes': 9},
+        ).context['panel']
+
+        self.assertEqual(panel['kpi_gasto_abs'], Decimal('12.40'))
+        self.assertEqual(panel['grupos'][0]['gastos'], Decimal('-12.40'))
+
+    def test_no_ensucia_los_totales_de_los_extractos_importados(self):
+        """No salió de ningún archivo: sumarlo ahí diría que el banco trajo algo
+        que no trajo."""
+        extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        MovimientoBancario.objects.create(
+            extracto=extracto, hogar=self.hogar, fecha=date(2026, 9, 2),
+            concepto='Nomina', importe=Decimal('1500'),
+        )
+        self.apuntar()
+
+        extracto.refresh_from_db()
+        self.assertEqual(extracto.total_gastos, 0)
+        self.assertEqual(extracto.total_ingresos, Decimal('1500'))
+
+    def test_se_puede_borrar_aunque_no_tenga_extracto(self):
+        """Pedirle `num_movimientos` a un extracto que no existe reventaba el
+        borrado."""
+        self.apuntar()
+        m = self.ultimo()
+
+        respuesta = self.client.post(
+            reverse('extractos:eliminar_movimiento', args=[m.id]),
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertTrue(respuesta.json()['ok'])
+        self.assertIsNone(self.ultimo())
+
+    def test_se_puede_repartir_como_cualquier_otro(self):
+        """Un cobro en efectivo también puede ser varias cosas a la vez."""
+        self.apuntar(importe='60')
+        m = self.ultimo()
+        alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+
+        self.client.post(reverse('extractos:dividir_movimiento', args=[m.id]), {
+            'importe': ['-40', '-20'],
+            'categoria_id': [str(self.restaurantes.id), str(alimentacion.id)],
+            'concepto': ['Cena', 'Compra'],
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertEqual(m.partes.count(), 2)
+        self.assertEqual(sum(p.importe for p in m.partes.all()), m.importe)
+        # Y las partes heredan el «no viene del banco» de su padre.
+        self.assertEqual({p.extracto_id for p in m.partes.all()}, {None})
+
+    def test_la_fila_dice_que_lo_pusiste_tu(self):
+        self.apuntar(categoria_id=self.restaurantes.id)
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
+        self.assertContains(respuesta, 'ext-badge-manual')
+
+    def test_la_pantalla_ofrece_apuntarlo(self):
+        respuesta = self.client.get(reverse('extractos:listar'))
+        self.assertContains(respuesta, 'ext-abrir-manual')
+        self.assertContains(respuesta, 'Apuntar un movimiento')
+
+
 class CuadranLasCuentasConUnRepartoTests(TestCase):
     """Un cobro repartido no puede sumar en ningún sitio. Cuentan sus partes.
 
