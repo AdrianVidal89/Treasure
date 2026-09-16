@@ -1,0 +1,134 @@
+{% load custom_filters %}
+{% load l10n %}
+{% comment %}
+La línea del año: lo que pasó por el banco cada mes.
+
+Antes esto eran doce barras con los pagos anuales dibujados aparte para que no
+aplastasen al resto. Contaba dos cosas a la vez y no se leía ninguna: para
+saber en qué mes se fue el dinero hay que ver el dinero, incluido el mes en que
+tocó pagar la revisión. Con una línea y una escala que se ajusta, el pico de
+septiembre es justo lo que hay que ver.
+
+Recibe `g` (el gráfico ya calculado) y `gid` (un identificador único, porque en
+propiedades hay uno por tarjeta en la misma página).
+
+Las marcas van en SVG estirado —con el trazo sin escalar— y el texto y los
+puntos en HTML por encima, colocados por porcentaje: así se leen igual en la
+ficha del coche, que es ancha, y en la tarjeta de una propiedad, que es la
+mitad de estrecha.
+{% endcomment %}
+
+<figure class="lmes" id="lmes-{{ gid }}">
+    <div class="lmes-lienzo"
+         {% if g.hay_datos %}tabindex="0" role="application"
+         aria-label="Gasto mes a mes. Usa las flechas para recorrer los meses."{% endif %}>
+
+        {% for m in g.marcas %}
+        <span class="lmes-ytick" style="top:{{ m.pct_y|unlocalize }}%;">{{ m.valor|euro:0 }}</span>
+        {% endfor %}
+
+        {% comment %}Todo lo que se coloca por porcentaje va dentro del área de
+           dibujo, que empieza donde acaba el canal del eje: así el «5,4 %» de
+           enero es el 5,4 % de la zona de datos y no del canal incluido.{% endcomment %}
+        <div class="lmes-plot">
+
+        <svg class="lmes-svg" viewBox="0 0 {{ g.ancho }} {{ g.alto }}"
+             preserveAspectRatio="none" aria-hidden="true" focusable="false">
+            {% for m in g.marcas %}
+            <line class="lmes-rejilla" x1="{{ g.x_min|unlocalize }}" x2="{{ g.x_max|unlocalize }}"
+                  y1="{{ m.y|unlocalize }}" y2="{{ m.y|unlocalize }}" vector-effect="non-scaling-stroke"/>
+            {% endfor %}
+
+            {% if g.y_teorico %}
+            {% comment %}La previsión mensual es el listón contra el que se lee la
+               línea, no una segunda serie: va de referencia, discontinua y
+               recesiva.{% endcomment %}
+            <line class="lmes-teorico" x1="{{ g.x_min|unlocalize }}" x2="{{ g.x_max|unlocalize }}"
+                  y1="{{ g.y_teorico|unlocalize }}" y2="{{ g.y_teorico|unlocalize }}"
+                  vector-effect="non-scaling-stroke"/>
+            {% endif %}
+
+            {% if g.area %}<path class="lmes-area" d="{{ g.area }}"/>{% endif %}
+            {% if g.hay_linea %}
+            <polyline class="lmes-linea" points="{{ g.linea }}" vector-effect="non-scaling-stroke"/>
+            {% endif %}
+        </svg>
+
+        {% if g.y_teorico %}
+        <span class="lmes-teorico-lbl" style="top:{{ g.pct_teorico|unlocalize }}%;"
+              title="Lo que tienes presupuestado al mes para este activo">previsión</span>
+        {% endif %}
+
+        {% for m in g.meses %}
+        {% if not m.futuro %}
+        <span class="lmes-punto{% if not m.num %} vacio{% endif %}{% if m.provision %} anual{% endif %}"
+              style="left:{{ m.pct_x|unlocalize }}%;top:{{ m.pct_y|unlocalize }}%;"
+              data-mes="{{ m.mes }}" aria-hidden="true"></span>
+        {% endif %}
+        {% endfor %}
+
+        {% if g.pico and g.pico.total %}
+        {% comment %}Un solo número sobre la línea: el mes que responde a «¿en qué
+           mes se me fue?». Uno en cada punto sería ruido que nadie lee.{% endcomment %}
+        <span class="lmes-pico" style="left:{{ g.pico.pct_x|unlocalize }}%;top:{{ g.pico.pct_y|unlocalize }}%;">
+            {{ g.pico.total|euro:0 }}
+        </span>
+        {% endif %}
+
+        <span class="lmes-cruz" id="lmes-cruz-{{ gid }}" hidden></span>
+
+        {% for m in g.meses %}
+        <button type="button" class="lmes-zona" tabindex="-1"
+                style="left:{{ m.zona_izq|unlocalize }}%;width:{{ m.zona_ancho|unlocalize }}%;"
+                data-mes="{{ m.mes }}" data-x="{{ m.pct_x|unlocalize }}"
+                data-y="{{ m.pct_y|default_if_none:50|unlocalize }}"
+                aria-label="{{ m.etiqueta }}: {{ m.total|euro }}"></button>
+        {% endfor %}
+
+        {% if not g.hay_datos %}
+        <span class="lmes-vacio">Todavía no hay movimientos imputados este año</span>
+        {% endif %}
+        </div>
+
+    {% comment %}
+    La tarjeta enseña, no guarda: todo lo que dice está también en la tabla de
+    abajo, que se lee sin ratón y sin JS.
+    {% endcomment %}
+    <div class="lmes-tarjeta" id="lmes-card-{{ gid }}" role="tooltip" hidden>
+        <div class="lmes-card-head">
+            <span class="lmes-card-mes"></span>
+            <strong class="lmes-card-total"></strong>
+        </div>
+        <div class="lmes-card-sub"></div>
+        <div class="lmes-card-movs"></div>
+    </div>
+    </div>
+
+    <div class="lmes-eje">
+        {% for m in g.meses %}
+        <span class="lmes-mes{% if m.futuro %} futuro{% endif %}"
+              style="left:{{ m.pct_x|unlocalize }}%;">{{ m.etiqueta }}</span>
+        {% endfor %}
+    </div>
+
+
+    {% if g.hay_datos %}
+    <details class="lmes-tabla">
+        <summary>Ver los meses en una tabla</summary>
+        <table>
+            <thead><tr><th>Mes</th><th class="num">Movimientos</th><th class="num">Gasto</th></tr></thead>
+            <tbody>
+                {% for m in g.meses %}{% if not m.futuro %}
+                <tr>
+                    <td>{{ m.etiqueta }}</td>
+                    <td class="num">{{ m.num }}</td>
+                    <td class="num">{{ m.total|euro }}</td>
+                </tr>
+                {% endif %}{% endfor %}
+            </tbody>
+        </table>
+    </details>
+    {% endif %}
+</figure>
+
+{% with id_datos="lmes-datos-"|add:gid %}{{ g.datos|json_script:id_datos }}{% endwith %}

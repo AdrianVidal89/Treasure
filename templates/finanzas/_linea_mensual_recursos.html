@@ -1,0 +1,271 @@
+{% comment %}
+Los estilos y el comportamiento de la línea mensual, aparte del dibujo porque en
+propiedades hay un gráfico por tarjeta en la misma página: el marcado se repite,
+esto se incluye UNA vez. El JS va delegado en el documento, así que sirve para
+todos los gráficos que haya, y para los que aparezcan después.
+{% endcomment %}
+<style>
+/* `relative` porque la tarjeta se coloca contra ESTA caja: sin él buscaba el
+   primer ancestro posicionado que hubiese por encima y aparecía en cualquier
+   sitio de la pantalla. */
+.lmes { margin:0; position:relative; }
+.lmes-lienzo {
+    position:relative; height:180px; margin:0 0 2px;
+    border-radius:10px; outline-offset:3px;
+}
+/* El canal del eje Y es un margen en píxeles, no un porcentaje: «1.500 €» ocupa
+   lo mismo en la ficha ancha del coche que en la tarjeta estrecha de una casa. */
+.lmes-plot { position:absolute; inset:0 2px 0 52px; }
+.lmes-svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+.lmes-rejilla { stroke:var(--border); stroke-width:1; }
+/* La previsión es una referencia, no una serie: discontinua y recesiva, para
+   que no compita con la línea del gasto. */
+.lmes-teorico { stroke:var(--muted); stroke-width:1; stroke-dasharray:4 4; opacity:.7; }
+.lmes-area { fill:var(--primary-color); opacity:.10; }
+.lmes-linea { fill:none; stroke:var(--primary-color); stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+
+/* Texto y puntos en HTML, colocados por porcentaje: en el SVG estirado se
+   deformaban, y con un tamaño de letra en unidades del viewBox solo se leían
+   bien en uno de los dos anchos en los que vive este gráfico. */
+.lmes-ytick, .lmes-teorico-lbl, .lmes-mes, .lmes-pico, .lmes-vacio {
+    position:absolute; font-size:0.66rem; color:var(--muted);
+    font-variant-numeric:tabular-nums; pointer-events:none; white-space:nowrap;
+}
+.lmes-ytick { left:0; transform:translateY(-50%); width:44px; text-align:right; }
+/* Las etiquetas que caen sobre el dibujo llevan el fondo de la tarjeta detrás:
+   sin él, «previsión» se leía con la línea de puntos cruzándola por la mitad. */
+.lmes-teorico-lbl {
+    right:0; transform:translateY(-50%); font-size:0.6rem;
+    background:var(--surface); padding:0 3px; border-radius:4px;
+}
+.lmes-vacio { inset:auto 0 44%; text-align:center; font-style:italic; }
+
+.lmes-punto {
+    position:absolute; z-index:2; width:9px; height:9px; border-radius:50%;
+    background:var(--primary-color); box-shadow:0 0 0 2px var(--surface);
+    transform:translate(-50%,-50%); pointer-events:none; transition:transform .12s;
+}
+/* Un mes sin movimientos es un cero de verdad, pero no es una noticia: se marca
+   hueco para que la vista se vaya a los meses en los que pasó algo. */
+.lmes-punto.vacio { background:var(--surface); box-shadow:0 0 0 2px var(--border-strong); width:7px; height:7px; }
+/* Los meses que llevan el pago de un gasto anual: el pico casi siempre es uno
+   de estos, y saberlo evita el susto. */
+.lmes-punto.anual { background:var(--warning, #b7791f); }
+.lmes-punto.activo { transform:translate(-50%,-50%) scale(1.45); }
+
+/* Por encima de la cruz: si no, la línea del cursor partía el número por la
+   mitad justo cuando se estaba mirando ese mes. */
+.lmes-pico {
+    z-index:3; transform:translate(-50%,-185%); font-weight:700; font-size:0.68rem;
+    color:var(--text-color); background:var(--surface); padding:0 4px; border-radius:5px;
+}
+.lmes-cruz {
+    position:absolute; z-index:1; top:0; bottom:0; width:1px; background:var(--border-strong);
+    transform:translateX(-50%); pointer-events:none;
+}
+.lmes-cruz[hidden] { display:none; }
+
+/* La zona sensible llega hasta media distancia con los meses vecinos: se apunta
+   a un mes, no a un círculo de nueve píxeles. */
+.lmes-zona { position:absolute; top:0; bottom:0; background:none; border:0; padding:0; cursor:pointer; }
+
+/* El eje de meses se alinea con el área de dibujo, no con el lienzo: si no, los
+   nombres iban corridos medio canal a la izquierda de sus puntos. */
+.lmes-eje { position:relative; height:16px; margin:0 2px 0 52px; }
+.lmes-mes { transform:translateX(-50%); text-transform:uppercase; letter-spacing:.04em; font-size:0.6rem; }
+.lmes-mes.futuro { opacity:.35; }
+
+.lmes-tarjeta {
+    position:absolute; z-index:20; min-width:200px; max-width:min(320px, 86vw);
+    background:var(--surface); border:1px solid var(--border-strong); border-radius:12px;
+    padding:10px 12px; box-shadow:0 10px 28px rgba(0,0,0,.30); pointer-events:none;
+    font-size:0.76rem;
+}
+.lmes-tarjeta[hidden] { display:none; }
+.lmes-card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.lmes-card-mes { color:var(--muted); text-transform:uppercase; letter-spacing:.05em; font-size:0.62rem; font-weight:700; }
+/* El valor manda y el mes acompaña: aquí el lector ya sabe qué mes ha señalado
+   y lo que quiere es la cifra. */
+.lmes-card-total { font-size:1rem; font-variant-numeric:tabular-nums; }
+.lmes-card-sub { color:var(--muted); font-size:0.68rem; margin-top:2px; }
+.lmes-card-movs { margin-top:7px; display:flex; flex-direction:column; gap:3px; }
+.lmes-card-movs:empty { display:none; }
+.lmes-mov { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:baseline; }
+.lmes-mov-fecha { color:var(--muted); font-size:0.66rem; font-variant-numeric:tabular-nums; }
+.lmes-mov-que { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lmes-mov-que em { font-style:normal; color:var(--muted); font-size:0.66rem; display:block; }
+.lmes-mov-cuanto { font-variant-numeric:tabular-nums; font-weight:600; }
+.lmes-mov.anual .lmes-mov-cuanto { color:var(--warning, #b7791f); }
+.lmes-card-mas { color:var(--muted); font-size:0.68rem; font-style:italic; }
+
+.lmes-tabla { margin-top:10px; font-size:0.76rem; }
+.lmes-tabla summary { cursor:pointer; color:var(--muted); font-size:0.72rem; }
+.lmes-tabla table { width:100%; border-collapse:collapse; margin-top:8px; }
+.lmes-tabla th, .lmes-tabla td { padding:4px 6px; border-bottom:1px solid var(--border); text-align:left; }
+.lmes-tabla th { color:var(--muted); font-weight:600; font-size:0.7rem; }
+.lmes-tabla .num { text-align:right; font-variant-numeric:tabular-nums; }
+</style>
+
+<script>
+(function () {
+    /* Un único manejador para todos los gráficos de la página: en propiedades
+       hay uno por tarjeta, y atarlo a cada uno al cargar dejaba muertos los que
+       nacen dentro de un <details> que todavía no se ha abierto. */
+    var EURO = new Intl.NumberFormat('es-ES', {
+        style: 'currency', currency: 'EUR',
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+
+    var datosCache = {};
+    function datosDe(gid) {
+        if (!(gid in datosCache)) {
+            var nodo = document.getElementById('lmes-datos-' + gid);
+            try { datosCache[gid] = nodo ? JSON.parse(nodo.textContent) : []; }
+            catch (e) { datosCache[gid] = []; }
+        }
+        return datosCache[gid];
+    }
+
+    function idDe(figura) { return figura.id.replace(/^lmes-/, ''); }
+
+    function ocultar(figura) {
+        var gid = idDe(figura);
+        var card = document.getElementById('lmes-card-' + gid);
+        var cruz = document.getElementById('lmes-cruz-' + gid);
+        if (card) card.hidden = true;
+        if (cruz) cruz.hidden = true;
+        figura.querySelectorAll('.lmes-punto.activo').forEach(function (p) {
+            p.classList.remove('activo');
+        });
+    }
+
+    /* Los conceptos y las categorías vienen del extracto del banco: se meten
+       con textContent, nunca concatenando HTML. */
+    function fila(mov) {
+        var f = document.createElement('div');
+        f.className = 'lmes-mov' + (mov.provision ? ' anual' : '');
+
+        var fecha = document.createElement('span');
+        fecha.className = 'lmes-mov-fecha';
+        fecha.textContent = mov.fecha;
+
+        var que = document.createElement('span');
+        que.className = 'lmes-mov-que';
+        que.textContent = mov.concepto;
+        var cat = document.createElement('em');
+        cat.textContent = mov.categoria + (mov.provision ? ' · pago anual' : '');
+        que.appendChild(cat);
+
+        var cuanto = document.createElement('span');
+        cuanto.className = 'lmes-mov-cuanto';
+        cuanto.textContent = EURO.format(mov.importe);
+
+        f.append(fecha, que, cuanto);
+        return f;
+    }
+
+    function mostrar(figura, zona) {
+        var gid = idDe(figura);
+        var mes = datosDe(gid)[parseInt(zona.dataset.mes, 10) - 1];
+        if (!mes || mes.futuro) { ocultar(figura); return; }
+
+        var card = document.getElementById('lmes-card-' + gid);
+        var cruz = document.getElementById('lmes-cruz-' + gid);
+        var lienzo = figura.querySelector('.lmes-lienzo');
+        if (!card || !lienzo) return;
+
+        card.querySelector('.lmes-card-mes').textContent = mes.etiqueta;
+        card.querySelector('.lmes-card-total').textContent = EURO.format(mes.total);
+
+        var sub = card.querySelector('.lmes-card-sub');
+        if (!mes.num) {
+            sub.textContent = 'Sin movimientos este mes';
+        } else if (mes.provision) {
+            sub.textContent = EURO.format(mes.corriente) + ' de gasto corriente + ' +
+                EURO.format(mes.provision) + ' de pagos anuales';
+        } else {
+            sub.textContent = mes.num + (mes.num === 1 ? ' movimiento' : ' movimientos');
+        }
+
+        var lista = card.querySelector('.lmes-card-movs');
+        lista.innerHTML = '';
+        mes.movimientos.forEach(function (m) { lista.appendChild(fila(m)); });
+        if (mes.ocultos) {
+            var mas = document.createElement('span');
+            mas.className = 'lmes-card-mas';
+            mas.textContent = 'y ' + mes.ocultos + ' más';
+            lista.appendChild(mas);
+        }
+
+        figura.querySelectorAll('.lmes-punto').forEach(function (p) {
+            p.classList.toggle('activo', p.dataset.mes === zona.dataset.mes);
+        });
+
+        cruz.style.left = zona.dataset.x + '%';
+        cruz.hidden = false;
+
+        /* La tarjeta se coloca dentro del lienzo y se voltea al otro lado cuando
+           no cabe: pegada al borde derecho se salía de la pantalla en el móvil. */
+        card.hidden = false;
+        var plot = figura.querySelector('.lmes-plot');
+        var ancho = plot.clientWidth;
+        var x = ancho * parseFloat(zona.dataset.x) / 100;
+        var w = card.offsetWidth;
+
+        /* Al lado del mes señalado, y al otro lado cuando no cabe: pegada al
+           borde derecho se salía de la pantalla en el móvil. La separación
+           lateral es la que evita tapar el punto, porque en vertical la tarjeta
+           ocupa casi todo el lienzo y no hay un «arriba» y un «abajo». */
+        var izq = x + 14;
+        if (izq + w > ancho) izq = x - 14 - w;
+        izq = Math.min(Math.max(izq, 0), Math.max(ancho - w, 0));
+        card.style.left = (plot.offsetLeft + izq) + 'px';
+        card.style.top = Math.round((lienzo.clientHeight - card.offsetHeight) / 2) + 'px';
+    }
+
+    document.addEventListener('pointerover', function (e) {
+        var zona = e.target.closest('.lmes-zona');
+        if (!zona) return;
+        mostrar(zona.closest('.lmes'), zona);
+    });
+
+    document.addEventListener('pointerleave', function (e) {
+        var lienzo = e.target.closest ? e.target.closest('.lmes-lienzo') : null;
+        if (lienzo) ocultar(lienzo.closest('.lmes'));
+    }, true);
+
+    /* Con el teclado: las flechas recorren los meses y enseñan lo mismo que el
+       ratón. El lienzo es lo que recibe el foco; las zonas quedan fuera del
+       tabulador para no meter doce paradas por gráfico. */
+    document.addEventListener('keydown', function (e) {
+        var lienzo = e.target.closest && e.target.closest('.lmes-lienzo');
+        if (!lienzo) return;
+        var figura = lienzo.closest('.lmes');
+        var zonas = Array.prototype.slice.call(figura.querySelectorAll('.lmes-zona'));
+        var datos = datosDe(idDe(figura));
+        var vivas = zonas.filter(function (z) {
+            var m = datos[parseInt(z.dataset.mes, 10) - 1];
+            return m && !m.futuro;
+        });
+        if (!vivas.length) return;
+
+        var actual = figura.querySelector('.lmes-punto.activo');
+        var i = actual ? vivas.findIndex(function (z) { return z.dataset.mes === actual.dataset.mes; }) : -1;
+
+        if (e.key === 'ArrowRight') { i = Math.min(i + 1, vivas.length - 1); }
+        else if (e.key === 'ArrowLeft') { i = i <= 0 ? 0 : i - 1; }
+        else if (e.key === 'Home') { i = 0; }
+        else if (e.key === 'End') { i = vivas.length - 1; }
+        else if (e.key === 'Escape') { ocultar(figura); return; }
+        else { return; }
+
+        e.preventDefault();
+        mostrar(figura, vivas[i]);
+    });
+
+    document.addEventListener('focusout', function (e) {
+        var lienzo = e.target.closest && e.target.closest('.lmes-lienzo');
+        if (lienzo && !lienzo.contains(e.relatedTarget)) ocultar(lienzo.closest('.lmes'));
+    });
+})();
+</script>
