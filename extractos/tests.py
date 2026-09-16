@@ -18,7 +18,7 @@ from django.urls import reverse
 from core.models import Hogar
 from finanzas.models import CategoriaGasto, PartidaGasto
 from finanzas.parsing import es_excel, leer_tabla
-from finanzas.views_gastos import _crear_categorias_predefinidas
+from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
 from .analisis import analizar_mes
 from .categorizacion import categorizar_por_codigo
@@ -3092,6 +3092,201 @@ class RepartoAprendidoTests(TestCase):
         self.assertFalse(ReglaDivision.objects.filter(hogar=self.hogar).exists())
         # Lo ya repartido no se toca: deshacerlo es cosa de cada fila.
         self.assertEqual(modelo.partes.count(), 2)
+
+
+class UnTraspasoQueNoLoEraTests(TestCase):
+    """«Transferencia de ADRIAN VIDAL RODRIGUEZ» de +423,68 € que no es un
+    traspaso: es tu primo, que se llama igual, devolviéndote algo.
+
+    La importación marca como traspaso lo que habla de transferencia Y menciona
+    a alguien del hogar. Acierta casi siempre. Cuando no, no había salida:
+    `es_traspaso` mandaba sobre la categoría, así que ponerle «Otros ingresos»
+    no hacía nada y quitarle la categoría, tampoco. Y el campo solo se escribía
+    al importar: no había ningún sitio donde tocarlo.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(
+            username='tester', password='clave-de-prueba',
+            first_name='Adrian', last_name='Vidal Rodriguez',
+        )
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.otros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        self.traspasos = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre=CATEGORIA_TRASPASO)
+
+    def mov(self, importe='423.68', concepto='Transferencia de ADRIAN VIDAL RODRIGUEZ',
+            categoria=None, traspaso=True):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 6, 9),
+            concepto=concepto, importe=Decimal(importe),
+            categoria=categoria, es_traspaso=traspaso,
+        )
+
+    def panel(self, **params):
+        params.setdefault('anio', 2026)
+        params.setdefault('mes', 6)
+        return self.client.get(reverse('extractos:listar'), params).context['panel']
+
+    # ── El bug ───────────────────────────────────────────────────────────
+
+    def test_ponerle_una_categoria_de_ingreso_ahora_si_hace_algo(self):
+        """Era lo primero que uno intenta, y no servía de nada: la marca de
+        traspaso ganaba a la categoría."""
+        m = self.mov()
+        self.assertFalse(m.cuenta_como_ingreso)
+
+        self.client.post(
+            reverse('extractos:actualizar_movimiento', args=[m.id]),
+            {'categoria_id': self.otros.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        m.refresh_from_db()
+        self.assertTrue(m.cuenta_como_ingreso)
+        self.assertFalse(m.es_neutro)
+        self.assertEqual(self.panel()['kpi_ingresos'], Decimal('423.68'))
+
+    def test_al_declararlo_ingreso_se_le_quita_la_chapa(self):
+        """Si no, la fila diría «traspaso» al lado de «Otros ingresos»: dos
+        cosas distintas del mismo apunte."""
+        m = self.mov()
+        self.client.post(
+            reverse('extractos:actualizar_movimiento', args=[m.id]),
+            {'categoria_id': self.otros.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        m.refresh_from_db()
+        self.assertFalse(m.es_traspaso)
+
+    def test_se_puede_quitar_la_marca_desde_la_fila(self):
+        """Antes no había ningún sitio donde tocarla: solo se escribía al
+        importar."""
+        m = self.mov()
+        respuesta = self.client.post(
+            reverse('extractos:marcar_traspaso', args=[m.id]), {'es_traspaso': '0'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertTrue(respuesta.json()['ok'])
+
+        m.refresh_from_db()
+        self.assertFalse(m.es_traspaso)
+        # Sin categoría, manda el signo: un abono es un ingreso.
+        self.assertTrue(m.cuenta_como_ingreso)
+
+    def test_quitar_la_marca_suelta_tambien_la_categoria_de_traspasos(self):
+        """Con la categoría de traspasos puesta, quitar la marca no cambiaría
+        nada: la categoría es neutra y manda ella."""
+        m = self.mov(categoria=self.traspasos)
+        self.client.post(
+            reverse('extractos:marcar_traspaso', args=[m.id]), {'es_traspaso': '0'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        m.refresh_from_db()
+        self.assertIsNone(m.categoria)
+        self.assertTrue(m.cuenta_como_ingreso)
+
+    def test_tambien_se_puede_marcar_uno_que_la_importacion_no_pilló(self):
+        """Al revés: un traspaso desde un banco que no pone tu nombre entra
+        como ingreso e infla el mes."""
+        m = self.mov(concepto='Abono desde mi otra cuenta', traspaso=False)
+        self.assertTrue(m.cuenta_como_ingreso)
+
+        self.client.post(
+            reverse('extractos:marcar_traspaso', args=[m.id]), {'es_traspaso': '1'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        m.refresh_from_db()
+        self.assertTrue(m.es_neutro)
+        self.assertEqual(self.panel()['kpi_ingresos'], Decimal('0'))
+
+    # ── Lo que NO debe cambiar ───────────────────────────────────────────
+
+    def test_un_traspaso_de_verdad_sigue_siendo_neutro(self):
+        """La importación le pone la categoría de traspasos, que es neutra: el
+        cambio de orden no puede haberlos soltado a todos."""
+        m = self.mov(categoria=self.traspasos)
+        self.assertTrue(m.es_neutro)
+        self.assertFalse(m.cuenta_como_ingreso)
+        self.assertEqual(self.panel()['kpi_ingresos'], Decimal('0'))
+
+    def test_un_traspaso_sin_categoria_sigue_siendo_neutro(self):
+        """Si la categoría de traspasos no existiera, la marca sola lo sostiene."""
+        self.assertTrue(self.mov().es_neutro)
+
+    def test_la_importacion_los_sigue_detectando(self):
+        totales = _importar_analizados(self.hogar, self.user, 'Banco', None, [{
+            'nombre': 'x.csv',
+            'resultado': {'movimientos': [
+                {'fecha': '2026-06-09', 'concepto': 'Transferencia a ADRIAN VIDAL RODRIGUEZ',
+                 'concepto_raw': '', 'importe': Decimal('-200'), 'saldo': None},
+            ], 'filas_error': [], 'filas_omitidas': []},
+        }])
+        self.assertEqual(totales['total_traspasos'], 1)
+        m = MovimientoBancario.objects.get(hogar=self.hogar, importe=Decimal('-200'))
+        self.assertTrue(m.es_traspaso)
+        self.assertTrue(m.es_neutro)
+
+    def test_poner_la_categoria_de_traspasos_a_mano_no_quita_la_marca(self):
+        """Solo la suelta una categoría que SÍ cuenta: decir «esto es un
+        traspaso» no puede desmarcarlo."""
+        m = self.mov(traspaso=True)
+        self.client.post(
+            reverse('extractos:actualizar_movimiento', args=[m.id]),
+            {'categoria_id': self.traspasos.id},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        m.refresh_from_db()
+        self.assertTrue(m.es_traspaso)
+        self.assertTrue(m.es_neutro)
+
+    # ── En bloque ────────────────────────────────────────────────────────
+
+    def test_se_pueden_desmarcar_varios_de_golpe(self):
+        """Cuando el banco no pone tu nombre, son todos los de esa cuenta los
+        que entran mal, no uno."""
+        # Importes distintos: dos apuntes idénticos del banco SÍ son un
+        # duplicado, y el hash de deduplicación los rechaza con razón.
+        unos = [self.mov(importe=str(100 + n), categoria=self.traspasos) for n in range(3)]
+
+        self.client.post(reverse('extractos:accion_lote'), {
+            'accion': 'traspaso', 'es_traspaso': '0',
+            'ids': [m.id for m in unos],
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        for m in unos:
+            m.refresh_from_db()
+            self.assertFalse(m.es_traspaso)
+            self.assertIsNone(m.categoria)
+            self.assertTrue(m.cuenta_como_ingreso)
+
+    def test_se_pueden_marcar_varios_de_golpe(self):
+        unos = [
+            self.mov(importe=str(200 + n), concepto='Abono cuenta propia', traspaso=False)
+            for n in range(2)
+        ]
+
+        self.client.post(reverse('extractos:accion_lote'), {
+            'accion': 'traspaso', 'es_traspaso': '1',
+            'ids': [m.id for m in unos],
+        }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        for m in unos:
+            m.refresh_from_db()
+            self.assertTrue(m.es_neutro)
+
+    # ── En pantalla ──────────────────────────────────────────────────────
+
+    def test_la_chapa_de_traspaso_es_un_boton(self):
+        self.mov(categoria=self.traspasos)
+        respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 6})
+        self.assertContains(respuesta, 'ext-traspaso-boton')
+        self.assertContains(respuesta, 'pulsa si no lo es')
 
 
 class ApuntarAManoTests(TestCase):

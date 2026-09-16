@@ -576,6 +576,11 @@ tiempo.
     </select>
     {% endif %}
 
+    <select id="ext-lote-traspaso" class="ext-lote-campo">
+        <option value="">— traspaso… —</option>
+        <option value="1">Marcar como traspaso</option>
+        <option value="0">Quitar «traspaso»</option>
+    </select>
     <button type="button" class="ext-lote-borrar" id="ext-lote-eliminar">Eliminar</button>
     <button type="button" class="ext-lote-cerrar" id="ext-lote-cancelar" title="Quitar la selección">×</button>
 </div>
@@ -1038,6 +1043,10 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     border:1px solid var(--primary-color); background:var(--app-bg); color:var(--text-color); width:150px;
 }
 .ext-badge-neutro { font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); border:1px solid var(--border-strong); border-radius:999px; padding:1px 7px; }
+/* La chapa de traspaso es un botón: lo que la pone es una deducción de la
+   importación, y una deducción tiene que poder corregirse donde se ve. */
+.ext-traspaso-boton { background:none; cursor:pointer; font-family:inherit; }
+.ext-traspaso-boton:hover { border-color:var(--danger); color:var(--danger); }
 /* Saber qué dato viene del banco y cuál has puesto tú es la diferencia entre
    fiarte de una cifra y tener que comprobarla. */
 .ext-badge-manual {
@@ -2325,6 +2334,13 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         selProvision.value = '';
     });
 
+    var selTraspaso = document.getElementById('ext-lote-traspaso');
+    if (selTraspaso) selTraspaso.addEventListener('change', function() {
+        if (selTraspaso.value === '') return;
+        aplicarLote({accion: 'traspaso', es_traspaso: selTraspaso.value});
+        selTraspaso.value = '';
+    });
+
     var btnEliminarLote = document.getElementById('ext-lote-eliminar');
     if (btnEliminarLote) btnEliminarLote.addEventListener('click', function() {
         aplicarLote({accion: 'eliminar'}, '¿Eliminar __N__ movimientos? No se puede deshacer.');
@@ -2341,6 +2357,31 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         var todasMarcadas = visibles.length > 0 && visibles.every(function(c){ return c.checked; });
         visibles.forEach(function(c){ c.checked = !todasMarcadas; });
         refrescarSeleccion();
+    });
+
+    /* ---- «Esto no es un traspaso» ----
+       La importación deduce los traspasos del texto: que hable de transferencia
+       y mencione a alguien del hogar. Acierta casi siempre, pero una
+       transferencia de tu primo, que se llama como tú, es un ingreso. Hasta
+       ahora esa deducción no se podía tocar: ponerle una categoría no servía de
+       nada porque la marca mandaba sobre ella. */
+    var URL_TRASPASO = "/extractos/movimiento/__ID__/traspaso/";
+    document.addEventListener('click', function (e) {
+        var boton = e.target.closest('.ext-traspaso-boton');
+        if (!boton) return;
+        boton.disabled = true;
+        var body = new URLSearchParams();
+        body.set('es_traspaso', '0');
+        fetch(URL_TRASPASO.replace('__ID__', boton.dataset.movId), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data.ok) { boton.disabled = false; return; }
+            /* Recarga: dejar de ser neutro mueve los totales del mes, los
+               pilares y el reparto por comercio. */
+            window.location.reload();
+        }).catch(function () { boton.disabled = false; });
     });
 
     /* ---- Repartir un cobro en varias partes ----

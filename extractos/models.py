@@ -387,13 +387,23 @@ class MovimientoBancario(ImputableAActivo):
         Manda la categoría, porque es donde el usuario declara su criterio: un
         traspaso entre cuentas propias, el pago de la tarjeta o un reintegro
         salen en negativo pero no son gasto. Solo cuando el movimiento no tiene
-        categoría se cae al signo del importe, que es lo único que se sabe."""
+        categoría se cae al signo del importe, que es lo único que se sabe.
+
+        `es_traspaso` va DESPUÉS de la categoría, aunque el orden diga poco a
+        primera vista. Es una deducción de la importación —el concepto habla de
+        transferencia y menciona a alguien del hogar—, y una deducción no puede
+        ganarle a lo que el usuario declara. Mirándolo antes, un movimiento
+        marcado como traspaso se quedaba en neutro pasara lo que pasara:
+        ponerle «Otros ingresos» no hacía nada, ni quitarle la categoría
+        tampoco, y no había forma de sacarlo de ahí. Una transferencia de un
+        tercero que se llama como tú es un ingreso, y decirlo tiene que bastar.
+        """
         from finanzas.models import COMPUTO_NEUTRO, COMPUTO_RESTA, COMPUTO_SUMA
 
-        if self.es_traspaso:
-            return COMPUTO_NEUTRO
         if self.categoria_id and self.categoria:
             return self.categoria.computo
+        if self.es_traspaso:
+            return COMPUTO_NEUTRO
         return COMPUTO_SUMA if self.es_ingreso else COMPUTO_RESTA
 
     @property
