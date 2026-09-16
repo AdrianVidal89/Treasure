@@ -1270,6 +1270,12 @@ def actualizar_movimiento(request, pk):
                 return JsonResponse({'ok': False, 'error': 'categoria_invalida'}, status=400)
             mov.categoria = cat
             mov.estado_categorizacion = 'manual'
+            # Elegir a mano una categoría que SÍ cuenta desmarca el traspaso: si
+            # no, la fila se quedaría con la chapa «traspaso» al lado de una
+            # categoría de ingreso, diciendo dos cosas distintas del mismo
+            # apunte.
+            if cat.computo != COMPUTO_NEUTRO:
+                mov.es_traspaso = False
 
     if 'concepto' in request.POST:
         concepto = (request.POST.get('concepto') or '').strip()
@@ -1350,6 +1356,45 @@ def _sugerencia_similares(hogar, mov):
             hogar=hogar, patron=mov.comercio, categoria=mov.categoria, activo=True,
         ).exists(),
     }
+
+
+@login_required
+def marcar_traspaso(request, pk):
+    """Dice si un movimiento es —o no— un traspaso entre cuentas propias.
+
+    La importación lo deduce del texto: que hable de transferencia y mencione a
+    alguien del hogar. Acierta casi siempre, pero «Transferencia de ADRIAN VIDAL
+    RODRIGUEZ» puede ser tu primo, que se llama igual, devolviéndote la cena. Y
+    al revés: un traspaso tuyo desde un banco que no pone tu nombre entra como
+    ingreso e infla el mes.
+
+    Hasta ahora esa deducción no se podía tocar desde ningún sitio: el campo solo
+    se escribía al importar.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+
+    mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
+    mov.es_traspaso = request.POST.get('es_traspaso') == '1'
+    campos = ['es_traspaso']
+
+    # Quitar la marca a algo que sigue en la categoría de traspasos no serviría
+    # de nada: la categoría manda, y el movimiento se quedaría neutro igual.
+    if not mov.es_traspaso and mov.categoria and mov.categoria.computo == COMPUTO_NEUTRO:
+        mov.categoria = None
+        mov.estado_categorizacion = 'sin_categorizar'
+        campos += ['categoria', 'estado_categorizacion']
+
+    mov.save(update_fields=campos)
+    return JsonResponse({
+        'ok': True,
+        'es_traspaso': mov.es_traspaso,
+        'categoria': mov.categoria.nombre if mov.categoria else None,
+        'categoria_id': mov.categoria_id,
+    })
 
 
 @login_required
@@ -1982,7 +2027,10 @@ def movimientos_de_categoria(request):
 # Acciones que se pueden aplicar a varios movimientos de una vez. Están
 # enumeradas a propósito: un endpoint que acepte «el campo que venga» sobre una
 # lista de ids es una puerta abierta a cambiar cualquier cosa en bloque.
-ACCIONES_LOTE = ('categoria', 'etiqueta', 'quitar_etiqueta', 'activo', 'provision', 'eliminar')
+ACCIONES_LOTE = (
+    'categoria', 'etiqueta', 'quitar_etiqueta', 'activo', 'provision',
+    'traspaso', 'eliminar',
+)
 
 
 @login_required
@@ -2060,6 +2108,20 @@ def accion_lote(request):
             partida_conciliada=partida,
         )
         respuesta['etiqueta'] = partida.nombre if partida else 'no es un pago anual'
+
+    elif accion == 'traspaso':
+        # Marcar o desmarcar en bloque: cuando el banco no pone tu nombre, son
+        # todos los traspasos de esa cuenta los que entran mal, no uno.
+        es_traspaso = request.POST.get('es_traspaso') == '1'
+        ids = [m.id for m in movimientos]
+        MovimientoBancario.objects.filter(id__in=ids).update(es_traspaso=es_traspaso)
+        if not es_traspaso:
+            # Igual que en la fila suelta: con la categoría de traspasos puesta,
+            # quitar la marca no cambiaría nada.
+            MovimientoBancario.objects.filter(
+                id__in=ids, categoria__computo=COMPUTO_NEUTRO,
+            ).update(categoria=None, estado_categorizacion='sin_categorizar')
+        respuesta['etiqueta'] = 'traspaso' if es_traspaso else 'ya no es traspaso'
 
     elif accion == 'eliminar':
         extractos_afectados = {m.extracto_id for m in movimientos}

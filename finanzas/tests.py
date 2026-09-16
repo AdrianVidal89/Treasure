@@ -3362,6 +3362,203 @@ class CosteAnualDeUnActivoTests(TestCase):
             self.assertContains(respuesta, cifra)
 
 
+class MovimientoEntreFondosQueSigueAlPresupuestoTests(TestCase):
+    """El «Aporte Gastos Anuales» decía 249,43 € cuando la provisión eran
+    252,54: se había quedado con la cifra del día que se creó.
+
+    No era cosa de los cierres —solo congelan meses YA pasados— sino de que el
+    importe se teclea una vez y no sigue a nada. Y había dos capas del mismo
+    fallo: `importe_calculado` ignoraba las partidas vinculadas cuando el
+    movimiento iba a otro fondo, y el motor de distribución ni siquiera llamaba
+    a esa propiedad: leía `importe_manual` a pelo.
+    """
+
+    def setUp(self):
+        from core.models import Hogar
+        from finanzas.models import CategoriaGasto, FondoFamiliar, PartidaGasto
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+        self.itv = CategoriaGasto.objects.get(hogar=self.hogar, nombre='ITV')
+        self.alimentacion = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Alimentacion')
+        self.PartidaGasto = PartidaGasto
+        # 60 + 520 al año = 48,33 €/mes de provisión.
+        self.anual('ITV', '60')
+        self.anual('IBI', '520', categoria=CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='IBI'))
+
+        self.conjunta = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Cuenta Conjunta')
+        self.provision = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Provision Anual')
+
+    def anual(self, nombre, importe, categoria=None):
+        return self.PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=categoria or self.itv, nombre=nombre,
+            importe=Decimal(importe), periodicidad='anual',
+        )
+
+    def movimiento(self, **campos):
+        from finanzas.models import SubsobreFondo
+
+        datos = {
+            'fondo': self.conjunta, 'nombre': 'Aporte Gastos Anuales',
+            'fondo_destino': self.provision,
+        }
+        datos.update(campos)
+        return SubsobreFondo.objects.create(**datos)
+
+    def provision_del_bloque(self):
+        from finanzas import presupuesto
+        return presupuesto.por_bloque(self.hogar)['anual']
+
+    # ── El bug ───────────────────────────────────────────────────────────
+
+    def test_siguiendo_al_bloque_recoge_los_gastos_nuevos(self):
+        """«Si hoy añado un gasto del mes actual en adelante, debe salir.»"""
+        ss = self.movimiento(bloque='anual')
+        self.assertEqual(ss.importe_calculado, self.provision_del_bloque())
+
+        self.anual('ITV moto', '120')      # +10 €/mes
+        self.assertEqual(ss.importe_calculado, self.provision_del_bloque())
+        self.assertEqual(ss.importe_calculado, Decimal('58.33'))
+
+    def test_un_movimiento_a_otro_fondo_ya_mira_sus_partidas(self):
+        """El campo promete que «si vinculas partidas, el importe se calcula
+        sumando su importe_mensual», y con un fondo de destino no lo hacía."""
+        ss = self.movimiento(importe_manual=Decimal('99'))
+        ss.partidas_vinculadas.set(self.PartidaGasto.objects.filter(hogar=self.hogar))
+
+        self.assertEqual(ss.importe_calculado, Decimal('48.33'))
+
+    def test_el_motor_de_distribucion_usa_la_cifra_viva(self):
+        """Leía `importe_manual` directamente, así que la propiedad no servía de
+        nada: la pantalla enseñaba siempre lo tecleado."""
+        from finanzas.distribucion import calcular_flujos
+
+        self.movimiento(bloque='anual')
+        self.anual('ITV moto', '120')
+
+        datos = calcular_flujos(self.hogar, mes=10, anio=2026)
+        cascada = [
+            ss for fa in datos['fondos_aportaciones'] for ss in fa['subsobres']
+        ]
+        self.assertEqual(len(cascada), 1)
+        self.assertEqual(cascada[0]['importe'], Decimal('58.33'))
+
+    def test_lo_que_entra_en_el_fondo_de_destino_es_esa_misma_cifra(self):
+        """Era la cifra de la captura: «Provision Anual · Entra +249,43» cuando
+        el presupuesto decía 252,54."""
+        from finanzas.distribucion import calcular_flujos
+
+        self.movimiento(bloque='anual')
+        self.anual('ITV moto', '120')
+
+        datos = calcular_flujos(self.hogar, mes=10, anio=2026)
+        destino = next(
+            fa for fa in datos['fondos_aportaciones']
+            if fa['fondo'].id == self.provision.id
+        )
+        self.assertEqual(destino['total_aportacion_base'], self.provision_del_bloque())
+
+    # ── Lo que NO debe cambiar ───────────────────────────────────────────
+
+    def test_un_importe_fijo_sigue_siendo_fijo(self):
+        """Hay movimientos que son una cantidad elegida a propósito —200 € al
+        mes al depósito— y no tienen que seguir a nada."""
+        ss = self.movimiento(importe_manual=Decimal('200'))
+        self.assertEqual(ss.importe_calculado, Decimal('200'))
+
+        self.anual('ITV moto', '120')
+        self.assertEqual(ss.importe_calculado, Decimal('200'))
+
+    def test_el_bloque_manda_sobre_las_partidas_y_el_importe(self):
+        ss = self.movimiento(bloque='anual', importe_manual=Decimal('999'))
+        self.assertEqual(ss.importe_calculado, Decimal('48.33'))
+
+    def test_cada_bloque_lleva_su_total(self):
+        self.PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.alimentacion, nombre='Compra',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+        self.assertEqual(
+            self.movimiento(bloque='variable').importe_calculado, Decimal('400'),
+        )
+        self.assertEqual(
+            self.movimiento(nombre='Otro', bloque='anual').importe_calculado,
+            Decimal('48.33'),
+        )
+
+    # ── La pantalla ──────────────────────────────────────────────────────
+
+    def test_se_puede_crear_siguiendo_un_bloque(self):
+        from finanzas.models import SubsobreFondo
+
+        self.client.post(
+            reverse('finanzas:crear_subsobres', args=[self.conjunta.id]),
+            {
+                'nombre': 'Aporte Gastos Anuales', 'tipo': 'libre',
+                'modo_importe': 'bloque', 'bloque': 'anual',
+                'importe_manual': '999',
+                'fondo_destino_id': self.provision.id, 'solo_mes': '',
+            },
+        )
+        ss = SubsobreFondo.objects.get(fondo=self.conjunta)
+        self.assertEqual(ss.bloque, 'anual')
+        # El importe tecleado no se guarda: sería una cifra de adorno que al
+        # leer la ficha parece la buena.
+        self.assertIsNone(ss.importe_manual)
+        self.assertEqual(ss.importe_calculado, Decimal('48.33'))
+
+    def test_se_puede_crear_con_importe_fijo(self):
+        from finanzas.models import SubsobreFondo
+
+        self.client.post(
+            reverse('finanzas:crear_subsobres', args=[self.conjunta.id]),
+            {
+                'nombre': 'Inversion', 'tipo': 'libre',
+                'modo_importe': 'fijo', 'bloque': 'anual',
+                'importe_manual': '200',
+                'fondo_destino_id': self.provision.id, 'solo_mes': '',
+            },
+        )
+        ss = SubsobreFondo.objects.get(fondo=self.conjunta)
+        self.assertEqual(ss.bloque, '')
+        self.assertEqual(ss.importe_calculado, Decimal('200'))
+
+    def test_la_pantalla_dice_de_donde_sale_cada_cifra(self):
+        self.movimiento(bloque='anual')
+        self.movimiento(nombre='Inversion', importe_manual=Decimal('200'))
+
+        respuesta = self.client.get(
+            reverse('finanzas:vista_distribucion'), {'anio': 2026, 'mes': 10},
+        )
+        self.assertContains(respuesta, 'cascada-auto')
+        self.assertContains(respuesta, 'NO cambia al tocar el presupuesto')
+
+    # ── Los cierres no tienen nada que ver ───────────────────────────────
+
+    def test_los_cierres_solo_congelan_meses_pasados(self):
+        """La sospecha era que venía de evitar cambios hacia el pasado. No: un
+        mes que no ha terminado nunca se congela."""
+        import datetime
+        from finanzas.cierres import meses_cerrados_de
+
+        hoy = datetime.date(2026, 9, 16)
+        self.assertEqual(meses_cerrados_de(2026, hoy), list(range(1, 9)))
+        self.assertNotIn(9, meses_cerrados_de(2026, hoy))    # el mes en curso
+        self.assertNotIn(10, meses_cerrados_de(2026, hoy))   # el siguiente
+        self.assertEqual(meses_cerrados_de(2027, hoy), [])
+
+
 class LineaMesAMesTests(TestCase):
     """La gráfica del año: en qué mes se fue el dinero, y en qué.
 

@@ -112,6 +112,10 @@ def calcular_flujos(hogar, mes=None, anio=None):
         fondo__hogar=hogar, activo=True
     ).select_related('fondo', 'fondo_destino')
     subsobres = [s for s in subsobres_qs if s.solo_mes is None or s.solo_mes == mes]
+    # Los techos del presupuesto por bloque, UNA vez para todos los subsobres:
+    # los que siguen a un bloque preguntan por aquí en vez de consultar cada uno.
+    from . import presupuesto
+    limites_bloque = presupuesto.por_bloque(hogar) if subsobres else {}
 
     # =========================================================
     # PASO 1: Ingresos
@@ -311,7 +315,10 @@ def calcular_flujos(hogar, mes=None, anio=None):
         if ss.fondo_id not in fondos_aportaciones:
             continue
         fa_origen = fondos_aportaciones[ss.fondo_id]
-        importe = ss.importe_manual or Decimal('0')
+        # `importe_en` y no `importe_manual`: un movimiento puede seguir a un
+        # bloque del presupuesto, y leyendo el campo a pelo se quedaba con la
+        # cifra que se tecleó el día que se creó.
+        importe = ss.importe_en(limites_bloque)
         if importe <= 0:
             continue
 
@@ -321,6 +328,8 @@ def calcular_flujos(hogar, mes=None, anio=None):
             'nombre': ss.nombre,
             'tipo': ss.tipo,
             'importe': importe,
+            'bloque': ss.bloque,
+            'bloque_display': ss.get_bloque_display() if ss.bloque else '',
             'fondo_destino': ss.fondo_destino,
             'solo_mes': ss.solo_mes,
             'solo_mes_display': ss.get_solo_mes_display() if ss.solo_mes else '',
