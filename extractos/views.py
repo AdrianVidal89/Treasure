@@ -1038,13 +1038,18 @@ def _panel_context(hogar, todos, request):
         # que el neto del mes no cuente los traspasos como gasto. Y un pago que
         # se ha sacado de la comparación se pinta pero no suma, o la cabecera
         # diría un número y la tarjeta de arriba otro.
+        #
+        # El último caso es `cuenta_como_gasto` y NO un `else`: con el else, un
+        # cobro repartido sumaba su total además del de sus partes. La fila
+        # decía «repartido en 4 · no cuenta» y aparecía tachada, y aun así el
+        # mes cargaba 924,81 € donde la suma real eran 740,08.
         if m.pk in fuera:
             g['provisiones'] -= -m.importe
         elif m.es_neutro:
             g['neutro'] += m.importe
         elif m.cuenta_como_ingreso:
             g['ingresos'] += m.importe
-        else:
+        elif m.cuenta_como_gasto:
             g['gastos'] -= peso_de(m)
 
     # Con el histórico entero a la vista, pintar los apuntes de los treinta y
@@ -2136,9 +2141,14 @@ def conciliacion(request):
     # esos 272 son del mes. Igual que en Movimientos, para que las dos
     # pantallas cuenten lo mismo.
     solo_mes = periodo['es_mes']
+    # `cuenta_como_gasto` deja fuera los cobros repartidos, igual que en
+    # Movimientos: si el padre contara aquí como pago de una provisión, el mismo
+    # dinero estaría en «provisiones del periodo» y otra vez en el gasto de sus
+    # partes, que son las que cuentan.
     pagos_provision = [
         m for m in movimientos
-        if m.es_pago_provision and not (solo_mes and m.cubierto_por_reserva)
+        if m.es_pago_provision and m.cuenta_como_gasto
+        and not (solo_mes and m.cubierto_por_reserva)
     ]
     sacados = {m.pk for m in pagos_provision} if solo_mes else set()
     gastos = [m for m in movimientos if m.cuenta_como_gasto and m.pk not in sacados]
@@ -2526,7 +2536,10 @@ def etiquetas(request):
     filas = []
     for etiqueta in Etiqueta.objects.filter(hogar=hogar).prefetch_related('movimientos'):
         movimientos = list(etiqueta.movimientos.all())
-        gasto = sum((-m.importe for m in movimientos if m.importe < 0), Decimal('0'))
+        # Por el cómputo de la categoría y no por el signo del importe: por el
+        # signo, un traspaso entre cuentas propias contaba como gasto de la
+        # etiqueta y un cobro repartido sumaba su total además del de sus partes.
+        gasto = sum((-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
         filas.append({
             'etiqueta': etiqueta,
             'num': len(movimientos),

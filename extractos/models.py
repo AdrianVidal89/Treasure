@@ -38,7 +38,14 @@ class ExtractoBancario(models.Model):
         return f"{etiqueta} · {self.num_movimientos} mov."
 
     def _totales(self):
-        agregados = self.movimientos.aggregate(
+        """Lo que traía el archivo del banco.
+
+        Las PARTES de un cobro repartido quedan fuera: no venían en el extracto
+        —las creó el usuario al repartir— y sumarlas junto al apunte del que
+        salen contaba el mismo dinero dos veces. El apunte original sí cuenta,
+        porque es la línea que el banco escribió.
+        """
+        agregados = self.movimientos.filter(dividido_de__isnull=True).aggregate(
             ingresos=models.Sum('importe', filter=models.Q(importe__gte=0)),
             gastos=models.Sum('importe', filter=models.Q(importe__lt=0)),
         )

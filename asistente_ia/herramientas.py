@@ -161,9 +161,13 @@ def movimientos_sin_categorizar(hogar, limite=300):
     from finanzas.models import CategoriaGasto
 
     limite = _clamp_limite(limite, por_defecto=300, tope=1000)
+    # Los cobros ya repartidos quedan fuera: lo que hay que categorizar son sus
+    # partes, que salen aquí por su cuenta. Con el padre dentro, el total del
+    # grupo contaba el mismo dinero dos veces y se proponía una regla para algo
+    # que ya estaba resuelto.
     movs = MovimientoBancario.objects.filter(
         hogar=hogar, categoria__isnull=True, importe__lt=0,
-    ).order_by('-fecha')[:limite]
+    ).exclude(partes__isnull=False).order_by('-fecha')[:limite]
 
     grupos = defaultdict(lambda: {'concepto': '', 'veces': 0, 'total': 0.0, 'ids': []})
     for m in movs:
@@ -183,7 +187,7 @@ def movimientos_sin_categorizar(hogar, limite=300):
     return {
         'total_sin_categorizar': MovimientoBancario.objects.filter(
             hogar=hogar, categoria__isnull=True, importe__lt=0,
-        ).count(),
+        ).exclude(partes__isnull=False).count(),
         'conceptos': conceptos,
         'categorias_disponibles': categorias,
     }
