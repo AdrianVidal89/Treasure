@@ -31,6 +31,7 @@ urlpatterns = [
     path('<int:pk>/', views.detalle, name='detalle'),
     path('<int:pk>/eliminar/', views.eliminar, name='eliminar'),
     path('movimiento/<int:pk>/actualizar/', views.actualizar_movimiento, name='actualizar_movimiento'),
+    path('movimiento/nuevo/', views.crear_movimiento, name='crear_movimiento'),
     path('movimiento/<int:pk>/eliminar/', views.eliminar_movimiento, name='eliminar_movimiento'),
     path('movimiento/<int:pk>/etiquetar/', views.etiquetar_movimiento, name='etiquetar_movimiento'),
     path('movimiento/<int:pk>/imputar/', views.imputar_movimiento, name='imputar_movimiento'),

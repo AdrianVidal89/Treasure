@@ -78,7 +78,44 @@
         <a href="{% url 'extractos:subir' %}" class="btn btn-primary">
             <svg class="icon"><use href="#i-upload"/></svg> Importar tu primer archivo
         </a>
+        <p class="empty-o-bien">
+            O apunta a mano lo que pagaste en efectivo:
+            <button type="button" class="btn btn-secondary btn-sm" id="ext-abrir-manual-vacio">Apuntar un movimiento</button>
+        </p>
     </div>
     {% endif %}
+
+    {% comment %}
+    Fuera del `if`: el diálogo tiene que existir también con la cuenta vacía,
+    que es justo cuando alguien apunta sus primeros gastos en efectivo antes de
+    haber importado nada. Dentro, el botón de la barra no abría nada.
+    {% endcomment %}
+    {% include "extractos/_alta_manual.html" %}
 </div>
+
+<style>
+.empty-o-bien { margin-top:18px; font-size:0.84rem; color:var(--muted); }
+.empty-o-bien .btn { margin-left:6px; }
+</style>
+
+<script>
+/* El panel con el resto del JS solo se pinta cuando hay movimientos, así que
+   con la cuenta vacía el diálogo necesita quien lo abra. */
+(function () {
+    var caja = document.getElementById('ext-modal-manual');
+    if (!caja) return;
+    document.addEventListener('click', function (e) {
+        if (e.target.closest('#ext-abrir-manual, #ext-abrir-manual-vacio')) {
+            caja.hidden = false;
+            var primero = caja.querySelector('input[name=concepto]');
+            if (primero) primero.focus();
+        } else if (e.target.closest('[data-cerrar-manual]')) {
+            caja.hidden = true;
+        }
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !caja.hidden) caja.hidden = true;
+    });
+})();
+</script>
 {% endblock %}

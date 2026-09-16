@@ -43,6 +43,7 @@ categorías por bloque, provisiones y activos).
                         data-valor="{{ m.categoria_id|default_if_none:'' }}">{% if m.categoria %}{{ m.categoria.nombre }}{% else %}Sin categorizar{% endif %}</button>
             </span>
             {% endif %}
+            {% if m.manual %}<span class="ext-badge-manual" title="Lo apuntaste tú: no viene de ningún extracto. Suele ser un pago en efectivo.">a mano</span>{% endif %}
             {% if m.es_cobertura %}<span class="ext-badge-reserva" title="Dinero sacado de la reserva para pagar «{{ m.cubre.concepto }}». No cuenta como ingreso: rebaja ese pago.">de la reserva</span>
             {% elif m.es_traspaso %}<span class="ext-badge-neutro" title="Traspaso entre cuentas propias">traspaso</span>
             {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}

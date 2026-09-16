@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.dateparse import parse_date
 
 from finanzas import costes_activo, presupuesto
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
@@ -19,7 +20,7 @@ from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefin
 
 from . import reparto
 from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
-from .categorizacion import categorizar_lote
+from .categorizacion import categorizar, categorizar_lote
 from .models import (
     Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion, ReglaDivision,
 )
@@ -617,6 +618,9 @@ def _contexto_edicion(hogar):
         ).exclude(periodicidad='mensual').select_related('categoria'),
         'grupos_activos': costes_activo.opciones(hogar),
         'etiquetas_hogar': Etiqueta.objects.filter(hogar=hogar),
+        # Para que el alta a mano venga con la fecha de hoy puesta: el caso de
+        # uso es apuntar lo que acabas de pagar en efectivo.
+        'fecha_hoy': date.today(),
     }
 
 
@@ -1038,13 +1042,18 @@ def _panel_context(hogar, todos, request):
         # que el neto del mes no cuente los traspasos como gasto. Y un pago que
         # se ha sacado de la comparación se pinta pero no suma, o la cabecera
         # diría un número y la tarjeta de arriba otro.
+        #
+        # El último caso es `cuenta_como_gasto` y NO un `else`: con el else, un
+        # cobro repartido sumaba su total además del de sus partes. La fila
+        # decía «repartido en 4 · no cuenta» y aparecía tachada, y aun así el
+        # mes cargaba 924,81 € donde la suma real eran 740,08.
         if m.pk in fuera:
             g['provisiones'] -= -m.importe
         elif m.es_neutro:
             g['neutro'] += m.importe
         elif m.cuenta_como_ingreso:
             g['ingresos'] += m.importe
-        else:
+        elif m.cuenta_como_gasto:
             g['gastos'] -= peso_de(m)
 
     # Con el histórico entero a la vista, pintar los apuntes de los treinta y
@@ -1344,6 +1353,72 @@ def _sugerencia_similares(hogar, mov):
 
 
 @login_required
+def crear_movimiento(request):
+    """Mete un apunte a mano: el bar, el mercadillo, lo que se pagó en efectivo.
+
+    Lo que no pasa por el banco no está en ningún extracto, y sin esto el mes
+    dice que te has gastado menos de lo que te has gastado. La cifra deja de ser
+    «lo que movió la cuenta» para ser «lo que gastaste», que es la que se quiere.
+
+    Se pide el importe en positivo y aparte si es gasto o ingreso: escribir el
+    signo a mano es la forma más fácil de meter un ingreso de 40 € donde iba un
+    gasto, y el error no se ve hasta que los totales no cuadran.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+
+    volver = request.POST.get('volver_a') or reverse('extractos:listar')
+    if request.method != 'POST':
+        return redirect(volver)
+
+    fecha = parse_date(request.POST.get('fecha') or '')
+    concepto = (request.POST.get('concepto') or '').strip()
+    try:
+        importe = Decimal((request.POST.get('importe') or '').replace(',', '.'))
+    except InvalidOperation:
+        importe = None
+
+    if not fecha or not concepto or importe is None:
+        messages.error(request, "Hace falta una fecha, un concepto y un importe.")
+        return redirect(volver)
+    if importe <= 0:
+        messages.error(request, "El importe va en positivo; di aparte si es gasto o ingreso.")
+        return redirect(volver)
+
+    es_ingreso = request.POST.get('tipo') == 'ingreso'
+    categoria = CategoriaGasto.objects.filter(
+        hogar=hogar, id=request.POST.get('categoria_id') or 0,
+    ).first()
+    estado = 'manual' if categoria else 'sin_categorizar'
+
+    # Sin categoría elegida se prueba con lo que ya sabe la aplicación: el mismo
+    # criterio que al importar, para que meter «Mercadona» a mano acabe donde
+    # acaban los demás Mercadona.
+    if not categoria:
+        categoria, origen = categorizar(concepto, hogar, es_ingreso=es_ingreso)
+        if categoria:
+            estado = 'por_regla' if origen == 'regla' else 'por_codigo'
+
+    mov = MovimientoBancario(
+        hogar=hogar, extracto=None, manual=True,
+        fecha=fecha, concepto=concepto[:300], concepto_raw=concepto,
+        importe=importe if es_ingreso else -importe,
+        saldo=None, categoria=categoria, estado_categorizacion=estado,
+    )
+    costes_activo.asignar(mov, costes_activo.resolver(hogar, request.POST.get('activo') or ''))
+    mov.save()
+
+    messages.success(
+        request,
+        f"Apuntado: {concepto} · {mov.importe} €"
+        + (f" · {categoria.nombre}" if categoria else " · sin categorizar"),
+    )
+    return redirect(volver)
+
+
+@login_required
 def eliminar_movimiento(request, pk):
     """Elimina un único movimiento del extracto."""
     profile, hogar = _get_hogar(request)
@@ -1355,9 +1430,11 @@ def eliminar_movimiento(request, pk):
     mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
     extracto = mov.extracto
     mov.delete()
-    # Recontar movimientos del extracto.
-    extracto.num_movimientos = extracto.movimientos.count()
-    extracto.save(update_fields=['num_movimientos'])
+    # Un apunte metido a mano no cuelga de ningún extracto: no hay nada que
+    # recontar y pedirle `num_movimientos` a un None reventaba el borrado.
+    if extracto:
+        extracto.num_movimientos = extracto.movimientos.count()
+        extracto.save(update_fields=['num_movimientos'])
     return JsonResponse({'ok': True})
 
 
@@ -2136,9 +2213,14 @@ def conciliacion(request):
     # esos 272 son del mes. Igual que en Movimientos, para que las dos
     # pantallas cuenten lo mismo.
     solo_mes = periodo['es_mes']
+    # `cuenta_como_gasto` deja fuera los cobros repartidos, igual que en
+    # Movimientos: si el padre contara aquí como pago de una provisión, el mismo
+    # dinero estaría en «provisiones del periodo» y otra vez en el gasto de sus
+    # partes, que son las que cuentan.
     pagos_provision = [
         m for m in movimientos
-        if m.es_pago_provision and not (solo_mes and m.cubierto_por_reserva)
+        if m.es_pago_provision and m.cuenta_como_gasto
+        and not (solo_mes and m.cubierto_por_reserva)
     ]
     sacados = {m.pk for m in pagos_provision} if solo_mes else set()
     gastos = [m for m in movimientos if m.cuenta_como_gasto and m.pk not in sacados]
@@ -2526,7 +2608,10 @@ def etiquetas(request):
     filas = []
     for etiqueta in Etiqueta.objects.filter(hogar=hogar).prefetch_related('movimientos'):
         movimientos = list(etiqueta.movimientos.all())
-        gasto = sum((-m.importe for m in movimientos if m.importe < 0), Decimal('0'))
+        # Por el cómputo de la categoría y no por el signo del importe: por el
+        # signo, un traspaso entre cuentas propias contaba como gasto de la
+        # etiqueta y un cobro repartido sumaba su total además del de sus partes.
+        gasto = sum((-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
         filas.append({
             'etiqueta': etiqueta,
             'num': len(movimientos),
