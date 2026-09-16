@@ -14,6 +14,7 @@ se deshace de un clic; lo que nunca cambia es el total, que sigue siendo el del
 banco.
 """
 
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 CENTIMO = Decimal('0.01')
@@ -139,6 +140,50 @@ def aplicar_regla(regla, movimiento):
     return True
 
 
+def version_vigente(reglas, fecha):
+    """De varias versiones del mismo patrón, la que regía en esa fecha.
+
+    Gana la más reciente que ya hubiera empezado. Si todas empiezan después
+    —el reparto se corrigió «de enero en adelante» y el recibo es de octubre
+    del año pasado—, no rige ninguna y el recibo se queda como estaba, que es
+    justo lo que se pidió al fecharla.
+    """
+    candidatas = [r for r in reglas if r.rige_en(fecha)]
+    if not candidatas:
+        return None
+    # `date.min` para que la versión «de siempre» quede la última de la cola:
+    # cualquier versión con fecha le gana a partir de su día.
+    return max(candidatas, key=lambda r: r.desde or date.min)
+
+
+def coincide(regla, partes):
+    """¿Esta versión ya produce exactamente este reparto?
+
+    Es lo que decide si hay que ofrecer actualizarla. Antes bastaba con que
+    EXISTIERA una regla para el comercio, así que corregir un reparto ya
+    aprendido no preguntaba nada: ni se propagaba a los demás recibos ni se
+    actualizaba la regla, y la corrección se quedaba en ese único apunte.
+
+    Las proporciones se comparan con holgura de una diezmilésima: vienen de
+    dividir importes y compararlas al céntimo exacto daría falsos distintos.
+    """
+    de_la_regla = list(regla.partes.all())
+    if len(de_la_regla) != len(partes):
+        return False
+
+    fracciones = proporciones([p['importe'] for p in partes])
+    for guardada, nueva, fraccion in zip(de_la_regla, partes, fracciones):
+        if guardada.categoria_id != (nueva.get('categoria').id if nueva.get('categoria') else None):
+            return False
+        activo = nueva.get('activo', HEREDAR)
+        activo = None if activo is HEREDAR else activo
+        if guardada.activo_imputado != activo:
+            return False
+        if abs(guardada.proporcion - fraccion) > Decimal('0.0001'):
+            return False
+    return True
+
+
 def es_division_valida(partes):
     """Una división necesita al menos dos partes y ninguna a cero.
 
@@ -150,19 +195,24 @@ def es_division_valida(partes):
     return len(partes) >= 2 and all(p['importe'] != 0 for p in partes)
 
 
-def guardar_regla(hogar, patron, partes, origen='manual'):
-    """Crea o reemplaza la división aprendida para un patrón.
+def guardar_regla(hogar, patron, partes, desde=None, origen='manual'):
+    """Crea o reemplaza la versión de la división aprendida para un patrón.
 
-    Las partes se reemplazan enteras en vez de intentar casarlas una a una: un
-    reparto nuevo puede tener otro número de partidas, y media regla vieja
-    mezclada con media nueva no es lo que pidió nadie.
+    `desde` es la fecha a partir de la cual vale. En blanco es la versión de
+    siempre. Guardar una versión NO borra las otras: precisamente el caso es que
+    el recibo del seguro llevaba tres coberturas hasta enero y cuatro después, y
+    cada recibo tiene que seguir usando la que estaba vigente el día que se pagó.
+
+    Las partes de una versión se reemplazan enteras en vez de intentar casarlas
+    una a una: un reparto nuevo puede tener otro número de partidas, y media
+    regla vieja mezclada con media nueva no es lo que pidió nadie.
     """
     from finanzas import costes_activo
 
     from .models import ParteDeDivision, ReglaDivision
 
     regla, _ = ReglaDivision.objects.update_or_create(
-        hogar=hogar, patron=patron,
+        hogar=hogar, patron=patron, desde=desde,
         defaults={'origen': origen, 'activo': True},
     )
     regla.partes.all().delete()

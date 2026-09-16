@@ -119,6 +119,14 @@ class ReglaDivision(models.Model):
     cuesta lo que la del anterior, pero la forma del recibo se repite. Por eso
     la división automática es una suposición, se ve en la lista con sus partes y
     se deshace de un clic —y el total nunca cambia, que es lo que dice el banco.
+
+    Y tiene FECHA DE EFECTO. Un recibo cambia de forma: el del seguro llevaba
+    tres coberturas y a partir de enero lleva cuatro. Sin fecha solo caben dos
+    salidas malas —o el reparto nuevo reescribe los recibos viejos, que no eran
+    así, o no hay forma de corregirlo—. Con ella, un mismo patrón tiene varias
+    versiones: cada recibo usa la que estaba vigente el día que se pagó.
+    `desde` en blanco es la versión de siempre, la que vale mientras no haya una
+    posterior que le gane.
     """
 
     ORIGEN_CHOICES = ReglaCategorizacion.ORIGEN_CHOICES
@@ -130,21 +138,44 @@ class ReglaDivision(models.Model):
         max_length=200,
         help_text='Texto que debe contener el concepto (se compara en minúsculas, sin distinguir acentos de mayúsculas).',
     )
+    desde = models.DateField(
+        null=True, blank=True,
+        help_text='Desde qué fecha vale este reparto. En blanco, vale desde siempre.',
+    )
     origen = models.CharField(max_length=10, choices=ORIGEN_CHOICES, default='manual')
     veces_aplicada = models.PositiveIntegerField(default=0)
     activo = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-creado_en']
+        # De la más reciente a la más antigua: es el orden en el que se busca la
+        # versión vigente y el que tiene sentido al leerlas en pantalla.
+        ordering = ['patron', models.F('desde').desc(nulls_last=True)]
         constraints = [
-            models.UniqueConstraint(fields=['hogar', 'patron'], name='uniq_regla_div_hogar_patron'),
+            # Dos restricciones y no una porque en SQL dos NULL no son iguales:
+            # con una sola sobre las tres columnas se podrían crear dos versiones
+            # «de siempre» del mismo patrón.
+            models.UniqueConstraint(
+                fields=['hogar', 'patron', 'desde'],
+                condition=models.Q(desde__isnull=False),
+                name='uniq_regla_div_hogar_patron_desde',
+            ),
+            models.UniqueConstraint(
+                fields=['hogar', 'patron'],
+                condition=models.Q(desde__isnull=True),
+                name='uniq_regla_div_hogar_patron_siempre',
+            ),
         ]
         verbose_name = 'Regla de división'
         verbose_name_plural = 'Reglas de división'
 
     def __str__(self):
-        return f"«{self.patron}» → {self.partes.count()} partes"
+        cuando = f' desde {self.desde}' if self.desde else ''
+        return f"«{self.patron}»{cuando} → {self.partes.count()} partes"
+
+    def rige_en(self, fecha):
+        """¿Vale esta versión para un recibo de esa fecha?"""
+        return self.desde is None or fecha >= self.desde
 
     def save(self, *args, **kwargs):
         # Igual que en ReglaCategorizacion: el patrón se guarda normalizado para

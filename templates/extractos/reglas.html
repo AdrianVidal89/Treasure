@@ -116,6 +116,9 @@
         <strong>proporción</strong>, porque los importes no se repiten de un año a otro:
         el total siempre es el del banco, y cada recibo repartido se puede deshacer o
         corregir desde su fila.
+        Un mismo comercio puede tener <strong>varias versiones</strong>: cuando el recibo
+        cambia de forma —el seguro pasa de tres coberturas a cuatro— se corrige «de esa
+        fecha en adelante» y cada recibo usa la que regía el día que se pagó.
     </p>
 
     <div class="table-scroll">
@@ -123,6 +126,7 @@
             <thead>
                 <tr>
                     <th>Si el concepto contiene…</th>
+                    <th>Vale desde</th>
                     <th>Se reparte en</th>
                     <th class="num">Veces aplicada</th>
                     <th>Estado</th>
@@ -133,6 +137,9 @@
                 {% for d in divisiones %}
                 <tr{% if not d.activo %} class="regla-inactiva"{% endif %}>
                     <td><code>{{ d.patron }}</code></td>
+                    <td class="reglas-desde">
+                        {% if d.desde %}{{ d.desde|date:"d/m/Y" }}{% else %}<em>siempre</em>{% endif %}
+                    </td>
                     <td>
                         <div class="reglas-partes">
                             {% for p in d.partes.all %}
@@ -194,5 +201,7 @@
 .reglas-partes { display:flex; flex-direction:column; gap:3px; font-size:0.82rem; }
 .reglas-parte strong { font-variant-numeric:tabular-nums; margin-right:4px; }
 .reglas-parte em { font-style:normal; color:var(--muted); }
+.reglas-desde { font-size:0.8rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.reglas-desde em { color:var(--muted); font-style:italic; }
 </style>
 {% endblock %}
