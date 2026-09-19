@@ -1,13 +1,30 @@
 {% extends "base.html" %}
 {% load custom_filters %}
 {% load l10n %}
-{% load l10n %}
 {% block title %}Mis Propiedades - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
+{% comment %}
+La ficha de una propiedad tenía seis cifras de la compra, cinco de la venta, la
+cuenta del mantenimiento, su gráfico y tres tablas de desglose, todo apretado en
+media pantalla porque las tarjetas iban a dos columnas. Nada de eso sobra: lo
+que sobraba era pedirle al ojo que lo leyera todo a la vez.
+
+Ahora cada propiedad ocupa una FILA entera y se lee de arriba abajo:
+
+  1. quién es (nombre, tipo) y las CUATRO cifras que resumen su situación —
+     valor, deuda, patrimonio neto y lo que cuesta al mes—,
+  2. y debajo, tres secciones que se abren solo si preguntas por ellas: la
+     compra, la venta y el mantenimiento.
+
+Es progressive disclosure de manual: la primera pantalla responde «¿cómo va?»
+sin hacer scroll, y cada «¿y por qué?» está a un clic. No se ha quitado ni un
+dato de los que había.
+{% endcomment %}
+
 {% block content %}
 <style>
-.prop-wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+.prop-wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px; }
 .prop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; flex-wrap: wrap; gap: 12px; }
 .prop-header h1 { color: var(--primary-color); text-shadow: none; margin: 0; font-size: 1.6rem; }
 
@@ -17,57 +34,89 @@
 .resumen-card .lbl { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .resumen-card .val { font-size: 1.5rem; font-weight: 700; }
 
-.prop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
-@media (max-width: 500px) { .prop-grid { grid-template-columns: 1fr; } }
-
+/* Una propiedad por fila: la tarjeta deja de ser media columna estrecha. */
+.prop-lista { display: flex; flex-direction: column; gap: 18px; }
 .prop-anio { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:6px; padding:2px 6px; font-size:0.72rem; margin-left:6px; }
-.coste-box { margin-top:14px; padding:12px 14px; background:var(--app-bg); border-radius:10px; }
+
+.prop-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+.prop-card-header {
+    padding: 16px 22px; display: flex; align-items: center; gap: 12px;
+    border-bottom: 1px solid var(--surface-2); flex-wrap: wrap;
+}
+.prop-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.prop-name { font-size: 1.05rem; font-weight: 700; color: var(--text-color); }
+.prop-tipo { font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+.prop-header-acciones { margin-left: auto; display: flex; gap: 8px; }
+
+/* La banda de cifras: lo único que hay que leer para saber cómo va. */
+.prop-kpis {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--surface-2);
+}
+@media (max-width: 760px) { .prop-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 420px) { .prop-kpis { grid-template-columns: 1fr; } }
+.prop-kpi { padding: 16px 22px; border-right: 1px solid var(--surface-2); min-width: 0; }
+.prop-kpi:last-child { border-right: none; }
+@media (max-width: 760px) {
+    .prop-kpi:nth-child(2n) { border-right: none; }
+    .prop-kpi:nth-child(-n+2) { border-bottom: 1px solid var(--surface-2); }
+}
+@media (max-width: 420px) {
+    .prop-kpi { border-right: none; border-bottom: 1px solid var(--surface-2); }
+    .prop-kpi:last-child { border-bottom: none; }
+}
+.prop-kpi .k { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+.prop-kpi .v { display: block; font-size: 1.35rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.prop-kpi .v small { font-size: 0.7rem; font-weight: 600; color: var(--muted); }
+.prop-kpi .sub { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
+
+/* Las secciones que se abren: la compra, la venta y el mantenimiento. */
+.prop-seccion { border-bottom: 1px solid var(--surface-2); }
+.prop-seccion:last-of-type { border-bottom: none; }
+.prop-seccion > summary {
+    list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 10px;
+    padding: 13px 22px; font-size: 0.82rem; font-weight: 700;
+}
+.prop-seccion > summary::-webkit-details-marker { display: none; }
+.prop-seccion > summary:hover { background: var(--app-bg); }
+.prop-seccion > summary .chev { color: var(--muted); transition: transform .2s; display: inline-block; }
+.prop-seccion[open] > summary .chev { transform: rotate(90deg); }
+.prop-seccion-resumen { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.prop-seccion-cuerpo { padding: 4px 22px 20px; }
+
+/* Las filas de datos: etiqueta a la izquierda, cifra a la derecha. En ancho
+   caben a dos columnas sin apretarse, que es distinto de meterlas a la fuerza
+   en media pantalla. */
+.prop-filas { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0 34px; }
+@media (max-width: 620px) { .prop-filas { grid-template-columns: 1fr; } }
+.prop-row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--surface); font-size: 0.84rem; }
+.prop-row .k { color: var(--muted); }
+.prop-row .v { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.prop-row.total { border-bottom: none; border-top: 1px solid var(--border-strong); margin-top: 4px; padding-top: 10px; font-size: 0.95rem; }
+.prop-row.total .k { color: var(--text-color); font-weight: 600; }
+.prop-row.total .v { font-size: 1.05rem; font-weight: 800; }
+
 .coste-title { font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin-bottom:8px; }
-.coste-grafico { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
-.coste-cifras { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px; }
-.coste-cifras .k { display:block; font-size:0.68rem; color:var(--muted); }
-.coste-val { display:block; font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; }
-.coste-val small { font-size:0.68rem; font-weight:600; color:var(--muted); }
-.coste-balance { display:grid; grid-template-columns:auto 1fr auto 1fr; gap:6px 10px; align-items:baseline; margin-top:10px; }
-.coste-balance-val { font-weight:800; font-variant-numeric:tabular-nums; font-size:0.95rem; }
-.coste-detalle { margin-top:10px; }
-.coste-detalle > summary { cursor:pointer; font-size:0.76rem; color:var(--muted); }
+.coste-grafico { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+.coste-detalle { margin-top:14px; }
+.coste-detalle > summary { cursor:pointer; font-size:0.78rem; color:var(--muted); }
 .coste-detalle > summary:hover { color:var(--primary-color); }
 .coste-tabla { margin-top:8px; }
-.coste-sub { font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin:12px 0 5px; }
+.coste-sub { font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin:14px 0 5px; }
 .coste-fila { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:baseline;
-    font-size:0.76rem; padding:4px 0; border-bottom:1px solid var(--border); }
+    font-size:0.78rem; padding:5px 0; border-bottom:1px solid var(--border); }
 .coste-fila:last-child { border-bottom:none; }
 .coste-fila.cabecera { font-size:0.64rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
 .coste-fila .num { font-variant-numeric:tabular-nums; text-align:right; min-width:62px; }
-.coste-fila em { font-style:normal; color:var(--muted); font-size:0.68rem; }
+.coste-fila em { font-style:normal; color:var(--muted); font-size:0.7rem; }
 .coste-quitar { background:none; border:none; color:var(--muted); cursor:pointer; font-size:0.95rem; line-height:1; padding:0 3px; }
 .coste-quitar:hover { color:var(--danger); }
-.coste-vacio { font-size:0.76rem; color:var(--muted); font-style:italic; margin:10px 0 0; }
-.coste-acciones { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:10px; }
-.coste-imputar { display:flex; gap:6px; flex:1; min-width:0; }
-.coste-imputar select { flex:1; min-width:0; background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:0.74rem; }
-.coste-link { font-size:0.74rem; }
-.prop-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
-.prop-card-header { padding: 18px 20px 14px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--surface-2); }
-.prop-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
-.prop-name { font-size: 1rem; font-weight: 700; color: var(--text-color); }
-.prop-tipo { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+.coste-vacio { font-size:0.8rem; color:var(--muted); font-style:italic; margin:10px 0 0; }
+.coste-acciones { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+.coste-imputar { display:flex; gap:6px; flex:1; min-width:0; max-width:520px; }
+.coste-imputar select { flex:1; min-width:0; background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:7px; padding:7px 9px; font-size:0.78rem; }
+.coste-link { font-size:0.78rem; }
 
-.prop-body { padding: 16px 20px; }
-.prop-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--surface); font-size: 0.85rem; }
-.prop-row:last-child { border-bottom: none; }
-.prop-row .k { color: var(--muted); }
-.prop-row .v { font-weight: 600; }
-
-.venta-box { margin: 14px 0 0; background: var(--app-bg); border-radius: 12px; padding: 14px 16px; }
-.venta-box .venta-title { font-size: 0.75rem; text-transform: uppercase; font-weight: 600; color: var(--muted); margin-bottom: 10px; }
-.venta-row { display: flex; justify-content: space-between; font-size: 0.82rem; margin-bottom: 4px; }
-.venta-row .k { color: var(--muted); }
-.venta-neto { font-size: 1.1rem; font-weight: 700; color: var(--success); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--surface-2); display: flex; justify-content: space-between; }
-.venta-neto .k { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
-
-.prop-actions { padding: 12px 20px; border-top: 1px solid var(--surface); display: flex; gap: 8px; }
 .btn { padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; text-decoration: none; display: inline-block; }
 .btn-edit { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-color); }
 .btn-edit:hover { border-color: var(--primary-color); }
@@ -115,7 +164,7 @@
         </div>
     </div>
 
-    <div class="prop-grid">
+    <div class="prop-lista">
         {% for item in propiedades_con_venta %}
         {% with p=item.propiedad v=item.neto_venta f=item.costes %}
         <div class="prop-card">
@@ -125,44 +174,121 @@
                     <div class="prop-name">{{ p.nombre }}</div>
                     <div class="prop-tipo">{{ p.get_tipo_display }}{% if p.es_residencia_habitual %} · Residencia habitual{% endif %}</div>
                 </div>
+                <div class="prop-header-acciones">
+                    <a href="{% url 'finanzas:editar_propiedad' p.pk %}" class="btn btn-edit">Editar</a>
+                    <form method="post" action="{% url 'finanzas:eliminar_propiedad' p.pk %}" style="display:inline;" onsubmit="return confirm('¿Archivar {{ p.nombre }}?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-del">Archivar</button>
+                    </form>
+                </div>
             </div>
-            <div class="prop-body">
-                <div class="prop-row"><span class="k">Fecha compra</span><span class="v">{{ p.fecha_compra|date:"d/m/Y" }}</span></div>
-                <div class="prop-row"><span class="k">Precio compra</span><span class="v">€{{ p.precio_compra|floatformat:0 }}</span></div>
-                <div class="prop-row"><span class="k">Gastos compra</span><span class="v">€{{ p.gastos_compra|floatformat:0 }}</span></div>
-                <div class="prop-row"><span class="k">Valor actual</span><span class="v" style="color: var(--warning);">€{{ p.valor_actual|floatformat:0 }}</span></div>
-                <div class="prop-row"><span class="k">Deuda hipotecaria</span><span class="v" style="color: var(--danger);">-€{{ p.deuda_hipotecaria|floatformat:0 }}</span></div>
-                <div class="prop-row"><span class="k">Patrimonio neto</span><span class="v" style="color: var(--success);">€{{ p.patrimonio_neto|floatformat:0 }}</span></div>
 
-                <div class="venta-box">
-                    <div class="venta-title">Si vendieras hoy</div>
-                    <div class="venta-row"><span class="k">Valor venta</span><span>€{{ v.valor_actual|floatformat:0 }}</span></div>
-                    <div class="venta-row"><span class="k">− Deuda hipoteca</span><span style="color:var(--danger);">-€{{ v.deuda|floatformat:0 }}</span></div>
-                    <div class="venta-row"><span class="k">− Gastos venta ({{ p.gastos_venta_pct }}%)</span><span style="color:var(--warning);">-€{{ v.gastos_venta|floatformat:0 }}</span></div>
-                    <div class="venta-row"><span class="k">− Plusvalía IRPF</span><span style="color:var(--warning);">-€{{ v.plusvalia|floatformat:0 }}</span></div>
-                    <div class="venta-neto">
-                        <span class="k">Capital neto libre</span>
-                        <span>€{{ v.neto|floatformat:0 }}</span>
+            {% comment %}
+            Las cuatro cifras que responden «¿cómo va esta casa?» sin abrir
+            nada: lo que vale, lo que debe, lo que queda tuyo y lo que cuesta
+            tenerla. Todo lo demás explica una de estas cuatro.
+            {% endcomment %}
+            <div class="prop-kpis">
+                <div class="prop-kpi">
+                    <span class="k">Valor actual</span>
+                    <span class="v" style="color: var(--warning);">€{{ p.valor_actual|floatformat:0 }}</span>
+                    <span class="sub">comprada por €{{ p.precio_compra|floatformat:0 }}</span>
+                </div>
+                <div class="prop-kpi">
+                    <span class="k">Deuda hipotecaria</span>
+                    <span class="v" style="color: var(--danger);">-€{{ p.deuda_hipotecaria|floatformat:0 }}</span>
+                    <span class="sub">pendiente de pago</span>
+                </div>
+                <div class="prop-kpi">
+                    <span class="k">Patrimonio neto</span>
+                    <span class="v" style="color: var(--success);">€{{ p.patrimonio_neto|floatformat:0 }}</span>
+                    <span class="sub">€{{ v.neto|floatformat:0 }} libres si vendieras hoy</span>
+                </div>
+                <div class="prop-kpi">
+                    <span class="k">Cuesta · {{ anio }}</span>
+                    <span class="v {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro:0 }}<small>/mes</small></span>
+                    <span class="sub">presupuestado {{ f.teorico_mensual|euro:0 }}/mes</span>
+                </div>
+            </div>
+
+            <!-- ── La compra ────────────────────────────────────────────── -->
+            <details class="prop-seccion">
+                <summary>
+                    <span class="chev">›</span> La compra
+                    <span class="prop-seccion-resumen">{{ p.fecha_compra|date:"d/m/Y" }}</span>
+                </summary>
+                <div class="prop-seccion-cuerpo">
+                    <div class="prop-filas">
+                        <div class="prop-row"><span class="k">Fecha compra</span><span class="v">{{ p.fecha_compra|date:"d/m/Y" }}</span></div>
+                        <div class="prop-row"><span class="k">Precio compra</span><span class="v">€{{ p.precio_compra|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">Gastos compra</span><span class="v">€{{ p.gastos_compra|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">Valor actual</span><span class="v" style="color: var(--warning);">€{{ p.valor_actual|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">Deuda hipotecaria</span><span class="v" style="color: var(--danger);">-€{{ p.deuda_hipotecaria|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">Patrimonio neto</span><span class="v" style="color: var(--success);">€{{ p.patrimonio_neto|floatformat:0 }}</span></div>
                     </div>
                 </div>
+            </details>
 
-                <div class="coste-box">
-                    <div class="coste-title">Lo que cuesta mantenerla · {{ anio }}</div>
-                    <div class="coste-cifras">
-                        <div>
+            <!-- ── Si vendieras hoy ─────────────────────────────────────── -->
+            <details class="prop-seccion">
+                <summary>
+                    <span class="chev">›</span> Si vendieras hoy
+                    <span class="prop-seccion-resumen" style="color: var(--success);">€{{ v.neto|floatformat:0 }} libres</span>
+                </summary>
+                <div class="prop-seccion-cuerpo">
+                    <div class="prop-filas">
+                        <div class="prop-row"><span class="k">Valor venta</span><span class="v">€{{ v.valor_actual|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">− Deuda hipoteca</span><span class="v" style="color:var(--danger);">-€{{ v.deuda|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">− Gastos venta ({{ p.gastos_venta_pct }}%)</span><span class="v" style="color:var(--warning);">-€{{ v.gastos_venta|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">− Plusvalía IRPF</span><span class="v" style="color:var(--warning);">-€{{ v.plusvalia|floatformat:0 }}</span></div>
+                    </div>
+                    <div class="prop-row total">
+                        <span class="k">Capital neto libre</span>
+                        <span class="v" style="color:var(--success);">€{{ v.neto|floatformat:0 }}</span>
+                    </div>
+                </div>
+            </details>
+
+            <!-- ── Lo que cuesta mantenerla ─────────────────────────────── -->
+            {% comment %}
+            La única que viene abierta: es la que cambia mes a mes y la razón
+            por la que se entra en esta pantalla. La compra y la venta son
+            cifras que se consultan, no que se vigilan.
+            {% endcomment %}
+            <details class="prop-seccion" open>
+                <summary>
+                    <span class="chev">›</span> Lo que cuesta mantenerla · {{ anio }}
+                    <span class="prop-seccion-resumen {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}/mes</span>
+                </summary>
+                <div class="prop-seccion-cuerpo">
+                    <div class="prop-filas">
+                        <div class="prop-row">
                             <span class="k">Presupuestado</span>
-                            <span class="coste-val">{{ f.teorico_mensual|euro }}<small>/mes</small></span>
-                            <span class="k">{{ f.teorico_anual|euro:0 }}/año</span>
+                            <span class="v">{{ f.teorico_mensual|euro }}/mes · {{ f.teorico_anual|euro:0 }}/año</span>
                         </div>
-                        <div>
+                        <div class="prop-row">
                             <span class="k">Real</span>
-                            <span class="coste-val {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
-                            <span class="k">
-                                {{ f.devengado_anual|euro:0 }} imputados a {{ f.anio }}, entre 12 meses
-                                · {{ f.num_movimientos }} movimiento{{ f.num_movimientos|pluralize:"s" }}
-                            </span>
+                            <span class="v {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}/mes</span>
                         </div>
                     </div>
+                    {% comment %}
+                    La cuenta que produce esa cifra, escrita: lo imputado a los
+                    meses ya cerrados dividido entre esos meses. El mes en curso
+                    está a medias —unos días de gasto contra un mes entero de
+                    divisor— y hunde la media, así que se queda fuera.
+                    {% endcomment %}
+                    <p class="coste-vacio" style="font-style:normal;">
+                        {% if f.hay_ritmo %}
+                        {{ f.devengado_cerrado|euro:0 }} imputados a los {{ f.meses_cerrados }}
+                        mes{{ f.meses_cerrados|pluralize:"es" }} ya cerrado{{ f.meses_cerrados|pluralize:"s" }}
+                        de {{ f.anio }}, entre esos {{ f.meses_cerrados }}
+                        {% else %}
+                        Todavía no hay ningún mes cerrado de {{ f.anio }} sobre el que promediar
+                        {% endif %}
+                        · {{ f.devengado_anual|euro:0 }} imputados al año
+                        · {{ f.num_movimientos }} movimiento{{ f.num_movimientos|pluralize:"s" }}
+                    </p>
+
                     {% include "finanzas/vehiculos/_barra.html" %}
 
                     {% comment %}
@@ -178,13 +304,17 @@
                     {% endif %}
 
                     {% if f.renta %}
-                    <div class="coste-balance">
-                        <span class="k">Ingresa</span>
-                        <span class="coste-balance-val text-positive">{{ f.ingreso_real_anual|euro:0 }}</span>
-                        <span class="k">Neto {{ anio }}</span>
-                        <span class="coste-balance-val {% if f.neto_real_anual < 0 %}text-negative{% else %}text-positive{% endif %}">
-                            {% if f.neto_real_anual > 0 %}+{% endif %}{{ f.neto_real_anual|euro:0 }}
-                        </span>
+                    <div class="prop-filas" style="margin-top:14px;">
+                        <div class="prop-row">
+                            <span class="k">Ingresa · {{ anio }}</span>
+                            <span class="v text-positive">{{ f.ingreso_real_anual|euro:0 }}</span>
+                        </div>
+                        <div class="prop-row">
+                            <span class="k">Neto {{ anio }}</span>
+                            <span class="v {% if f.neto_real_anual < 0 %}text-negative{% else %}text-positive{% endif %}">
+                                {% if f.neto_real_anual > 0 %}+{% endif %}{{ f.neto_real_anual|euro:0 }}
+                            </span>
+                        </div>
                     </div>
                     {% endif %}
 
@@ -231,7 +361,7 @@
                         {% for fu in f.fuentes %}
                         <div class="coste-fila">
                             <span>{{ fu.nombre }}</span>
-                            <span class="num text-positive" colspan="2">declarado</span>
+                            <span class="num text-positive">declarado</span>
                             <span class="num"></span>
                         </div>
                         {% endfor %}
@@ -241,9 +371,9 @@
                         <div class="coste-sub">Movimientos de {{ anio }}</div>
                         {% for m in f.movimientos|slice:":12" %}
                         <div class="coste-fila">
-                            <span>{{ m.fecha|date:"d/m" }} · {{ m.concepto|truncatechars:34 }}</span>
+                            <span>{{ m.fecha|date:"d/m" }} · {{ m.concepto|truncatechars:44 }}</span>
                             <span class="num text-negative">{{ m.importe|euro }}</span>
-                            <span class="num text-muted">{{ m.categoria.nombre|default:"—"|truncatechars:14 }}</span>
+                            <span class="num text-muted">{{ m.categoria.nombre|default:"—"|truncatechars:18 }}</span>
                         </div>
                         {% endfor %}
                         {% if f.movimientos|length > 12 %}
@@ -274,17 +404,10 @@
                             <button type="submit" class="btn btn-edit">Añadir</button>
                         </form>
                         {% endif %}
-                        <a href="{% url 'extractos:listar' %}?activo={{ f.clave }}" class="coste-link">Ver sus movimientos →</a>
+                        <a href="{% url 'extractos:listar' %}?anio=all&mes=all&activo={{ f.clave }}" class="coste-link">Ver sus movimientos →</a>
                     </div>
                 </div>
-            </div>
-            <div class="prop-actions">
-                <a href="{% url 'finanzas:editar_propiedad' p.pk %}" class="btn btn-edit">Editar</a>
-                <form method="post" action="{% url 'finanzas:eliminar_propiedad' p.pk %}" style="display:inline;" onsubmit="return confirm('¿Archivar {{ p.nombre }}?')">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-del">Archivar</button>
-                </form>
-            </div>
+            </details>
         </div>
         {% endwith %}
         {% endfor %}

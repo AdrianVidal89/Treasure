@@ -1,3 +1,4 @@
+import calendar
 import difflib
 from collections import defaultdict
 from datetime import date, timedelta
@@ -73,6 +74,11 @@ def listar(request):
         .prefetch_related('etiquetas', 'partes', 'coberturas',
                           'dividido_de__partes', 'dividido_de__coberturas').order_by('-fecha')
     )
+    # Al entrar sin periodo en la URL, la pantalla se abre en el MES EN CURSO.
+    destino = _abrir_en_el_mes_en_curso(request, todos)
+    if destino:
+        return redirect(destino)
+
     panel = _panel_context(hogar, todos, request)
 
     return render(request, 'extractos/listar.html', {
@@ -81,6 +87,39 @@ def listar(request):
         'total_extractos': extractos.count(),
         'total_movimientos': len(todos),
     })
+
+
+def _abrir_en_el_mes_en_curso(request, movimientos):
+    """URL a la que saltar cuando se entra en Movimientos sin periodo elegido.
+
+    Lo que uno viene a mirar al abrir Extractos es el mes en curso, no los tres
+    años importados: sin periodo la pantalla arrancaba en «todo el histórico» y
+    lo primero que había que hacer siempre era elegir año y mes a mano.
+
+    Se redirige en vez de rellenarlo por dentro para que el periodo quede
+    ESCRITO en la URL: las pestañas, el modal de una categoría y el despliegue
+    de un mes lo leen de ahí, y si no estuviera puesto cada uno miraría un
+    periodo distinto del que enseña la cabecera.
+
+    Si el mes en curso no tiene ni un apunte se abre en el último que sí lo
+    tenga: una pantalla vacía no dice nada y obliga justo al trasteo del que
+    esto viene a librar.
+
+    El resto de filtros que vinieran en la URL se conservan, para que un enlace
+    como «?categoria=sin» siga significando lo que dice.
+    """
+    if 'anio' in request.GET or 'mes' in request.GET:
+        return None
+    hoy = date.today()
+    periodo = (hoy.year, hoy.month)
+    if not any((m.fecha.year, m.fecha.month) == periodo for m in movimientos):
+        con_datos = {(m.fecha.year, m.fecha.month) for m in movimientos}
+        if not con_datos:
+            return None
+        periodo = max(con_datos)
+    parametros = request.GET.copy()
+    parametros['anio'], parametros['mes'] = str(periodo[0]), str(periodo[1])
+    return f'{request.path}?{parametros.urlencode()}'
 
 
 @login_required
@@ -584,7 +623,13 @@ def _pasa_filtro(m, f):
     cat = f['categoria']
     if cat != 'all':
         if cat == 'sin':
-            if m.categoria_id is not None:
+            # Un cobro REPARTIDO se queda sin categoría a propósito: el que
+            # cuenta es cada parte, y son ellas las que llevan la suya. Ponerle
+            # una al padre sumaría el mismo dinero dos veces, así que la única
+            # salida honesta es que desaparezca de aquí: si sale en «sin
+            # categorizar», la lista pide clasificar algo que ya está resuelto
+            # y nunca se vacía.
+            if m.categoria_id is not None or m.esta_dividido:
                 return False
         elif str(m.categoria_id) != str(cat):
             return False
@@ -684,29 +729,36 @@ def _comercios_del_periodo(movimientos, meses_con_datos, tope=14, vista_de_mes=F
     }
 
 
-def _contra_el_limite(neto, bruto, cubierto, limite, es_anual):
+def _contra_el_limite(neto, bruto, cubierto, limite, es_anual,
+                      prorrateado=Decimal('0')):
     """Cómo se lee una fila del reparto frente a su límite.
 
-    Dos cosas que `presupuesto.estado` por sí solo no puede decidir:
+    Tres cosas que `presupuesto.estado` por sí solo no puede decidir:
 
     * QUÉ se compara. En los bloques normales, lo que pesó en el mes (ya
-      descontada la reserva): si la hucha puso 928 € de una revisión de 929, el
-      mes solo sufrió 1 €. En los ANUALES, el pago entero: lo que consume la
-      provisión del año es el recibo completo, lo pagues con la hucha o no.
-    * CÓMO se pinta. La barra se parte en dos: lo que carga el mes, con su color
-      de dentro/fuera, y a continuación —rayado— lo que puso la reserva. Así se
-      ve de un vistazo que el bloque no está casi vacío porque no se gastara,
-      sino porque el gasto ya estaba pagado de antes.
+      descontada la reserva) MÁS la parte que le toca de los gastos anuales que
+      ya has pagado: el límite del mes lleva dentro la provisión de ese seguro,
+      así que si el pago no aparece por ningún lado la fila miente por los dos
+      lados. En los ANUALES, el pago entero: lo que consume la provisión del
+      año es el recibo completo, lo pagues con la hucha o no.
+    * CÓMO se pinta. La barra se parte en tres: lo que carga el mes, con su
+      color de dentro/fuera; a continuación —en discontinuo— la doceava parte
+      del gasto anual ya pagado, que no es dinero de este mes pero sí ocupa su
+      presupuesto; y —rayado— lo que puso la reserva. Así se ve de un vistazo
+      que el bloque no está casi vacío porque no se gastara, sino porque el
+      gasto ya estaba pagado de antes.
     """
-    medido = bruto if es_anual else neto
+    medido = bruto if es_anual else neto + prorrateado
     estado = presupuesto.estado(medido, limite)
 
     if limite and limite > 0:
         pct_neto = min(float(neto / limite * 100), 100) if neto > 0 else 0
-        pct_cubierto = (
-            min(float(cubierto / limite * 100), max(0.0, 100 - pct_neto))
-            if cubierto > 0 else 0
+        hueco = max(0.0, 100 - pct_neto)
+        pct_prorrateado = (
+            min(float(prorrateado / limite * 100), hueco) if prorrateado > 0 else 0
         )
+        hueco = max(0.0, hueco - pct_prorrateado)
+        pct_cubierto = min(float(cubierto / limite * 100), hueco) if cubierto > 0 else 0
     elif cubierto > 0 and bruto > 0:
         # Sin límite no hay contra qué medir, pero la barra sigue teniendo algo
         # que contar: qué parte del pago puso la reserva. Repartida sobre el
@@ -715,16 +767,115 @@ def _contra_el_limite(neto, bruto, cubierto, limite, es_anual):
         # y en la gráfica no aparecía por ningún lado.
         pct_cubierto = min(float(cubierto / bruto * 100), 100)
         pct_neto = 100 - pct_cubierto
+        pct_prorrateado = 0
     else:
         # Sin límite y sin reserva la barra se llena entera: dejarla a medias
         # sugeriría un techo que nadie ha puesto.
         pct_neto = 100 if neto > 0 else 0
         pct_cubierto = 0
+        # Sin nada gastado este mes, lo prorrateado es lo único que hay que
+        # enseñar: si no, la fila del seguro ya pagado saldría con la barra a
+        # cero y parecería que no le pesa nada al mes.
+        pct_prorrateado = 100 if (not pct_neto and prorrateado > 0) else 0
 
     estado['pct_barra'] = round(pct_neto, 1)
+    estado['pct_prorrateado'] = round(pct_prorrateado, 1)
     estado['pct_cubierto'] = round(pct_cubierto, 1)
     estado['medido'] = medido
+    estado['prorrateado'] = prorrateado
     return estado
+
+
+def _pct_transcurrido(f, meses_periodo):
+    """Qué parte del periodo que se está mirando ya ha pasado, o None.
+
+    Es la marca sobre la barra del presupuesto: llevar gastado el 60 % el día 5
+    y llevarlo el día 28 son dos noticias distintas, y sin la referencia la
+    barra no distingue una de otra.
+
+    Solo se moja con un MES concreto, que es la vista con la que se abre la
+    pantalla. Sobre varios meses el tope se escala a los meses con datos y no
+    hay una fracción de tiempo que le corresponda; poner una sería inventarse
+    una referencia.
+    """
+    anio, mes = _entero_o_none(f['anio']), _entero_o_none(f['mes'])
+    if anio is None or mes is None or not 1 <= mes <= 12:
+        return None
+    hoy = date.today()
+    if (anio, mes) < (hoy.year, hoy.month):
+        return 100
+    if (anio, mes) > (hoy.year, hoy.month):
+        return 0
+    return round(hoy.day / calendar.monthrange(hoy.year, hoy.month)[1] * 100, 1)
+
+
+def _anuales_prorrateados(todos, f):
+    """Lo que los gastos ANUALES ya pagados le pesan al mes que se está mirando.
+
+    El seguro del coche se paga de una vez en enero, pero se presupuesta a
+    razón de una doceava parte cada mes: el límite de «Seguro coche» de
+    septiembre ya lleva esa provisión dentro. Y el pago no aparece por ningún
+    lado —en los once meses restantes porque no cae ahí, y en enero porque se
+    saca de los totales para no decir que enero fue un desastre—, así que la
+    fila enseñaba 60 € de 142 € y parecía que sobraban ochenta euros que en
+    realidad ya estaban gastados.
+
+    Aquí el pago se reparte entre los doce meses del año y cada mes carga su
+    parte, marcada aparte para poder pintarla en discontinuo: no es dinero que
+    saliera este mes, es dinero que ya salió y que ocupa el presupuesto de
+    este mes igual.
+
+    Solo tiene sentido mirando UN MES de UN AÑO concreto. Con «todos los años»
+    o con el año entero a la vista los pagos ya cuentan enteros y prorratearlos
+    los contaría dos veces.
+
+    Se reparte lo que SE SACÓ del mes en el que cayó: un pago del que dijiste
+    cuánto puso la reserva se queda entero en su mes, con el peso que le
+    corresponda, y prorratearlo además sería contarlo dos veces.
+    """
+    vacio = {'por_categoria': {}, 'por_bloque': {}, 'total': Decimal('0'),
+             'pagos': [], 'meses': []}
+    anio = _entero_o_none(f['anio'])
+    if anio is None or f['mes'] == 'all':
+        return vacio
+
+    # Mismos filtros de la pantalla, pero sobre el AÑO entero: el pago que se
+    # busca es justo el que no está en el mes que se está mirando.
+    del_anio = dict(f, mes='all')
+
+    por_categoria, por_bloque = {}, defaultdict(lambda: Decimal('0'))
+    pagos, total = [], Decimal('0')
+    for m in todos:
+        if not m.es_pago_provision or not m.cuenta_como_gasto or m.es_neutro:
+            continue
+        if m.cubierto_por_reserva or not _pasa_filtro(m, del_anio):
+            continue
+        cuota = (-m.importe / 12).quantize(Decimal('0.01'))
+        if cuota <= 0:
+            continue
+        tipo = m.categoria.tipo if m.categoria else 'sin'
+        nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
+        fila = por_categoria.setdefault(m.categoria_id, {
+            'id': m.categoria_id, 'nombre': nombre, 'tipo': tipo,
+            'importe': Decimal('0'), 'pagado': Decimal('0'), 'meses': set(),
+        })
+        fila['importe'] += cuota
+        fila['pagado'] += -m.importe
+        fila['meses'].add(m.fecha.month)
+        por_bloque[tipo] += cuota
+        total += cuota
+        pagos.append(m)
+
+    for fila in por_categoria.values():
+        fila['meses'] = sorted(fila['meses'])
+
+    return {
+        'por_categoria': por_categoria,
+        'por_bloque': dict(por_bloque),
+        'total': total,
+        'pagos': sorted(pagos, key=lambda m: m.fecha),
+        'meses': sorted({m.fecha.month for m in pagos}),
+    }
 
 
 def _fuera_de_presupuesto(bloques):
@@ -888,7 +1039,13 @@ def _panel_context(hogar, todos, request):
     cubierto_reserva = sum(
         (m.cubierto_por_reserva for m in reales if m.cuenta_como_gasto), Decimal('0'),
     ) if vista_de_mes else Decimal('0')
-    sin_categorizar = sum(1 for m in movimientos if not m.categoria_id and not m.es_neutro)
+    # Los cobros REPARTIDOS no cuentan: están sin categoría porque la llevan sus
+    # partes, no porque falte clasificarlos. Con ellos dentro, el aviso pedía
+    # clasificar algo que ya estaba hecho y el contador no bajaba nunca.
+    sin_categorizar = sum(
+        1 for m in movimientos
+        if not m.categoria_id and not m.es_neutro and not m.esta_dividido
+    )
     traspasos = [m for m in contables if m.es_neutro]
     traspaso_neto = sum((m.importe for m in traspasos), Decimal('0'))
 
@@ -902,7 +1059,8 @@ def _panel_context(hogar, todos, request):
     # propia categoría, así que el total del bloque es su gasto neto.
     por_bloque = defaultdict(
         lambda: {'importe': Decimal('0'), 'bruto': Decimal('0'),
-                 'cubierto': Decimal('0'), 'categorias': {}},
+                 'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
+                 'categorias': {}},
     )
     for m in reales:
         if not m.cuenta_como_gasto:
@@ -927,12 +1085,37 @@ def _panel_context(hogar, todos, request):
         cat = datos['categorias'].setdefault(
             nombre, {'id': m.categoria_id, 'nombre': nombre,
                      'importe': Decimal('0'), 'bruto': Decimal('0'),
-                     'cubierto': Decimal('0'), 'num': 0},
+                     'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
+                     'pagado_anual': Decimal('0'), 'meses_pago': [], 'num': 0},
         )
         cat['importe'] += peso
         cat['bruto'] += bruto
         cat['cubierto'] += cubierto
         cat['num'] += 1
+
+    # --- Y la parte que le toca a este mes de los ANUALES ya pagados ---
+    # Entra en el reparto aunque la categoría no tenga ni un apunte este mes:
+    # justamente por eso hay que enseñarla, porque su provisión sí está dentro
+    # del límite del mes y sin la fila el presupuesto parecía sin tocar.
+    #
+    # El bloque de los anuales queda fuera: ese ya se mide contra el año
+    # entero, donde el pago cuenta completo, y prorratearlo además lo contaría
+    # dos veces.
+    prorrateo = _anuales_prorrateados(todos, f)
+    for fila in prorrateo['por_categoria'].values():
+        if fila['tipo'] == 'anual':
+            continue
+        datos = por_bloque[fila['tipo']]
+        datos['prorrateado'] += fila['importe']
+        cat = datos['categorias'].setdefault(
+            fila['nombre'], {'id': fila['id'], 'nombre': fila['nombre'],
+                             'importe': Decimal('0'), 'bruto': Decimal('0'),
+                             'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
+                             'pagado_anual': Decimal('0'), 'meses_pago': [], 'num': 0},
+        )
+        cat['prorrateado'] += fila['importe']
+        cat['pagado_anual'] += fila['pagado']
+        cat['meses_pago'] = [MESES_ES[n].lower() for n in fila['meses']]
 
     total_gasto_abs = sum(
         (d['importe'] for d in por_bloque.values() if d['importe'] > 0), Decimal('0'),
@@ -972,7 +1155,9 @@ def _panel_context(hogar, todos, request):
     bloques = []
     for tipo in list(ORDEN_TIPOS) + ['sin']:
         datos = por_bloque.get(tipo)
-        if not datos or datos['importe'] <= 0:
+        # Un bloque sin gasto este mes pero con un anual ya pagado dentro sigue
+        # teniendo algo que contar: su presupuesto está ocupado.
+        if not datos or (datos['importe'] <= 0 and datos['prorrateado'] <= 0):
             continue
         importe = datos['importe']
         # El bloque de los anuales se juzga contra el AÑO. Un límite mensual ahí
@@ -987,8 +1172,9 @@ def _panel_context(hogar, todos, request):
         de_bloque = limite_bloque_anual if es_anual else limite_bloque
         de_categoria = limite_categoria_anual if es_anual else limite_categoria
         categorias = sorted(
-            (c for c in datos['categorias'].values() if c['importe'] > 0),
-            key=lambda c: c['importe'], reverse=True,
+            (c for c in datos['categorias'].values()
+             if c['importe'] > 0 or c['prorrateado'] > 0),
+            key=lambda c: c['importe'] + c['prorrateado'], reverse=True,
         )
         for c in categorias:
             c['pct_bloque'] = round(float(c['importe'] / importe * 100), 1) if importe else 0
@@ -998,6 +1184,7 @@ def _panel_context(hogar, todos, request):
             c.update(_contra_el_limite(
                 c['importe'], c['bruto'], c['cubierto'],
                 de_categoria.get(c['id'], Decimal('0')) * escala, es_anual,
+                prorrateado=c['prorrateado'],
             ))
         limite = de_bloque.get(tipo, Decimal('0')) * escala
         bloques.append({
@@ -1013,7 +1200,8 @@ def _panel_context(hogar, todos, request):
             'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
             'categorias': categorias,
             'num_categorias': len(categorias),
-            **_contra_el_limite(importe, datos['bruto'], datos['cubierto'], limite, es_anual),
+            **_contra_el_limite(importe, datos['bruto'], datos['cubierto'], limite,
+                                es_anual, prorrateado=datos['prorrateado']),
         })
 
     # El donut se pinta por BLOQUE, no por categoría: con quince categorías era
@@ -1106,6 +1294,48 @@ def _panel_context(hogar, todos, request):
         ),
     }
 
+    # --- Cuánto queda del presupuesto ---
+    # Saber que se han ido 3.851 € no dice si el mes va bien: la pregunta es
+    # cuánto queda hasta el tope que uno mismo se puso, y esa resta no estaba
+    # en ninguna parte de la pantalla. El tope es el del periodo entero: si hay
+    # tres meses a la vista, tres veces el presupuesto mensual.
+    #
+    # Lo gastado se mide contra ese tope INCLUYENDO la parte prorrateada de los
+    # anuales que ya has pagado: su provisión está dentro del límite, así que
+    # dejarla fuera del gasto regalaría un margen que no existe.
+    tope_periodo = sum(limite_bloque.values(), Decimal('0')) * meses_periodo
+    gastado_periodo = -gastos + prorrateo['total']
+    restante_periodo = tope_periodo - gastado_periodo
+    presupuesto_periodo = {
+        'hay': tope_periodo > 0,
+        'limite': tope_periodo,
+        'gastado': gastado_periodo,
+        'restante': restante_periodo,
+        'prorrateado': prorrateo['total'],
+        'meses': meses_periodo,
+        'pasado': restante_periodo < 0,
+        'exceso': max(-restante_periodo, Decimal('0')),
+        'pct': (
+            round(min(float(gastado_periodo / tope_periodo * 100), 100), 1)
+            if tope_periodo > 0 else 0
+        ),
+        # La barra se parte igual que las de los bloques: lo que ha salido de
+        # la cuenta y, en discontinuo, lo que ya estaba pagado de los anuales.
+        'pct_real': (
+            round(min(float(-gastos / tope_periodo * 100), 100), 1)
+            if tope_periodo > 0 else 0
+        ),
+        'pct_prorrateado': (
+            round(min(float(prorrateo['total'] / tope_periodo * 100),
+                      max(0.0, 100 - float(-gastos / tope_periodo * 100))), 1)
+            if tope_periodo > 0 and prorrateo['total'] > 0 else 0
+        ),
+        # Lo que va de mes o de año, para poder decir si ese 60% gastado es ir
+        # sobrado o ir camino de pasarse. Sin la marca, un 60% el día 5 y un
+        # 60% el día 28 se leen igual y no son lo mismo.
+        'pct_transcurrido': _pct_transcurrido(f, meses_periodo),
+    }
+
     # --- Lo que explica el periodo (antes, la pestaña «Análisis») ---
     fuera_presupuesto = _fuera_de_presupuesto(bloques)
     comercios = _comercios_del_periodo(contables, meses_periodo, vista_de_mes=vista_de_mes)
@@ -1155,6 +1385,8 @@ def _panel_context(hogar, todos, request):
         'periodo_etiqueta': _etiqueta_periodo(anio_sel, mes_sel),
         'meses_periodo': meses_periodo,
         'media': media,
+        'presupuesto': presupuesto_periodo,
+        'prorrateo': prorrateo,
         'cubierto_reserva': cubierto_reserva,
         # El aviso habla de lo que se ha SACADO del mes, así que lista solo eso:
         # un pago que se queda —porque dijiste cuánto puso la reserva— ya se ve
@@ -1185,13 +1417,12 @@ def _panel_context(hogar, todos, request):
 def _volver_a(request, anio_sel, mes_sel):
     """De dónde se venía, para poder volver sin perder el mes.
 
-    Entrar desde «Ocio se ha pasado 180 €» y no tener forma de regresar a la
-    conciliación era el corte de navegación más molesto de la pantalla. Es una
-    LISTA BLANCA de destinos conocidos y no una URL libre: un «volver» que
-    acepte cualquier dirección es un redirector abierto de manual.
+    Entrar desde «Ocio se ha pasado 180 €» y no tener forma de regresar era el
+    corte de navegación más molesto de la pantalla. Es una LISTA BLANCA de
+    destinos conocidos y no una URL libre: un «volver» que acepte cualquier
+    dirección es un redirector abierto de manual.
     """
     destinos = {
-        'conciliacion': ('extractos:conciliacion', 'Conciliación'),
         'movimientos': ('extractos:listar', 'Movimientos'),
     }
     volver = request.GET.get('volver') or ''
@@ -1987,6 +2218,15 @@ def movimientos_de_categoria(request):
         presupuesto.por_categoria(hogar).get(categoria.id, Decimal('0'))
         if categoria else Decimal('0')
     )
+    # Lo mismo que hace el reparto de la pantalla: la parte que a este mes le
+    # toca de un gasto anual ya pagado ocupa su límite, así que el modal tiene
+    # que decir la misma cifra que la fila desde la que se abre.
+    prorrateo = _anuales_prorrateados(todos, f)
+    prorrateado = prorrateo['por_categoria'].get(
+        categoria.id if categoria else None, {},
+    ).get('importe', Decimal('0'))
+    if categoria and categoria.tipo == 'anual':
+        prorrateado = Decimal('0')
 
     por_mes = defaultdict(lambda: Decimal('0'))
     for m in movimientos:
@@ -2015,8 +2255,12 @@ def movimientos_de_categoria(request):
         'meses': meses,
         'comercios': _comercios_del_periodo(
             movimientos, meses_periodo, tope=8, vista_de_mes=vista_de_mes),
-        **presupuesto.estado(total, limite_mensual * meses_periodo),
+        **presupuesto.estado(total + prorrateado, limite_mensual * meses_periodo),
         'limite_mensual': limite_mensual,
+        'prorrateado': prorrateado,
+        # Lo que se mide contra el límite: el gasto del periodo más la parte que
+        # le toca de los anuales ya pagados.
+        'medido': total + prorrateado,
         # Anidado, no expandido: la plantilla de una fila de movimiento espera
         # este contexto bajo el nombre `panel`, igual que en el listado.
         'contexto_edicion': _contexto_edicion(hogar),
@@ -2178,243 +2422,23 @@ def _etiqueta_para_lote(hogar, request, crear):
     )
 
 
-def _periodo_conciliacion(request, movimientos):
-    """Periodo que se está conciliando, a partir de los filtros de la URL.
-
-    Por defecto se abre en el ÚLTIMO MES CON DATOS: comparar el presupuesto
-    contra una media de doce meses esconde justo lo que se quiere ver, que es
-    si este mes se ha ido de madre. La media sigue disponible eligiendo «todos».
-    """
-    meses_con_datos = sorted({(m.fecha.year, m.fecha.month) for m in movimientos}, reverse=True)
-    anios = sorted({anio for anio, _ in meses_con_datos}, reverse=True)
-
-    anio_sel = request.GET.get('anio')
-    mes_sel = request.GET.get('mes')
-    if anio_sel is None and mes_sel is None and meses_con_datos:
-        anio_sel, mes_sel = (str(v) for v in meses_con_datos[0])
-    anio_sel = anio_sel or 'all'
-    mes_sel = mes_sel or 'all'
-
-    anio = _entero_o_none(anio_sel)
-    mes = _entero_o_none(mes_sel)
-    if mes is not None and not 1 <= mes <= 12:
-        mes, mes_sel = None, 'all'
-
-    def dentro(m):
-        if anio is not None and m.fecha.year != anio:
-            return False
-        if mes is not None and m.fecha.month != mes:
-            return False
-        return True
-
-    del_periodo = [m for m in movimientos if dentro(m)]
-    meses_periodo = {(m.fecha.year, m.fecha.month) for m in del_periodo}
-    # Un mes concreto se enseña tal cual; varios meses, en media mensual, que es
-    # la única forma de compararlos con un presupuesto que es mensual.
-    es_mes = anio is not None and mes is not None
-
-    if es_mes:
-        etiqueta = f"{MESES_ES[mes]} {anio}"
-    elif anio is not None:
-        etiqueta = f"{anio}"
-    else:
-        etiqueta = "Todo el histórico"
-
-    return {
-        'movimientos': del_periodo,
-        'num_meses': 1 if es_mes else max(len(meses_periodo), 1),
-        'es_mes': es_mes,
-        'etiqueta': etiqueta,
-        'anio_sel': anio_sel,
-        'mes_sel': mes_sel,
-        'anios_disponibles': anios,
-        'meses_disponibles': [
-            {'valor': str(n), 'etiqueta': MESES_ES[n]} for n in range(1, 13)
-        ],
-    }
-
-
 @login_required
 def conciliacion(request):
-    """Cruza los movimientos observados (gasto) contra lo declarado en Gastos."""
-    profile, hogar = _get_hogar(request)
-    if not hogar:
-        messages.error(request, "Necesitas pertenecer a un hogar.")
-        return redirect('dashboard')
+    """La pantalla de Conciliación ya no existe.
 
-    _crear_categorias_predefinidas(hogar)
+    Decía lo mismo que Movimientos —el gasto observado contra el presupuesto
+    declarado, bloque a bloque— pero con sus propias cifras y su propio
+    periodo, así que había dos pantallas que respondían a la misma pregunta y
+    que no siempre respondían lo mismo. Lo que aportaba de más (cuánto llevas
+    pagado de cada gasto anual) está ahora dentro del reparto de Movimientos,
+    prorrateado al mes que se esté mirando.
 
-    # Se descartan los movimientos neutros (traspasos entre cuentas propias y
-    # categorías marcadas como neutras): no son gasto ni ingreso, así que no
-    # tienen nada contra lo que compararse en el presupuesto.
-    todos = [
-        m for m in MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
-        # `partes` porque un movimiento dividido deja de contar por sí mismo, y
-        # saberlo fila a fila son mil consultas. `coberturas` por lo mismo, para
-        # saber cuánto puso la reserva en cada pago.
-        .prefetch_related('partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas')
-        if not m.es_neutro
-    ]
-    periodo = _periodo_conciliacion(request, todos)
-    movimientos = periodo['movimientos']
-    num_meses = periodo['num_meses']
-
-    # Los gastos que no son mensuales se comparan en el bloque anual, no aquí:
-    # se provisionan mes a mes y se pagan de golpe, así que dejar el pago del
-    # IBI dentro de junio haría parecer un desastre ese mes y un dechado de
-    # virtud los otros once. Se sacan sus pagos del observado Y su provisión
-    # del declarado, o la comparación quedaría coja por un lado.
-    #
-    # Solo en la vista de UN MES: sobre doce meses ambos lados se promedian
-    # bien y la comparación vuelve a tener sentido tal cual.
-    #
-    # Un pago que SÍ dice cuánto puso la reserva se queda: ahí no hay que
-    # suponer nada, se sabe que 928 € estaban provisionados y que 272 € no, y
-    # esos 272 son del mes. Igual que en Movimientos, para que las dos
-    # pantallas cuenten lo mismo.
-    solo_mes = periodo['es_mes']
-    # `cuenta_como_gasto` deja fuera los cobros repartidos, igual que en
-    # Movimientos: si el padre contara aquí como pago de una provisión, el mismo
-    # dinero estaría en «provisiones del periodo» y otra vez en el gasto de sus
-    # partes, que son las que cuentan.
-    pagos_provision = [
-        m for m in movimientos
-        if m.es_pago_provision and m.cuenta_como_gasto
-        and not (solo_mes and m.cubierto_por_reserva)
-    ]
-    sacados = {m.pk for m in pagos_provision} if solo_mes else set()
-    gastos = [m for m in movimientos if m.cuenta_como_gasto and m.pk not in sacados]
-    total_provisiones_periodo = sum((-m.importe for m in pagos_provision), Decimal('0'))
-
-    # La reserva solo se descuenta en la vista de un mes: sobre el año se
-    # compensa con los meses en los que se ahorró, y la revisión del coche
-    # vuelve a costar lo que costó.
-    def peso_de(m):
-        return m.impacto_real if solo_mes else -m.importe
-
-    # Observado por categoría (gasto absoluto, media mensual).
-    observado = defaultdict(lambda: Decimal('0'))
-    sin_cat = Decimal('0')
-    for m in gastos:
-        if m.categoria_id:
-            observado[m.categoria_id] += peso_de(m)
-        else:
-            sin_cat += peso_de(m)
-
-    # Declarado por categoría: suma de importe_mensual de sus partidas activas.
-    # Se agrupa por BLOQUE del presupuesto (Fijos / Fijos anuales / Variables /
-    # Discrecionales), que es la comparación que de verdad interesa: la
-    # categoría concreta se conserva como detalle dentro de cada bloque.
-    por_bloque = {}
-    # Toda categoría con gasto DECLARADO entra en la comparación, sea cual sea
-    # su bloque o su cómputo: si se ha presupuestado, se concilia. El filtro por
-    # bloque solo decide qué categorías sin presupuesto se cuelan por tener
-    # gasto observado.
-    categorias = CategoriaGasto.objects.filter(hogar=hogar).filter(
-        Q(partidas__activo=True)
-        | Q(activo=True, tipo__in=TIPOS_GASTO) & ~Q(computo=COMPUTO_NEUTRO)
-    ).distinct().prefetch_related('partidas')
-    total_declarado = Decimal('0')
-    total_observado = Decimal('0')
-
-    # Las partidas declaradas para el bloque entero no cuelgan de ninguna
-    # categoría: son el techo del bloque. Se llevan aparte para sumarlas al
-    # bloque sin inventarles una fila de categoría que no existe.
-    techo_bloque = defaultdict(lambda: Decimal('0'))
-    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True, categoria__isnull=True):
-        if p.bloque and not (solo_mes and p.periodicidad != 'mensual'):
-            techo_bloque[p.bloque] += p.importe_mensual
-
-    for cat in categorias:
-        # Las partidas vienen del prefetch; filtrar en Python evita una consulta
-        # por categoría.
-        suyas = [
-            p for p in cat.partidas.all()
-            if p.activo and not (solo_mes and p.periodicidad != 'mensual')
-        ]
-        declarado = sum((p.importe_mensual for p in suyas), Decimal('0'))
-        obs_mensual = (observado.get(cat.id, Decimal('0')) / num_meses)
-        if declarado == 0 and obs_mensual == 0:
-            continue
-        bloque = por_bloque.setdefault(cat.tipo, {
-            'tipo': cat.tipo,
-            'etiqueta': ETIQUETAS_TIPO.get(cat.tipo, cat.tipo),
-            'color': COLOR_TIPO.get(cat.tipo, '#9aa5a0'),
-            'filas': [],
-            'declarado': Decimal('0'),
-            'observado': Decimal('0'),
-        })
-        bloque['filas'].append({
-            'categoria': cat.nombre,
-            'categoria_id': cat.id,
-            'declarado': declarado,
-            'observado': obs_mensual,
-            'diferencia': obs_mensual - declarado,
-            'pct': int(min(obs_mensual / declarado * 100, 999)) if declarado > 0 else 0,
-        })
-        bloque['declarado'] += declarado
-        bloque['observado'] += obs_mensual
-        total_declarado += declarado
-        total_observado += obs_mensual
-
-    # Un bloque con techo propio se compara contra ESE número, no contra la suma
-    # de lo declarado en sus categorías: es lo que significa «tengo mil quinientos
-    # para caprichos, y dentro doscientos para restaurantes».
-    for tipo, techo in techo_bloque.items():
-        bloque = por_bloque.setdefault(tipo, {
-            'tipo': tipo,
-            'etiqueta': ETIQUETAS_TIPO.get(tipo, tipo),
-            'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
-            'filas': [],
-            'declarado': Decimal('0'),
-            'observado': Decimal('0'),
-        })
-        total_declarado += techo - bloque['declarado']
-        bloque['declarado'] = techo
-        bloque['techo_propio'] = True
-
-    bloques = []
-    for tipo in ORDEN_TIPOS:
-        bloque = por_bloque.get(tipo)
-        if not bloque:
-            continue
-        bloque['filas'].sort(key=lambda f: f['observado'], reverse=True)
-        bloque['diferencia'] = bloque['observado'] - bloque['declarado']
-        bloque['pct'] = (
-            int(min(bloque['observado'] / bloque['declarado'] * 100, 999))
-            if bloque['declarado'] > 0 else 0
-        )
-        bloques.append(bloque)
-
-    # --- Ingresos: observado en el banco frente a lo declarado en FuenteIngreso ---
-    ingreso_observado = sum(
-        (m.importe for m in movimientos if m.cuenta_como_ingreso), Decimal('0'),
-    ) / num_meses
-    ingreso_declarado = _ingreso_declarado_mensual(hogar)
-
-    return render(request, 'extractos/conciliacion.html', {
-        'bloques': bloques,
-        'periodo': periodo,
-        'pagos_provision': (
-            sorted(pagos_provision, key=lambda m: m.fecha, reverse=True) if solo_mes else []
-        ),
-        'total_provisiones_periodo': total_provisiones_periodo,
-        'provisiones': _provisiones_del_anio(hogar, periodo, todos),
-        'num_meses': num_meses,
-        'sin_categorizar_importe': sin_cat / num_meses if sin_cat else Decimal('0'),
-        'total_declarado': total_declarado,
-        'total_observado': total_observado,
-        'total_diferencia': total_observado - total_declarado,
-        'ingreso_declarado': ingreso_declarado,
-        'ingreso_observado': ingreso_observado,
-        'ingreso_diferencia': ingreso_observado - ingreso_declarado,
-        'ahorro_declarado': ingreso_declarado - total_declarado,
-        'ahorro_observado': ingreso_observado - total_observado,
-        'hay_datos': bool(movimientos),
-        'hay_movimientos': bool(todos),
-    })
+    La ruta se conserva redirigiendo porque estaba enlazada desde el propio
+    panel y desde los marcadores del usuario.
+    """
+    parametros = request.GET.urlencode()
+    destino = reverse('extractos:listar')
+    return redirect(f'{destino}?{parametros}' if parametros else destino)
 
 
 @login_required
@@ -2688,67 +2712,6 @@ def etiquetas(request):
         'paleta': Etiqueta.PALETA,
         'color_sugerido': Etiqueta.color_sugerido(hogar),
     })
-
-
-def _provisiones_del_anio(hogar, periodo, movimientos):
-    """Los gastos no mensuales del hogar y cuánto llevas pagado de cada uno.
-
-    La conciliación mensual no puede responder «¿ya he pagado el IBI?» porque
-    su unidad es el mes; esta sí: el año entero, pago a pago.
-    """
-    anio = _entero_o_none(periodo['anio_sel'])
-    partidas = (
-        PartidaGasto.objects.filter(hogar=hogar, activo=True)
-        .exclude(periodicidad='mensual').select_related('categoria')
-    )
-    if not partidas:
-        return []
-
-    pagos = defaultdict(list)
-    for m in movimientos:
-        if not m.es_pago_provision:
-            continue
-        if anio and m.fecha.year != anio:
-            continue
-        pagos[m.partida_conciliada_id].append(m)
-
-    filas = []
-    for p in partidas:
-        suyos = pagos.get(p.id, [])
-        pagado = sum((-m.importe for m in suyos), Decimal('0'))
-        objetivo = p.importe_anual
-        filas.append({
-            'partida': p,
-            'categoria': p.categoria.nombre if p.categoria else '—',
-            'periodicidad': p.get_periodicidad_display(),
-            'objetivo': objetivo,
-            'pagado': pagado,
-            'pendiente': max(objetivo - pagado, Decimal('0')),
-            'num_pagos': len(suyos),
-            'pagos': sorted(suyos, key=lambda m: m.fecha),
-            'pct': int(min(pagado / objetivo * 100, 100)) if objetivo > 0 else 0,
-            'completo': objetivo > 0 and pagado >= objetivo,
-        })
-    filas.sort(key=lambda f: (f['completo'], -float(f['objetivo'])))
-    return filas
-
-
-def _ingreso_declarado_mensual(hogar):
-    """Ingreso neto mensual declarado por el hogar en sus FuenteIngreso.
-
-    Reutiliza `_neto_fuente_base` del motor de distribución para no duplicar el
-    cálculo de retenciones y reparto en pagas."""
-    from finanzas.distribucion import _neto_fuente_base
-    from finanzas.models import FuenteIngreso
-
-    total = Decimal('0')
-    for miembro in hogar.miembros.select_related('user').all():
-        for fuente in FuenteIngreso.objects.filter(
-            usuario=miembro.user, hogar=hogar, activo=True,
-        ):
-            base, _ = _neto_fuente_base(fuente)
-            total += base
-    return total
 
 
 # ---------------------------------------------------------------------------
