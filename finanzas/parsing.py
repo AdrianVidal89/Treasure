@@ -158,6 +158,72 @@ def _xls_a_filas(datos):
     return filas
 
 
+def _declara_dtd(datos):
+    """¿Trae el XML un `<!DOCTYPE ...>` delante del elemento raíz?
+
+    ElementTree expande las entidades internas que declare un DTD, así que un
+    XML amañado («billion laughs») agotaría la memoria al importarlo. Ningún
+    banco exporta con DTD, de modo que preferimos rechazarlo. Se recorre el
+    prólogo de verdad (espacios, comentarios e instrucciones de proceso) en vez
+    de buscar la cadena a ciegas, para no confundirla con el contenido."""
+    i = 3 if datos[:3] == b'\xef\xbb\xbf' else 0
+    while i < len(datos):
+        while i < len(datos) and datos[i:i + 1].isspace():
+            i += 1
+        if datos[i:i + 9].lower() == b'<!doctype':
+            return True
+        if datos[i:i + 4] == b'<!--':
+            cierre = b'-->'
+        elif datos[i:i + 2] == b'<?':
+            cierre = b'?>'
+        else:
+            return False  # aquí empieza ya el elemento raíz
+        fin = datos.find(cierre, i)
+        if fin == -1:
+            return False  # XML truncado: que falle el parser, no esta criba
+        i = fin + len(cierre)
+    return False
+
+
+def _spreadsheetml_a_filas(datos):
+    """Primera hoja de un «.xls» que en realidad es SpreadsheetML 2003 (XML).
+
+    Es el tercer disfraz habitual del .xls: no es BIFF ni una tabla HTML, sino
+    el XML de Excel 2003 (`<Workbook xmlns="urn:schemas-microsoft-com:office:
+    spreadsheet">`). Varias bancas online españolas exportan así. Hay que
+    respetar `ss:Index`, que salta celdas vacías en vez de escribirlas, o las
+    columnas se desplazan."""
+    import xml.etree.ElementTree as ET
+
+    if _declara_dtd(datos):
+        raise ValueError('El XML declara un DTD; no se importa por seguridad.')
+
+    NS = '{urn:schemas-microsoft-com:office:spreadsheet}'
+    raiz = ET.fromstring(datos)
+    hoja = raiz.find(f'{NS}Worksheet')
+    if hoja is None:
+        return []
+    tabla = hoja.find(f'{NS}Table')
+    if tabla is None:
+        return []
+
+    filas = []
+    for fila_xml in tabla.findall(f'{NS}Row'):
+        fila = []
+        for celda in fila_xml.findall(f'{NS}Cell'):
+            indice = celda.get(f'{NS}Index')
+            if indice:
+                try:
+                    # ss:Index es 1-based y apunta a dónde va ESTA celda.
+                    fila.extend([''] * (int(indice) - 1 - len(fila)))
+                except ValueError:
+                    pass
+            dato = celda.find(f'{NS}Data')
+            fila.append('' if dato is None else ''.join(dato.itertext()))
+        filas.append(fila)
+    return filas
+
+
 class _TablaHTML(HTMLParser):
     """Extrae las filas de la primera tabla de un HTML.
 
@@ -199,8 +265,17 @@ def _html_a_filas(datos):
     return parser.filas
 
 
-def _parece_html(datos):
-    cabeza = datos[:2048].lstrip().lower()
+def _cabeza(datos):
+    """Primeros bytes en minúsculas y sin BOM, para olfatear el formato."""
+    return datos[:2048].lstrip(b'\xef\xbb\xbf').lstrip().lower()
+
+
+def _parece_spreadsheetml(cabeza):
+    return (cabeza.startswith(b'<')
+            and b'urn:schemas-microsoft-com:office:spreadsheet' in cabeza)
+
+
+def _parece_html(cabeza):
     return cabeza.startswith(b'<') and (b'<table' in cabeza or b'<html' in cabeza)
 
 
@@ -210,17 +285,23 @@ def _excel_a_csv(archivo):
     revisión) funcione igual que con un CSV.
 
     El formato se decide por los bytes iniciales y no por la extensión, porque
-    lo que un banco llama «.xls» puede ser un xlsx, un BIFF antiguo o una tabla
-    HTML."""
+    lo que un banco llama «.xls» puede ser un xlsx, un BIFF antiguo, un XML de
+    Excel 2003 (SpreadsheetML) o una tabla HTML."""
     datos = archivo.read() if hasattr(archivo, 'read') else archivo
     if isinstance(datos, str):
         datos = datos.encode('utf-8')
 
+    cabeza = _cabeza(datos)
     if datos[:2] == b'PK':
         filas = _xlsx_a_filas(datos)
     elif datos[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
         filas = _xls_a_filas(datos)
-    elif _parece_html(datos):
+    elif _parece_spreadsheetml(cabeza):
+        # Antes que el HTML: un SpreadsheetML lleva `<Table>` y colaba por el
+        # lector de tablas HTML, que no encuentra ni un `<tr>` y devolvía el
+        # archivo vacío sin decir por qué.
+        filas = _spreadsheetml_a_filas(datos)
+    elif _parece_html(cabeza):
         filas = _html_a_filas(datos)
     else:
         # No es ninguno de los formatos binarios conocidos: probablemente sea
@@ -235,7 +316,8 @@ def es_excel(nombre):
 
 def leer_tabla(archivo):
     """Lee un fichero subido y devuelve texto CSV, aceptando tanto CSV como
-    Excel (.xlsx/.xlsm/.xls, incluido el «.xls» que en realidad es HTML).
+    Excel (.xlsx/.xlsm/.xls, incluidos los «.xls» que en realidad son una
+    tabla HTML o un XML de Excel 2003).
     Punto de entrada único para la importación de extractos: el resto del
     código sigue trabajando con texto CSV."""
     nombre = getattr(archivo, 'name', '') or ''

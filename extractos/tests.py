@@ -12,6 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
@@ -32,16 +33,23 @@ from .views import _importar_analizados, _marcar_duplicados, _panel_context
 FIXTURES = Path(__file__).resolve().parent / 'tests_fixtures'
 
 
+def leer_bytes(nombre, datos):
+    """Pasa unos bytes por `leer_tabla` como si fueran un archivo subido: el
+    formato se decide por el contenido, pero la extensión del nombre marca si
+    se trata como Excel o como CSV."""
+    class _Archivo:
+        name = nombre
+
+        def read(self):
+            return datos
+
+    return leer_tabla(_Archivo())
+
+
 def leer_fixture(nombre):
     ruta = FIXTURES / nombre
     if ruta.suffix == '.xls':
-        class _Archivo:
-            name = nombre
-
-            def read(self):
-                return ruta.read_bytes()
-
-        return leer_tabla(_Archivo())
+        return leer_bytes(nombre, ruta.read_bytes())
     return ruta.read_text(encoding='utf-8')
 
 
@@ -142,6 +150,71 @@ class ParserTests(TestCase):
             'ALJARAFESA EMP · Recibo de agua',
             [m['concepto'] for m in r['movimientos']],
         )
+
+    def test_lee_xls_que_es_xml_de_excel_2003(self):
+        # Varias bancas exportan un «.xls» que es SpreadsheetML (XML), no BIFF.
+        # Lleva un `<Table>` dentro, así que colaba por el lector de tablas
+        # HTML: este no encuentra ni un `<tr>` y devolvía el archivo vacío.
+        xml = (
+            '<?xml version="1.0"?>'
+            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"'
+            ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'
+            '<Worksheet ss:Name="Movimientos"><Table>'
+            '<Row><Cell><Data ss:Type="String">Fecha</Data></Cell>'
+            '<Cell><Data ss:Type="String">Concepto</Data></Cell>'
+            '<Cell><Data ss:Type="String">Importe</Data></Cell>'
+            '<Cell><Data ss:Type="String">Saldo</Data></Cell></Row>'
+            '<Row><Cell><Data ss:Type="DateTime">2026-07-01T00:00:00.000</Data></Cell>'
+            '<Cell><Data ss:Type="String">COMPRA MERCADONA</Data></Cell>'
+            '<Cell><Data ss:Type="Number">-45.67</Data></Cell>'
+            '<Cell><Data ss:Type="Number">1200.5</Data></Cell></Row>'
+            # Sin concepto: el banco omite la celda y salta con ss:Index, así
+            # que el importe tiene que seguir cayendo en su columna.
+            '<Row><Cell><Data ss:Type="DateTime">2026-07-02T00:00:00.000</Data></Cell>'
+            '<Cell ss:Index="3"><Data ss:Type="Number">-10</Data></Cell>'
+            '<Cell><Data ss:Type="Number">1190.5</Data></Cell></Row>'
+            '</Table></Worksheet></Workbook>'
+        ).encode('utf-8')
+
+        r = analizar_extracto(leer_bytes('movimientos.xls', xml))
+        self.assertFalse(r['errores_generales'])
+        self.assertEqual(len(r['movimientos']), 2)
+        primero, segundo = r['movimientos']
+        self.assertEqual(primero['fecha'], date(2026, 7, 1))
+        self.assertEqual(primero['concepto'], 'COMPRA MERCADONA')
+        self.assertEqual(primero['importe'], Decimal('-45.67'))
+        self.assertEqual(primero['saldo'], Decimal('1200.5'))
+        self.assertEqual(segundo['importe'], Decimal('-10'))
+        self.assertEqual(segundo['saldo'], Decimal('1190.5'))
+
+    def test_un_xml_con_dtd_se_rechaza_en_vez_de_expandirlo(self):
+        # ElementTree expande las entidades internas: sin esta criba, un «.xls»
+        # amañado («billion laughs») se come la memoria del servidor.
+        bomba = (
+            '<?xml version="1.0"?>'
+            '<!DOCTYPE lolz [<!ENTITY lol "lol">'
+            '<!ENTITY lol1 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">]>'
+            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet">'
+            '<Worksheet><Table><Row><Cell><Data>&lol1;</Data></Cell></Row>'
+            '</Table></Worksheet></Workbook>'
+        ).encode('utf-8')
+
+        with self.assertRaises(ValueError):
+            leer_bytes('bomba.xls', bomba)
+
+    def test_lee_xls_que_es_una_tabla_html(self):
+        html = (
+            '<html><body><table>'
+            '<tr><th>Fecha</th><th>Concepto</th><th>Importe</th></tr>'
+            '<tr><td>01/07/2026</td><td>N\u00d3MINA</td><td>1.234,56</td></tr>'
+            '</table></body></html>'
+        ).encode('utf-8')
+
+        r = analizar_extracto(leer_bytes('movimientos.xls', html))
+        self.assertFalse(r['errores_generales'])
+        self.assertEqual(len(r['movimientos']), 1)
+        self.assertEqual(r['movimientos'][0]['concepto'], 'N\u00d3MINA')
+        self.assertEqual(r['movimientos'][0]['importe'], Decimal('1234.56'))
 
 
 class ImportacionTests(TestCase):
@@ -5156,3 +5229,49 @@ class ReservaQueCubreUnPagoTests(TestCase):
         respuesta = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 9})
         self.assertContains(respuesta, 'ext-badge-reserva')
         self.assertContains(respuesta, 'pesó')
+
+
+class SubirUnXlsTests(TestCase):
+    """La pantalla de importación acepta el .xls, no solo el CSV y el .xlsx.
+
+    Muchas bancas online españolas siguen sin ofrecer otra descarga que un
+    «.xls», así que el recorrido completo —elegir el archivo, subirlo y llegar
+    a la revisión— tiene que funcionar con él."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+
+    def test_el_formulario_deja_elegir_un_xls(self):
+        respuesta = self.client.get(reverse('extractos:subir'))
+        self.assertContains(respuesta, '.xls,')
+
+    def test_subir_un_xls_lleva_a_la_revision_con_sus_movimientos(self):
+        datos = (FIXTURES / 'caixabank.xls').read_bytes()
+        archivo = SimpleUploadedFile(
+            'Movimientos.xls', datos, content_type='application/vnd.ms-excel')
+
+        respuesta = self.client.post(reverse('extractos:subir'), {
+            'nombre_banco': 'CaixaBank', 'archivos': archivo,
+        })
+        self.assertRedirects(respuesta, reverse('extractos:revisar'))
+
+        revision = self.client.get(reverse('extractos:revisar'))
+        self.assertEqual(revision.context['total_ok'], 3)
+        self.assertEqual(revision.context['total_error'], 0)
+        self.assertEqual(revision.context['archivos'][0]['nombre'], 'Movimientos.xls')
+
+    def test_un_xls_ilegible_avisa_en_vez_de_romper(self):
+        archivo = SimpleUploadedFile(
+            'roto.xls', b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1' + b'\x00' * 64,
+            content_type='application/vnd.ms-excel')
+
+        respuesta = self.client.post(reverse('extractos:subir'), {'archivos': archivo})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'No se pudo leer')
+        self.assertNotIn('extractos_pendientes', self.client.session)
