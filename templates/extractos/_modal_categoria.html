@@ -27,18 +27,26 @@ estabas.
     </div>
     <span class="mc-presupuesto-txt">
         {% if dentro %}
-        Dentro del presupuesto: {{ total|euro:0 }} de {{ limite|euro:0 }}
+        Dentro del presupuesto: {{ medido|euro:0 }} de {{ limite|euro:0 }}
         {% else %}
         <strong class="text-negative">{{ exceso|euro:0 }} por encima</strong> de los {{ limite|euro:0 }} presupuestados
         {% endif %}
         {% if meses_periodo > 1 %}<span class="text-muted">· {{ limite_mensual|euro:0 }}/mes × {{ meses_periodo }}</span>{% endif %}
+        {% comment %}
+        Un gasto anual ya pagado ocupa el presupuesto de este mes aunque su
+        recibo cayera en otro: sin decirlo, la cifra de aquí dentro no cuadraba
+        con la de la fila desde la que se abre el modal.
+        {% endcomment %}
+        {% if prorrateado %}
+        <span class="text-muted">· incluye {{ prorrateado|euro }} prorrateados de un gasto anual ya pagado</span>
+        {% endif %}
     </span>
 </div>
 {% else %}
 <p class="mc-sin-limite">
     Esta categoría no tiene presupuesto declarado, así que no hay nada contra lo que
     compararla. <a href="{% url 'finanzas:crear_partida' %}">Declararlo en Gastos</a> es lo que
-    hace que aparezca en la conciliación.
+    hace que aparezca medida contra su límite.
 </p>
 {% endif %}
 

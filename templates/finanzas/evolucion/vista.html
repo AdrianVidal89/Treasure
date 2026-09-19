@@ -151,7 +151,14 @@
 }
 .evo-month-card > summary::-webkit-details-marker { display: none; }
 .evo-month-card > summary:hover { background: color-mix(in srgb, var(--primary-color) 4%, transparent); }
-.evo-month-name { font-weight: 700; color: var(--text-color); width: 130px; flex-shrink: 0; }
+.evo-month-name { font-weight: 700; color: var(--text-color); width: 190px; flex-shrink: 0; }
+/* «¿Y ese mes qué pasó?»: el mes lleva a sus apuntes, ya filtrados. */
+.evo-mes-link { color: var(--primary-color); text-decoration: none; }
+.evo-mes-link:hover { text-decoration: underline; }
+.evo-month-name .evo-mes-link { font-size: 0.72rem; font-weight: 600; margin-left: 8px; opacity: 0; transition: opacity .15s; }
+.evo-month-card:hover .evo-month-name .evo-mes-link,
+.evo-month-name .evo-mes-link:focus { opacity: 1; }
+@media (hover: none) { .evo-month-name .evo-mes-link { opacity: 1; } }
 .evo-month-stats { display: flex; gap: 28px; flex: 1; justify-content: flex-end; flex-wrap: wrap; }
 .evo-month-stat { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .evo-month-stat .lbl { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
@@ -362,7 +369,14 @@
         {% for fila in filas %}
         <details class="glass-panel evo-month-card" data-mes="{{ fila.mes }}" {% if forloop.first %}open{% endif %}>
             <summary>
-                <span class="evo-month-name">{{ fila.mes_nombre }} {{ año_actual }}</span>
+                <span class="evo-month-name">
+                    {{ fila.mes_nombre }} {{ año_actual }}
+                    {% comment %}Misma idea que en el detalle mes a mes: desde el resumen de un
+                       mes, ver en qué se fue su dinero es la pregunta siguiente.{% endcomment %}
+                    <a class="evo-mes-link" href="{% url 'extractos:listar' %}?anio={{ año_actual }}&mes={{ fila.mes }}"
+                       title="Ver los movimientos de {{ fila.mes_nombre }} {{ año_actual }}"
+                       onclick="event.stopPropagation();">movimientos →</a>
+                </span>
                 <div class="evo-month-stats">
                     <div class="evo-month-stat">
                         <span class="lbl">Ingresos</span>
@@ -1066,6 +1080,18 @@ let datosAnalisis = JSON.parse(document.getElementById('evo-analisis-data').text
 let rentabilidadAnual = 0;
 
 const MESES_CORTOS = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+/* Mirar una fila del detalle y preguntarse «¿y ese mes qué pasó?» es
+   inmediato; ir a buscarlo a mano a Movimientos y volver a filtrar, no. El mes
+   enlaza con sus apuntes, ya filtrados. El año no cambia sin recargar la
+   página, así que basta con el que pintó el servidor. */
+const AÑO_EVOLUCION = {{ año_actual }};
+const URL_MOVIMIENTOS = "{% url 'extractos:listar' %}";
+
+function enlaceDelMes(mes, texto) {
+    return '<a class="evo-mes-link" href="' + URL_MOVIMIENTOS + '?anio=' + AÑO_EVOLUCION +
+        '&mes=' + mes + '" title="Ver los movimientos de ' + MESES_CORTOS[mes] + ' ' +
+        AÑO_EVOLUCION + '">' + texto + '</a>';
+}
 const NOMBRE_METRICA = {liquidez: 'liquidez', patrimonio: 'patrimonio financiero'};
 const ICONO_AVISO = {ok: '#i-check', aviso: '#i-alert', info: '#i-info'};
 /* [etiqueta, clave, subir es mejor] */
@@ -1146,7 +1172,7 @@ function renderRitmo() {
 
     const detalle = (a.meses || []).map((m) =>
         '<tr>' +
-        '<td class="concepto">' + MESES_CORTOS[m.mes] + '</td>' +
+        '<td class="concepto">' + enlaceDelMes(m.mes, MESES_CORTOS[m.mes]) + '</td>' +
         '<td>' + euroOpc(m.ingreso) + '</td>' +
         '<td>' + euroOpc(m.gasto) + '</td>' +
         '<td>' + euroOpc(m.ahorro) + '</td>' +

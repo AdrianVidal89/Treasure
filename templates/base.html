@@ -154,7 +154,7 @@
                 <a href="{% url 'finanzas:listar_vehiculos' %}" class="sidebar-link {% if vn == 'finanzas:listar_vehiculos' or vn == 'finanzas:detalle_vehiculo' %}active{% endif %}">
                     <svg class="icon"><use href="#i-car"/></svg><span>Vehículos</span>
                 </a>
-                <a href="{% url 'extractos:listar' %}" class="sidebar-link {% if vn == 'extractos:listar' or vn == 'extractos:subir' or vn == 'extractos:detalle' or vn == 'extractos:conciliacion' or vn == 'extractos:reglas' or vn == 'finanzas:listar_categorias' %}active{% endif %}">
+                <a href="{% url 'extractos:listar' %}" class="sidebar-link {% if vn == 'extractos:listar' or vn == 'extractos:subir' or vn == 'extractos:detalle' or vn == 'extractos:reglas' or vn == 'finanzas:listar_categorias' %}active{% endif %}">
                     <svg class="icon"><use href="#i-statements"/></svg><span>Extractos</span>
                 </a>
             </div>

@@ -67,7 +67,9 @@
                     <span class="veh-cifra {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}<small>/mes</small></span>
                     <span class="veh-cifra-sub">
                         {% if f.num_movimientos %}
-                        {{ f.devengado_anual|euro:0 }} imputados a {{ f.anio }}, entre 12 meses
+                        {% if f.hay_ritmo %}{{ f.devengado_cerrado|euro:0 }} en {{ f.meses_cerrados }} mes{{ f.meses_cerrados|pluralize:"es" }} cerrado{{ f.meses_cerrados|pluralize:"s" }} de {{ f.anio }}
+                        {% else %}sin meses cerrados todavía en {{ f.anio }}{% endif %}
+                        <br>{{ f.devengado_anual|euro:0 }} imputados al año
                         {% if f.provisiones_anual %}
                         <br><span class="veh-provision">pagados {{ f.real_anual|euro:0 }}, de los cuales {{ f.provisiones_anual|euro:0 }} en {{ f.num_provisiones }} pago{{ f.num_provisiones|pluralize:"s" }} de gastos periódicos</span>
                         {% endif %}

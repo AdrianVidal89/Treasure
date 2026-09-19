@@ -50,13 +50,17 @@
                 {% comment %}
                 Debajo de la cifra va la cuenta que la produce, sumando: el gasto
                 corriente más lo que imputan los pagos periódicos, y eso entre
-                doce. Antes iba el total pagado del año —«82,85 €/mes» y justo
-                debajo «1.249,34 € en 9 meses»— y no había forma de cuadrarlo a
-                mano ni de saber qué era cada cosa.
+                los meses ya cerrados. Antes iba el total pagado del año —«82,85
+                €/mes» y justo debajo «1.249,34 € en 9 meses»— y no había forma
+                de cuadrarlo a mano ni de saber qué era cada cosa.
                 {% endcomment %}
                 {% if f.num_movimientos %}
-                <strong>{{ f.devengado_anual|euro }}</strong> imputados a {{ f.anio }}, entre 12 meses
-                <br>{{ f.corriente_anual|euro }} de gasto corriente
+                {% if f.hay_ritmo %}<strong>{{ f.devengado_cerrado|euro }}</strong> hasta
+                {{ f.meses_cerrados }} mes{{ f.meses_cerrados|pluralize:"es" }} cerrado{{ f.meses_cerrados|pluralize:"s" }}
+                de {{ f.anio }}, entre esos {{ f.meses_cerrados }}
+                {% else %}todavía no hay ningún mes cerrado de {{ f.anio }} sobre el que promediar{% endif %}
+                <br>{{ f.devengado_anual|euro }} imputados al año ·
+                {{ f.corriente_anual|euro }} de gasto corriente
                 {% if f.provisiones_devengadas %}+ {{ f.provisiones_devengadas|euro }} de gastos periódicos{% endif %}
                 {% if f.provisiones_anual %}
                 <br><span class="veh-provision">has pagado {{ f.real_anual|euro }}: los

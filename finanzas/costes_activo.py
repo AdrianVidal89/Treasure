@@ -215,13 +215,30 @@ def costes(activo, anio):
     # La serie del año: lo que pasó por el banco cada mes, con sus movimientos.
     por_mes = _por_mes(del_anio, meses_transcurridos)
 
-    # Y el mes, SIEMPRE entre doce. Repartir el gasto corriente entre los meses
-    # transcurridos daba una cifra que no cuadraba con ninguna otra de la
-    # tarjeta: 82,85 €/mes cuando la cuenta a mano da 73,87. Lo que va de año lo
-    # dice la marca de la barra, no el divisor.
-    ritmo_corriente = round(corriente_anual / 12, 2)
-    ritmo_provisiones = round(provisiones_devengadas / 12, 2)
-    ritmo_mensual = round(devengado_anual / 12, 2)
+    # Y el mes, sobre los MESES CERRADOS. Dividir lo que va de año entre doce
+    # decía que la casa cuesta la mitad de lo que cuesta: en septiembre son
+    # ocho meses de gasto repartidos entre doce, y la cifra solo deja de
+    # mentir el 31 de diciembre. El mes en curso tampoco entra —unos días de
+    # gasto contra un mes entero de divisor hunden la media por el otro
+    # lado—, así que se divide lo gastado hasta el mes anterior entre los
+    # meses que de verdad han terminado.
+    #
+    # Un año ya cerrado son sus doce meses y la cuenta es la de siempre.
+    meses_cerrados = _meses_cerrados(anio)
+    de_meses_cerrados = _hasta_el_mes(corrientes, meses_cerrados)
+    corriente_cerrado = sum((-m.importe for m in de_meses_cerrados), Decimal('0'))
+    provisiones_cerradas = sum(
+        (_cuota_anual(m) for m in _hasta_el_mes(provisiones, meses_cerrados)
+         if m.partida_conciliada_id),
+        Decimal('0'),
+    )
+    # Enero del año en curso no tiene ningún mes cerrado detrás: ahí no hay
+    # media que dar todavía, y devolver el gasto entero como «al mes» sería
+    # peor que no decir nada.
+    divisor = Decimal(meses_cerrados or 1)
+    ritmo_corriente = round(corriente_cerrado / divisor, 2)
+    ritmo_provisiones = round(provisiones_cerradas / divisor, 2)
+    ritmo_mensual = round((corriente_cerrado + provisiones_cerradas) / divisor, 2)
 
     return {
         'activo': activo,
@@ -247,9 +264,14 @@ def costes(activo, anio):
         'real_anual': real_anual,
         'real_mensual': real_mensual,
         'ritmo_mensual': ritmo_mensual,
-        'ritmo_corriente': round(ritmo_corriente, 2),
-        'ritmo_provisiones': round(ritmo_provisiones, 2),
+        'ritmo_corriente': ritmo_corriente,
+        'ritmo_provisiones': ritmo_provisiones,
         'meses_transcurridos': meses_transcurridos,
+        # Sobre cuántos meses se ha hecho esa media, para poder escribirlo al
+        # lado: «73,87 €/mes» sin decir de cuántos meses no se puede juzgar.
+        'meses_cerrados': meses_cerrados,
+        'devengado_cerrado': round(corriente_cerrado + provisiones_cerradas, 2),
+        'hay_ritmo': meses_cerrados > 0,
         'diferencia_mensual': ritmo_mensual - teorico_mensual,
         'corriente_anual': corriente_anual,
         'provisiones_anual': provisiones_anual,
@@ -287,6 +309,26 @@ def _cuota_anual(movimiento):
     """
     meses = movimiento.partida_conciliada.meses_periodo
     return -movimiento.importe * 12 / Decimal(max(meses, 12))
+
+
+def _hasta_el_mes(movimientos, mes):
+    """Los movimientos del año que caen en un mes ya cerrado."""
+    return [m for m in movimientos if m.fecha.month <= mes]
+
+
+def _meses_cerrados(anio):
+    """Meses del año que ya han TERMINADO. Un año pasado son doce.
+
+    No es lo mismo que los transcurridos: el mes en curso ha transcurrido a
+    medias, y una media que lo incluya cuenta un mes entero de divisor por
+    unos pocos días de gasto.
+    """
+    hoy = date.today()
+    if anio < hoy.year:
+        return 12
+    if anio > hoy.year:
+        return 0
+    return hoy.month - 1
 
 
 def _meses_transcurridos(anio):
@@ -564,6 +606,8 @@ def resumen(activos, anio):
         'devengado_anual': sum((f['devengado_anual'] for f in fichas), Decimal('0')),
         'ritmo_mensual': sum((f['ritmo_mensual'] for f in fichas), Decimal('0')),
         'meses_transcurridos': _meses_transcurridos(anio),
+        'meses_cerrados': _meses_cerrados(anio),
+        'hay_ritmo': _meses_cerrados(anio) > 0,
         'provisiones_anual': sum((f['provisiones_anual'] for f in fichas), Decimal('0')),
         'partidas_sueltas': sorted(
             {p for f in fichas for p in f['partidas_sueltas']}, key=lambda p: p.nombre,
