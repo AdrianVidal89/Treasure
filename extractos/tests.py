@@ -1895,7 +1895,10 @@ class PagosDeGastosAnualesTests(TestCase):
         panel = self.panel()
         bloques = {b['etiqueta']: b for b in panel['bloques']}
 
-        self.assertNotIn('Fijos anuales', bloques)
+        # El bloque se ve con el recibo consumiendo su año, pero sin peso en
+        # el mes: no suma nada a lo gastado.
+        self.assertEqual(bloques['Fijos anuales']['importe'], Decimal('0'))
+        self.assertEqual(bloques['Fijos anuales']['medido'], Decimal('260'))
         self.assertEqual(bloques['Variables']['limite'], Decimal('400'))
         self.assertEqual(panel['kpi_gasto_abs'], Decimal('380'))
 
@@ -3144,8 +3147,13 @@ class PagosAnualesEnElPanelTests(TestCase):
         # El gasto del mes es solo lo mensual.
         self.assertEqual(panel['kpi_gastos'], Decimal('-380'))
         bloques = {b['tipo']: b for b in panel['bloques']}
-        self.assertNotIn('anual', bloques)
         self.assertTrue(bloques['variable']['dentro'])
+        # El bloque de los anuales sigue ahí, sin peso en el mes pero con el
+        # recibo consumiendo la provisión del año: si desaparecía, parecía que
+        # la revisión no se había pagado.
+        self.assertEqual(bloques['anual']['importe'], Decimal('0'))
+        self.assertEqual(bloques['anual']['medido'], Decimal('1249.34'))
+        self.assertTrue(bloques['anual']['dentro'])
 
     def test_y_tampoco_se_avisa_de_que_esa_categoria_se_ha_pasado(self):
         """Era el aviso que no tenía sentido: «Mantenimiento vehicular
@@ -5612,3 +5620,140 @@ class SubirUnXlsTests(TestCase):
         self.assertEqual(respuesta.status_code, 200)
         self.assertContains(respuesta, 'No se pudo leer')
         self.assertNotIn('extractos_pendientes', self.client.session)
+
+
+class AnualPagadoSinReservaTests(TestCase):
+    """Septiembre: la revisión del Polo se pagó con la hucha, la del Golf no.
+
+    Norauto cobró 928,63 € —neumáticos y revisión del Polo, repartidos— y la
+    reserva puso 928 €. La revisión del Golf, 273,27 €, llegó cuando la hucha
+    ya estaba vacía: salió del bolsillo. Sin emparejar, la pantalla suponía que
+    estaba apartada y la sacaba del mes, así que el bloque de los anuales decía
+    «has pagado 929 €, te pesan 1 €», la cabecera no la contaba y el modal de
+    Mantenimiento vehicular —que sí— decía 273,90 €. Tres cifras que no
+    cuadraban entre sí y ninguna era la de verdad.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        self.alimentacion = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Alimentacion')
+        self.polo = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Polo Revisión',
+            importe=Decimal('1200'), periodicidad='anual',
+        )
+        self.golf = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Golf Revisión',
+            importe=Decimal('800'), periodicidad='anual',
+        )
+
+        self.cobro = self.mov('-928.63', 5, concepto='Norauto')
+        self.client.post(
+            reverse('extractos:dividir_movimiento', args=[self.cobro.id]),
+            {'importe': ['-543.00', '-385.63'],
+             'categoria_id': [str(self.mantenimiento.id)] * 2,
+             'concepto': ['Norauto', 'Norauto']},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.cobro.partes.update(partida_conciliada=self.polo)
+        hucha = self.mov('928.00', 5, concepto='Traspaso de la hucha')
+        self.client.post(
+            reverse('extractos:cubrir_con_reserva', args=[hucha.id]),
+            {'cubre': str(self.cobro.id)}, HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.golf_pago = self.mov(
+            '-273.27', 17, categoria=self.mantenimiento, provision=self.golf,
+            concepto='Revisión Golf',
+        )
+        self.mov('-100', 10, categoria=self.alimentacion, concepto='Mercadona')
+
+    def mov(self, importe, dia, categoria=None, provision=None, concepto='Norauto'):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 9, dia),
+            concepto=concepto, importe=Decimal(importe),
+            categoria=categoria, partida_conciliada=provision,
+        )
+
+    def panel(self):
+        return self.client.get(
+            reverse('extractos:listar'), {'anio': 2026, 'mes': 9},
+        ).context['panel']
+
+    def modal(self):
+        return self.client.get(
+            reverse('extractos:desglose_categoria'),
+            {'categoria': self.mantenimiento.id, 'anio': 2026, 'mes': 9},
+        ).context
+
+    def sin_reserva(self, mov, valor='1'):
+        return self.client.post(
+            reverse('extractos:marcar_sin_reserva', args=[mov.id]), {'valor': valor},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_sin_decir_nada_el_pago_del_golf_sigue_en_el_bloque_de_los_anuales(self):
+        """Se saca del mes, pero ha consumido la provisión del año: el bloque
+        tiene que decir que se pagaron 1.201,90 €, no 928,63."""
+        panel = self.panel()
+        anual = {b['tipo']: b for b in panel['bloques']}['anual']
+
+        self.assertEqual(anual['bruto'], Decimal('1201.90'))
+        self.assertEqual(anual['medido'], Decimal('1201.90'))
+        self.assertEqual(anual['cubierto'], Decimal('928.00'))
+        self.assertEqual(anual['repartido'], Decimal('273.27'))
+        self.assertEqual(anual['importe'], Decimal('0.63'))
+        # Y la cabecera sigue sumando lo mismo que los bloques.
+        self.assertEqual(panel['kpi_gasto_abs'], Decimal('100.63'))
+
+    def test_el_modal_dice_lo_mismo_que_la_fila_desde_la_que_se_abre(self):
+        contexto = self.modal()
+        self.assertEqual(contexto['total'], Decimal('0.63'))
+        # Y se mide contra el año, con los recibos enteros, como el bloque.
+        self.assertEqual(contexto['medido'], Decimal('1201.90'))
+        self.assertEqual(contexto['limite'], Decimal('2000.00'))
+        self.assertTrue(contexto['dentro'])
+
+    def test_marcado_sin_reserva_cuenta_entero_en_el_mes(self):
+        self.assertEqual(self.sin_reserva(self.golf_pago).json()['sin_reserva'], True)
+
+        panel = self.panel()
+        anual = {b['tipo']: b for b in panel['bloques']}['anual']
+        self.assertEqual(anual['importe'], Decimal('273.90'))
+        self.assertEqual(anual['medido'], Decimal('1201.90'))
+        self.assertEqual(anual['repartido'], Decimal('0'))
+        self.assertEqual(panel['kpi_gasto_abs'], Decimal('373.90'))
+        self.assertEqual(panel['pagos_provision'], [])
+        # Ya no se reparte en doceavas: cuenta entero donde cayó.
+        self.assertEqual(panel['prorrateo']['total'], Decimal('0'))
+        self.assertEqual(self.modal()['total'], Decimal('273.90'))
+
+    def test_se_puede_deshacer(self):
+        self.sin_reserva(self.golf_pago)
+        self.sin_reserva(self.golf_pago, valor='0')
+
+        self.assertEqual(self.panel()['kpi_gasto_abs'], Decimal('100.63'))
+
+    def test_una_parte_hereda_lo_que_se_diga_del_cobro(self):
+        self.client.post(
+            reverse('extractos:cubrir_con_reserva',
+                    args=[self.cobro.coberturas.get().id]),
+            {'cubre': ''}, HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.sin_reserva(self.cobro)
+
+        for parte in MovimientoBancario.objects.filter(dividido_de=self.cobro):
+            self.assertTrue(parte.pagado_sin_reserva)
+        self.assertEqual(self.panel()['kpi_gasto_abs'], Decimal('1028.63'))
+
+    def test_solo_se_marca_un_gasto(self):
+        ingreso = self.mov('50', 3, concepto='Bizum')
+        self.assertEqual(self.sin_reserva(ingreso).status_code, 400)

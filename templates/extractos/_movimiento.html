@@ -80,10 +80,11 @@ categorías por bloque, provisiones y activos).
             que hay en el banco y lo que uno mira—; el dinero baja solo a las
             partes, a prorrata.
             {% endcomment %}
-            <button type="button" class="ext-cubre-boton {% if m.es_cobertura or m.cubierto_por_reserva %}puesto{% endif %}"
+            <button type="button" class="ext-cubre-boton {% if m.es_cobertura or m.cubierto_por_reserva or m.pagado_sin_reserva %}puesto{% endif %}"
                     data-mov-id="{{ m.id }}" data-importe="{{ m.importe|unlocalize }}"
                     data-concepto="{{ m.concepto }}" data-valor="{{ m.cubre_id|default_if_none:'' }}"
-                    title="{% if m.importe < 0 %}¿Pagaste parte de esto con dinero que tenías apartado? Dilo aquí y el mes solo cargará la diferencia.{% else %}¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.{% endif %}">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% elif m.cubierto_por_reserva %}reserva puesta{% else %}— de la reserva —{% endif %}</button>
+                    data-anual="{% if m.es_pago_provision or m.esta_dividido %}1{% endif %}" data-sin-reserva="{% if m.sin_reserva %}1{% endif %}"
+                    title="{% if m.importe < 0 %}¿Pagaste parte de esto con dinero que tenías apartado? Dilo aquí y el mes solo cargará la diferencia.{% else %}¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.{% endif %}">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% elif m.cubierto_por_reserva %}reserva puesta{% elif m.pagado_sin_reserva %}sin reserva{% else %}— de la reserva —{% endif %}</button>
 
             {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
             <button type="button" class="ext-campo-perezoso ext-activo-boton {% if m.clave_activo %}puesto{% endif %}"
