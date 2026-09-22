@@ -85,6 +85,7 @@ def listar(request):
         'panel': panel,
         'extractos': extractos,
         'total_extractos': extractos.count(),
+        'total_movimientos_en_extractos': sum(1 for m in todos if m.extracto_id),
         'total_movimientos': len(todos),
     })
 
@@ -730,7 +731,7 @@ def _comercios_del_periodo(movimientos, meses_con_datos, tope=14, vista_de_mes=F
 
 
 def _contra_el_limite(neto, bruto, cubierto, limite, es_anual,
-                      prorrateado=Decimal('0')):
+                      prorrateado=Decimal('0'), anterior=Decimal('0')):
     """Cómo se lee una fila del reparto frente a su límite.
 
     Tres cosas que `presupuesto.estado` por sí solo no puede decidir:
@@ -747,13 +748,24 @@ def _contra_el_limite(neto, bruto, cubierto, limite, es_anual,
       presupuesto; y —rayado— lo que puso la reserva. Así se ve de un vistazo
       que el bloque no está casi vacío porque no se gastara, sino porque el
       gasto ya estaba pagado de antes.
+    * CUÁNTO del año. Un anual mirado en un mes se compara con lo que llevas
+      pagado en el año HASTA ese mes (`anterior` son los meses de antes): con
+      solo el mes, septiembre decía «1.202 de 3.130» cuando el año ya iba por
+      2.400, y parecía que quedaba provisión que ya se había gastado. Lo de
+      meses anteriores va primero en la barra, en gris.
     """
-    medido = bruto if es_anual else neto + prorrateado
+    if not es_anual:
+        anterior = Decimal('0')
+    medido = bruto + anterior if es_anual else neto + prorrateado
     estado = presupuesto.estado(medido, limite)
+    pct_anterior = 0
 
     if limite and limite > 0:
-        pct_neto = min(float(neto / limite * 100), 100) if neto > 0 else 0
-        hueco = max(0.0, 100 - pct_neto)
+        pct_anterior = min(float(anterior / limite * 100), 100) if anterior > 0 else 0
+        pct_neto = (
+            min(float(neto / limite * 100), 100 - pct_anterior) if neto > 0 else 0
+        )
+        hueco = max(0.0, 100 - pct_anterior - pct_neto)
         pct_prorrateado = (
             min(float(prorrateado / limite * 100), hueco) if prorrateado > 0 else 0
         )
@@ -779,6 +791,8 @@ def _contra_el_limite(neto, bruto, cubierto, limite, es_anual,
         pct_prorrateado = 100 if (not pct_neto and prorrateado > 0) else 0
 
     estado['pct_barra'] = round(pct_neto, 1)
+    estado['pct_anterior'] = round(pct_anterior, 1)
+    estado['anterior'] = anterior
     estado['pct_prorrateado'] = round(pct_prorrateado, 1)
     estado['pct_cubierto'] = round(pct_cubierto, 1)
     estado['medido'] = medido
@@ -878,6 +892,33 @@ def _anuales_prorrateados(todos, f):
         'pagos': sorted(pagos, key=lambda m: m.fecha),
         'meses': sorted({m.fecha.month for m in pagos}),
     }
+
+
+def _anuales_meses_anteriores(todos, f):
+    """Lo pagado en FIJOS ANUALES en el mismo año, antes del mes que se mira.
+
+    Por categoría (clave: su nombre, como en el reparto). Recibos enteros, con
+    o sin reserva: lo que consume la provisión del año es el pago completo.
+    Vacío si no se está mirando un mes concreto de un año concreto: con el año
+    entero a la vista esos pagos ya están dentro.
+    """
+    anio, mes = _entero_o_none(f['anio']), _entero_o_none(f['mes'])
+    if anio is None or mes is None:
+        return {}
+    del_anio = dict(f, mes='all')
+    por_categoria = {}
+    for m in todos:
+        if m.fecha.year != anio or m.fecha.month >= mes:
+            continue
+        if not m.categoria or m.categoria.tipo != 'anual':
+            continue
+        if not m.cuenta_como_gasto or m.es_neutro or not _pasa_filtro(m, del_anio):
+            continue
+        fila = por_categoria.setdefault(
+            m.categoria.nombre, {'id': m.categoria_id, 'importe': Decimal('0')},
+        )
+        fila['importe'] += -m.importe
+    return por_categoria
 
 
 def _fuera_de_presupuesto(bloques):
@@ -1064,7 +1105,8 @@ def _panel_context(hogar, todos, request):
     por_bloque = defaultdict(
         lambda: {'importe': Decimal('0'), 'bruto': Decimal('0'),
                  'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
-                 'repartido': Decimal('0'), 'categorias': {}},
+                 'repartido': Decimal('0'), 'anterior': Decimal('0'),
+                 'categorias': {}},
     )
     for m in reales:
         if not m.cuenta_como_gasto:
@@ -1091,7 +1133,7 @@ def _panel_context(hogar, todos, request):
                      'importe': Decimal('0'), 'bruto': Decimal('0'),
                      'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
                      'pagado_anual': Decimal('0'), 'meses_pago': [], 'num': 0,
-                     'repartido': Decimal('0')},
+                     'repartido': Decimal('0'), 'anterior': Decimal('0')},
         )
         cat['importe'] += peso
         cat['bruto'] += bruto
@@ -1117,7 +1159,7 @@ def _panel_context(hogar, todos, request):
                              'importe': Decimal('0'), 'bruto': Decimal('0'),
                              'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
                              'pagado_anual': Decimal('0'), 'meses_pago': [], 'num': 0,
-                             'repartido': Decimal('0')},
+                             'repartido': Decimal('0'), 'anterior': Decimal('0')},
         )
         cat['prorrateado'] += fila['importe']
         cat['pagado_anual'] += fila['pagado']
@@ -1144,11 +1186,29 @@ def _panel_context(hogar, todos, request):
                      'importe': Decimal('0'), 'bruto': Decimal('0'),
                      'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
                      'pagado_anual': Decimal('0'), 'meses_pago': [], 'num': 0,
-                     'repartido': Decimal('0')},
+                     'repartido': Decimal('0'), 'anterior': Decimal('0')},
         )
         cat['bruto'] += -m.importe
         cat['repartido'] += -m.importe
         cat['num'] += 1
+
+    # --- Lo que ya llevan pagado los ANUALES en los meses de antes ---
+    # Se juzgan contra la provisión del año, así que mirando septiembre la
+    # pregunta es cuánto llevas consumido del año hasta septiembre, no cuánto
+    # pagaste en septiembre. Entra aunque este mes no haya ni un pago: en
+    # octubre el bloque tiene que seguir diciendo cuánto queda del año.
+    anterior = _anuales_meses_anteriores(todos, f)
+    for nombre, fila in anterior.items():
+        datos = por_bloque['anual']
+        datos['anterior'] += fila['importe']
+        cat = datos['categorias'].setdefault(
+            nombre, {'id': fila['id'], 'nombre': nombre,
+                     'importe': Decimal('0'), 'bruto': Decimal('0'),
+                     'cubierto': Decimal('0'), 'prorrateado': Decimal('0'),
+                     'pagado_anual': Decimal('0'), 'meses_pago': [], 'num': 0,
+                     'repartido': Decimal('0'), 'anterior': Decimal('0')},
+        )
+        cat['anterior'] += fila['importe']
 
     total_gasto_abs = sum(
         (d['importe'] for d in por_bloque.values() if d['importe'] > 0), Decimal('0'),
@@ -1191,7 +1251,7 @@ def _panel_context(hogar, todos, request):
         # Un bloque sin gasto este mes pero con un anual ya pagado dentro sigue
         # teniendo algo que contar: su presupuesto está ocupado.
         if not datos or (datos['importe'] <= 0 and datos['prorrateado'] <= 0
-                         and datos['repartido'] <= 0):
+                         and datos['repartido'] <= 0 and datos['anterior'] <= 0):
             continue
         importe = datos['importe']
         # El bloque de los anuales se juzga contra el AÑO. Un límite mensual ahí
@@ -1207,8 +1267,10 @@ def _panel_context(hogar, todos, request):
         de_categoria = limite_categoria_anual if es_anual else limite_categoria
         categorias = sorted(
             (c for c in datos['categorias'].values()
-             if c['importe'] > 0 or c['prorrateado'] > 0 or c['repartido'] > 0),
-            key=lambda c: c['bruto'] if es_anual else c['importe'] + c['prorrateado'],
+             if c['importe'] > 0 or c['prorrateado'] > 0 or c['repartido'] > 0
+             or c['anterior'] > 0),
+            key=lambda c: (c['bruto'] + c['anterior']) if es_anual
+            else c['importe'] + c['prorrateado'],
             reverse=True,
         )
         for c in categorias:
@@ -1220,6 +1282,7 @@ def _panel_context(hogar, todos, request):
                 c['importe'], c['bruto'], c['cubierto'],
                 de_categoria.get(c['id'], Decimal('0')) * escala, es_anual,
                 prorrateado=c['repartido'] if es_anual else c['prorrateado'],
+                anterior=c['anterior'],
             ))
         limite = de_bloque.get(tipo, Decimal('0')) * escala
         bloques.append({
@@ -1231,6 +1294,9 @@ def _panel_context(hogar, todos, request):
             'cubierto': datos['cubierto'],
             'repartido': datos['repartido'],
             'es_anual': es_anual,
+            # Lo que queda de la provisión del año, que es la pregunta que
+            # contesta un anual: cuánto me queda por pagar sin pasarme.
+            'queda_anual': (limite - datos['bruto'] - datos['anterior']) if es_anual else None,
             'anios_periodo': anios_periodo,
             'pct': round(float(importe / total_gasto_abs * 100), 1) if total_gasto_abs else 0,
             'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
@@ -1241,7 +1307,8 @@ def _panel_context(hogar, todos, request):
             # el pagado que se compara con la provisión anual.
             **_contra_el_limite(importe, datos['bruto'], datos['cubierto'], limite,
                                 es_anual,
-                                prorrateado=datos['repartido'] if es_anual else datos['prorrateado']),
+                                prorrateado=datos['repartido'] if es_anual else datos['prorrateado'],
+                                anterior=datos['anterior']),
         })
 
     # El donut se pinta por BLOQUE, no por categoría: con quince categorías era
@@ -2295,7 +2362,13 @@ def movimientos_de_categoria(request):
             presupuesto.por_categoria(hogar, anual=True).get(categoria.id, Decimal('0'))
             * anios_periodo
         )
-        medido = sum((-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
+        # Hasta el mes que se mira, no solo el mes: como la fila del bloque.
+        anterior = _anuales_meses_anteriores(todos, f).get(
+            categoria.nombre, {},
+        ).get('importe', Decimal('0'))
+        medido = anterior + sum(
+            (-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'),
+        )
     else:
         limite_categoria = limite_mensual * meses_periodo
     # Lo mismo que hace el reparto de la pantalla: la parte que a este mes le
@@ -2341,6 +2414,7 @@ def movimientos_de_categoria(request):
         **presupuesto.estado(medido, limite_categoria),
         'limite_mensual': limite_mensual,
         'es_anual': es_anual,
+        'restante_anual': limite_categoria - medido if es_anual else None,
         'prorrateado': prorrateado,
         # Lo que se mide contra el límite: el gasto del periodo más la parte que
         # le toca de los anuales ya pagados; en un anual, lo pagado entero.
@@ -3054,6 +3128,46 @@ def reglas(request):
         ),
         'bloques_categorias': _categorias_por_bloque(hogar),
     })
+
+
+@login_required
+def grabar(request):
+    """Graba los movimientos: dejan de colgar de sus extractos y estos se borran.
+
+    Hasta ahora cada apunte vivía dentro del archivo del que salió, y borrar el
+    extracto se llevaba por delante sus movimientos, con las categorías, los
+    repartos y las reservas que les hubieras puesto. Grabar los deja en la base
+    de datos por su cuenta y borra los extractos ya grabados: no es opcional,
+    porque un extracto vacío que sigue en la lista invita a reimportarlo o a
+    borrarlo pensando que se lleva algo, y la deduplicación por huella ya
+    impide que volver a subir el mismo archivo los duplique.
+
+    Todo o nada: si algo falla a medias no puede quedar un extracto borrado con
+    sus movimientos todavía dentro.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return redirect('dashboard')
+    if request.method != 'POST':
+        return redirect('extractos:listar')
+
+    with transaction.atomic():
+        extractos = ExtractoBancario.objects.filter(hogar=hogar)
+        num_extractos = extractos.count()
+        num_movimientos = MovimientoBancario.objects.filter(
+            hogar=hogar, extracto__in=extractos,
+        ).update(extracto=None)
+        extractos.delete()
+
+    if num_extractos:
+        messages.success(
+            request,
+            f"Grabados {num_movimientos} movimientos. Los {num_extractos} extractos "
+            "de los que venían se han borrado: los movimientos ya no dependen de ellos.",
+        )
+    else:
+        messages.info(request, "No había extractos pendientes de grabar.")
+    return redirect('extractos:listar')
 
 
 @login_required
