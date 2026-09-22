@@ -22,16 +22,30 @@ estabas.
 {% if limite %}
 <div class="mc-presupuesto">
     <div class="mc-barra {% if dentro %}dentro{% else %}fuera{% endif %}"
-         title="{{ total|euro:0 }} de {{ limite|euro:0 }} presupuestados">
+         title="{{ medido|euro:0 }} de {{ limite|euro:0 }} presupuestados{% if es_anual %} al año{% endif %}">
         <i style="width:{{ pct_barra|unlocalize }}%;"></i>
     </div>
     <span class="mc-presupuesto-txt">
+        {% if es_anual %}
+        {% comment %}
+        Un anual se mide contra lo que provisionas al año y con los recibos
+        enteros, igual que su fila: la cifra de arriba es solo lo que le pesó
+        al periodo, que con la reserva de por medio puede ser casi nada.
+        {% endcomment %}
+        {% if dentro %}
+        Pagado {{ medido|euro:0 }} de los {{ limite|euro:0 }} que provisionas al año
+        {% else %}
+        <strong class="text-negative">{{ exceso|euro:0 }} por encima</strong> de los {{ limite|euro:0 }} que provisionas al año
+        {% endif %}
+        {% if medido != total %}<span class="text-muted">· al periodo le pesan {{ total|euro:0 }}</span>{% endif %}
+        {% else %}
         {% if dentro %}
         Dentro del presupuesto: {{ medido|euro:0 }} de {{ limite|euro:0 }}
         {% else %}
         <strong class="text-negative">{{ exceso|euro:0 }} por encima</strong> de los {{ limite|euro:0 }} presupuestados
         {% endif %}
         {% if meses_periodo > 1 %}<span class="text-muted">· {{ limite_mensual|euro:0 }}/mes × {{ meses_periodo }}</span>{% endif %}
+        {% endif %}
         {% comment %}
         Un gasto anual ya pagado ocupa el presupuesto de este mes aunque su
         recibo cayera en otro: sin decirlo, la cifra de aquí dentro no cuadraba

@@ -223,9 +223,10 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
         No cuentan enteros en los totales, porque compararlos contra un solo mes diría que te
         has pasado cuando lo que has hecho es pagar lo que tenías apartado: lo que carga este
         mes es su doceava parte, que ves en discontinuo dentro del bloque al que pertenecen.
-        Sus movimientos siguen en la lista, con la chapa <em>anual</em>: si parte de alguno la
-        pagaste con dinero apartado, díselo ahí con <strong>«de la reserva»</strong> y esa parte
-        vuelve a contar entera en el mes.
+        Sus movimientos siguen en la lista, con la chapa <em>anual</em>: si lo pagaste con dinero
+        apartado, emparéjalo ahí con <strong>«de la reserva»</strong> y el mes cargará solo lo que
+        la reserva no cubrió; si la hucha no llegaba y salió del bolsillo, márcalo
+        <strong>«sin reserva»</strong> y contará entero en el mes.
         <a href="?anio={{ panel.anio_sel }}&mes=all">Ver el año entero →</a>
     </div>
 </div>
@@ -273,7 +274,7 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                     <span class="ext-pilar-barra {% if b.dentro == False %}fuera{% elif b.dentro %}dentro{% endif %}"
                           title="{% if b.limite %}{{ b.medido|euro:0 }} de {{ b.limite|euro:0 }} presupuestados{% if b.es_anual %} al año{% endif %}{% else %}Sin presupuesto declarado para este bloque{% endif %}">
                         <i style="width:{{ b.pct_barra|unlocalize }}%;"></i>
-                        {% if b.pct_prorrateado %}<i class="prorrateado" title="{{ b.prorrateado|euro:0 }} prorrateados de gastos anuales ya pagados"
+                        {% if b.pct_prorrateado %}<i class="prorrateado" title="{% if b.es_anual %}{{ b.repartido|euro:0 }} pagados sin emparejar con la reserva: consumen la provisión del año, pero no pesan en el mes{% else %}{{ b.prorrateado|euro:0 }} prorrateados de gastos anuales ya pagados{% endif %}"
                             style="width:{{ b.pct_prorrateado|unlocalize }}%;"></i>{% endif %}
                         {% if b.pct_cubierto %}<i class="de-reserva" title="{{ b.cubierto|euro:0 }} los puso la reserva"
                             style="width:{{ b.pct_cubierto|unlocalize }}%;"></i>{% endif %}
@@ -296,11 +297,15 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                         {% if b.anios_periodo > 1 %}en estos {{ b.anios_periodo }} años{% else %}al año{% endif %}
                         para estos gastos, en {{ panel.periodo_etiqueta|lower }} has pagado
                         <strong>{{ b.bruto|euro:0 }}</strong>{% else %}pagaste
-                        <strong>{{ b.bruto|euro:0 }}</strong>{% endif %}{% if b.cubierto %}; de ahí,
+                        <strong>{{ b.bruto|euro:0 }}</strong>{% endif %}{% if b.es_anual %}{% if b.cubierto or b.repartido %}; de ahí,
+                        {% if b.cubierto %}{{ b.cubierto|euro:0 }} los puso la reserva{% endif %}{% if b.cubierto and b.repartido %}, {% endif %}{% if b.repartido %}{{ b.repartido|euro:0 }} no están emparejados
+                        con la reserva y se reparten en el año{% endif %} y al periodo solo le pesan
+                        <strong>{{ b.importe|euro:0 }}</strong>{% endif %}{% if b.repartido %} · si ese pago
+                        no salió de la hucha, márcalo «sin reserva» en su fila y contará entero en el mes{% endif %}{% else %}{% if b.cubierto %}; de ahí,
                         {{ b.cubierto|euro:0 }} los puso la reserva y al periodo solo le pesan
                         <strong>{{ b.importe|euro:0 }}</strong>{% endif %}{% if b.prorrateado %};
                         y <strong>{{ b.prorrateado|euro:0 }}</strong> más de gastos anuales que ya
-                        pagaste y que este mes provisiona igual{% endif %}
+                        pagaste y que este mes provisiona igual{% endif %}{% endif %}
                     </span>
                     {% endif %}
                 </summary>
@@ -321,7 +326,7 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                         <span class="ext-cat-barra {% if not b.techo_propio %}{% if c.dentro == False %}fuera{% elif c.dentro %}dentro{% endif %}{% endif %}"
                               title="{% if c.limite %}{{ c.medido|euro:0 }} de {{ c.limite|euro:0 }} presupuestados{% if c.es_anual %} al año{% endif %}{% else %}Sin presupuesto declarado{% endif %}">
                             <i style="width:{{ c.pct_barra|unlocalize }}%;"></i>
-                            {% if c.pct_prorrateado %}<i class="prorrateado" title="{{ c.prorrateado|euro:0 }} prorrateados de un gasto anual ya pagado"
+                            {% if c.pct_prorrateado %}<i class="prorrateado" title="{% if c.es_anual %}{{ c.repartido|euro:0 }} pagados sin emparejar con la reserva: consumen la provisión del año, pero no pesan en el mes{% else %}{{ c.prorrateado|euro:0 }} prorrateados de un gasto anual ya pagado{% endif %}"
                                 style="width:{{ c.pct_prorrateado|unlocalize }}%;"></i>{% endif %}
                             {% if c.pct_cubierto %}<i class="de-reserva" title="{{ c.cubierto|euro:0 }} los puso la reserva"
                                 style="width:{{ c.pct_cubierto|unlocalize }}%;"></i>{% endif %}
@@ -339,8 +344,9 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                         <a class="ext-cat-clasificar" href="?anio={{ panel.anio_sel }}&mes={{ panel.mes_sel }}&categoria=sin">clasificar →</a>
                         {% endif %}
 
-                        {% if c.cubierto %}
-                        <span class="ext-cat-nota">pagaste {{ c.bruto|euro:0 }} · {{ c.cubierto|euro:0 }} de la reserva
+                        {% if c.cubierto or c.repartido %}
+                        <span class="ext-cat-nota">pagaste {{ c.bruto|euro:0 }}{% if c.cubierto %} · {{ c.cubierto|euro:0 }} de la reserva{% endif %}{% if c.repartido %}
+                            · {{ c.repartido|euro:0 }} sin emparejar, repartidos en el año{% endif %}
                             · quedan {{ c.importe|euro:0 }} a cargo del periodo</span>
                         {% endif %}
                         {% comment %}
@@ -349,7 +355,7 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                         60 € de 142 € y parecía que sobraban ochenta euros que
                         en realidad ya se habían ido.
                         {% endcomment %}
-                        {% if c.prorrateado %}
+                        {% if c.prorrateado and not c.es_anual %}
                         <span class="ext-cat-nota prorrateo">
                             <i></i> {{ c.prorrateado|euro }} más de la parte que le toca a este mes de
                             {{ c.pagado_anual|euro:0 }} que pagaste{% if c.meses_pago %} en
@@ -817,6 +823,12 @@ puede decir exactamente que de los 1.200 € puso 928 la reserva.
             <button type="button" class="ext-cubrir-quitar" id="ext-cubrir-quitar" hidden>
                 No es de la reserva: deshacer el emparejamiento
             </button>
+            {% comment %}
+            Lo contrario de emparejar: un pago anual sin emparejar se supone
+            pagado con lo apartado y se saca del mes. Si la hucha no llegaba,
+            aquí se dice, y el mes lo carga entero.
+            {% endcomment %}
+            <button type="button" class="ext-cubrir-quitar" id="ext-cubrir-sin-reserva" hidden></button>
             <h5 class="ext-cubrir-titulillo" id="ext-cubrir-titulillo"></h5>
             <div id="ext-cubrir-lista" class="ext-cubrir-lista"></div>
         </div>
@@ -2828,6 +2840,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
        que cuesta, lo pagaras con lo que lo pagaras—. */
     var URL_CUBRIR = "/extractos/movimiento/__ID__/cubrir/";
     var URL_CANDIDATOS = "/extractos/movimiento/reserva/candidatos/";
+    var URL_SIN_RESERVA = "/extractos/movimiento/__ID__/sin-reserva/";
     var cajaCubrir = document.getElementById('ext-modal-cubrir');
     var listaCubrir = document.getElementById('ext-cubrir-lista');
     var movCubriendo = null;
@@ -2894,6 +2907,12 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             ? 'Ingresos cercanos' : 'Gastos cercanos';
         document.getElementById('ext-cubrir-quitar').hidden = esGasto || !boton.dataset.valor;
         document.getElementById('ext-cubrir-puestos').hidden = true;
+        var btnSin = document.getElementById('ext-cubrir-sin-reserva');
+        btnSin.hidden = !(esGasto && boton.dataset.anual);
+        btnSin.dataset.valor = boton.dataset.sinReserva ? '0' : '1';
+        btnSin.textContent = boton.dataset.sinReserva
+            ? 'Sí salió de la reserva: volver a repartirlo en el año'
+            : 'La hucha no llegaba: no salió de la reserva, cuenta entero en el mes';
         listaCubrir.innerHTML = '<div class="ext-modal-cargando">Buscando movimientos cercanos…</div>';
         cajaCubrir.hidden = false;
         document.body.style.overflow = 'hidden';
@@ -2970,6 +2989,22 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     var btnQuitarCobertura = document.getElementById('ext-cubrir-quitar');
     if (btnQuitarCobertura) btnQuitarCobertura.addEventListener('click', function () {
         if (movCubriendo) guardarCobertura(movCubriendo, '');
+    });
+
+    var btnSinReserva = document.getElementById('ext-cubrir-sin-reserva');
+    if (btnSinReserva) btnSinReserva.addEventListener('click', function () {
+        if (!movCubriendo) return;
+        var body = new URLSearchParams();
+        body.append('valor', btnSinReserva.dataset.valor || '0');
+        fetch(URL_SIN_RESERVA.replace('__ID__', movCubriendo), {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data.ok) { alert('No se ha podido guardar.'); return; }
+            /* Cambia el peso del mes, los pilares y los KPI: recargar. */
+            window.location.reload();
+        }).catch(function () {});
     });
 
     var btnDeshacer = document.getElementById('ext-dividir-deshacer');

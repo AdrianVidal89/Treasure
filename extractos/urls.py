@@ -18,6 +18,7 @@ urlpatterns = [
     path('categoria/desglose/', views.movimientos_de_categoria, name='desglose_categoria'),
     path('mes/filas/', views.filas_del_mes, name='filas_mes'),
     path('movimiento/<int:pk>/cubrir/', views.cubrir_con_reserva, name='cubrir_con_reserva'),
+    path('movimiento/<int:pk>/sin-reserva/', views.marcar_sin_reserva, name='marcar_sin_reserva'),
     path('movimiento/reserva/candidatos/', views.candidatos_reserva, name='candidatos_reserva'),
     path('movimiento/<int:pk>/dividir/', views.dividir_movimiento, name='dividir_movimiento'),
     path('movimiento/<int:pk>/dividir/deshacer/', views.deshacer_division, name='deshacer_division'),

@@ -346,6 +346,16 @@ class MovimientoBancario(ImputableAActivo):
         help_text='Pago al que este movimiento aporta dinero de la reserva.',
     )
 
+    # Lo contrario de `cubre`: un pago de un gasto anual que NO salió de la
+    # reserva, porque la hucha ya estaba vacía o no la había. Sin emparejar, la
+    # pantalla no puede saberlo y supone que lo tenías apartado: lo saca del mes
+    # y le carga su doceava parte. Aquí se dice que no, que ese dinero salió
+    # del bolsillo este mes y tiene que contar entero en él.
+    sin_reserva = models.BooleanField(
+        default=False,
+        help_text='Pago de un gasto no mensual que no salió de la reserva: cuenta entero en su mes.',
+    )
+
     # Un cobro puede ser varias cosas a la vez: en Norauto pagas de una vez los
     # neumáticos y la revisión anual, y son dos partidas distintas del
     # presupuesto. Dividirlo crea sus partes como movimientos normales colgando
@@ -473,6 +483,28 @@ class MovimientoBancario(ImputableAActivo):
             return propio
         porcion = (del_padre * abs(self.importe) / total).quantize(Decimal('0.01'))
         return propio + porcion
+
+    @property
+    def pagado_sin_reserva(self):
+        """Se dijo que este pago no salió de la reserva, en él o en su cobro.
+
+        Como con la reserva, se marca donde uno mira —el recibo de Norauto o la
+        línea de la revisión—, y una parte hereda lo que se dijera del cobro."""
+        if self.sin_reserva:
+            return True
+        return bool(self.es_parte and self.dividido_de and self.dividido_de.sin_reserva)
+
+    @property
+    def se_saca_del_mes(self):
+        """Un pago anual que el mes en el que cae no carga: se reparte en el año.
+
+        Es el que no se ha emparejado con la reserva ni se ha dicho que se pagó
+        sin ella. Sin saber de dónde salió el dinero se supone que estaba
+        apartado, que es lo que se hace al provisionar."""
+        return bool(
+            self.es_pago_provision and self.cuenta_como_gasto
+            and not self.cubierto_por_reserva and not self.pagado_sin_reserva
+        )
 
     @property
     def impacto_real(self):
