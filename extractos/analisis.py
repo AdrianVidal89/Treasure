@@ -113,6 +113,7 @@ def analizar_mes(movimientos, anio, mes, bloque=None, categoria_id=None,
 
     total = _suma(del_mes)
     media = (_suma(previos) / num_referencia) if num_referencia else Decimal('0')
+    puente = _puente(del_mes, previos, num_referencia) if hay_referencia else []
 
     return {
         'anio': anio,
@@ -123,7 +124,14 @@ def analizar_mes(movimientos, anio, mes, bloque=None, categoria_id=None,
         'num_movimientos': len(del_mes),
         'hay_referencia': hay_referencia,
         'meses_referencia': num_referencia,
-        'puente': _puente(del_mes, previos, num_referencia) if hay_referencia else [],
+        'puente': puente,
+        # Lo que sube y lo que baja, por separado: la diferencia neta de arriba
+        # es la resta de los dos, y sin ellos no se ve si el mes cuadra porque
+        # no ha pasado nada o porque un ahorro grande tapa un exceso grande.
+        'puente_sube': sum((f['desviacion'] for f in puente if f['desviacion'] > 0), Decimal('0')),
+        'puente_baja': -sum((f['desviacion'] for f in puente if f['desviacion'] < 0), Decimal('0')),
+        'puente_num_sube': sum(1 for f in puente if f['desviacion'] > 0),
+        'puente_num_baja': sum(1 for f in puente if f['desviacion'] < 0),
         'bloques': _por_bloque(del_mes, previos, num_referencia, limite_bloque),
         **_frente_al_presupuesto(del_mes, previos, num_referencia, limite_categoria),
         'categorias': _por_categoria(del_mes, previos, num_referencia),
@@ -158,7 +166,9 @@ def _puente(del_mes, previos, num_referencia):
     for nombre in set(actual) | set(historico):
         media = historico[nombre] / num_referencia if num_referencia else Decimal('0')
         desviacion = actual[nombre] - media
-        if desviacion == 0:
+        # Menos de medio euro no es una desviación, es redondeo: pintaba filas
+        # de «-0 €» que solo alargaban la lista.
+        if abs(desviacion) < Decimal('0.5'):
             continue
         filas.append({
             'categoria': nombre,
