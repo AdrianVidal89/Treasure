@@ -267,6 +267,189 @@
     </div>
     {% endif %}
 
+    {% if real %}
+    {% comment %}
+    El mes REAL. Lo de arriba es el plan —lo que declaras que entra y sale—;
+    esto es lo que dicen tus movimientos, con las mismas cifras que Extractos:
+    cuánto queda del presupuesto, qué ha cambiado frente a tu media y lo que se
+    ha salido de lo previsto. Todo con el mismo lenguaje visual que allí: rojo
+    a la derecha es gastar más, verde a la izquierda es ahorrar, ámbar rayado
+    es gasto sin presupuesto.
+    {% endcomment %}
+    <section class="cc-real">
+        <div class="cc-real-head">
+            <div>
+                <h2 class="cc-real-titulo">Este mes, en tus movimientos</h2>
+                <span class="cc-real-sub">{{ real.etiqueta }} · lo que ha pasado de verdad</span>
+            </div>
+            <a class="cc-real-ver" href="{{ real.url }}">Ver movimientos →</a>
+        </div>
+
+        <div class="cc-real-kpis">
+            {% with p=real.presupuesto %}
+            <a class="cc-real-kpi {% if p.pasado %}mal{% else %}bien{% endif %}" href="{{ real.url }}">
+                <span class="cc-real-kpi-lbl">Presupuesto del mes</span>
+                {% if p.hay %}
+                <span class="cc-real-kpi-val">{% if p.pasado %}+{{ p.exceso|euro:0 }}{% else %}{{ p.restante|euro:0 }}{% endif %}</span>
+                <span class="cc-real-kpi-sub">{% if p.pasado %}te has pasado{% else %}te quedan{% endif %} · {{ p.gastado|euro:0 }} de {{ p.limite|euro:0 }}</span>
+                <span class="cc-real-pista" title="{{ p.gastado|euro:0 }} de {{ p.limite|euro:0 }}">
+                    <i class="gasto" style="width:{{ p.pct_real|unlocalize }}%;"></i>{% if p.pct_prorrateado %}<i class="prorrateo" style="width:{{ p.pct_prorrateado|unlocalize }}%;"></i>{% endif %}
+                    {% if p.pct_transcurrido is not None %}<span class="cc-real-hoy" style="left:{{ p.pct_transcurrido|unlocalize }}%;" title="Lo que va de mes"></span>{% endif %}
+                </span>
+                {% else %}
+                <span class="cc-real-kpi-val">{{ real.gasto|euro:0 }}</span>
+                <span class="cc-real-kpi-sub">gastado · sin presupuesto declarado</span>
+                {% endif %}
+            </a>
+            {% endwith %}
+
+            {% if real.comparativa %}
+            {% with c=real.comparativa %}
+            <a class="cc-real-kpi {% if c.desviacion > 0 %}mal{% else %}bien{% endif %}" href="{{ real.url }}#frente-a-tu-media">
+                <span class="cc-real-kpi-lbl">Frente a tu media</span>
+                <span class="cc-real-kpi-val">{% if c.desviacion > 0 %}+{% endif %}{{ c.desviacion|euro:0 }}</span>
+                <span class="cc-real-kpi-sub">
+                    <b class="sube">▲ {{ c.puente_sube|euro:0 }}</b> más ·
+                    <b class="baja">▼ {{ c.puente_baja|euro:0 }}</b> ahorro
+                </span>
+            </a>
+            {% endwith %}
+            {% endif %}
+
+            <a class="cc-real-kpi {% if real.no_previsto %}aviso{% else %}bien{% endif %}" href="{{ real.url }}#fuera-de-lo-previsto">
+                <span class="cc-real-kpi-lbl">Fuera de lo previsto</span>
+                <span class="cc-real-kpi-val">{{ real.no_previsto|euro:0 }}</span>
+                <span class="cc-real-kpi-sub">
+                    {% if real.num_revisar %}<b class="sube">+{{ real.exceso_categorias|euro:0 }}</b> de excesos ·
+                    <b class="sin">{{ real.total_sin_presupuesto|euro:0 }}</b> sin presupuesto{% else %}nada se sale de lo previsto{% endif %}
+                </span>
+            </a>
+        </div>
+
+        {% if real.filas_media or real.revisar %}
+        <div class="cc-real-grid">
+            {% if real.filas_media %}
+            <div class="cc-real-bloque">
+                <div class="cc-real-bloque-cab">
+                    <span>Lo que más cambia</span>
+                    <span class="cc-real-eje"><em class="baja">← ahorras</em> <em class="sube">gastas más →</em></span>
+                </div>
+                {% for f in real.filas_media %}
+                <div class="cc-dv-fila" title="{{ f.categoria }}: {{ f.actual|euro }} este mes frente a {{ f.media|euro }} de media">
+                    <span class="cc-dv-cat">{{ f.categoria }}</span>
+                    <span class="cc-dv-mitad izq">{% if f.desviacion < 0 %}<span class="cc-dv-val baja">−{{ f.desviacion|multiplicar:-1|euro:0 }}</span><i style="--w:{{ f.pct_resumen|unlocalize }};"></i>{% endif %}</span>
+                    <span class="cc-dv-mitad der">{% if f.desviacion > 0 %}<i style="--w:{{ f.pct_resumen|unlocalize }};"></i><span class="cc-dv-val sube">+{{ f.desviacion|euro:0 }}</span>{% endif %}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if real.revisar %}
+            <div class="cc-real-bloque">
+                <div class="cc-real-bloque-cab">
+                    <span>A revisar</span>
+                    <span class="cc-real-eje"><em class="sube">■ se pasa</em> <em class="sin">■ sin presupuesto</em></span>
+                </div>
+                {% for f in real.revisar %}
+                <a class="cc-rv-fila {{ f.estado }}" href="{{ real.url }}&categoria={{ f.id }}">
+                    <span class="cc-rv-cat">{{ f.nombre }}</span>
+                    <span class="cc-rv-cifra">{{ f.importe|euro:0 }}{% if f.estado == 'pasada' %} <em>de {{ f.limite|euro:0 }}</em>{% endif %}</span>
+                    {% if f.estado == 'pasada' %}
+                    <span class="cc-rv-tag pasada">+{{ f.exceso|euro:0 }}</span>
+                    {% else %}
+                    <span class="cc-rv-tag sin">sin límite</span>
+                    {% endif %}
+                </a>
+                {% endfor %}
+                {% if real.num_revisar > real.revisar|length %}
+                <a class="cc-rv-mas" href="{{ real.url }}#fuera-de-lo-previsto">y {{ real.num_revisar|add:"-4" }} más →</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </section>
+
+    <style>
+    .cc-real { margin-top:20px; background:var(--surface); border:1px solid var(--border);
+        border-radius:16px; padding:20px 22px; }
+    .cc-real-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+    .cc-real-titulo { font-size:1.05rem; margin:0; }
+    .cc-real-sub { font-size:0.75rem; color:var(--muted); }
+    .cc-real-ver { font-size:0.8rem; font-weight:600; color:var(--primary-color); text-decoration:none; white-space:nowrap; }
+    .cc-real-ver:hover { text-decoration:underline; }
+
+    .cc-real-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px; }
+    .cc-real-kpi { display:flex; flex-direction:column; gap:3px; padding:13px 15px; border-radius:12px;
+        background:var(--app-bg); border:1px solid var(--border); text-decoration:none; color:inherit;
+        transition:border-color .15s, transform .15s; }
+    .cc-real-kpi:hover { transform:translateY(-1px); border-color:var(--border-strong); }
+    .cc-real-kpi-lbl { font-size:0.66rem; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--muted); }
+    .cc-real-kpi-val { font-size:1.45rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.15; }
+    .cc-real-kpi-sub { font-size:0.72rem; color:var(--muted); }
+    .cc-real-kpi-sub b { font-weight:700; }
+    .cc-real-kpi.bien .cc-real-kpi-val { color:var(--success); }
+    .cc-real-kpi.mal { border-color:color-mix(in srgb, var(--danger) 40%, transparent); }
+    .cc-real-kpi.mal .cc-real-kpi-val { color:var(--danger); }
+    .cc-real-kpi.aviso { border-color:color-mix(in srgb, var(--warning) 45%, transparent); }
+    .cc-real-kpi.aviso .cc-real-kpi-val { color:var(--warning); }
+    .cc-real b.sube, .cc-real em.sube, .cc-dv-val.sube { color:var(--danger); }
+    .cc-real b.baja, .cc-real em.baja, .cc-dv-val.baja { color:var(--success); }
+    .cc-real b.sin, .cc-real em.sin { color:var(--warning); }
+
+    .cc-real-pista { position:relative; display:flex; height:6px; margin-top:6px; background:var(--surface);
+        border-radius:999px; overflow:visible; }
+    .cc-real-pista i { display:block; height:100%; }
+    .cc-real-pista i:first-child { border-radius:999px 0 0 999px; }
+    .cc-real-pista i.gasto { background:var(--success); }
+    .cc-real-kpi.mal .cc-real-pista i.gasto { background:var(--danger); }
+    .cc-real-pista i.prorrateo { background:repeating-linear-gradient(90deg,
+        color-mix(in srgb, var(--success) 75%, transparent) 0 4px, transparent 4px 7px); }
+    .cc-real-hoy { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--text-color); opacity:.7; }
+
+    .cc-real-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px; }
+    @media (max-width:760px){ .cc-real-grid { grid-template-columns:1fr; } }
+    @media (max-width:600px){
+        .cc-real { padding:16px; }
+        .cc-real-bloque-cab { flex-wrap:wrap; }
+        .cc-real-eje em, .cc-real-bloque-cab > span:first-child { white-space:nowrap; }
+        .cc-real-kpi { padding:11px 13px; }
+    }
+    .cc-real-bloque { display:flex; flex-direction:column; gap:3px; }
+    .cc-real-bloque-cab { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:6px;
+        font-size:0.68rem; text-transform:uppercase; letter-spacing:.06em; font-weight:700; color:var(--muted); }
+    .cc-real-eje { display:flex; gap:10px; }
+    .cc-real-eje em { font-style:normal; }
+
+    /* Divergente, en pequeño: el eje central es tu media. */
+    .cc-dv-fila { display:grid; grid-template-columns:minmax(80px,0.9fr) 1fr 1fr; align-items:center; font-size:0.8rem; min-height:26px; }
+    .cc-dv-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:8px; }
+    .cc-dv-mitad { display:flex; align-items:center; gap:5px; height:20px; }
+    .cc-dv-mitad.izq { justify-content:flex-end; }
+    .cc-dv-mitad.der { border-left:1.5px solid color-mix(in srgb, var(--text-color) 35%, transparent); }
+    .cc-dv-mitad i { display:block; height:10px; flex:0 0 calc(var(--w) * 0.6%); min-width:3px; }
+    .cc-dv-mitad.izq i { background:var(--success); border-radius:4px 0 0 4px; }
+    .cc-dv-mitad.der i { background:var(--danger); border-radius:0 4px 4px 0; }
+    .cc-dv-val { font-weight:800; font-size:0.76rem; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+    /* A revisar: la misma señal que en Extractos, en una línea. */
+    .cc-rv-fila { display:grid; grid-template-columns:1fr auto auto; gap:10px; align-items:center;
+        padding:6px 10px; border-radius:9px; border-left:3px solid transparent;
+        font-size:0.8rem; color:inherit; text-decoration:none; }
+    .cc-rv-fila:hover { filter:brightness(1.08); }
+    .cc-rv-fila.pasada { border-left-color:var(--danger); background:color-mix(in srgb, var(--danger) 6%, transparent); }
+    .cc-rv-fila.sin_limite { border-left-color:var(--warning); background:color-mix(in srgb, var(--warning) 7%, transparent); }
+    .cc-rv-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+    .cc-rv-cifra { font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap; }
+    .cc-rv-cifra em { font-style:normal; font-weight:400; color:var(--muted); font-size:0.72rem; }
+    .cc-rv-tag { font-size:0.7rem; font-weight:800; padding:2px 8px; border-radius:999px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .cc-rv-tag.pasada { color:var(--danger); background:color-mix(in srgb, var(--danger) 14%, transparent); }
+    .cc-rv-tag.sin { color:var(--warning); background:color-mix(in srgb, var(--warning) 15%, transparent); }
+    .cc-rv-mas { font-size:0.75rem; color:var(--muted); text-decoration:none; padding:4px 10px; }
+    .cc-rv-mas:hover { color:var(--primary-color); }
+    </style>
+    {% endif %}
+
     <span id="cc-flujo-data" data-ing="{{ ahorro.ingresos_mensuales|unlocalize }}" data-gas="{{ ahorro.gastos_mensuales|unlocalize }}"></span>
 
     <style>

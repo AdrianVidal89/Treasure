@@ -1038,18 +1038,21 @@ def _con_las_partes_debajo(movimientos):
     return ordenados
 
 
-def _panel_context(hogar, todos, request):
+def _panel_context(hogar, todos, request, filtros=None):
     """Construye el panel de análisis de movimientos (KPIs, donut, ingresos vs
     gastos, filtros año/mes/categoría y listado agrupado por mes) que comparten
     el detalle de un extracto y la vista global de todos los extractos.
 
     `todos`: lista de MovimientoBancario (ya acotada al hogar y al ámbito que
-    corresponda — un extracto o todos)."""
+    corresponda — un extracto o todos).
+
+    `filtros`: los de `_leer_filtros`, cuando no salen de la URL. El Dashboard
+    pide así el resumen del mes sin inventarse una petición con ?anio=&mes=."""
     # --- Filtros disponibles ---
     anios_disponibles = sorted({m.fecha.year for m in todos}, reverse=True)
     meses_disponibles = [{'valor': str(n), 'etiqueta': MESES_ES[n]} for n in range(1, 13)]
 
-    f = _leer_filtros(request)
+    f = filtros or _leer_filtros(request)
     anio_sel, mes_sel, cat_sel = f['anio'], f['mes'], f['categoria']
     bloque_sel, etiqueta_sel, activo_sel = f['bloque'], f['etiqueta'], f['activo']
     busqueda, ver_traspasos = f['busqueda'], f['ver_traspasos']
