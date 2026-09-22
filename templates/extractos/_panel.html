@@ -402,7 +402,7 @@ cifras y los movimientos a la vez.
 {% comment %}La comparación contra la propia media es más honesta que contra el
    presupuesto, que puede estar mal puesto. Necesita UN mes concreto y los
    meses anteriores, así que solo aparece con mes seleccionado.{% endcomment %}
-<section class="glass-panel an-card an-card-vs">
+<section class="glass-panel an-card an-card-vs" id="frente-a-tu-media">
     <div class="an-card-head">
         <h3>Frente a tu media de los meses anteriores</h3>
         <span class="an-card-nota">compararte contigo mismo, no con un presupuesto que igual está mal puesto</span>
@@ -426,17 +426,38 @@ cifras y los movimientos a la vez.
     </div>
 
     {% if panel.comparativa.puente %}
-    <div class="an-puente">
-        {% for p in panel.comparativa.puente %}
-        <div class="an-puente-fila">
-            <span class="an-puente-cat">{{ p.categoria }}</span>
-            <span class="an-puente-pista">
-                <i class="{% if p.desviacion > 0 %}sube{% else %}baja{% endif %}" style="width:{{ p.pct|unlocalize }}%;"></i>
-            </span>
-            <span class="an-puente-dif {% if p.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
-                {% if p.desviacion > 0 %}+{% endif %}{{ p.desviacion|euro:0 }}
-            </span>
-            <span class="an-puente-detalle">{{ p.actual|euro:0 }} vs {{ p.media|euro:0 }}</span>
+    {% comment %}
+    Barras DIVERGENTES desde la media: a la derecha, en rojo, lo que has
+    gastado de más; a la izquierda, en verde, lo que has ahorrado. Con todas
+    las barras hacia el mismo lado, un -816 € y un +476 € tenían la misma
+    forma y solo el color de la cifra decía cuál era bueno. Van ordenadas de
+    más gasto a más ahorro, así que la mitad de arriba es lo que hay que mirar
+    y la de abajo lo que ha compensado.
+    {% endcomment %}
+    <div class="an-dv-resumen">
+        {% if panel.comparativa.puente_num_sube %}
+        <span class="an-dv-chip sube"><b>▲</b> {{ panel.comparativa.puente_sube|euro:0 }} más de gasto
+            <em>en {{ panel.comparativa.puente_num_sube }} categoría{{ panel.comparativa.puente_num_sube|pluralize:"s" }}</em></span>
+        {% endif %}
+        {% if panel.comparativa.puente_num_baja %}
+        <span class="an-dv-chip baja"><b>▼</b> {{ panel.comparativa.puente_baja|euro:0 }} de ahorro
+            <em>en {{ panel.comparativa.puente_num_baja }} categoría{{ panel.comparativa.puente_num_baja|pluralize:"s" }}</em></span>
+        {% endif %}
+    </div>
+    <div class="an-dv">
+        <div class="an-dv-eje" aria-hidden="true">
+            <span></span>
+            <span class="izq">← ahorras</span>
+            <span class="der">gastas más →</span>
+            <span></span>
+        </div>
+        {% for p in panel.comparativa.puente|dictsortreversed:"desviacion" %}
+        <div class="an-dv-fila {% if p.desviacion > 0 %}sube{% else %}baja{% endif %}"
+             title="{{ p.categoria }}: {{ p.actual|euro }} este mes frente a {{ p.media|euro }} de media ({% if p.desviacion > 0 %}+{% endif %}{{ p.desviacion|euro }})">
+            <span class="an-dv-cat">{{ p.categoria }}</span>
+            <span class="an-dv-mitad izq">{% if p.desviacion < 0 %}<span class="an-dv-val">−{{ p.desviacion|multiplicar:-1|euro:0 }}</span><i style="--w:{{ p.pct|unlocalize }};"></i>{% endif %}</span>
+            <span class="an-dv-mitad der">{% if p.desviacion > 0 %}<i style="--w:{{ p.pct|unlocalize }};"></i><span class="an-dv-val">+{{ p.desviacion|euro:0 }}</span>{% endif %}</span>
+            <span class="an-dv-detalle">{{ p.actual|euro:0 }} <em>vs</em> {{ p.media|euro:0 }}</span>
         </div>
         {% endfor %}
     </div>
@@ -451,30 +472,55 @@ cifras y los movimientos a la vez.
 {% endif %}
 
 {% if panel.fuera_presupuesto.hay_algo %}
-<section class="glass-panel an-card">
+{% comment %}
+Todo lo que se sale del plan, de un vistazo y con la MISMA visibilidad: las
+categorías que se pasan de su límite y las que gastan sin tener uno. Antes las
+segundas vivían plegadas en letra pequeña y 504 € de imprevistos pesaban menos
+en pantalla que 1 € de exceso en el seguro. Van en una sola lista, a la misma
+escala y ordenadas por lo que no estaba previsto; se distinguen por color,
+textura y etiqueta, nunca por esconder unas.
+{% endcomment %}
+{% with fp=panel.fuera_presupuesto %}
+<section class="glass-panel an-card" id="fuera-de-lo-previsto">
     <div class="an-card-head">
-        <h3>Fuera de presupuesto</h3>
-        <span class="an-card-nota">solo lo que se ha pasado del límite que declaraste</span>
+        <h3>Fuera de lo previsto</h3>
+        <span class="an-card-nota">lo que se pasa de su límite y lo que se gasta sin tenerlo</span>
     </div>
 
-    {% if panel.fuera_presupuesto.bloques %}
+    <div class="an-fp-kpis">
+        <div class="an-fp-kpi total">
+            <span class="an-fp-kpi-lbl">No previsto</span>
+            <span class="an-fp-kpi-cifra">{{ fp.no_previsto|euro:0 }}</span>
+            <span class="an-fp-kpi-sub">{{ fp.revisar|length }} categoría{{ fp.revisar|length|pluralize:"s" }} a revisar</span>
+        </div>
+        <div class="an-fp-kpi pasada">
+            <span class="an-fp-kpi-lbl"><i></i> Se pasan de su límite</span>
+            <span class="an-fp-kpi-cifra">+{{ fp.exceso_categorias|euro:0 }}</span>
+            <span class="an-fp-kpi-sub">{{ fp.categorias|length }} categoría{{ fp.categorias|length|pluralize:"s" }}</span>
+        </div>
+        <div class="an-fp-kpi sin">
+            <span class="an-fp-kpi-lbl"><i></i> Sin presupuesto</span>
+            <span class="an-fp-kpi-cifra">{{ fp.total_sin_presupuesto|euro:0 }}</span>
+            <span class="an-fp-kpi-sub">{{ fp.sin_presupuesto|length }} categoría{{ fp.sin_presupuesto|length|pluralize:"s" }}</span>
+        </div>
+    </div>
+
+    {% if fp.bloques %}
     <div class="an-fuera-bloques">
-        {% for b in panel.fuera_presupuesto.bloques %}
+        {% for b in fp.bloques %}
         <div class="an-fuera-bloque" style="--bc:{{ b.color }};">
-            <span class="an-fuera-bloque-nombre">{{ b.nombre }}</span>
+            <span class="an-fuera-bloque-nombre">Bloque {{ b.nombre }}</span>
             <span class="an-fuera-bloque-cifras">
                 <strong>{{ b.importe|euro:0 }}</strong>
                 <span class="text-muted">de {{ b.limite|euro:0 }}</span>
             </span>
-            <span class="an-fuera-bloque-exceso text-negative">+{{ b.exceso|euro:0 }}</span>
+            <span class="an-fuera-bloque-exceso">+{{ b.exceso|euro:0 }}</span>
             {% if b.tipo == 'discrecional' %}
             {% comment %}Dentro de discrecionales NO se desglosa el aviso por categoría:
                ahí no hay presupuesto por categoría ni tiene sentido que lo
-               haya. Se sabe que hay un tope para los caprichos y lo útil es ver
-               en qué se ha ido, no un reproche por categoría.{% endcomment %}
+               haya.{% endcomment %}
             <span class="an-fuera-bloque-nota">
-                se ha pasado el bloque · dentro no hay presupuesto por categoría:
-                mira arriba en qué se repartió
+                dentro no hay presupuesto por categoría: mira arriba en qué se repartió
             </span>
             {% endif %}
         </div>
@@ -482,61 +528,58 @@ cifras y los movimientos a la vez.
     </div>
     {% endif %}
 
-    {% if panel.fuera_presupuesto.categorias %}
-    <div class="an-fuera {% if panel.fuera_presupuesto.bloques %}an-fuera-separada{% endif %}">
-        <span class="an-fuera-titulo">Qué categorías se han salido de su límite</span>
-        {% for f in panel.fuera_presupuesto.categorias %}
-        <div class="an-fuera-fila">
+    {% if fp.revisar %}
+    <div class="an-fp-lista">
+        <div class="an-fp-leyenda" aria-hidden="true">
+            <span><i class="cabia"></i> dentro del límite</span>
+            <span><i class="exceso"></i> exceso</span>
+            <span><i class="sin"></i> sin presupuesto</span>
+            <span><i class="marca"></i> límite</span>
+        </div>
+        {% for f in fp.revisar %}
+        <div class="an-fp-fila {{ f.estado }}">
             <button type="button" class="an-fuera-cat ext-cat-abrir" data-categoria="{{ f.id }}" data-nombre="{{ f.nombre }}"
                     title="Ver los movimientos de {{ f.nombre }}">
                 {{ f.nombre }} <em>{{ f.num }} mov. · {{ f.bloque|lower }}</em>
             </button>
-            <span class="an-fuera-pista" title="Límite {{ f.limite|euro:0 }} · real {{ f.importe|euro:0 }}">
-                <i class="real" style="width:{{ f.pct_real|unlocalize }}%;"></i>
-                <span class="an-fuera-limite" style="left:{{ f.pct_limite|unlocalize }}%;"></span>
+            <span class="an-fp-pista"
+                  title="{% if f.estado == 'pasada' %}{{ f.importe|euro }} de {{ f.limite|euro }}: {{ f.exceso|euro }} por encima{% else %}{{ f.importe|euro }} sin presupuesto declarado{% endif %}">
+                {% if f.estado == 'pasada' %}
+                <i class="cabia" style="width:{{ f.pct_limite|unlocalize }}%;"></i><i class="exceso" style="width:{{ f.pct_exceso|unlocalize }}%;"></i>
+                <span class="an-fp-marca" style="left:{{ f.pct_limite|unlocalize }}%;"></span>
+                {% else %}
+                <i class="sin" style="width:{{ f.pct_real|unlocalize }}%;"></i>
+                {% endif %}
             </span>
-            <span class="an-fuera-cifras">
+            <span class="an-fp-cifras">
                 <strong>{{ f.importe|euro:0 }}</strong>
-                <span class="text-muted">de {{ f.limite|euro:0 }}</span>
+                <span class="text-muted">{% if f.estado == 'pasada' %}de {{ f.limite|euro:0 }}{% else %}sin límite{% endif %}</span>
             </span>
-            <span class="an-fuera-exceso text-negative">+{{ f.exceso|euro:0 }}</span>
+            {% if f.estado == 'pasada' %}
+            <span class="an-fp-etiqueta pasada">+{{ f.exceso|euro:0 }}</span>
+            {% else %}
+            <a class="an-fp-etiqueta sin" href="{% url 'finanzas:crear_partida' %}"
+               title="Declarar un presupuesto para {{ f.nombre }}">declarar</a>
+            {% endif %}
         </div>
         {% endfor %}
     </div>
     {% endif %}
 
     <div class="an-fuera-total">
-        {% if panel.fuera_presupuesto.exceso_total %}
-        Te has pasado <strong class="text-negative">{{ panel.fuera_presupuesto.exceso_total|euro }}</strong>
-        del presupuesto de {{ panel.fuera_presupuesto.bloques|length }} bloque{{ panel.fuera_presupuesto.bloques|length|pluralize:"s" }}{% if panel.meses_periodo > 1 %} en {{ panel.meses_periodo }} meses{% endif %}.
-        {% elif panel.fuera_presupuesto.categorias %}
+        {% if fp.exceso_total %}
+        En total te has pasado <strong class="text-negative">{{ fp.exceso_total|euro }}</strong>
+        del presupuesto de {{ fp.bloques|length }} bloque{{ fp.bloques|length|pluralize:"s" }}{% if panel.meses_periodo > 1 %} en {{ panel.meses_periodo }} meses{% endif %}.
+        {% elif fp.categorias %}
         Ningún bloque se ha pasado en total, aunque alguna categoría sí se haya salido de su límite.
         {% else %}
-        Nada se ha salido del presupuesto que tienes declarado.
+        Ningún límite declarado se ha pasado.
         {% endif %}
-        {% if panel.fuera_presupuesto.categorias %}<span class="an-fuera-leyenda"><i></i> la marca es el límite declarado</span>{% endif %}
+        {% if fp.sin_presupuesto %}Las que no tienen presupuesto no están mal por fuerza: salen aquí
+        para que no pasen desapercibidas. Los discrecionales no salen: ahí el presupuesto es del bloque.{% endif %}
     </div>
-
-    {% if panel.fuera_presupuesto.sin_presupuesto %}
-    <details class="an-sin-presupuesto">
-        <summary>{{ panel.fuera_presupuesto.sin_presupuesto|length }} categoría{{ panel.fuera_presupuesto.sin_presupuesto|length|pluralize:"s" }} con gasto y sin presupuesto declarado</summary>
-        <div class="an-sin-lista">
-            {% for f in panel.fuera_presupuesto.sin_presupuesto %}
-            <div class="an-sin-fila">
-                <span>{{ f.nombre }} <em>{{ f.num }} mov. · {{ f.bloque|lower }}</em></span>
-                <span class="num">{{ f.importe|euro:0 }}</span>
-                <a href="{% url 'finanzas:crear_partida' %}">declarar →</a>
-            </div>
-            {% endfor %}
-        </div>
-        <p class="an-sin-nota">
-            Sin límite declarado no hay nada contra lo que compararlas: aparecen aquí para que no
-            pasen desapercibidas, no porque estén mal. Los discrecionales no salen en esta lista:
-            ahí el presupuesto es del bloque, no de cada categoría.
-        </p>
-    </details>
-    {% endif %}
 </section>
+{% endwith %}
 {% endif %}
 
 {% if panel.comercios.filas %}
@@ -1372,20 +1415,69 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .an-vs-dif { padding-left:30px; border-left:1px solid var(--border); }
 @media (max-width:640px){ .an-vs-dif { padding-left:0; border-left:none; } }
 
-/* Puente: cuánto aporta cada categoría a la desviación del mes. */
-.an-puente { display:flex; flex-direction:column; gap:9px; }
-.an-puente-fila { display:grid; grid-template-columns:minmax(90px,1.1fr) 2fr 90px auto; gap:12px; align-items:center; font-size:0.83rem; }
-.an-puente-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.an-puente-pista { height:10px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
-.an-puente-pista i { display:block; height:100%; border-radius:999px; }
-.an-puente-pista i.sube { background:var(--danger); }
-.an-puente-pista i.baja { background:var(--success); }
-.an-puente-dif { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; }
-.an-puente-detalle { font-size:0.74rem; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
-@media (max-width:640px){ .an-puente-fila { grid-template-columns:1fr auto; } .an-puente-pista, .an-puente-detalle { display:none; } }
+/* Divergente desde la media: el eje central es «como siempre»; a la derecha,
+   rojo, gasto de más; a la izquierda, verde, ahorro. Cada mitad reserva sitio
+   para su cifra, pegada al final de la barra. */
+.an-dv-resumen { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px; }
+.an-dv-chip {
+    display:inline-flex; align-items:baseline; gap:6px; padding:6px 12px; border-radius:999px;
+    font-size:0.82rem; font-weight:700; font-variant-numeric:tabular-nums;
+    border:1px solid var(--border);
+}
+.an-dv-chip b { font-size:0.7rem; }
+.an-dv-chip em { font-style:normal; font-weight:500; color:var(--muted); font-size:0.75rem; }
+.an-dv-chip.sube { color:var(--danger); background:color-mix(in srgb, var(--danger) 10%, transparent); border-color:color-mix(in srgb, var(--danger) 35%, transparent); }
+.an-dv-chip.baja { color:var(--success); background:color-mix(in srgb, var(--success) 10%, transparent); border-color:color-mix(in srgb, var(--success) 35%, transparent); }
+.an-dv { display:flex; flex-direction:column; }
+.an-dv-eje, .an-dv-fila {
+    display:grid; grid-template-columns:minmax(110px,1fr) 1.4fr 1.4fr 112px;
+    align-items:center; column-gap:0;
+}
+.an-dv-eje { font-size:0.68rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; padding-bottom:6px; }
+.an-dv-eje .izq { text-align:right; padding-right:10px; color:var(--success); }
+.an-dv-eje .der { padding-left:10px; color:var(--danger); }
+.an-dv-fila { padding:4px 0; border-radius:8px; font-size:0.83rem; }
+.an-dv-fila:hover { background:color-mix(in srgb, var(--text-color) 5%, transparent); }
+.an-dv-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 10px 0 4px; }
+.an-dv-mitad { display:flex; align-items:center; gap:6px; height:22px; }
+/* El eje: una línea fina en el centro de todas las filas. */
+.an-dv-mitad.der { border-left:1.5px solid color-mix(in srgb, var(--text-color) 35%, transparent); padding-left:0; }
+.an-dv-mitad.izq { justify-content:flex-end; }
+/* 78 % de la mitad para la barra mayor; el resto es para su cifra. */
+.an-dv-mitad i { display:block; height:12px; flex:0 0 calc(var(--w) * 0.78%); min-width:3px; }
+.an-dv-mitad.izq i { background:var(--success); border-radius:4px 0 0 4px; }
+.an-dv-mitad.der i { background:var(--danger); border-radius:0 4px 4px 0; }
+.an-dv-val { font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; font-size:0.8rem; }
+.an-dv-fila.sube .an-dv-val { color:var(--danger); }
+.an-dv-fila.baja .an-dv-val { color:var(--success); }
+.an-dv-detalle { font-size:0.74rem; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
+.an-dv-detalle em { font-style:normal; opacity:.7; }
+@media (max-width:640px){
+    .an-dv-eje, .an-dv-fila { grid-template-columns:minmax(80px,0.9fr) 1fr 1fr; }
+    .an-dv-detalle, .an-dv-eje span:last-child { display:none; }
+    .an-dv-eje span { white-space:nowrap; }
+    .an-dv-mitad i { flex-basis:calc(var(--w) * 0.5%); }
+}
 
-/* Fuera de presupuesto: primero el bloque, luego qué categoría lo explica. */
-.an-fuera-bloques { display:flex; flex-direction:column; gap:9px; margin-bottom:6px; }
+/* Fuera de lo previsto: tres cifras arriba, los bloques que se pasan y una
+   lista única con las pasadas y las que no tienen presupuesto. */
+.an-fp-kpis { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; margin-bottom:14px; }
+.an-fp-kpi {
+    display:flex; flex-direction:column; gap:2px; padding:12px 14px;
+    border:1px solid var(--border); border-radius:12px; background:var(--app-bg);
+}
+.an-fp-kpi-lbl { font-size:0.68rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; display:flex; align-items:center; gap:6px; }
+.an-fp-kpi-lbl i { width:10px; height:10px; border-radius:3px; display:inline-block; }
+.an-fp-kpi-cifra { font-size:1.35rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.2; }
+.an-fp-kpi-sub { font-size:0.74rem; color:var(--muted); }
+.an-fp-kpi.pasada { border-color:color-mix(in srgb, var(--danger) 40%, transparent); }
+.an-fp-kpi.pasada .an-fp-kpi-cifra { color:var(--danger); }
+.an-fp-kpi.pasada .an-fp-kpi-lbl i { background:var(--danger); }
+.an-fp-kpi.sin { border-color:color-mix(in srgb, var(--warning) 45%, transparent); }
+.an-fp-kpi.sin .an-fp-kpi-cifra { color:var(--warning); }
+.an-fp-kpi.sin .an-fp-kpi-lbl i { background:var(--warning); }
+
+.an-fuera-bloques { display:flex; flex-direction:column; gap:9px; margin-bottom:14px; }
 .an-fuera-bloque {
     display:grid; grid-template-columns:minmax(120px,1fr) auto 84px; gap:12px; align-items:baseline;
     padding:11px 14px; border:1px solid var(--border); border-left:3px solid var(--bc);
@@ -1393,43 +1485,68 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 }
 .an-fuera-bloque-nombre { font-weight:700; }
 .an-fuera-bloque-cifras { font-variant-numeric:tabular-nums; white-space:nowrap; }
-.an-fuera-bloque-exceso { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; }
+.an-fuera-bloque-exceso { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; color:var(--danger); }
 .an-fuera-bloque-nota { grid-column:1 / -1; font-size:0.73rem; color:var(--muted); }
-.an-fuera { display:flex; flex-direction:column; gap:10px; }
-.an-fuera-separada { margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
-.an-fuera-titulo { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
-.an-fuera-fila { display:grid; grid-template-columns:minmax(110px,1.1fr) 2fr auto 78px; gap:12px; align-items:center; font-size:0.83rem; }
+
+.an-fp-lista { display:flex; flex-direction:column; gap:4px; }
+.an-fp-leyenda { display:flex; gap:14px; flex-wrap:wrap; font-size:0.72rem; color:var(--muted); margin-bottom:6px; }
+.an-fp-leyenda span { display:inline-flex; align-items:center; gap:5px; }
+.an-fp-leyenda i { display:inline-block; width:16px; height:8px; border-radius:2px; }
+.an-fp-leyenda i.marca { width:2px; height:12px; background:var(--text-color); }
+/* Los tres tramos. «Cabía» es el mismo rojo apagado: sigue siendo gasto de
+   una categoría pasada, pero lo que salta es el exceso. «Sin presupuesto» va
+   en ámbar y rayado, para que no dependa solo del color. */
+.an-fp-pista i.cabia, .an-fp-leyenda i.cabia { background:color-mix(in srgb, var(--danger) 30%, transparent); }
+.an-fp-pista i.exceso, .an-fp-leyenda i.exceso { background:var(--danger); }
+.an-fp-pista i.sin, .an-fp-leyenda i.sin {
+    background:repeating-linear-gradient(135deg,
+        var(--warning) 0 4px, color-mix(in srgb, var(--warning) 55%, transparent) 4px 7px);
+}
+.an-fp-fila {
+    display:grid; grid-template-columns:minmax(120px,1.1fr) 2fr 118px 84px;
+    gap:12px; align-items:center; font-size:0.84rem;
+    padding:7px 10px 7px 12px; border-radius:10px; border-left:3px solid transparent;
+}
+.an-fp-fila.pasada { border-left-color:var(--danger); background:color-mix(in srgb, var(--danger) 5%, transparent); }
+.an-fp-fila.sin_limite { border-left-color:var(--warning); background:color-mix(in srgb, var(--warning) 6%, transparent); }
 .an-fuera-cat {
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left;
     background:none; border:none; padding:2px 4px; margin-left:-4px; border-radius:6px;
-    color:var(--text-color); font:inherit; cursor:pointer;
+    color:var(--text-color); font:inherit; font-weight:600; cursor:pointer;
     text-decoration:underline; text-decoration-style:dotted; text-underline-offset:3px;
 }
 .an-fuera-cat:hover { background:color-mix(in srgb, var(--primary-color) 10%, transparent); color:var(--primary-color); }
-.an-fuera-cat em { font-style:normal; color:var(--muted); font-size:0.72rem; }
-.an-fuera-pista { position:relative; height:12px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
-.an-fuera-pista i.real { display:block; height:100%; border-radius:999px; background:var(--danger); }
-.an-fuera-limite { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--text-color); opacity:.75; }
-.an-fuera-cifras { font-variant-numeric:tabular-nums; white-space:nowrap; font-size:0.8rem; }
-.an-fuera-exceso { font-weight:800; font-variant-numeric:tabular-nums; text-align:right; }
-.an-fuera-total { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font-size:0.82rem; color:var(--muted); }
-.an-fuera-leyenda { margin-left:12px; font-size:0.74rem; }
-.an-fuera-leyenda i { display:inline-block; width:2px; height:11px; background:var(--text-color); opacity:.75; vertical-align:-2px; margin-right:5px; }
-.an-sin-presupuesto { margin-top:16px; padding-top:12px; border-top:1px solid var(--border); }
-.an-sin-presupuesto > summary { cursor:pointer; font-size:0.79rem; color:var(--muted); }
-.an-sin-presupuesto > summary:hover { color:var(--primary-color); }
-.an-sin-lista { margin-top:10px; display:flex; flex-direction:column; gap:6px; }
-.an-sin-fila { display:grid; grid-template-columns:1fr auto auto; gap:12px; align-items:baseline; font-size:0.8rem; }
-.an-sin-fila em { font-style:normal; color:var(--muted); font-size:0.72rem; }
-.an-sin-fila .num { font-variant-numeric:tabular-nums; font-weight:700; }
-.an-sin-nota { font-size:0.74rem; color:var(--muted); margin:10px 0 0; }
+.an-fuera-cat em { font-style:normal; font-weight:400; color:var(--muted); font-size:0.72rem; }
+.an-fp-pista { position:relative; display:flex; height:12px; background:var(--app-bg); border-radius:4px; }
+.an-fp-pista i { display:block; height:100%; flex:0 0 auto; }
+.an-fp-pista i:first-child { border-radius:4px 0 0 4px; }
+.an-fp-pista i:last-of-type { border-radius:0 4px 4px 0; }
+.an-fp-pista i:only-of-type { border-radius:4px; }
+.an-fp-marca { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--text-color); border-radius:1px; }
+.an-fp-cifras { font-variant-numeric:tabular-nums; white-space:nowrap; font-size:0.8rem; text-align:right; }
+.an-fp-etiqueta {
+    justify-self:end; font-weight:800; font-size:0.78rem; font-variant-numeric:tabular-nums;
+    padding:3px 9px; border-radius:999px; white-space:nowrap; text-decoration:none;
+}
+.an-fp-etiqueta.pasada { color:var(--danger); background:color-mix(in srgb, var(--danger) 14%, transparent); }
+.an-fp-etiqueta.sin { color:var(--warning); background:color-mix(in srgb, var(--warning) 14%, transparent); }
+.an-fp-etiqueta.sin:hover { background:color-mix(in srgb, var(--warning) 26%, transparent); }
+.an-fuera-total { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); font-size:0.8rem; color:var(--muted); }
 @media (max-width:640px){
-    .an-fuera-fila { grid-template-columns:1fr auto; }
-    .an-fuera-pista, .an-fuera-cifras { display:none; }
-    .an-fuera-bloque { grid-template-columns:1fr auto; }
+    /* Las tres cifras siguen en fila: apiladas se comían la pantalla. */
+    .an-fp-kpis { gap:6px; }
+    .an-fp-kpi { padding:9px 10px; }
+    .an-fp-kpi-lbl { font-size:0.6rem; letter-spacing:.03em; }
+    .an-fp-kpi-lbl i { display:none; }
+    .an-fp-kpi-cifra { font-size:1.05rem; }
+    .an-fp-kpi-sub { font-size:0.68rem; }
+    .an-fp-fila { grid-template-columns:1fr auto; }
+    .an-fp-pista, .an-fp-cifras, .an-fp-leyenda { display:none; }
+    .an-fuera-bloque { grid-template-columns:1fr auto auto; font-size:0.8rem; gap:8px; }
 }
 
 /* Por comercio. */
+.an-sin-nota { font-size:0.74rem; color:var(--muted); margin:10px 0 0; }
 .an-lista { display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; }
 .an-fila-barra { height:6px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
 .an-fila-barra i { display:block; height:100%; border-radius:999px; background:var(--primary-color); }

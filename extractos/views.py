@@ -961,17 +961,44 @@ def _fuera_de_presupuesto(bloques):
     explican.sort(key=lambda f: f['exceso'], reverse=True)
     sin_limite.sort(key=lambda f: f['importe'], reverse=True)
 
-    # Las barras se miden contra el gasto mayor de la lista, para que el límite
-    # y el real se lean uno contra otro de un vistazo.
-    tope = max((f['importe'] for f in explican), default=Decimal('0'))
+    # Las pasadas y las que no tienen límite van en UNA lista y a la misma
+    # escala. Antes las segundas vivían plegadas debajo, en letra pequeña: 504 €
+    # de imprevistos sin presupuesto se veían menos que 1 € de exceso en el
+    # seguro del hogar. Se distinguen por el color y la etiqueta, no por
+    # esconder unas. La escala es el gasto (o el límite) mayor de la lista, para
+    # que el real y la marca del límite se lean uno contra otro.
     for f in explican:
+        f['estado'] = 'pasada'
+    for f in sin_limite:
+        f['estado'] = 'sin_limite'
+        f['exceso'] = Decimal('0')
+    # Se ordenan por lo que queda FUERA de lo previsto: en una pasada, lo que
+    # excede su límite; en una sin límite, todo, porque nada de ese gasto estaba
+    # en el plan. Es la misma pregunta para las dos —cuánto dinero no contaba
+    # con gastar— y así 504 € de imprevistos van delante de 1 € de exceso.
+    for f in explican + sin_limite:
+        f['no_previsto'] = f['exceso'] if f['estado'] == 'pasada' else f['importe']
+    revisar = sorted(explican + sin_limite, key=lambda f: f['no_previsto'], reverse=True)
+    tope = max(
+        (max(f['importe'], f.get('limite') or Decimal('0')) for f in revisar),
+        default=Decimal('0'),
+    )
+    for f in revisar:
         f['pct_real'] = float(f['importe'] / tope * 100) if tope else 0
-        f['pct_limite'] = float(f['limite'] / tope * 100) if tope else 0
+        # En una pasada, lo que cabía y lo que sobra, para pintarlos en dos
+        # tramos: el exceso es lo que tiene que saltar a la vista.
+        limite = f.get('limite') or Decimal('0')
+        f['pct_limite'] = float(limite / tope * 100) if tope and f['estado'] == 'pasada' else 0
+        f['pct_exceso'] = max(f['pct_real'] - f['pct_limite'], 0) if f['estado'] == 'pasada' else 0
 
     return {
         'bloques': excedidos,
         'categorias': explican,
         'sin_presupuesto': sin_limite,
+        'revisar': revisar,
+        'total_sin_presupuesto': sum((f['importe'] for f in sin_limite), Decimal('0')),
+        'exceso_categorias': sum((f['exceso'] for f in explican), Decimal('0')),
+        'no_previsto': sum((f['no_previsto'] for f in revisar), Decimal('0')),
         # El exceso total es el de los BLOQUES: sumar además el de cada
         # categoría contaría dos veces el mismo euro.
         'exceso_total': sum((f['exceso'] for f in excedidos), Decimal('0')),
@@ -1011,18 +1038,21 @@ def _con_las_partes_debajo(movimientos):
     return ordenados
 
 
-def _panel_context(hogar, todos, request):
+def _panel_context(hogar, todos, request, filtros=None):
     """Construye el panel de análisis de movimientos (KPIs, donut, ingresos vs
     gastos, filtros año/mes/categoría y listado agrupado por mes) que comparten
     el detalle de un extracto y la vista global de todos los extractos.
 
     `todos`: lista de MovimientoBancario (ya acotada al hogar y al ámbito que
-    corresponda — un extracto o todos)."""
+    corresponda — un extracto o todos).
+
+    `filtros`: los de `_leer_filtros`, cuando no salen de la URL. El Dashboard
+    pide así el resumen del mes sin inventarse una petición con ?anio=&mes=."""
     # --- Filtros disponibles ---
     anios_disponibles = sorted({m.fecha.year for m in todos}, reverse=True)
     meses_disponibles = [{'valor': str(n), 'etiqueta': MESES_ES[n]} for n in range(1, 13)]
 
-    f = _leer_filtros(request)
+    f = filtros or _leer_filtros(request)
     anio_sel, mes_sel, cat_sel = f['anio'], f['mes'], f['categoria']
     bloque_sel, etiqueta_sel, activo_sel = f['bloque'], f['etiqueta'], f['activo']
     busqueda, ver_traspasos = f['busqueda'], f['ver_traspasos']

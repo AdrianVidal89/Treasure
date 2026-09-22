@@ -148,3 +148,73 @@ class DashboardCapitalLiquidoTests(TestCase):
 
     def test_sin_depositos_el_capital_es_el_saldo_de_los_fondos(self):
         self.assertEqual(self._capital(), self.Decimal('10000'))
+
+
+class DashboardMesRealTests(TestCase):
+    """El Dashboard resume el mes REAL con las mismas cifras que Extractos."""
+
+    def setUp(self):
+        import datetime
+        from decimal import Decimal
+
+        from core.models import Hogar
+        from extractos.models import ExtractoBancario, MovimientoBancario
+        from finanzas.models import CategoriaGasto, PartidaGasto
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.user = User.objects.create_user(username='luis', password='clave12345')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        profile, _ = UserProfile.objects.get_or_create(user=self.user)
+        profile.hogar = self.hogar
+        profile.save()
+        self.client.force_login(self.user)
+        _crear_categorias_predefinidas(self.hogar)
+
+        self.Decimal = Decimal
+        self.hoy = datetime.date.today()
+        self.MovimientoBancario = MovimientoBancario
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        self.gasolina = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gasolina')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.alimentacion, nombre='Compra',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+
+    def mov(self, importe, categoria, fecha=None):
+        return self.MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=fecha or self.hoy,
+            concepto=f'{categoria.nombre} {importe}', importe=self.Decimal(importe),
+            categoria=categoria,
+        )
+
+    def real(self):
+        resp = self.client.get(reverse('dashboard'))
+        self.assertEqual(resp.status_code, 200)
+        return resp.context['real']
+
+    def test_sin_movimientos_no_hay_resumen(self):
+        self.assertIsNone(self.real())
+
+    def test_cuadra_con_extractos(self):
+        self.mov('-500', self.alimentacion)
+        self.mov('-80', self.gasolina)
+
+        real = self.real()
+        panel = self.client.get(
+            reverse('extractos:listar'),
+            {'anio': self.hoy.year, 'mes': self.hoy.month},
+        ).context['panel']
+        self.assertEqual(real['gasto'], panel['kpi_gasto_abs'])
+        self.assertEqual(real['no_previsto'], panel['fuera_presupuesto']['no_previsto'])
+        # Alimentación se pasa 100 € de su límite; Gasolina no tiene presupuesto.
+        estados = {f['nombre']: f['estado'] for f in real['revisar']}
+        self.assertEqual(estados, {'Alimentacion': 'pasada', 'Gasolina': 'sin_limite'})
+
+    def test_sin_apuntes_este_mes_resume_el_ultimo_con_datos(self):
+        import datetime
+        anterior = (self.hoy.replace(day=1) - datetime.timedelta(days=1))
+        self.mov('-50', self.gasolina, fecha=anterior)
+
+        real = self.real()
+        self.assertEqual((real['anio'], real['mes']), (anterior.year, anterior.month))

@@ -20,6 +20,7 @@ from finanzas.views_evolucion import (
     _fecha_corte_mes, _saldos_liquidez_patrimonio,
 )
 from core.models import UserProfile
+from extractos.resumen import resumen_del_mes
 from core.context_processors import TEMAS_VALIDOS
 
 from django.db.models import Sum, F, FloatField, ExpressionWrapper
@@ -314,10 +315,16 @@ def dashboard_view(request):
     # pero es dinero del año.
     ahorro = ahorro_esperado(hogar, anio)
 
+    # ── 8. El mes REAL, según tus movimientos ──
+    # Lo de arriba es el plan; esto es lo que está pasando. Sale del mismo
+    # panel que Extractos para que las dos pantallas digan las mismas cifras.
+    real = resumen_del_mes(hogar, request)
+
     context = {
         'hogar': hogar,
         'profile': profile,
         'ahorro': ahorro,
+        'real': real,
         'saludo': _saludo(),
         'mes': mes,
         'anio': anio,
