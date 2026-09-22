@@ -19,8 +19,28 @@
     {% include "extractos/_panel.html" %}
 
     <!-- LISTA DE EXTRACTOS IMPORTADOS -->
-    <details class="ext-lotes">
+    <details class="ext-lotes" {% if total_extractos %}open{% endif %}>
         <summary>Extractos importados ({{ total_extractos }})</summary>
+        {% if total_extractos %}
+        {% comment %}
+        Grabar saca los movimientos de los extractos y BORRA los extractos: no
+        es opcional. Un extracto vacío en la lista invita a reimportarlo o a
+        borrarlo creyendo que se lleva algo; la huella de cada apunte ya impide
+        que volver a subir el mismo archivo lo duplique.
+        {% endcomment %}
+        <div class="ext-grabar">
+            <div>
+                <strong>Tus movimientos aún dependen de estos extractos:</strong> si borras uno, se
+                llevan sus movimientos. Al grabarlos quedan guardados por su cuenta, con sus
+                categorías, repartos y reservas, y los extractos se borran para que no haya
+                duplicados.
+            </div>
+            <form method="post" action="{% url 'extractos:grabar' %}"
+                  onsubmit="return confirm('Se grabarán los {{ total_movimientos_en_extractos }} movimientos de {{ total_extractos }} extracto{{ total_extractos|pluralize }} y esos extractos se borrarán. Los movimientos no se tocan. ¿Seguir?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary btn-sm">Grabar movimientos</button>
+            </form>
+        </div>
         <div class="table-scroll" style="margin-top:12px;">
             <table class="table">
                 <thead>
@@ -51,7 +71,7 @@
                         <td class="num text-negative">{{ e.total_gastos|euro }}</td>
                         <td class="num">{{ e.fecha_importacion|date:"d/m/Y H:i" }}</td>
                         <td>
-                            <form method="post" action="{% url 'extractos:eliminar' e.pk %}" onsubmit="return confirm('¿Eliminar este extracto y sus movimientos?');" style="display:inline;">
+                            <form method="post" action="{% url 'extractos:eliminar' e.pk %}" onsubmit="return confirm('¿Eliminar este extracto y sus movimientos? Se perderán. Si quieres conservarlos, usa «Grabar movimientos».');" style="display:inline;">
                                 {% csrf_token %}
                                 <button type="submit" class="btn-inline-danger" title="Eliminar">
                                     <svg class="icon"><use href="#i-trash"/></svg>
@@ -63,11 +83,22 @@
                 </tbody>
             </table>
         </div>
+        {% else %}
+        <p class="text-muted" style="margin:10px 0 0;font-size:0.85rem;">
+            Todos tus movimientos están grabados: no dependen de ningún extracto.
+        </p>
+        {% endif %}
     </details>
     <style>
     .ext-lotes { margin-top:28px; border-top:1px solid var(--border); padding-top:16px; }
     .ext-lotes > summary { cursor:pointer; font-weight:600; color:var(--text-color); font-size:0.95rem; }
     .ext-lotes > summary:hover { color:var(--primary-color); }
+    .ext-grabar {
+        display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+        margin-top:12px; padding:12px 14px; border:1px solid var(--border); border-radius:10px;
+        font-size:0.85rem; color:var(--muted);
+    }
+    .ext-grabar strong { color:var(--text-color); }
     </style>
 
     {% else %}

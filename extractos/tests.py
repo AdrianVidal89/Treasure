@@ -2097,7 +2097,12 @@ class AnualYaPagadoProrrateadoTests(TestCase):
         self.pagar('-600', 1, provision=ibi, categoria=ibi_cat)
 
         panel = self.panel()
-        self.assertNotIn('anual', {b['tipo'] for b in panel['bloques']})
+        anual = {b['tipo']: b for b in panel['bloques']}['anual']
+        # Sin doceava parte: el pago de enero cuenta entero, como pagado en los
+        # meses anteriores del año, y no pesa en este mes.
+        self.assertEqual(anual['prorrateado'], Decimal('0'))
+        self.assertEqual(anual['importe'], Decimal('0'))
+        self.assertEqual(anual['medido'], Decimal('600'))
 
 
 class PresupuestoRestanteTests(TestCase):
@@ -5757,3 +5762,138 @@ class AnualPagadoSinReservaTests(TestCase):
     def test_solo_se_marca_un_gasto(self):
         ingreso = self.mov('50', 3, concepto='Bizum')
         self.assertEqual(self.sin_reserva(ingreso).status_code, 400)
+
+
+class AnualHastaElMesTests(TestCase):
+    """Mirando septiembre, un anual dice lo que llevas pagado en el AÑO.
+
+    El año entero decía «2.400 € de 3.130», y septiembre «1.202 de 3.130»: solo
+    lo de septiembre, como si lo pagado en marzo no se hubiera comido nada de la
+    provisión. Parecía que quedaba más de lo que quedaba.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.mantenimiento = CategoriaGasto.objects.get(
+            hogar=self.hogar, nombre='Mantenimiento vehicular')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.mantenimiento, nombre='Revisiones',
+            importe=Decimal('3000'), periodicidad='anual',
+        )
+
+    def mov(self, importe, mes, dia=10, anio=2026):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(anio, mes, dia),
+            concepto=f'Taller {mes}-{dia}', importe=Decimal(importe),
+            categoria=self.mantenimiento,
+        )
+
+    def anual(self, **params):
+        panel = self.client.get(reverse('extractos:listar'), params).context['panel']
+        return {b['tipo']: b for b in panel['bloques']}.get('anual')
+
+    def test_el_mes_suma_lo_pagado_en_los_meses_anteriores_del_año(self):
+        self.mov('-1198', 3)
+        self.mov('-1202', 9)
+        self.mov('-500', 11, anio=2025)   # otro año: no cuenta
+        self.mov('-300', 10)             # después de septiembre: tampoco
+
+        sept = self.anual(anio=2026, mes=9)
+        self.assertEqual(sept['anterior'], Decimal('1198'))
+        self.assertEqual(sept['medido'], Decimal('2400'))
+        self.assertEqual(sept['queda_anual'], Decimal('600'))
+        self.assertEqual(sept['importe'], Decimal('1202'))   # el peso del mes, igual
+        self.assertGreater(sept['pct_anterior'], 0)
+
+    def test_coincide_con_el_año_entero_hasta_ese_mes(self):
+        self.mov('-1198', 3)
+        self.mov('-1202', 9)
+
+        self.assertEqual(
+            self.anual(anio=2026, mes=9)['medido'], self.anual(anio=2026, mes='all')['medido'],
+        )
+
+    def test_un_mes_sin_pagos_sigue_diciendo_cuanto_queda(self):
+        self.mov('-1198', 3)
+
+        octubre = self.anual(anio=2026, mes=10)
+        self.assertEqual(octubre['importe'], Decimal('0'))
+        self.assertEqual(octubre['medido'], Decimal('1198'))
+
+    def test_el_modal_de_la_categoria_dice_lo_mismo(self):
+        self.mov('-1198', 3)
+        self.mov('-1202', 9)
+
+        contexto = self.client.get(
+            reverse('extractos:desglose_categoria'),
+            {'categoria': self.mantenimiento.id, 'anio': 2026, 'mes': 9},
+        ).context
+        self.assertEqual(contexto['medido'], Decimal('2400'))
+        self.assertEqual(contexto['restante_anual'], Decimal('600'))
+
+
+class GrabarMovimientosTests(TestCase):
+    """Grabar deja los movimientos en la base de datos por su cuenta y borra
+    los extractos de los que venían: borrar un extracto ya no se los lleva."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.extractos = [
+            ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+            for _ in range(2)
+        ]
+        for i, extracto in enumerate(self.extractos):
+            MovimientoBancario.objects.create(
+                extracto=extracto, hogar=self.hogar, fecha=date(2026, 9, i + 1),
+                concepto=f'Compra {i}', importe=Decimal('-10'),
+            )
+
+    def test_grabar_desengancha_los_movimientos_y_borra_los_extractos(self):
+        respuesta = self.client.post(reverse('extractos:grabar'))
+
+        self.assertRedirects(respuesta, reverse('extractos:listar'), fetch_redirect_response=False)
+        self.assertFalse(ExtractoBancario.objects.filter(hogar=self.hogar).exists())
+        movs = MovimientoBancario.objects.filter(hogar=self.hogar)
+        self.assertEqual(movs.count(), 2)
+        self.assertFalse(movs.filter(extracto__isnull=False).exists())
+        # Grabado no es «a mano»: siguen siendo apuntes del banco.
+        self.assertFalse(movs.filter(manual=True).exists())
+
+    def test_solo_toca_los_extractos_de_su_hogar(self):
+        otro = Hogar.objects.create(nombre='Otro')
+        ajeno = ExtractoBancario.objects.create(hogar=otro)
+        MovimientoBancario.objects.create(
+            extracto=ajeno, hogar=otro, fecha=date(2026, 9, 1),
+            concepto='Ajeno', importe=Decimal('-5'),
+        )
+
+        self.client.post(reverse('extractos:grabar'))
+
+        self.assertTrue(ExtractoBancario.objects.filter(pk=ajeno.pk).exists())
+        self.assertTrue(MovimientoBancario.objects.filter(extracto=ajeno).exists())
+
+    def test_con_get_no_hace_nada(self):
+        self.client.get(reverse('extractos:grabar'))
+        self.assertEqual(ExtractoBancario.objects.filter(hogar=self.hogar).count(), 2)
+
+    def test_reimportar_lo_grabado_no_lo_duplica(self):
+        """La huella de cada apunte es del hogar, no del extracto: grabado y
+        con el extracto borrado, volver a subir el archivo lo reconoce."""
+        self.client.post(reverse('extractos:grabar'))
+        mov = MovimientoBancario.objects.filter(hogar=self.hogar).first()
+
+        huella = MovimientoBancario.calcular_hash(mov.fecha, mov.concepto, mov.importe, mov.saldo)
+        self.assertEqual(huella, mov.hash_dedupe)

@@ -31,6 +31,7 @@ urlpatterns = [
     path('reglas/aprender/', views.aprender_regla, name='aprender_regla'),
     path('<int:pk>/', views.detalle, name='detalle'),
     path('<int:pk>/eliminar/', views.eliminar, name='eliminar'),
+    path('grabar/', views.grabar, name='grabar'),
     path('movimiento/<int:pk>/actualizar/', views.actualizar_movimiento, name='actualizar_movimiento'),
     path('movimiento/nuevo/', views.crear_movimiento, name='crear_movimiento'),
     path('movimiento/<int:pk>/eliminar/', views.eliminar_movimiento, name='eliminar_movimiento'),

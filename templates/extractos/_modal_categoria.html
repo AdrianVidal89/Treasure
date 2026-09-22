@@ -33,7 +33,7 @@ estabas.
         al periodo, que con la reserva de por medio puede ser casi nada.
         {% endcomment %}
         {% if dentro %}
-        Pagado {{ medido|euro:0 }} de los {{ limite|euro:0 }} que provisionas al año
+        Llevas pagados {{ medido|euro:0 }} en el año de los {{ limite|euro:0 }} que provisionas; te quedan {{ restante_anual|euro:0 }}
         {% else %}
         <strong class="text-negative">{{ exceso|euro:0 }} por encima</strong> de los {{ limite|euro:0 }} que provisionas al año
         {% endif %}

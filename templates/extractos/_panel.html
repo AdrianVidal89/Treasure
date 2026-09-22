@@ -273,6 +273,8 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                     <span class="ext-pilar-nombre">{{ b.etiqueta }}{% if b.techo_propio %}<span class="ext-pilar-techo" title="El límite lo declaras para el bloque entero, no categoría a categoría">del bloque</span>{% endif %}</span>
                     <span class="ext-pilar-barra {% if b.dentro == False %}fuera{% elif b.dentro %}dentro{% endif %}"
                           title="{% if b.limite %}{{ b.medido|euro:0 }} de {{ b.limite|euro:0 }} presupuestados{% if b.es_anual %} al año{% endif %}{% else %}Sin presupuesto declarado para este bloque{% endif %}">
+                        {% if b.pct_anterior %}<i class="anterior" title="{{ b.anterior|euro:0 }} pagados en los meses anteriores del año"
+                            style="width:{{ b.pct_anterior|unlocalize }}%;"></i>{% endif %}
                         <i style="width:{{ b.pct_barra|unlocalize }}%;"></i>
                         {% if b.pct_prorrateado %}<i class="prorrateado" title="{% if b.es_anual %}{{ b.repartido|euro:0 }} pagados sin emparejar con la reserva: consumen la provisión del año, pero no pesan en el mes{% else %}{{ b.prorrateado|euro:0 }} prorrateados de gastos anuales ya pagados{% endif %}"
                             style="width:{{ b.pct_prorrateado|unlocalize }}%;"></i>{% endif %}
@@ -293,15 +295,23 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                     {% endcomment %}
                     {% if b.cubierto or b.es_anual or b.prorrateado %}
                     <span class="ext-pilar-nota">
-                        {% if b.es_anual %}de los <strong>{{ b.limite|euro:0 }}</strong> que provisionas
+                        {% if b.es_anual %}{% comment %}
+                        Un anual se lee contra el AÑO: lo que llevas pagado hasta
+                        el mes que miras y lo que te queda de la provisión. Lo del
+                        mes —reserva y peso— va después, porque es otra pregunta.
+                        {% endcomment %}de los <strong>{{ b.limite|euro:0 }}</strong> que provisionas
                         {% if b.anios_periodo > 1 %}en estos {{ b.anios_periodo }} años{% else %}al año{% endif %}
-                        para estos gastos, en {{ panel.periodo_etiqueta|lower }} has pagado
-                        <strong>{{ b.bruto|euro:0 }}</strong>{% else %}pagaste
-                        <strong>{{ b.bruto|euro:0 }}</strong>{% endif %}{% if b.es_anual %}{% if b.cubierto or b.repartido %}; de ahí,
-                        {% if b.cubierto %}{{ b.cubierto|euro:0 }} los puso la reserva{% endif %}{% if b.cubierto and b.repartido %}, {% endif %}{% if b.repartido %}{{ b.repartido|euro:0 }} no están emparejados
+                        para estos gastos, {% if b.anterior %}en {{ panel.anio_sel }} llevas pagados
+                        <strong>{{ b.medido|euro:0 }}</strong>: {{ b.anterior|euro:0 }} en los meses anteriores y
+                        {{ b.bruto|euro:0 }} en {{ panel.periodo_etiqueta|lower }}{% else %}en {{ panel.periodo_etiqueta|lower }} has pagado
+                        <strong>{{ b.medido|euro:0 }}</strong>{% endif %}{% if b.limite %};
+                        {% if b.queda_anual >= 0 %}te quedan <strong>{{ b.queda_anual|euro:0 }}</strong>{% else %}te has pasado
+                        <strong class="text-negative">{{ b.exceso|euro:0 }}</strong>{% endif %}{% endif %}{% if b.cubierto or b.repartido %}.
+                        De lo de este periodo, {% if b.cubierto %}{{ b.cubierto|euro:0 }} los puso la reserva{% endif %}{% if b.cubierto and b.repartido %}, {% endif %}{% if b.repartido %}{{ b.repartido|euro:0 }} no están emparejados
                         con la reserva y se reparten en el año{% endif %} y al periodo solo le pesan
                         <strong>{{ b.importe|euro:0 }}</strong>{% endif %}{% if b.repartido %} · si ese pago
-                        no salió de la hucha, márcalo «sin reserva» en su fila y contará entero en el mes{% endif %}{% else %}{% if b.cubierto %}; de ahí,
+                        no salió de la hucha, márcalo «sin reserva» en su fila y contará entero en el mes{% endif %}{% else %}pagaste
+                        <strong>{{ b.bruto|euro:0 }}</strong>{% if b.cubierto %}; de ahí,
                         {{ b.cubierto|euro:0 }} los puso la reserva y al periodo solo le pesan
                         <strong>{{ b.importe|euro:0 }}</strong>{% endif %}{% if b.prorrateado %};
                         y <strong>{{ b.prorrateado|euro:0 }}</strong> más de gastos anuales que ya
@@ -325,6 +335,8 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                         </button>
                         <span class="ext-cat-barra {% if not b.techo_propio %}{% if c.dentro == False %}fuera{% elif c.dentro %}dentro{% endif %}{% endif %}"
                               title="{% if c.limite %}{{ c.medido|euro:0 }} de {{ c.limite|euro:0 }} presupuestados{% if c.es_anual %} al año{% endif %}{% else %}Sin presupuesto declarado{% endif %}">
+                            {% if c.pct_anterior %}<i class="anterior" title="{{ c.anterior|euro:0 }} pagados en los meses anteriores del año"
+                                style="width:{{ c.pct_anterior|unlocalize }}%;"></i>{% endif %}
                             <i style="width:{{ c.pct_barra|unlocalize }}%;"></i>
                             {% if c.pct_prorrateado %}<i class="prorrateado" title="{% if c.es_anual %}{{ c.repartido|euro:0 }} pagados sin emparejar con la reserva: consumen la provisión del año, pero no pesan en el mes{% else %}{{ c.prorrateado|euro:0 }} prorrateados de un gasto anual ya pagado{% endif %}"
                                 style="width:{{ c.pct_prorrateado|unlocalize }}%;"></i>{% endif %}
@@ -1018,6 +1030,14 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         color-mix(in srgb, var(--danger) 75%, transparent) 0 5px, transparent 5px 9px);
 }
 .ext-leyenda-prorrateo { font-weight:700; white-space:nowrap; }
+/* Lo pagado en los meses anteriores del año, en un anual: gris y opaco, porque
+   ya no es de este mes pero sí se ha comido la provisión del año. Va antes de
+   lo del mes en la barra. */
+.ext-pilar-barra i.anterior, .ext-cat-barra i.anterior,
+.ext-pilar-barra.dentro i.anterior, .ext-cat-barra.dentro i.anterior,
+.ext-pilar-barra.fuera i.anterior, .ext-cat-barra.fuera i.anterior {
+    background:color-mix(in srgb, var(--muted) 55%, transparent);
+}
 .ext-leyenda-prorrateo i {
     display:inline-block; width:18px; height:8px; border-radius:999px; vertical-align:-1px;
     background:repeating-linear-gradient(90deg,
@@ -1036,7 +1056,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 }
 .ext-pilar-limite { font-variant-numeric:tabular-nums; color:var(--muted); text-align:right; font-size:0.76rem; white-space:nowrap; }
 .ext-pilar-limite em { font-style:italic; opacity:.75; }
-.ext-pilar-limite em.ext-unidad { font-style:normal; opacity:1; font-size:0.68rem; }
+.ext-pilar-limite em.ext-unidad { font-style:normal; opacity:1; font-size:0.68rem; display:block; }
 /* Ocupa la fila entera: son tres cifras encadenadas y en una columna no caben. */
 .ext-pilar-nota { grid-column:1/-1; font-size:0.72rem; color:var(--muted); padding-left:26px; }
 .ext-pilar-nota strong { color:var(--text-color); font-variant-numeric:tabular-nums; }
