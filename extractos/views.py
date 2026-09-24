@@ -70,9 +70,9 @@ def listar(request):
     # los movimientos del hogar (todos los extractos juntos).
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
+        .select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
         .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas').order_by('-fecha')
+                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos').order_by('-fecha')
     )
     # Al entrar sin periodo en la URL, la pantalla se abre en el MES EN CURSO.
     destino = _abrir_en_el_mes_en_curso(request, todos)
@@ -617,7 +617,10 @@ def _pasa_periodo(m, f):
 
 
 def _pasa_filtro(m, f):
-    if m.es_neutro and not f['ver_traspasos']:
+    # Un reembolso es neutro —no es ingreso— pero no es ruido como un traspaso:
+    # es la mitad de la historia de un gasto compartido y tiene que seguir a la
+    # vista aunque se oculten los neutros.
+    if m.es_neutro and not m.es_reembolso and not f['ver_traspasos']:
         return False
     if not _pasa_periodo(m, f):
         return False
@@ -691,7 +694,7 @@ def _comercios_del_periodo(movimientos, meses_con_datos, tope=14, vista_de_mes=F
     filas = []
     for comercio, movs in grupos.items():
         total = sum(
-            ((m.impacto_real if vista_de_mes else -m.importe) for m in movs), Decimal('0'),
+            ((m.impacto_real if vista_de_mes else -m.importe_neto) for m in movs), Decimal('0'),
         )
         if total <= 0:
             continue
@@ -866,7 +869,7 @@ def _anuales_prorrateados(todos, f):
             continue
         if not _pasa_filtro(m, del_anio):
             continue
-        cuota = (-m.importe / 12).quantize(Decimal('0.01'))
+        cuota = (-m.importe_neto / 12).quantize(Decimal('0.01'))
         if cuota <= 0:
             continue
         tipo = m.categoria.tipo if m.categoria else 'sin'
@@ -876,7 +879,7 @@ def _anuales_prorrateados(todos, f):
             'importe': Decimal('0'), 'pagado': Decimal('0'), 'meses': set(),
         })
         fila['importe'] += cuota
-        fila['pagado'] += -m.importe
+        fila['pagado'] += -m.importe_neto
         fila['meses'].add(m.fecha.month)
         por_bloque[tipo] += cuota
         total += cuota
@@ -917,7 +920,7 @@ def _anuales_meses_anteriores(todos, f):
         fila = por_categoria.setdefault(
             m.categoria.nombre, {'id': m.categoria_id, 'importe': Decimal('0')},
         )
-        fila['importe'] += -m.importe
+        fila['importe'] += -m.importe_neto
     return por_categoria
 
 
@@ -1106,7 +1109,7 @@ def _panel_context(hogar, todos, request, filtros=None):
     # largo se compensa sola —el ahorro salió de meses que están dentro— y lo
     # que cuesta la revisión del coche al año son 1.200 €, no 272.
     def peso_de(m):
-        return m.impacto_real if vista_de_mes else -m.importe
+        return m.impacto_real if vista_de_mes else -m.importe_neto
 
     reales = [m for m in contables if not m.es_neutro]
     ingresos = sum((m.importe for m in reales if m.cuenta_como_ingreso), Decimal('0'))
@@ -1121,8 +1124,27 @@ def _panel_context(hogar, todos, request, filtros=None):
         1 for m in movimientos
         if not m.categoria_id and not m.es_neutro and not m.esta_dividido
     )
-    traspasos = [m for m in contables if m.es_neutro]
+    # Los reembolsos van aparte de los traspasos: también son neutros, pero no
+    # son dinero tuyo cambiando de cuenta, así que no pueden «cuadrar» con nada
+    # y mezclados solo harían que la cifra de los neutros dejara de decir cero.
+    traspasos = [m for m in contables if m.es_neutro and not m.es_reembolso]
     traspaso_neto = sum((m.importe for m in traspasos), Decimal('0'))
+
+    # --- Gastos compartidos ---
+    # Lo que te devolvieron de los gastos del periodo. Se mide desde el GASTO,
+    # no desde los Bizum: el de la cena del 30 de septiembre que llega el 2 de
+    # octubre rebaja septiembre, que es cuando se gastó. Así esta cifra es
+    # exactamente lo que se ha descontado del gasto de arriba.
+    compartidos = [m for m in reales if m.cuenta_como_gasto and m.reembolsado]
+    reembolsado_periodo = sum((m.reembolsado for m in compartidos), Decimal('0'))
+    compartido_total = sum((-m.importe for m in compartidos), Decimal('0'))
+    # Y los Bizum que siguen contando como ingreso: si alguno era la parte de
+    # un amigo, el mes está inflado por los dos lados. Solo se avisa; decidir
+    # cuál era de qué gasto es cosa del usuario.
+    bizums_sueltos = [
+        m for m in reales
+        if m.cuenta_como_ingreso and 'bizum' in normalizar_texto(m.concepto)
+    ]
 
     # --- El gasto, por los CUATRO PILARES del presupuesto ---
     # Es la vista principal, no un añadido: el presupuesto se declara en fijos,
@@ -1153,7 +1175,7 @@ def _panel_context(hogar, todos, request, filtros=None):
         # y no había forma de saber de dónde salía: parecía que el mes se había
         # comido novecientos euros. Un bloque solo se entiende si se ve el pago,
         # lo que puso la reserva y la diferencia que queda.
-        bruto = -m.importe
+        bruto = -m.importe_neto
         cubierto = m.cubierto_por_reserva if vista_de_mes else Decimal('0')
         datos['importe'] += peso
         datos['bruto'] += bruto
@@ -1209,8 +1231,8 @@ def _panel_context(hogar, todos, request, filtros=None):
             continue
         nombre = m.categoria.nombre if m.categoria else 'Sin categorizar'
         datos = por_bloque[tipo]
-        datos['bruto'] += -m.importe
-        datos['repartido'] += -m.importe
+        datos['bruto'] += -m.importe_neto
+        datos['repartido'] += -m.importe_neto
         cat = datos['categorias'].setdefault(
             nombre, {'id': m.categoria_id, 'nombre': nombre,
                      'importe': Decimal('0'), 'bruto': Decimal('0'),
@@ -1218,8 +1240,8 @@ def _panel_context(hogar, todos, request, filtros=None):
                      'pagado_anual': Decimal('0'), 'meses_pago': [], 'num': 0,
                      'repartido': Decimal('0'), 'anterior': Decimal('0')},
         )
-        cat['bruto'] += -m.importe
-        cat['repartido'] += -m.importe
+        cat['bruto'] += -m.importe_neto
+        cat['repartido'] += -m.importe_neto
         cat['num'] += 1
 
     # --- Lo que ya llevan pagado los ANUALES en los meses de antes ---
@@ -1373,7 +1395,7 @@ def _panel_context(hogar, todos, request, filtros=None):
         # decía «repartido en 4 · no cuenta» y aparecía tachada, y aun así el
         # mes cargaba 924,81 € donde la suma real eran 740,08.
         if m.pk in fuera:
-            g['provisiones'] -= -m.importe
+            g['provisiones'] -= -m.importe_neto
         elif m.es_neutro:
             g['neutro'] += m.importe
         elif m.cuenta_como_ingreso:
@@ -1529,14 +1551,24 @@ def _panel_context(hogar, todos, request, filtros=None):
         # un pago que se queda —porque dijiste cuánto puso la reserva— ya se ve
         # en su bloque con el peso que le corresponde.
         'pagos_provision': provisiones_sacadas,
-        'total_provisiones': sum((-m.importe for m in provisiones_sacadas), Decimal('0')),
+        'total_provisiones': sum((-m.importe_neto for m in provisiones_sacadas), Decimal('0')),
         'fuera_presupuesto': fuera_presupuesto,
         'comercios': comercios,
         'comparativa': comparativa,
         'tipos_bloque': [
             {'valor': t, 'etiqueta': ETIQUETAS_TIPO.get(t, t)} for t in ORDEN_TIPOS
         ],
-        'num_traspasos': sum(1 for m in todos if m.es_neutro),
+        'num_traspasos': sum(1 for m in todos if m.es_neutro and not m.es_reembolso),
+        'reembolsado': reembolsado_periodo,
+        'compartido_total': compartido_total,
+        'compartido_tu_parte': compartido_total - reembolsado_periodo,
+        'num_compartidos': len(compartidos),
+        'pct_compartido_tuyo': (
+            round(float((compartido_total - reembolsado_periodo) / compartido_total * 100), 1)
+            if compartido_total > 0 else 0
+        ),
+        'num_bizums_sueltos': len(bizums_sueltos),
+        'total_bizums_sueltos': sum((m.importe for m in bizums_sueltos), Decimal('0')),
         'kpi_traspaso_neto': traspaso_neto,
         'traspasos_cuadran': traspaso_neto == 0 and bool(traspasos),
         'bloques': bloques,
@@ -1608,9 +1640,9 @@ def detalle(request, pk):
 
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
     todos = list(
-        extracto.movimientos.select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
+        extracto.movimientos.select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
         .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas').all()
+                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos').all()
     )
     panel = _panel_context(hogar, todos, request)
     return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
@@ -1880,6 +1912,10 @@ def cubrir_con_reserva(request, pk):
         return JsonResponse({'ok': False, 'error': 'pago_invalido'}, status=400)
     if pago.pk == mov.pk:
         return JsonResponse({'ok': False, 'error': 'a_si_mismo'}, status=400)
+    # Un reembolso de un gasto compartido ya rebaja su gasto: si además
+    # cubriera otro, el mismo dinero descontaría dos veces.
+    if mov.es_reembolso:
+        return JsonResponse({'ok': False, 'error': 'es_reembolso'}, status=400)
     # Una reserva cubre GASTOS. Dejar que cubra otra reposición encadenaría
     # coberturas y el impacto real dejaría de significar nada.
     if pago.es_cobertura:
@@ -1947,7 +1983,7 @@ def candidatos_reserva(request):
         .filter(hogar=hogar, fecha__range=(desde, hasta)).exclude(pk=mov.pk)
         .select_related('categoria', 'dividido_de')
         .prefetch_related('coberturas', 'partes',
-                          'dividido_de__partes', 'dividido_de__coberturas')
+                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos')
         .order_by('-fecha')
     )
 
@@ -1963,7 +1999,7 @@ def candidatos_reserva(request):
     if mov.importe is not None and mov.importe < 0:
         # Desde el gasto: quién le puede meter dinero. Se descartan los ingresos
         # que ya están puestos en OTRO pago, para no robárselo sin avisar.
-        candidatos = cerca.filter(importe__gte=0).filter(
+        candidatos = cerca.filter(importe__gte=0, reembolsa__isnull=True).filter(
             Q(cubre__isnull=True) | Q(cubre=mov),
         )[:60]
         return JsonResponse({
@@ -1986,6 +2022,332 @@ def candidatos_reserva(request):
         'candidatos': [fila(m) for m in candidatos],
         'puestos': [],
     })
+
+
+# ── Gastos compartidos ──────────────────────────────────────────────────────
+# Pagas la cena de seis —180 €— y los demás te hacen un Bizum o te dan su parte
+# en efectivo. El banco dice que gastaste 180 € en restaurantes e ingresaste
+# 150, y ninguna de las dos cosas es verdad: la cena te costó 30 y los Bizum
+# son tu dinero volviendo. Aquí se emparejan, y a partir de ahí el gasto pesa
+# solo tu parte en todas las cifras y los Bizum dejan de ser ingresos.
+
+# Cuánto se mira alrededor del gasto al buscar lo que te devolvieron. Hacia
+# atrás, poco: hay quien paga su parte por adelantado, pero es raro. Hacia
+# delante, dos meses: el amigo que tarda en hacer el Bizum siempre existe.
+COMPARTIDO_DIAS_ANTES = 7
+COMPARTIDO_DIAS_DESPUES = 62
+
+def _prefetch_compartido(qs):
+    return (
+        qs.select_related('categoria', 'dividido_de', 'reembolsa')
+        .prefetch_related('reembolsos', 'coberturas', 'partes',
+                          'dividido_de__partes', 'dividido_de__reembolsos',
+                          'dividido_de__coberturas')
+    )
+
+
+def _puede_compartirse(gasto):
+    """Solo un gasto de verdad: no un traspaso, ni un ingreso, ni una reposición."""
+    return (
+        gasto.importe is not None and gasto.importe < 0
+        and not gasto.es_reembolso and not gasto.es_cobertura
+        and (gasto.cuenta_como_gasto or gasto.esta_dividido)
+    )
+
+
+def _puede_ser_reembolso(ingreso):
+    return (
+        ingreso.importe is not None and ingreso.importe > 0
+        and not ingreso.es_cobertura and not ingreso.esta_dividido
+        and not ingreso.es_parte
+    )
+
+
+def _fila_reembolso(m):
+    return {
+        'id': m.pk,
+        'fecha': m.fecha.strftime('%d/%m/%Y'),
+        'fecha_iso': m.fecha.isoformat(),
+        'concepto': m.concepto,
+        'importe': float(m.importe),
+        'manual': m.manual,
+    }
+
+
+def _estado_compartido(gasto):
+    """Todo lo que el diálogo necesita pintar de un gasto compartido."""
+    total = -gasto.importe
+    reembolsado = gasto.reembolsado
+    return {
+        'id': gasto.pk,
+        'concepto': gasto.concepto,
+        'fecha': gasto.fecha.strftime('%d/%m/%Y'),
+        'fecha_iso': gasto.fecha.isoformat(),
+        'categoria': gasto.categoria.nombre if gasto.categoria else '',
+        'total': float(total),
+        'reembolsado': float(reembolsado),
+        'tu_parte': float(total - reembolsado),
+        'pendiente': float(gasto.pendiente_de_reembolso),
+        'es_parte': gasto.es_parte,
+        'dividido': gasto.esta_dividido,
+        # Lo emparejado con el cobro entero, si esto es una de sus partes: se
+        # enseña para que no parezca que falta dinero, pero se suelta desde el
+        # cobro, que es donde se puso.
+        'del_cobro': (
+            float(reembolsado - sum((r.importe for r in gasto._reembolsos()), Decimal('0')))
+            if gasto.es_parte else 0.0
+        ),
+        'reembolsos': [_fila_reembolso(r) for r in gasto.reembolsos_lista],
+    }
+
+
+def _candidatos_reembolso(hogar, gasto):
+    """Ingresos de alrededor que pueden ser lo que te devolvieron de este gasto.
+
+    Primero los que parecen un Bizum o una transferencia y caben en lo que
+    queda por devolver; dentro de cada grupo, los más cercanos a la fecha del
+    gasto. Los que ya están puestos en OTRO gasto no salen: se los robaría sin
+    avisar.
+    """
+    desde = gasto.fecha - timedelta(days=COMPARTIDO_DIAS_ANTES)
+    hasta = gasto.fecha + timedelta(days=COMPARTIDO_DIAS_DESPUES)
+    cerca = _prefetch_compartido(
+        MovimientoBancario.objects.filter(
+            hogar=hogar, fecha__range=(desde, hasta), importe__gt=0,
+            reembolsa__isnull=True, cubre__isnull=True, dividido_de__isnull=True,
+        ).exclude(pk=gasto.pk)
+    )
+    pendiente = gasto.pendiente_de_reembolso
+    filas = []
+    for m in cerca:
+        if m.esta_dividido:
+            continue
+        cabe = m.importe <= pendiente
+        pista = m.parece_reembolso
+        filas.append((
+            (not (cabe and pista), not cabe, abs((m.fecha - gasto.fecha).days)),
+            dict(_fila_reembolso(m), cabe=cabe, sugerido=cabe and pista),
+        ))
+    filas.sort(key=lambda f: f[0])
+    return [f[1] for f in filas[:50]]
+
+
+def _gastos_candidatos(hogar, ingreso):
+    """Desde el Bizum: a qué gasto de los de antes puede corresponder.
+
+    Solo los que aún tienen sitio para este dinero; primero los del mismo
+    importe multiplicado (seis a 30 € = una cena de 180), luego por cercanía.
+    """
+    desde = ingreso.fecha - timedelta(days=COMPARTIDO_DIAS_DESPUES)
+    hasta = ingreso.fecha + timedelta(days=COMPARTIDO_DIAS_ANTES)
+    cerca = _prefetch_compartido(
+        MovimientoBancario.objects.filter(
+            hogar=hogar, fecha__range=(desde, hasta), importe__lt=0,
+        ).exclude(pk=ingreso.pk)
+    )
+    filas = []
+    for m in cerca:
+        if not _puede_compartirse(m) or m.pendiente_de_reembolso < ingreso.importe:
+            continue
+        total = -m.importe
+        # ¿Es el gasto un múltiplo exacto de lo que te han pagado? Es la huella
+        # de «pagamos a partes iguales», y casi siempre es el bueno.
+        multiplo = bool(ingreso.importe) and (total % ingreso.importe) == 0 and total > ingreso.importe
+        filas.append((
+            (not multiplo, abs((m.fecha - ingreso.fecha).days)),
+            {
+                'id': m.pk,
+                'fecha': m.fecha.strftime('%d/%m/%Y'),
+                'concepto': m.concepto,
+                'categoria': m.categoria.nombre if m.categoria else '',
+                'importe': float(m.importe),
+                'reembolsado': float(m.reembolsado),
+                'pendiente': float(m.pendiente_de_reembolso),
+                'sugerido': multiplo,
+            },
+        ))
+    filas.sort(key=lambda f: f[0])
+    return [f[1] for f in filas[:50]]
+
+
+def _respuesta_compartido(hogar, gasto_pk):
+    """El estado fresco del gasto, recalculado desde la base de datos."""
+    gasto = _prefetch_compartido(MovimientoBancario.objects.filter(pk=gasto_pk)).first()
+    return JsonResponse({
+        'ok': True,
+        'sentido': 'gasto',
+        'gasto': _estado_compartido(gasto),
+        'candidatos': _candidatos_reembolso(hogar, gasto),
+    })
+
+
+def _cabe_reembolso(gasto, importe, excepto=None):
+    """¿Cabe `importe` en lo que queda por devolver de este gasto?
+
+    Se comprueba al emparejar: devolverte más de lo que pagaste no es un
+    reembolso, y si se dejara pasar la categoría del gasto acabaría en negativo.
+    `excepto` es el reembolso que se está editando, que no compite consigo mismo.
+    """
+    pendiente = gasto.pendiente_de_reembolso
+    if excepto is not None and excepto.reembolsa_id == gasto.pk:
+        pendiente += excepto.importe
+    return importe <= pendiente, pendiente
+
+
+@login_required
+def compartido(request, pk):
+    """El estado de un gasto compartido y con qué se puede emparejar.
+
+    Se entra por los dos lados. Desde el GASTO (el caso normal: «esta cena la
+    pagué yo, y me devolvieron…») se devuelven lo ya emparejado y los ingresos
+    de alrededor. Desde un INGRESO («este Bizum era de la cena») se devuelven los
+    gastos a los que puede corresponder; si ya está emparejado, el estado de su
+    gasto, para verlo y deshacerlo.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+
+    mov = get_object_or_404(
+        _prefetch_compartido(MovimientoBancario.objects.all()), pk=pk, hogar=hogar,
+    )
+    if mov.es_reembolso:
+        return _respuesta_compartido(hogar, mov.reembolsa_id)
+    if _puede_compartirse(mov):
+        return _respuesta_compartido(hogar, mov.pk)
+    if _puede_ser_reembolso(mov):
+        return JsonResponse({
+            'ok': True,
+            'sentido': 'ingreso',
+            'ingreso': _fila_reembolso(mov),
+            'candidatos': _gastos_candidatos(hogar, mov),
+        })
+    return JsonResponse({'ok': False, 'error': 'no_se_puede_compartir'}, status=400)
+
+
+def _post_compartido(request, pk):
+    """Comprobaciones comunes de las acciones que cambian un gasto compartido."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return None, None, JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return None, None, JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+    gasto = get_object_or_404(
+        _prefetch_compartido(MovimientoBancario.objects.all()), pk=pk, hogar=hogar,
+    )
+    if not _puede_compartirse(gasto):
+        return None, None, JsonResponse(
+            {'ok': False, 'error': 'no_es_un_gasto',
+             'mensaje': 'Solo se puede compartir un gasto.'}, status=400,
+        )
+    return hogar, gasto, None
+
+
+def _error_no_cabe(pendiente):
+    return JsonResponse({
+        'ok': False, 'error': 'supera',
+        'mensaje': (
+            'Supera lo que queda por devolverte de este gasto '
+            f'({str(pendiente.quantize(Decimal("0.01"))).replace(".", ",")} €).'
+        ),
+        'pendiente': float(pendiente),
+    }, status=400)
+
+
+@login_required
+def compartido_vincular(request, pk):
+    """Empareja un ingreso (un Bizum, una transferencia) con el gasto `pk`."""
+    hogar, gasto, error = _post_compartido(request, pk)
+    if error:
+        return error
+    ingreso = MovimientoBancario.objects.filter(
+        hogar=hogar, pk=request.POST.get('ingreso') or 0,
+    ).prefetch_related('partes').first()
+    if not ingreso or ingreso.pk == gasto.pk or not _puede_ser_reembolso(ingreso):
+        return JsonResponse({
+            'ok': False, 'error': 'ingreso_invalido',
+            'mensaje': 'Ese movimiento no puede ser un reembolso.',
+        }, status=400)
+    cabe, pendiente = _cabe_reembolso(gasto, ingreso.importe, excepto=ingreso)
+    if not cabe:
+        return _error_no_cabe(pendiente)
+    ingreso.reembolsa = gasto
+    ingreso.save(update_fields=['reembolsa'])
+    return _respuesta_compartido(hogar, gasto.pk)
+
+
+@login_required
+def compartido_efectivo(request, pk):
+    """Apunta lo que te dieron en mano por un gasto compartido, o lo corrige.
+
+    Crea un apunte manual que no viene de ningún banco —como un pago en
+    efectivo— ya emparejado con el gasto. Con `reembolso` se edita uno que ya
+    existe en vez de crear otro.
+    """
+    hogar, gasto, error = _post_compartido(request, pk)
+    if error:
+        return error
+    try:
+        importe = Decimal((request.POST.get('importe') or '').replace(',', '.')).quantize(
+            Decimal('0.01'),
+        )
+    except InvalidOperation:
+        importe = None
+    if importe is None or importe <= 0:
+        return JsonResponse({
+            'ok': False, 'error': 'importe',
+            'mensaje': 'Pon cuánto te dieron, en positivo.',
+        }, status=400)
+
+    existente = None
+    if request.POST.get('reembolso'):
+        existente = MovimientoBancario.objects.filter(
+            hogar=hogar, pk=request.POST.get('reembolso'), reembolsa=gasto, manual=True,
+        ).first()
+        if not existente:
+            return JsonResponse({'ok': False, 'error': 'reembolso_invalido'}, status=400)
+
+    cabe, pendiente = _cabe_reembolso(gasto, importe, excepto=existente)
+    if not cabe:
+        return _error_no_cabe(pendiente)
+
+    quien = (request.POST.get('quien') or '').strip()[:120]
+    fecha = parse_date(request.POST.get('fecha') or '') or gasto.fecha
+    concepto = f'Efectivo de {quien}' if quien else 'Efectivo · reembolso'
+    mov = existente or MovimientoBancario(
+        hogar=hogar, extracto=None, manual=True, reembolsa=gasto,
+        estado_categorizacion='manual', saldo=None,
+    )
+    mov.fecha = fecha
+    mov.concepto = concepto[:300]
+    mov.concepto_raw = f'{concepto} · {gasto.concepto}'
+    mov.comercio = ''
+    mov.importe = importe
+    mov.save()
+    return _respuesta_compartido(hogar, gasto.pk)
+
+
+@login_required
+def compartido_soltar(request, pk):
+    """Deshace un reembolso: el ingreso vuelve a contar como lo que era.
+
+    Si era efectivo apuntado a mano, se borra: solo existía para esto, y
+    dejarlo suelto lo convertiría en un ingreso que nunca fue.
+    """
+    hogar, gasto, error = _post_compartido(request, pk)
+    if error:
+        return error
+    ingreso = MovimientoBancario.objects.filter(
+        hogar=hogar, pk=request.POST.get('ingreso') or 0, reembolsa=gasto,
+    ).first()
+    if not ingreso:
+        return JsonResponse({'ok': False, 'error': 'ingreso_invalido'}, status=400)
+    if ingreso.manual:
+        ingreso.delete()
+    else:
+        ingreso.reembolsa = None
+        ingreso.save(update_fields=['reembolsa'])
+    return _respuesta_compartido(hogar, gasto.pk)
 
 
 @login_required
@@ -2305,9 +2667,9 @@ def filas_del_mes(request):
         # desplegar un mes ahí traería los apuntes de todos los extractos.
         base = base.filter(extracto_id=extracto_id)
     todos = list(
-        base.select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
+        base.select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
             .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas').order_by('-fecha')
+                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos').order_by('-fecha')
     )
 
     # El año y el mes de la fila mandan sobre los de la URL: se está pidiendo
@@ -2345,8 +2707,8 @@ def movimientos_de_categoria(request):
 
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de').prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas')
+        .select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de').prefetch_related('etiquetas', 'partes', 'coberturas',
+                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos')
     )
     # El bloque se quita: la categoría ya es más concreta que su pilar, y
     # dejarlo puesto vaciaría la lista justo cuando se entra desde otro bloque
@@ -2374,7 +2736,7 @@ def movimientos_de_categoria(request):
     # sí: la fila decía 1 € y el modal que se abría desde ella, 273,90 €.
     def peso_de(m):
         if not vista_de_mes:
-            return -m.importe
+            return -m.importe_neto
         return Decimal('0') if m.se_saca_del_mes else m.impacto_real
 
     total = sum((peso_de(m) for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
@@ -2397,7 +2759,7 @@ def movimientos_de_categoria(request):
             categoria.nombre, {},
         ).get('importe', Decimal('0'))
         medido = anterior + sum(
-            (-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'),
+            (-m.importe_neto for m in movimientos if m.cuenta_como_gasto), Decimal('0'),
         )
     else:
         limite_categoria = limite_mensual * meses_periodo
@@ -2880,12 +3242,14 @@ def etiquetas(request):
         return redirect('extractos:etiquetas')
 
     filas = []
-    for etiqueta in Etiqueta.objects.filter(hogar=hogar).prefetch_related('movimientos'):
+    for etiqueta in Etiqueta.objects.filter(hogar=hogar).prefetch_related(
+        'movimientos', 'movimientos__reembolsos', 'movimientos__partes',
+    ):
         movimientos = list(etiqueta.movimientos.all())
         # Por el cómputo de la categoría y no por el signo del importe: por el
         # signo, un traspaso entre cuentas propias contaba como gasto de la
         # etiqueta y un cobro repartido sumaba su total además del de sus partes.
-        gasto = sum((-m.importe for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
+        gasto = sum((-m.importe_neto for m in movimientos if m.cuenta_como_gasto), Decimal('0'))
         filas.append({
             'etiqueta': etiqueta,
             'num': len(movimientos),

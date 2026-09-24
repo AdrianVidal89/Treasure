@@ -356,6 +356,23 @@ class MovimientoBancario(ImputableAActivo):
         help_text='Pago de un gasto no mensual que no salió de la reserva: cuenta entero en su mes.',
     )
 
+    # Dinero que te devuelven de un gasto que pagaste por otros. Pagas la cena
+    # de seis —180 €— y cinco te hacen un Bizum de 30: el banco dice que
+    # gastaste 180 en restaurantes y que ingresaste 150, y ninguna de las dos
+    # cosas es verdad. Lo que te costó la cena fueron 30 €, y los Bizum no son
+    # un ingreso, son tu dinero volviendo. Emparejados, el Bizum deja de contar
+    # como ingreso y el gasto pasa a pesar solo tu parte, en todas las cifras.
+    # El balance del mes no se mueve: sale lo mismo de los dos lados.
+    #
+    # No es `cubre`: la reserva es un asunto de CUÁNDO —dinero tuyo apartado
+    # antes— y el reembolso es de CUÁNTO —ese dinero nunca fue tuyo—. Por eso
+    # éste rebaja el gasto en cualquier periodo que se mire, y el coste de un
+    # activo también, mientras que la reserva solo rebaja el mes.
+    reembolsa = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True, related_name='reembolsos',
+        help_text='Gasto compartido del que este movimiento te devuelve una parte.',
+    )
+
     # Un cobro puede ser varias cosas a la vez: en Norauto pagas de una vez los
     # neumáticos y la revisión anual, y son dos partidas distintas del
     # presupuesto. Dividirlo crea sus partes como movimientos normales colgando
@@ -515,8 +532,12 @@ class MovimientoBancario(ImputableAActivo):
         gasto llega en positivo y tiene que seguir RESTANDO de su categoría: con
         un abs() aquí, devolver 30 € se contaba como gastar 30 €.
 
+        Parte del gasto YA DESCONTADO lo que te devolvieron: de una cena de
+        180 € en la que cinco amigos te pagaron lo suyo, la reserva solo puede
+        cubrir los 30 que eran tuyos.
+
         Cubrir de más no convierte un gasto en ingreso: se queda en cero."""
-        bruto = -self.importe
+        bruto = -self.importe_neto
         cubierto = self.cubierto_por_reserva
         if bruto <= 0 or not cubierto:
             return bruto
@@ -527,12 +548,96 @@ class MovimientoBancario(ImputableAActivo):
         return self.cubre_id is not None
 
     @property
+    def es_reembolso(self):
+        return self.reembolsa_id is not None
+
+    def _reembolsos(self):
+        cache = getattr(self, '_prefetched_objects_cache', None)
+        if cache is not None and 'reembolsos' in cache:
+            return cache['reembolsos']
+        return self.reembolsos.all()
+
+    # Palabras que delatan dinero entre particulares. Solo sirven para sugerir
+    # —poner arriba en una lista, destacar un botón—; nunca deciden nada.
+    PISTAS_REEMBOLSO = ('bizum', 'transferencia', 'transf', 'trf', 'recibid')
+
+    @property
+    def parece_reembolso(self):
+        """Un ingreso con pinta de Bizum o transferencia de un amigo."""
+        if self.importe is None or self.importe <= 0:
+            return False
+        texto = normalizar_texto(f'{self.concepto} {self.concepto_raw or ""}')
+        return any(p in texto for p in self.PISTAS_REEMBOLSO)
+
+    @property
+    def reembolsos_lista(self):
+        """Los reembolsos de este gasto, por fecha: para pintarlos en la fila."""
+        return sorted(self._reembolsos(), key=lambda r: (r.fecha, r.pk))
+
+    @property
+    def num_reembolsos(self):
+        return len(self._reembolsos())
+
+    @property
+    def reembolsado(self):
+        """Cuánto de este gasto te han devuelto, en positivo.
+
+        Como con la reserva, una PARTE de un cobro repartido hereda a prorrata
+        lo que se emparejó con el cobro entero: el Bizum se empareja con el
+        ticket —lo que uno reconoce—, pero lo que cuenta en el presupuesto es
+        cada línea de dentro.
+        """
+        propio = sum((r.importe for r in self._reembolsos()), Decimal('0'))
+        if not self.es_parte:
+            return propio
+
+        padre = self.dividido_de
+        del_padre = sum((r.importe for r in padre._reembolsos()), Decimal('0'))
+        if not del_padre:
+            return propio
+
+        hermanas = padre.partes.all()
+        total = sum((abs(p.importe) for p in hermanas), Decimal('0'))
+        if not total:
+            return propio
+        porcion = (del_padre * abs(self.importe) / total).quantize(Decimal('0.01'))
+        return propio + porcion
+
+    @property
+    def importe_neto(self):
+        """El importe descontado lo que te devolvieron: tu parte del gasto.
+
+        Mismo signo que `importe`. Pagaste 180 y te devolvieron 150: -30. Es
+        la cifra con la que cuenta el gasto EN TODAS PARTES —el mes, el año, la
+        categoría, el coste del coche—, porque es lo que de verdad te costó.
+        No se recorta a cero: si te devuelven de más, el exceso resta de la
+        categoría, y así ingresos − gastos sigue dando lo mismo que el banco.
+        """
+        if self.importe is None:
+            return None
+        return self.importe + self.reembolsado
+
+    @property
+    def tu_parte(self):
+        """Lo que te costó a ti, en positivo, para enseñarlo en la fila."""
+        return -self.importe_neto
+
+    @property
+    def pendiente_de_reembolso(self):
+        """Hasta cuánto se puede emparejar todavía: lo que queda de tu parte."""
+        return max(-self.importe - self.reembolsado, Decimal('0'))
+
+    @property
     def es_neutro(self):
         from finanzas.models import COMPUTO_NEUTRO
 
         # Una reposición de la reserva no es ingreso: es dinero tuyo cambiando
         # de sitio. Lo que hace es rebajar el pago que cubre.
         if self.es_cobertura:
+            return True
+        # Un reembolso tampoco: es el dinero de otros por su parte de un gasto
+        # que adelantaste tú. Lo que hace es rebajar ese gasto.
+        if self.es_reembolso:
             return True
         return self.computo == COMPUTO_NEUTRO
 
@@ -551,6 +656,11 @@ class MovimientoBancario(ImputableAActivo):
         # como ingreso inflaría el mes y, si el pago está imputado a un coche,
         # haría que el coche pareciera que renta.
         if self.es_cobertura:
+            return False
+        # El Bizum de un amigo por su parte de la cena no es ganar dinero: te
+        # devuelve lo que adelantaste. Contado como ingreso, el mes parecía
+        # rendir 150 € más y costar 150 € más en restaurantes.
+        if self.es_reembolso:
             return False
 
         return self.computo == COMPUTO_SUMA and not self.esta_dividido

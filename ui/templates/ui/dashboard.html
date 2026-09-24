@@ -280,7 +280,7 @@
         <div class="cc-real-head">
             <div>
                 <h2 class="cc-real-titulo">Este mes, en tus movimientos</h2>
-                <span class="cc-real-sub">{{ real.etiqueta }} · lo que ha pasado de verdad</span>
+                <span class="cc-real-sub">{{ real.etiqueta }} · lo que ha pasado de verdad{% if real.reembolsado %} · <span class="cc-real-compartido" title="Gastos compartidos: cuentan solo tu parte, y lo que te devolvieron no suma como ingreso.">ya sin los {{ real.reembolsado|euro:0 }} que te devolvieron</span>{% endif %}</span>
             </div>
             <a class="cc-real-ver" href="{{ real.url }}">Ver movimientos →</a>
         </div>
@@ -376,6 +376,8 @@
     .cc-real-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
     .cc-real-titulo { font-size:1.05rem; margin:0; }
     .cc-real-sub { font-size:0.75rem; color:var(--muted); }
+    .cc-real-compartido { color:#0e7c86; font-weight:600; }
+    :root[data-theme="black"] .cc-real-compartido { color:#3de0e8; }
     .cc-real-ver { font-size:0.8rem; font-weight:600; color:var(--primary-color); text-decoration:none; white-space:nowrap; }
     .cc-real-ver:hover { text-decoration:underline; }
 

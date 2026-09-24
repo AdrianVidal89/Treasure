@@ -29,9 +29,9 @@ def resumen_del_mes(hogar, request):
     """Lo que el Dashboard enseña del mes real, o None si no hay movimientos."""
     todos = list(
         MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'dividido_de')
+        .select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
         .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas')
+                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos')
     )
     if not todos:
         return None
@@ -64,6 +64,9 @@ def resumen_del_mes(hogar, request):
         'url': f'/extractos/?anio={anio}&mes={mes}',
         'gasto': panel['kpi_gasto_abs'],
         'ingresos': panel['kpi_ingresos'],
+        # Lo que te devolvieron de los gastos compartidos: el gasto de arriba
+        # ya lo tiene descontado, y sin decirlo parecería que falta dinero.
+        'reembolsado': panel['reembolsado'],
         'presupuesto': panel['presupuesto'],
         'comparativa': comparativa if comparativa.get('hay_referencia') else None,
         'filas_media': filas,

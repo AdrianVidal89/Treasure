@@ -20,6 +20,11 @@ urlpatterns = [
     path('movimiento/<int:pk>/cubrir/', views.cubrir_con_reserva, name='cubrir_con_reserva'),
     path('movimiento/<int:pk>/sin-reserva/', views.marcar_sin_reserva, name='marcar_sin_reserva'),
     path('movimiento/reserva/candidatos/', views.candidatos_reserva, name='candidatos_reserva'),
+    # Gastos compartidos: lo que te devolvieron de una cena que pagaste tú.
+    path('movimiento/<int:pk>/compartido/', views.compartido, name='compartido'),
+    path('movimiento/<int:pk>/compartido/vincular/', views.compartido_vincular, name='compartido_vincular'),
+    path('movimiento/<int:pk>/compartido/efectivo/', views.compartido_efectivo, name='compartido_efectivo'),
+    path('movimiento/<int:pk>/compartido/soltar/', views.compartido_soltar, name='compartido_soltar'),
     path('movimiento/<int:pk>/dividir/', views.dividir_movimiento, name='dividir_movimiento'),
     path('movimiento/<int:pk>/dividir/deshacer/', views.deshacer_division, name='deshacer_division'),
     path('movimiento/dividir/aprender/', views.aprender_division, name='aprender_division'),

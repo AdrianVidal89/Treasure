@@ -106,6 +106,9 @@ a saltar de una a otra.
         <span class="ext-hero-sub">
             {{ panel.kpi_ingresos|euro }} de ingresos − {{ panel.kpi_gasto_abs|euro }} de gastos
         </span>
+        {% if panel.reembolsado %}
+        <span class="ext-hero-sub c-compartido">gastos ya sin los {{ panel.reembolsado|euro }} que te devolvieron</span>
+        {% endif %}
         <span class="ext-hero-sub">{{ panel.kpi_num }} movimiento{{ panel.kpi_num|pluralize:"s" }}</span>
     </div>
 
@@ -209,6 +212,40 @@ ninguna parte. La marca de la barra es lo que va de mes: un 60 % gastado el día
     </span>
     {% endif %}
 </div>
+
+{% if panel.num_compartidos %}
+{% comment %}
+Los gastos compartidos del periodo, a la vista: cuánto adelantaste por otros,
+cuánto te han devuelto y cuánto era de verdad tuyo. Es la cifra que explica por
+qué Restaurantes pesa menos que lo que dice el banco.
+{% endcomment %}
+<section class="ext-compartido-resumen">
+    <span class="ext-compartido-icono"><svg class="icon"><use href="#i-users"/></svg></span>
+    <div class="ext-compartido-texto">
+        <span class="ext-hero-label">Gastos compartidos · {{ panel.periodo_etiqueta }}</span>
+        <span class="ext-compartido-frase">
+            Adelantaste <strong>{{ panel.compartido_total|euro }}</strong> en {{ panel.num_compartidos }} gasto{{ panel.num_compartidos|pluralize:"s" }};
+            te devolvieron <strong class="c-compartido">{{ panel.reembolsado|euro }}</strong>
+            y tu parte fue <strong>{{ panel.compartido_tu_parte|euro }}</strong>.
+        </span>
+        <div class="ext-compartido-barra" title="Tu parte {{ panel.compartido_tu_parte|euro }} · devuelto {{ panel.reembolsado|euro }}">
+            <i class="tuya" style="width:{{ panel.pct_compartido_tuyo|unlocalize }}%;"></i><i class="devuelto"></i>
+        </div>
+        <span class="ext-hero-sub">Los gastos de arriba ya cuentan solo tu parte, y lo que te devolvieron no suma como ingreso.</span>
+    </div>
+</section>
+{% endif %}
+{% if panel.num_bizums_sueltos %}
+<div class="ext-aviso-compartido">
+    <svg class="icon"><use href="#i-users"/></svg>
+    <div>
+        <strong>{{ panel.num_bizums_sueltos }} Bizum{{ panel.num_bizums_sueltos|pluralize:"s" }}</strong> ({{ panel.total_bizums_sueltos|euro }})
+        cuenta{{ panel.num_bizums_sueltos|pluralize:"n" }} como ingreso. Si alguno era la parte de un amigo de algo que pagaste tú,
+        pulsa <strong>«¿es un reembolso?»</strong> en su fila —o <strong>«Compartido»</strong> en el gasto— y dejará de inflar el mes por los dos lados.
+        <a href="?anio={{ panel.anio_sel }}&mes={{ panel.mes_sel }}&q=bizum">Ver los Bizum →</a>
+    </div>
+</div>
+{% endif %}
 
 {% if panel.pagos_provision %}
 {% comment %}
@@ -886,6 +923,114 @@ puede decir exactamente que de los 1.200 € puso 928 la reserva.
             <button type="button" class="ext-cubrir-quitar" id="ext-cubrir-sin-reserva" hidden></button>
             <h5 class="ext-cubrir-titulillo" id="ext-cubrir-titulillo"></h5>
             <div id="ext-cubrir-lista" class="ext-cubrir-lista"></div>
+        </div>
+    </div>
+</div>
+
+{% comment %}
+Gasto compartido: pagaste tú la cena de seis y los demás te devolvieron su parte
+por Bizum o en mano. Aquí se dice qué dinero era de quién, y a partir de ahí el
+gasto cuenta solo tu parte y los Bizum dejan de contar como ingresos. Se abre
+desde el gasto («¿Compartido?») o desde el propio Bizum («¿es un reembolso?»).
+{% endcomment %}
+<div class="ext-modal" id="ext-modal-compartido" hidden>
+    <div class="ext-modal-fondo" data-cerrar-compartido></div>
+    <div class="ext-modal-caja ext-caja-compartido" role="dialog" aria-modal="true" aria-labelledby="ext-comp-titulo">
+        <div class="ext-modal-head ext-comp-head">
+            <span class="ext-comp-icono"><svg class="icon"><use href="#i-users"/></svg></span>
+            <span class="ext-modal-titulo" id="ext-comp-titulo">Gasto compartido</span>
+            <button type="button" class="ext-modal-cerrar" data-cerrar-compartido aria-label="Cerrar">&times;</button>
+        </div>
+        <div class="ext-modal-cuerpo">
+            <div class="ext-modal-cargando" id="ext-comp-cargando">Cargando…</div>
+            <p class="ext-comp-error" id="ext-comp-error" hidden></p>
+
+            <!-- Desde el gasto -->
+            <div id="ext-comp-gasto" hidden>
+                <div class="ext-comp-que">
+                    <strong id="ext-comp-concepto"></strong>
+                    <span class="text-muted" id="ext-comp-meta"></span>
+                </div>
+
+                <div class="ext-comp-cifras">
+                    <div class="ext-comp-cifra">
+                        <span class="ext-comp-lbl">Pagaste</span>
+                        <span class="ext-comp-num" id="ext-comp-total"></span>
+                    </div>
+                    <div class="ext-comp-cifra devuelto">
+                        <span class="ext-comp-lbl">Te devolvieron</span>
+                        <span class="ext-comp-num" id="ext-comp-devuelto"></span>
+                    </div>
+                    <div class="ext-comp-cifra tuya">
+                        <span class="ext-comp-lbl">Tu parte · la que cuenta</span>
+                        <span class="ext-comp-num" id="ext-comp-tuya"></span>
+                    </div>
+                </div>
+                <div class="ext-comp-barra" aria-hidden="true">
+                    <i class="tuya" id="ext-comp-barra-tuya"></i><i class="devuelto" id="ext-comp-barra-devuelto"></i>
+                </div>
+                <p class="ext-comp-nota" id="ext-comp-del-cobro" hidden></p>
+
+                {% comment %}
+                La pregunta de después de cenar: «éramos seis, ¿me lo han pagado
+                todos?». No se guarda: es una cuenta de apoyo, y además rellena el
+                importe del efectivo con lo que le toca a cada uno.
+                {% endcomment %}
+                <div class="ext-comp-entre">
+                    <span class="ext-comp-entre-lbl">¿Entre cuántos?</span>
+                    <div class="ext-comp-paso">
+                        <button type="button" data-entre="-1" aria-label="Uno menos">−</button>
+                        <strong id="ext-comp-n">2</strong>
+                        <button type="button" data-entre="1" aria-label="Uno más">+</button>
+                    </div>
+                    <span class="ext-comp-entre-texto" id="ext-comp-entre-texto"></span>
+                </div>
+
+                <div class="ext-comp-seccion" id="ext-comp-puestos-caja" hidden>
+                    <h5 class="ext-cubrir-titulillo">Te devolvieron</h5>
+                    <div id="ext-comp-puestos"></div>
+                </div>
+
+                <div class="ext-comp-seccion">
+                    <h5 class="ext-cubrir-titulillo">Añadir lo que te devolvieron</h5>
+                    <div class="ext-comp-tabs" role="tablist">
+                        <button type="button" class="activa" data-comp-tab="banco" role="tab">Bizum o transferencia</button>
+                        <button type="button" data-comp-tab="efectivo" role="tab">En efectivo</button>
+                    </div>
+                    <div id="ext-comp-tab-banco">
+                        <div id="ext-comp-candidatos" class="ext-cubrir-lista ext-comp-lista"></div>
+                    </div>
+                    <form id="ext-comp-tab-efectivo" class="ext-comp-efectivo" hidden>
+                        <input type="hidden" name="reembolso" value="">
+                        <label class="ext-manual-campo">
+                            <span>Cuánto</span>
+                            <input type="number" name="importe" step="0.01" min="0.01" inputmode="decimal" required>
+                        </label>
+                        <label class="ext-manual-campo">
+                            <span>Quién <em>(opcional)</em></span>
+                            <input type="text" name="quien" maxlength="120" placeholder="Juan, Ana…">
+                        </label>
+                        <label class="ext-manual-campo">
+                            <span>Cuándo</span>
+                            <input type="date" name="fecha">
+                        </label>
+                        <div class="ext-comp-efectivo-pie">
+                            <button type="button" class="btn btn-ghost btn-sm" id="ext-comp-efectivo-cancelar" hidden>Cancelar</button>
+                            <button type="submit" class="btn btn-primary btn-sm" id="ext-comp-efectivo-ok">Añadir</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Desde el ingreso -->
+            <div id="ext-comp-ingreso" hidden>
+                <p class="ext-cubrir-intro">
+                    <strong id="ext-comp-ing-concepto"></strong> ·
+                    <span class="ext-comp-ing-importe" id="ext-comp-ing-importe"></span>
+                    <span class="text-muted">— ¿de qué gasto te devolvieron esto? Dejará de contar como ingreso y ese gasto pesará solo tu parte.</span>
+                </p>
+                <div id="ext-comp-gastos" class="ext-cubrir-lista ext-comp-lista"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -1691,6 +1836,178 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 #ext-dividir-guardar:disabled { opacity:.5; cursor:not-allowed; }
 @media (max-width:860px){ .ext-parte { grid-template-columns:1fr 1fr; } .ext-parte-quitar { justify-self:end; } }
 
+/* ── Gastos compartidos ─────────────────────────────────────────────────
+   Un color propio —ni el verde de lo que entra, ni el rojo de lo que sale, ni
+   el morado de los discrecionales—, porque un reembolso no es ninguna de esas
+   cosas: es dinero de otros volviendo. Se reconoce de un vistazo en la fila,
+   en el resumen y en el diálogo. */
+:root { --compartido:#0e7c86; --compartido-2:#20b2aa; }
+:root[data-theme="black"] { --compartido:#3de0e8; --compartido-2:#8ff4f7; }
+.c-compartido { color:var(--compartido) !important; }
+
+.ext-compartir-boton {
+    display:inline-flex; align-items:center; gap:5px; cursor:pointer; font-family:inherit;
+    font-size:0.7rem; font-weight:700; letter-spacing:.01em; white-space:nowrap;
+    padding:2px 9px 2px 7px; border-radius:999px;
+    color:var(--compartido); background:color-mix(in srgb, var(--compartido) 7%, transparent);
+    border:1px dashed color-mix(in srgb, var(--compartido) 55%, transparent);
+    transition:background .15s, border-color .15s, transform .12s;
+}
+.ext-compartir-boton .icon { width:13px; height:13px; }
+.ext-compartir-boton:hover, .ext-compartir-boton:focus-visible {
+    background:color-mix(in srgb, var(--compartido) 16%, transparent); border-style:solid;
+}
+.ext-compartir-boton:active { transform:scale(.96); }
+.ext-compartir-boton.puesto {
+    border-style:solid; color:var(--on-primary, #fff);
+    background:linear-gradient(90deg, var(--compartido), var(--compartido-2)); border-color:transparent;
+}
+:root[data-theme="black"] .ext-compartir-boton.puesto { color:#001417; }
+/* En un ingreso cualquiera (la nómina) la pregunta sobra casi siempre: se
+   apaga y se enciende al pasar por la fila. En uno con pinta de Bizum, no. */
+.ext-compartir-ingreso { opacity:0; }
+.ext-mov:hover .ext-compartir-ingreso, .ext-compartir-ingreso:focus, .ext-compartir-ingreso.sugerido { opacity:1; }
+
+.ext-badge-reembolso {
+    display:inline-flex; align-items:center; gap:4px; cursor:pointer; font-family:inherit;
+    font-size:0.66rem; font-weight:700; white-space:nowrap; max-width:min(260px, 100%); overflow:hidden; text-overflow:ellipsis;
+    color:var(--compartido); border:1px solid color-mix(in srgb, var(--compartido) 50%, transparent);
+    background:color-mix(in srgb, var(--compartido) 12%, transparent);
+    border-radius:999px; padding:1px 8px;
+}
+.ext-badge-reembolso .icon { width:12px; height:12px; flex:0 0 auto; }
+.ext-badge-reembolso:hover { background:color-mix(in srgb, var(--compartido) 22%, transparent); }
+/* El reembolso es neutro, pero no ruido: se apaga menos que un traspaso. */
+.ext-mov.neutro.ext-mov-reembolso { opacity:.9; }
+.ext-mov-reembolso .ext-mov-importe { color:var(--compartido) !important; }
+.ext-mov-compartido { box-shadow:inset 3px 0 0 var(--compartido); }
+.ext-importe-compartido { display:flex; flex-direction:column; align-items:flex-end; line-height:1.15; }
+.ext-importe-bruto { font-size:0.7rem; font-weight:600; color:var(--muted); text-decoration:line-through; }
+.ext-importe-neto { font-size:0.95rem; }
+
+/* Resumen del periodo */
+.ext-compartido-resumen {
+    display:flex; gap:16px; align-items:flex-start; margin:0 0 14px; padding:16px 20px;
+    border-radius:16px; border:1px solid color-mix(in srgb, var(--compartido) 35%, var(--border));
+    background:linear-gradient(135deg, color-mix(in srgb, var(--compartido) 10%, var(--surface)), var(--surface) 70%);
+}
+.ext-compartido-icono {
+    flex:0 0 auto; width:40px; height:40px; border-radius:12px; display:grid; place-items:center;
+    background:linear-gradient(135deg, var(--compartido), var(--compartido-2)); color:#fff;
+}
+.ext-compartido-icono .icon { width:20px; height:20px; }
+.ext-compartido-texto { display:flex; flex-direction:column; gap:6px; flex:1; min-width:0; }
+.ext-compartido-frase { font-size:0.92rem; line-height:1.45; }
+.ext-compartido-frase strong { font-variant-numeric:tabular-nums; }
+.ext-compartido-barra, .ext-comp-barra {
+    display:flex; height:10px; border-radius:999px; overflow:hidden; background:var(--app-bg);
+}
+.ext-compartido-barra i, .ext-comp-barra i { display:block; height:100%; }
+.ext-compartido-barra .tuya, .ext-comp-barra .tuya { background:linear-gradient(90deg,var(--danger),var(--danger-2)); }
+.ext-compartido-barra .devuelto, .ext-comp-barra .devuelto {
+    flex:1; background:repeating-linear-gradient(135deg,
+        color-mix(in srgb, var(--compartido) 75%, transparent) 0 4px,
+        color-mix(in srgb, var(--compartido) 40%, transparent) 4px 8px);
+}
+.ext-aviso-compartido {
+    display:flex; gap:10px; align-items:flex-start; margin:0 0 16px;
+    padding:12px 15px; border-radius:11px; font-size:0.83rem; line-height:1.5;
+    background:color-mix(in srgb, var(--compartido) 8%, transparent);
+    border:1px dashed color-mix(in srgb, var(--compartido) 45%, transparent);
+}
+.ext-aviso-compartido .icon { flex:0 0 auto; margin-top:2px; color:var(--compartido); }
+
+/* El diálogo */
+.ext-caja-compartido { width:min(640px,100%); }
+.ext-comp-head { background:linear-gradient(90deg, color-mix(in srgb, var(--compartido) 12%, transparent), transparent); }
+.ext-comp-icono {
+    width:30px; height:30px; border-radius:9px; display:grid; place-items:center; flex:0 0 auto;
+    background:linear-gradient(135deg, var(--compartido), var(--compartido-2)); color:#fff;
+}
+.ext-comp-icono .icon { width:16px; height:16px; }
+.ext-comp-que { display:flex; flex-direction:column; gap:2px; margin-bottom:14px; }
+.ext-comp-que strong { font-size:1.02rem; }
+.ext-comp-que .text-muted { font-size:0.78rem; }
+.ext-comp-cifras { display:grid; grid-template-columns:1fr 1fr 1.2fr; gap:10px; margin-bottom:10px; }
+.ext-comp-cifra {
+    display:flex; flex-direction:column; gap:2px; padding:10px 12px; border-radius:11px;
+    background:var(--app-bg); border:1px solid var(--border);
+}
+.ext-comp-cifra.devuelto .ext-comp-num { color:var(--compartido); }
+.ext-comp-cifra.tuya { border-color:color-mix(in srgb, var(--danger) 40%, var(--border)); }
+.ext-comp-cifra.tuya .ext-comp-num { color:var(--danger); font-size:1.35rem; }
+.ext-comp-lbl { font-size:0.66rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.ext-comp-num { font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.2; }
+.ext-comp-barra { margin-bottom:12px; }
+.ext-comp-barra i { transition:width .45s cubic-bezier(.16,1,.3,1); }
+.ext-comp-barra .devuelto { flex:0 0 auto; }
+.ext-comp-nota { font-size:0.76rem; color:var(--muted); margin:-4px 0 12px; }
+.ext-comp-entre {
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:0.83rem;
+    padding:10px 12px; border-radius:11px; margin-bottom:16px;
+    background:color-mix(in srgb, var(--compartido) 7%, transparent);
+}
+.ext-comp-entre-lbl { font-weight:700; }
+.ext-comp-paso { display:inline-flex; align-items:center; gap:2px; border:1px solid var(--border-strong); border-radius:999px; background:var(--surface); }
+.ext-comp-paso button {
+    background:none; border:none; width:28px; height:26px; cursor:pointer; color:var(--text-color);
+    font-size:1rem; font-weight:700; border-radius:999px;
+}
+.ext-comp-paso button:hover { background:color-mix(in srgb, var(--compartido) 15%, transparent); color:var(--compartido); }
+.ext-comp-paso strong { min-width:22px; text-align:center; font-variant-numeric:tabular-nums; }
+.ext-comp-entre-texto { color:var(--muted); }
+.ext-comp-entre-texto b { color:var(--text-color); font-variant-numeric:tabular-nums; }
+.ext-comp-entre-texto .ok { color:var(--success); font-weight:700; }
+.ext-comp-seccion { margin-bottom:16px; }
+.ext-comp-puesto {
+    display:flex; align-items:center; gap:10px; font-size:0.83rem; padding:8px 12px; margin-bottom:6px;
+    border-radius:9px; border:1px solid color-mix(in srgb, var(--compartido) 45%, transparent);
+    background:color-mix(in srgb, var(--compartido) 9%, transparent);
+}
+.ext-comp-tipo {
+    font-size:0.6rem; text-transform:uppercase; letter-spacing:.05em; font-weight:800; flex:0 0 auto;
+    padding:1px 6px; border-radius:999px; color:var(--compartido); border:1px solid currentColor;
+}
+.ext-comp-puesto .ext-cubrir-cuanto { color:var(--compartido); }
+.ext-comp-accion {
+    background:none; border:none; color:var(--muted); font-size:0.76rem; cursor:pointer;
+    text-decoration:underline; white-space:nowrap; padding:0;
+}
+.ext-comp-accion:hover { color:var(--compartido); }
+.ext-comp-accion.quitar:hover { color:var(--danger); }
+.ext-comp-tabs { display:inline-flex; gap:4px; padding:3px; border-radius:10px; background:var(--app-bg); border:1px solid var(--border); margin-bottom:10px; }
+.ext-comp-tabs button {
+    background:none; border:none; border-radius:8px; padding:6px 12px; font-size:0.8rem; font-weight:600;
+    color:var(--muted); cursor:pointer; font-family:inherit;
+}
+.ext-comp-tabs button.activa { background:var(--surface); color:var(--compartido); box-shadow:var(--shadow-sm); }
+.ext-comp-lista { max-height:38vh; }
+.ext-comp-lista .ext-cubrir-opcion { align-items:center; }
+.ext-comp-lista .ext-cubrir-opcion:hover { border-color:var(--compartido); }
+.ext-comp-lista .ext-cubrir-opcion.sugerido { border-color:color-mix(in srgb, var(--compartido) 55%, var(--border)); }
+.ext-comp-lista .ext-cubrir-opcion:disabled { opacity:.45; cursor:not-allowed; }
+.ext-comp-mas { font-weight:800; color:var(--compartido); font-size:1rem; line-height:1; }
+.ext-comp-chapa {
+    font-size:0.6rem; text-transform:uppercase; letter-spacing:.05em; font-weight:800; white-space:nowrap;
+    color:var(--on-primary, #fff); background:var(--compartido); border-radius:999px; padding:1px 7px;
+}
+:root[data-theme="black"] .ext-comp-chapa { color:#001417; }
+.ext-comp-efectivo { display:grid; grid-template-columns:1fr 1.4fr 1fr; gap:10px; align-items:end; }
+.ext-comp-efectivo[hidden] { display:none; }
+.ext-comp-efectivo-pie { grid-column:1/-1; display:flex; justify-content:flex-end; gap:8px; }
+.ext-comp-efectivo-pie [hidden] { display:none; }
+.ext-comp-error {
+    font-size:0.82rem; color:var(--danger); margin:0 0 12px; padding:8px 12px; border-radius:9px;
+    background:color-mix(in srgb, var(--danger) 9%, transparent);
+}
+.ext-comp-ing-importe { color:var(--compartido); font-weight:700; font-variant-numeric:tabular-nums; }
+@media (max-width:560px){
+    .ext-comp-cifras { grid-template-columns:1fr 1fr; }
+    .ext-comp-cifra.tuya { grid-column:1/-1; }
+    .ext-comp-efectivo { grid-template-columns:1fr 1fr; }
+    .ext-comp-efectivo label:nth-child(3) { grid-column:1/-1; }
+}
+
 /* ── Controles de fila en pantallas sin ratón ─────────────────────────
    Etiquetar, repartir, imputar a un coche, marcar un pago anual y borrar se
    revelaban al pasar el ratón por encima. En una tableta no hay «encima»: la
@@ -1702,6 +2019,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     .ext-provision-boton,
     .ext-activo-boton,
     .ext-cubre-boton,
+    .ext-compartir-ingreso,
     .ext-del,
     .ext-dividir { opacity:.75; }
 }
@@ -2967,6 +3285,327 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             window.location.reload();
         }).catch(function () { btnGuardarDiv.disabled = false; });
     });
+
+    /* ---- Gastos compartidos ----
+       Pagaste la cena de seis y te hicieron Bizum. El diálogo se actualiza en
+       vivo al emparejar —se ve bajar «tu parte»—, y al cerrarlo se recarga la
+       página si algo cambió: el gasto del mes, los pilares y los KPI se mueven
+       y no pueden quedarse mintiendo. */
+    var URL_COMP = "/extractos/movimiento/__ID__/compartido/";
+    var cajaComp = document.getElementById('ext-modal-compartido');
+    var compEstado = null;      // el del gasto que se está mirando
+    var compCambiado = false;
+    var compEntre = 2;
+
+    function compEl(id) { return document.getElementById(id); }
+
+    function compError(texto) {
+        var p = compEl('ext-comp-error');
+        p.textContent = texto || '';
+        p.hidden = !texto;
+    }
+
+    function compPost(url, datos) {
+        var body = new URLSearchParams();
+        Object.keys(datos).forEach(function (k) { body.append(k, datos[k]); });
+        compError('');
+        return fetch(url, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data.ok) { compError(data.mensaje || 'No se ha podido guardar.'); return; }
+            compCambiado = true;
+            pintarComp(data);
+        }).catch(function () { compError('No se ha podido guardar. Revisa la conexión.'); });
+    }
+
+    function compEntreTexto() {
+        var e = compEstado;
+        if (!e) return;
+        compEl('ext-comp-n').textContent = compEntre;
+        var cadaUno = e.total / compEntre;
+        var esperado = e.total - cadaUno;
+        var falta = Math.round((esperado - e.reembolsado) * 100) / 100;
+        var t = compEl('ext-comp-entre-texto');
+        t.innerHTML = '';
+        var a = document.createElement('span');
+        a.innerHTML = 'a partes iguales, <b></b> cada uno · ';
+        a.querySelector('b').textContent = euroTexto(cadaUno);
+        t.appendChild(a);
+        var b = document.createElement('span');
+        if (falta > 0.009) {
+            b.innerHTML = 'te faltan por cobrar <b></b>';
+            b.querySelector('b').textContent = euroTexto(falta);
+        } else if (falta < -0.009) {
+            b.textContent = 'te han devuelto ' + euroTexto(-falta) + ' más de lo que toca';
+        } else {
+            b.className = 'ok';
+            b.textContent = '✓ te lo han devuelto todo';
+        }
+        t.appendChild(b);
+        /* El efectivo se propone con lo que le toca a cada uno, sin pasarse
+           de lo que queda. Solo si no se está escribiendo ya otra cosa. */
+        var form = compEl('ext-comp-tab-efectivo');
+        if (!form.reembolso.value) {
+            var sugerido = Math.min(cadaUno, e.pendiente);
+            form.importe.value = sugerido > 0 ? sugerido.toFixed(2) : '';
+        }
+    }
+
+    function compFilaOpcion(texto, importe, extra, chapa) {
+        var op = document.createElement('button');
+        op.type = 'button';
+        op.className = 'ext-cubrir-opcion';
+        var mas = document.createElement('span');
+        mas.className = 'ext-comp-mas';
+        mas.textContent = '+';
+        var que = document.createElement('span');
+        que.className = 'ext-cubrir-que';
+        que.textContent = texto;
+        op.append(mas, que);
+        if (chapa) {
+            var ch = document.createElement('span');
+            ch.className = 'ext-comp-chapa';
+            ch.textContent = chapa;
+            op.appendChild(ch);
+            op.classList.add('sugerido');
+        }
+        if (extra) {
+            var ex = document.createElement('span');
+            ex.className = 'ext-cubrir-resto';
+            ex.textContent = extra;
+            op.appendChild(ex);
+        }
+        var cuanto = document.createElement('span');
+        cuanto.className = 'ext-cubrir-cuanto';
+        cuanto.textContent = euro(importe);
+        op.appendChild(cuanto);
+        return op;
+    }
+
+    function compEditarEfectivo(r) {
+        compTab('efectivo');
+        var form = compEl('ext-comp-tab-efectivo');
+        form.reembolso.value = r.id;
+        form.importe.value = r.importe.toFixed(2);
+        form.quien.value = (r.concepto || '').replace(/^Efectivo de /, '').replace(/^Efectivo · reembolso$/, '');
+        form.fecha.value = r.fecha_iso;
+        compEl('ext-comp-efectivo-ok').textContent = 'Guardar';
+        compEl('ext-comp-efectivo-cancelar').hidden = false;
+        form.importe.focus();
+    }
+
+    function compLimpiarEfectivo() {
+        var form = compEl('ext-comp-tab-efectivo');
+        form.reembolso.value = '';
+        form.quien.value = '';
+        form.fecha.value = compEstado ? compEstado.fecha_iso : '';
+        compEl('ext-comp-efectivo-ok').textContent = 'Añadir';
+        compEl('ext-comp-efectivo-cancelar').hidden = true;
+        compEntreTexto();
+    }
+
+    function compTab(cual) {
+        document.querySelectorAll('[data-comp-tab]').forEach(function (b) {
+            b.classList.toggle('activa', b.dataset.compTab === cual);
+        });
+        compEl('ext-comp-tab-banco').hidden = cual !== 'banco';
+        compEl('ext-comp-tab-efectivo').hidden = cual !== 'efectivo';
+    }
+
+    function pintarGasto(data) {
+        var e = data.gasto;
+        var nuevo = !compEstado || compEstado.id !== e.id;
+        compEstado = e;
+        compEl('ext-comp-gasto').hidden = false;
+        compEl('ext-comp-ingreso').hidden = true;
+        compEl('ext-comp-titulo').textContent = 'Gasto compartido';
+        compEl('ext-comp-concepto').textContent = e.concepto;
+        compEl('ext-comp-meta').textContent = e.fecha + (e.categoria ? ' · ' + e.categoria : '');
+        compEl('ext-comp-total').textContent = euroTexto(e.total);
+        compEl('ext-comp-devuelto').textContent = euroTexto(e.reembolsado);
+        compEl('ext-comp-tuya').textContent = euroTexto(e.tu_parte);
+        var pctTuya = e.total > 0 ? Math.max(0, Math.min(100, e.tu_parte / e.total * 100)) : 100;
+        compEl('ext-comp-barra-tuya').style.width = pctTuya + '%';
+        compEl('ext-comp-barra-devuelto').style.width = (100 - pctTuya) + '%';
+
+        var nota = compEl('ext-comp-del-cobro');
+        if (e.del_cobro > 0) {
+            nota.textContent = 'Incluye ' + euroTexto(e.del_cobro) + ' emparejados con el cobro entero, repartidos entre sus partes. Se deshacen desde el cobro.';
+            nota.hidden = false;
+        } else if (e.dividido) {
+            nota.textContent = 'Este cobro está repartido: lo que te devuelvan se reparte entre sus partes a prorrata.';
+            nota.hidden = false;
+        } else {
+            nota.hidden = true;
+        }
+
+        if (nuevo) {
+            /* Si todos te devolvieron lo mismo, la cuenta sale sola: 180 € a
+               30 por cabeza son seis. Si no, uno más que los que ya pagaron. */
+            compEntre = Math.max(2, e.reembolsos.length + 1);
+            var cuota = e.reembolsos.length ? e.reembolsos[0].importe : 0;
+            var iguales = cuota > 0 && e.reembolsos.every(function (r) { return Math.abs(r.importe - cuota) < 0.005; });
+            if (iguales) {
+                var n = e.total / cuota;
+                if (Math.abs(n - Math.round(n)) < 0.01 && Math.round(n) > e.reembolsos.length) {
+                    compEntre = Math.min(50, Math.round(n));
+                }
+            }
+        }
+
+        var cajaPuestos = compEl('ext-comp-puestos-caja');
+        var lista = compEl('ext-comp-puestos');
+        lista.innerHTML = '';
+        cajaPuestos.hidden = !e.reembolsos.length;
+        e.reembolsos.forEach(function (r) {
+            var fila = document.createElement('div');
+            fila.className = 'ext-comp-puesto';
+            var tipo = document.createElement('span');
+            tipo.className = 'ext-comp-tipo';
+            tipo.textContent = r.manual ? 'efectivo' : 'banco';
+            var que = document.createElement('span');
+            que.className = 'ext-cubrir-que';
+            que.textContent = r.fecha.slice(0, 5) + ' · ' + r.concepto;
+            var cuanto = document.createElement('span');
+            cuanto.className = 'ext-cubrir-cuanto';
+            cuanto.textContent = euro(r.importe);
+            fila.append(tipo, que, cuanto);
+            if (r.manual) {
+                var editar = document.createElement('button');
+                editar.type = 'button';
+                editar.className = 'ext-comp-accion';
+                editar.textContent = 'editar';
+                editar.addEventListener('click', function () { compEditarEfectivo(r); });
+                fila.appendChild(editar);
+            }
+            var quitar = document.createElement('button');
+            quitar.type = 'button';
+            quitar.className = 'ext-comp-accion quitar';
+            quitar.textContent = 'deshacer';
+            quitar.title = r.manual
+                ? 'Borra este efectivo: solo existía como reembolso.'
+                : 'El ingreso vuelve a contar como lo que era.';
+            quitar.addEventListener('click', function () {
+                compPost(URL_COMP.replace('__ID__', e.id) + 'soltar/', {ingreso: r.id});
+            });
+            fila.appendChild(quitar);
+            lista.appendChild(fila);
+        });
+
+        var cand = compEl('ext-comp-candidatos');
+        cand.innerHTML = '';
+        if (!data.candidatos.length) {
+            cand.innerHTML = '<div class="ext-cubrir-vacio">No hay ingresos sin emparejar entre una semana antes y dos meses después. Si te lo dieron en mano, apúntalo en «En efectivo».</div>';
+        }
+        data.candidatos.forEach(function (c) {
+            var op = compFilaOpcion(
+                c.fecha.slice(0, 5) + ' · ' + c.concepto, c.importe,
+                c.cabe ? '' : 'supera lo que queda',
+                c.sugerido ? 'encaja' : ''
+            );
+            op.disabled = !c.cabe;
+            op.addEventListener('click', function () {
+                compPost(URL_COMP.replace('__ID__', e.id) + 'vincular/', {ingreso: c.id});
+            });
+            cand.appendChild(op);
+        });
+
+        if (nuevo) {
+            compTab(data.candidatos.some(function (c) { return c.cabe; }) ? 'banco' : 'efectivo');
+            compLimpiarEfectivo();
+        } else {
+            compLimpiarEfectivo();
+        }
+    }
+
+    function pintarIngreso(data) {
+        compEstado = null;
+        compEl('ext-comp-gasto').hidden = true;
+        compEl('ext-comp-ingreso').hidden = false;
+        compEl('ext-comp-titulo').textContent = '¿De qué gasto te devolvieron esto?';
+        compEl('ext-comp-ing-concepto').textContent = data.ingreso.concepto;
+        compEl('ext-comp-ing-importe').textContent = euro(data.ingreso.importe);
+        var lista = compEl('ext-comp-gastos');
+        lista.innerHTML = '';
+        if (!data.candidatos.length) {
+            lista.innerHTML = '<div class="ext-cubrir-vacio">No hay gastos en los dos meses de antes en los que quepa este importe.</div>';
+            return;
+        }
+        data.candidatos.forEach(function (g) {
+            var extra = (g.categoria ? g.categoria + ' · ' : '') +
+                (g.reembolsado > 0 ? 'ya devuelto ' + euroTexto(g.reembolsado) : 'nada devuelto aún');
+            var op = compFilaOpcion(g.fecha.slice(0, 5) + ' · ' + g.concepto, g.importe, extra,
+                                    g.sugerido ? 'encaja' : '');
+            op.addEventListener('click', function () {
+                compPost(URL_COMP.replace('__ID__', g.id) + 'vincular/', {ingreso: data.ingreso.id});
+            });
+            lista.appendChild(op);
+        });
+    }
+
+    function pintarComp(data) {
+        compEl('ext-comp-cargando').hidden = true;
+        if (data.sentido === 'gasto') pintarGasto(data);
+        else pintarIngreso(data);
+        compEntreTexto();
+    }
+
+    function abrirCompartido(movId) {
+        compEstado = null;
+        compError('');
+        compEl('ext-comp-gasto').hidden = true;
+        compEl('ext-comp-ingreso').hidden = true;
+        compEl('ext-comp-cargando').hidden = false;
+        cajaComp.hidden = false;
+        document.body.style.overflow = 'hidden';
+        fetch(URL_COMP.replace('__ID__', movId), {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data.ok) throw new Error('mal');
+                pintarComp(data);
+            }).catch(function () {
+                compEl('ext-comp-cargando').hidden = true;
+                compError('No se ha podido cargar este movimiento.');
+            });
+    }
+
+    function cerrarCompartido() {
+        cajaComp.hidden = true;
+        document.body.style.overflow = '';
+        if (compCambiado) window.location.reload();
+    }
+
+    if (cajaComp) {
+        document.addEventListener('click', function (e) {
+            var boton = e.target.closest('.ext-compartir-abrir');
+            if (boton) { e.preventDefault(); abrirCompartido(boton.dataset.movId); return; }
+            if (e.target.closest('[data-cerrar-compartido]')) { cerrarCompartido(); return; }
+            var tab = e.target.closest('[data-comp-tab]');
+            if (tab) { compTab(tab.dataset.compTab); return; }
+            var paso = e.target.closest('[data-entre]');
+            if (paso && compEstado) {
+                compEntre = Math.max(2, Math.min(50, compEntre + parseInt(paso.dataset.entre, 10)));
+                compEntreTexto();
+            }
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !cajaComp.hidden) cerrarCompartido();
+        });
+        compEl('ext-comp-tab-efectivo').addEventListener('submit', function (e) {
+            e.preventDefault();
+            if (!compEstado) return;
+            var form = e.target;
+            compPost(URL_COMP.replace('__ID__', compEstado.id) + 'efectivo/', {
+                importe: form.importe.value,
+                quien: form.quien.value,
+                fecha: form.fecha.value,
+                reembolso: form.reembolso.value
+            });
+        });
+        compEl('ext-comp-efectivo-cancelar').addEventListener('click', compLimpiarEfectivo);
+    }
 
     /* ---- Emparejar dinero de la reserva con el pago que cubre ----
        Ahorras todo el año para la revisión del coche; cuando llega, metes esa

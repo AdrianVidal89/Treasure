@@ -123,9 +123,11 @@ def _movimientos(activo):
         MovimientoBancario.objects.filter(**{campo: activo})
         # `partida_conciliada` porque el prorrateo de cada pago necesita saber
         # cuántos meses cubre su gasto, y `partes` porque un movimiento dividido
-        # deja de contar por sí mismo.
-        .select_related('categoria', 'partida_conciliada')
-        .prefetch_related('partes')
+        # deja de contar por sí mismo. Y los reembolsos, porque lo que te
+        # devolvieron de un gasto compartido del coche no es coste del coche.
+        .select_related('categoria', 'partida_conciliada', 'dividido_de')
+        .prefetch_related('partes', 'reembolsos', 'dividido_de__partes',
+                          'dividido_de__reembolsos')
     )
 
 
@@ -165,7 +167,7 @@ def costes(activo, anio):
 
     teorico_mensual = sum((p.importe_mensual for p in partidas), Decimal('0'))
     teorico_anual = sum((p.importe_anual for p in partidas), Decimal('0'))
-    real_anual = sum((-m.importe for m in del_anio), Decimal('0'))
+    real_anual = sum((-m.importe_neto for m in del_anio), Decimal('0'))
 
     # Los pagos de gastos que se provisionan todo el año y se pagan de golpe
     # —la revisión del coche, el seguro— van aparte del gasto corriente. Contra
@@ -174,8 +176,8 @@ def costes(activo, anio):
     # septiembre pasó por el taller.
     provisiones = [m for m in del_anio if m.es_pago_provision]
     corrientes = [m for m in del_anio if not m.es_pago_provision]
-    provisiones_anual = sum((-m.importe for m in provisiones), Decimal('0'))
-    corriente_anual = sum((-m.importe for m in corrientes), Decimal('0'))
+    provisiones_anual = sum((-m.importe_neto for m in provisiones), Decimal('0'))
+    corriente_anual = sum((-m.importe_neto for m in corrientes), Decimal('0'))
 
     # Meses del año con algún gasto CORRIENTE del activo: la media se calcula
     # sobre ellos, no sobre doce, o un activo estrenado en noviembre parecería
@@ -226,7 +228,7 @@ def costes(activo, anio):
     # Un año ya cerrado son sus doce meses y la cuenta es la de siempre.
     meses_cerrados = _meses_cerrados(anio)
     de_meses_cerrados = _hasta_el_mes(corrientes, meses_cerrados)
-    corriente_cerrado = sum((-m.importe for m in de_meses_cerrados), Decimal('0'))
+    corriente_cerrado = sum((-m.importe_neto for m in de_meses_cerrados), Decimal('0'))
     provisiones_cerradas = sum(
         (_cuota_anual(m) for m in _hasta_el_mes(provisiones, meses_cerrados)
          if m.partida_conciliada_id),
@@ -308,7 +310,7 @@ def _cuota_anual(movimiento):
     se multiplicaba por cuatro y luego otra vez por los cuatro pagos.
     """
     meses = movimiento.partida_conciliada.meses_periodo
-    return -movimiento.importe * 12 / Decimal(max(meses, 12))
+    return -movimiento.importe_neto * 12 / Decimal(max(meses, 12))
 
 
 def _hasta_el_mes(movimientos, mes):
@@ -386,9 +388,9 @@ def _por_mes(movimientos, meses_transcurridos):
     filas = []
     for n in range(1, 13):
         apuntes = sorted(del_mes[n], key=lambda m: (m.fecha, -abs(m.importe)))
-        total = sum((-m.importe for m in apuntes), Decimal('0'))
+        total = sum((-m.importe_neto for m in apuntes), Decimal('0'))
         provision = sum(
-            (-m.importe for m in apuntes if m.es_pago_provision), Decimal('0'),
+            (-m.importe_neto for m in apuntes if m.es_pago_provision), Decimal('0'),
         )
         filas.append({
             'mes': n,
@@ -405,7 +407,7 @@ def _por_mes(movimientos, meses_transcurridos):
                     'fecha': m.fecha.strftime('%d/%m'),
                     'concepto': m.concepto[:60],
                     'categoria': m.categoria.nombre if m.categoria else 'Sin categorizar',
-                    'importe': float(-m.importe),
+                    'importe': float(-m.importe_neto),
                     'provision': m.es_pago_provision,
                 }
                 for m in apuntes[:MAXIMO_EN_LA_TARJETA]
@@ -577,13 +579,13 @@ def _por_categoria(partidas, corrientes, provisiones):
 
     for m in corrientes:
         fila = _fila(m.categoria)
-        fila['real_anual'] += -m.importe
-        fila['pagado_anual'] += -m.importe
+        fila['real_anual'] += -m.importe_neto
+        fila['pagado_anual'] += -m.importe_neto
 
     for m in provisiones:
         fila = _fila(m.categoria)
         fila['real_anual'] += _cuota_anual(m)
-        fila['pagado_anual'] += -m.importe
+        fila['pagado_anual'] += -m.importe_neto
 
     orden = sorted(filas.values(), key=lambda f: f['real_anual'], reverse=True)
     for f in orden:
