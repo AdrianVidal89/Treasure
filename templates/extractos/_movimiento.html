@@ -11,7 +11,7 @@ algo desde ahí obligaba a volver al listado para terminar.
 Espera `m` (el movimiento) y `panel` (el contexto de edición: colores,
 categorías por bloque, provisiones y activos).
 {% endcomment %}
-<div class="ext-mov{% if m.es_neutro %} neutro{% endif %}{% if m.esta_dividido %} ext-mov-dividido{% endif %}{% if m.es_parte %} ext-mov-parte{% endif %}" data-mov-id="{{ m.id }}"
+<div class="ext-mov{% if m.es_neutro %} neutro{% endif %}{% if m.es_reembolso %} ext-mov-reembolso{% endif %}{% if m.reembolsado and not m.esta_dividido %} ext-mov-compartido{% endif %}{% if m.esta_dividido %} ext-mov-dividido{% endif %}{% if m.es_parte %} ext-mov-parte{% endif %}" data-mov-id="{{ m.id }}"
      {% if m.es_parte %}data-padre="{{ m.dividido_de_id }}" data-concepto="{{ m.concepto }}" data-importe="{{ m.importe|unlocalize }}" data-categoria="{{ m.categoria_id|default_if_none:'' }}" data-activo="{{ m.clave_activo }}"{% endif %}
      {% if m.saldo != None %}title="Saldo tras el apunte: {{ m.saldo|euro }}"{% endif %}>
     <label class="ext-mov-check" title="Seleccionar para un cambio en bloque">
@@ -36,6 +36,8 @@ categorías por bloque, provisiones y activos).
             {% endcomment %}
             {% if m.esta_dividido %}
             <span class="ext-badge-dividido" title="Este cobro está repartido en {{ m.partes.all|length }} partes, que son las que cuentan. El apunte del banco se queda aquí para que reimportar el extracto no lo duplique, pero no suma: si sumara, el mismo dinero contaría dos veces.">repartido en {{ m.partes.all|length }} · no cuenta</span>
+            {% elif m.es_reembolso %}
+            {% comment %}Emparejado, su categoría no cuenta para nada: lo que dice la fila es a qué gasto devuelve.{% endcomment %}
             {% else %}
             <span class="ext-cat-chip" style="--cc:{% if m.categoria %}{{ panel.colores_tipo|get_item:m.categoria.tipo }}{% else %}#9aa5a0{% endif %};">
                 <button type="button" class="ext-campo-perezoso ext-cat-boton" data-mov-id="{{ m.id }}"
@@ -45,11 +47,31 @@ categorías por bloque, provisiones y activos).
             {% endif %}
             {% if m.manual %}<span class="ext-badge-manual" title="Lo apuntaste tú: no viene de ningún extracto. Suele ser un pago en efectivo.">a mano</span>{% endif %}
             {% if m.es_cobertura %}<span class="ext-badge-reserva" title="Dinero sacado de la reserva para pagar «{{ m.cubre.concepto }}». No cuenta como ingreso: rebaja ese pago.">de la reserva</span>
+            {% elif m.es_reembolso %}<button type="button" class="ext-badge-reembolso ext-compartir-abrir" data-mov-id="{{ m.reembolsa_id }}"
+                title="Te devuelve tu parte de «{{ m.reembolsa.concepto }}» ({{ m.reembolsa.fecha|date:'d/m' }}). No cuenta como ingreso: rebaja ese gasto. Pulsa para verlo o deshacerlo."><svg class="icon"><use href="#i-users"/></svg> reembolso · {{ m.reembolsa.concepto|truncatechars:26 }}</button>
             {% elif m.es_traspaso %}<button type="button" class="ext-badge-neutro ext-traspaso-boton" data-mov-id="{{ m.id }}"
                 title="Traspaso entre cuentas propias: no cuenta como ingreso ni como gasto. Lo dedujo la importación del texto del apunte; pulsa si no lo es.">traspaso ×</button>
             {% elif m.es_neutro %}<span class="ext-badge-neutro" title="Categoría neutra: no cuenta como gasto ni como ingreso">neutro</span>{% endif %}
             {% if m.es_pago_provision %}<span class="ext-badge-provision" title="Pago de {{ m.partida_conciliada.nombre }}: se compara en el año, no en el mes">anual</span>{% endif %}
             {% if m.cubierto_por_reserva %}{% if m.esta_dividido %}<span class="ext-badge-reserva" title="{{ m.cubierto_por_reserva|euro }} de este recibo salieron de la reserva. Como el cobro está repartido, ese dinero se reparte entre sus partes a prorrata: son ellas las que cuentan.">reserva {{ m.cubierto_por_reserva|euro:0 }} · va a las partes</span>{% else %}<span class="ext-badge-reserva" title="De este pago, {{ m.cubierto_por_reserva|euro }} salieron de la reserva. Al presupuesto del mes solo le pesan {{ m.impacto_real|euro }}; el coste del activo sigue siendo el total.">reserva {{ m.cubierto_por_reserva|euro:0 }} · pesó {{ m.impacto_real|euro:0 }}</span>{% endif %}{% endif %}
+
+            {% comment %}
+            Gasto compartido: pagaste tú la cena de todos y te devolvieron su
+            parte. Va a la vista, no tras el hover: es de lo que más se usa, y
+            la pregunta («¿dónde digo que me hicieron Bizum?») se hace mirando
+            la fila, no sabiendo ya dónde está el botón.
+            {% endcomment %}
+            {% if m.importe < 0 %}{% if m.cuenta_como_gasto or m.esta_dividido %}
+            <button type="button" class="ext-compartir-boton ext-compartir-abrir{% if m.reembolsado %} puesto{% endif %}" data-mov-id="{{ m.id }}"
+                    title="{% if m.reembolsado %}Te devolvieron {{ m.reembolsado|euro }} de {{ m.importe|euro }}. Tu parte: {{ m.tu_parte|euro }}. Pulsa para ver, añadir o deshacer.{% else %}¿Pagaste por más gente? Di qué Bizum o efectivo te devolvieron y el gasto contará solo tu parte.{% endif %}">
+                <svg class="icon"><use href="#i-users"/></svg>{% if m.reembolsado %}te devolvieron {{ m.reembolsado|euro:0 }}{% if m.esta_dividido %} · va a las partes{% endif %}{% else %}Compartido{% endif %}
+            </button>
+            {% endif %}{% elif m.importe > 0 and not m.es_reembolso and not m.es_cobertura and not m.esta_dividido and not m.es_parte %}
+            <button type="button" class="ext-compartir-boton ext-compartir-ingreso ext-compartir-abrir{% if m.parece_reembolso %} sugerido{% endif %}" data-mov-id="{{ m.id }}"
+                    title="¿Es lo que te devolvió alguien de un gasto que pagaste tú? Emparéjalo y dejará de contar como ingreso: rebajará ese gasto.">
+                <svg class="icon"><use href="#i-users"/></svg>¿es un reembolso?
+            </button>
+            {% endif %}
 
             <span class="ext-tags" data-mov-id="{{ m.id }}">
                 {% for e in m.etiquetas.all %}
@@ -80,11 +102,13 @@ categorías por bloque, provisiones y activos).
             que hay en el banco y lo que uno mira—; el dinero baja solo a las
             partes, a prorrata.
             {% endcomment %}
+            {% if not m.es_reembolso %}
             <button type="button" class="ext-cubre-boton {% if m.es_cobertura or m.cubierto_por_reserva or m.pagado_sin_reserva %}puesto{% endif %}"
                     data-mov-id="{{ m.id }}" data-importe="{{ m.importe|unlocalize }}"
                     data-concepto="{{ m.concepto }}" data-valor="{{ m.cubre_id|default_if_none:'' }}"
                     data-anual="{% if m.es_pago_provision or m.esta_dividido %}1{% endif %}" data-sin-reserva="{% if m.sin_reserva %}1{% endif %}"
                     title="{% if m.importe < 0 %}¿Pagaste parte de esto con dinero que tenías apartado? Dilo aquí y el mes solo cargará la diferencia.{% else %}¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.{% endif %}">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% elif m.cubierto_por_reserva %}reserva puesta{% elif m.pagado_sin_reserva %}sin reserva{% else %}— de la reserva —{% endif %}</button>
+            {% endif %}
 
             {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
             <button type="button" class="ext-campo-perezoso ext-activo-boton {% if m.clave_activo %}puesto{% endif %}"
@@ -95,11 +119,25 @@ categorías por bloque, provisiones y activos).
         </div>
     </div>
 
+    {% if m.reembolsado and not m.esta_dividido %}
+    {% comment %}
+    Un gasto compartido enseña las dos cifras: lo que dijo el banco, tachado, y
+    lo que te costó a ti, que es lo que suma en todas partes. Sin la tachada no
+    se reconoce el apunte; sin la otra, la fila contradice a los totales.
+    {% endcomment %}
+    <div class="ext-mov-importe ext-importe-compartido text-negative"
+         data-campo="importe" data-valor="{{ m.importe|unlocalize }}"
+         title="El banco cobró {{ m.importe|euro }}; te devolvieron {{ m.reembolsado|euro }}. Tu parte, la que cuenta: {{ m.tu_parte|euro }}. Clic para editar el importe del banco.">
+        <span class="ext-importe-bruto">{{ m.importe|euro }}</span>
+        <span class="ext-importe-neto">{{ m.importe_neto|euro }}</span>
+    </div>
+    {% else %}
     <div class="ext-mov-importe {% if m.esta_dividido %}ext-importe-repartido{% endif %} {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}"
          data-campo="importe" data-valor="{{ m.importe|unlocalize }}"
-         title="{% if m.esta_dividido %}Lo que cobró el banco. Lo que cuenta son sus partes, aquí debajo.{% else %}Clic para editar{% endif %}">
+         title="{% if m.esta_dividido %}Lo que cobró el banco. Lo que cuenta son sus partes, aquí debajo.{% elif m.es_reembolso %}Te lo devolvieron por «{{ m.reembolsa.concepto }}»: rebaja ese gasto, no es un ingreso. Clic para editar.{% else %}Clic para editar{% endif %}">
         {% if m.importe > 0 %}+{% endif %}{{ m.importe|euro }}
     </div>
+    {% endif %}
 
     {% if not m.es_parte %}
     <button type="button" class="ext-dividir" data-mov-id="{{ m.id }}"

@@ -404,7 +404,7 @@ def _recurrencia(del_mes, previos, meses_con_datos):
 
 def _hormiga(del_mes):
     """Los microgastos: cada uno es despreciable, juntos no."""
-    pequenos = [m for m in del_mes if Decimal('0') < -m.importe < UMBRAL_HORMIGA]
+    pequenos = [m for m in del_mes if Decimal('0') < -m.importe_neto < UMBRAL_HORMIGA]
     return {
         'hormiga_total': _suma(pequenos),
         'hormiga_num': len(pequenos),

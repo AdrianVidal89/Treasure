@@ -10,6 +10,7 @@ razones sociales pegadas al nombre del comercio.
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -5897,3 +5898,308 @@ class GrabarMovimientosTests(TestCase):
 
         huella = MovimientoBancario.calcular_hash(mov.fecha, mov.concepto, mov.importe, mov.saldo)
         self.assertEqual(huella, mov.hash_dedupe)
+
+
+class GastoCompartidoTests(TestCase):
+    """Pagas la cena de seis y los demás te devuelven su parte.
+
+    El banco dice que gastaste 180 € en restaurantes e ingresaste 150 € en
+    Bizum, y ninguna de las dos cosas es verdad: la cena te costó 30 y los Bizum
+    son tu dinero volviendo. Emparejados, el gasto pesa solo tu parte en todas
+    las cifras, los Bizum dejan de ser ingresos y el balance no se mueve.
+    """
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.restaurantes = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Restaurantes')
+        self.otros_ingresos = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        self.cena = self.mov('-180', 12, 'La Tagliatella', self.restaurantes)
+
+    def mov(self, importe, dia, concepto, categoria=None, mes=9):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, mes, dia),
+            concepto=concepto, importe=Decimal(importe), categoria=categoria,
+        )
+
+    def bizum(self, importe='30', dia=13, quien='Ana', mes=9):
+        return self.mov(importe, dia, f'Bizum recibido de {quien}', self.otros_ingresos, mes=mes)
+
+    def vincular(self, ingreso, gasto=None):
+        return self.client.post(
+            reverse('extractos:compartido_vincular', args=[(gasto or self.cena).id]),
+            {'ingreso': ingreso.id}, HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def efectivo(self, importe, quien='Juan', reembolso=None):
+        datos = {'importe': importe, 'quien': quien, 'fecha': '2026-09-12'}
+        if reembolso:
+            datos['reembolso'] = reembolso.id
+        return self.client.post(
+            reverse('extractos:compartido_efectivo', args=[self.cena.id]), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def soltar(self, ingreso):
+        return self.client.post(
+            reverse('extractos:compartido_soltar', args=[self.cena.id]),
+            {'ingreso': ingreso.id}, HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def panel(self, **params):
+        params.setdefault('anio', '2026')
+        params.setdefault('mes', '9')
+        return self.client.get(reverse('extractos:listar'), params).context['panel']
+
+    def categoria_en_panel(self, panel, nombre):
+        for b in panel['bloques']:
+            for c in b['categorias']:
+                if c['nombre'] == nombre:
+                    return c
+        return None
+
+    # ── El caso entero ───────────────────────────────────────────────────
+
+    def test_la_cena_pesa_tu_parte_y_los_bizum_no_son_ingreso(self):
+        for quien in ('Ana', 'Luis', 'Marta'):
+            self.assertEqual(self.vincular(self.bizum('30', quien=quien)).status_code, 200)
+        self.efectivo('30', 'Juan')
+        self.efectivo('30', 'Pedro')
+
+        panel = self.panel()
+        self.assertEqual(panel['kpi_ingresos'], Decimal('0'))
+        self.assertEqual(panel['kpi_gastos'], Decimal('-30'))
+        self.assertEqual(self.categoria_en_panel(panel, 'Restaurantes')['importe'], Decimal('30'))
+        self.assertEqual(panel['reembolsado'], Decimal('150'))
+        self.assertEqual(panel['compartido_total'], Decimal('180'))
+        self.assertEqual(panel['compartido_tu_parte'], Decimal('30'))
+
+    def test_el_balance_del_mes_no_se_mueve_al_emparejar(self):
+        """Sale lo mismo de los dos lados: ingresos − gastos da lo que el banco."""
+        self.mov('2000', 1, 'Nómina', self.otros_ingresos)
+        self.mov('-60', 20, 'Mercadona')
+        bizums = [self.bizum('30', 13 + i, q) for i, q in enumerate(('Ana', 'Luis', 'Marta'))]
+
+        antes = self.panel()
+        for b in bizums:
+            self.vincular(b)
+        despues = self.panel()
+
+        self.assertEqual(antes['kpi_neto'], despues['kpi_neto'])
+        self.assertEqual(despues['kpi_ingresos'], antes['kpi_ingresos'] - Decimal('90'))
+        self.assertEqual(despues['kpi_gastos'], antes['kpi_gastos'] + Decimal('90'))
+        # Y la cabecera del mes en el listado cuenta lo mismo que los KPI.
+        grupo = despues['grupos'][0]
+        self.assertEqual(grupo['ingresos'], despues['kpi_ingresos'])
+        self.assertEqual(grupo['gastos'], despues['kpi_gastos'])
+        self.assertEqual(grupo['neto'], despues['kpi_neto'])
+
+    def test_el_bizum_que_llega_al_mes_siguiente_rebaja_el_mes_de_la_cena(self):
+        """La cena fue en septiembre: es septiembre el que costó menos. En
+        octubre el Bizum no aparece como ingreso."""
+        tarde = self.bizum('30', 2, 'Luis', mes=10)
+        self.vincular(tarde)
+
+        self.assertEqual(self.panel()['kpi_gastos'], Decimal('-150'))
+        octubre = self.panel(mes='10')
+        self.assertEqual(octubre['kpi_ingresos'], Decimal('0'))
+        # Sigue en la lista de octubre, para poder verlo y deshacerlo.
+        self.assertIn(tarde.id, [m.id for g in octubre['grupos'] for m in g['movimientos']])
+
+    def test_en_el_año_entero_tambien_cuenta_solo_tu_parte(self):
+        """No es cosa de cuándo, como la reserva: ese dinero nunca fue tuyo."""
+        self.vincular(self.bizum('150'))
+        panel = self.panel(mes='all')
+        self.assertEqual(panel['kpi_gastos'], Decimal('-30'))
+        self.assertEqual(panel['kpi_ingresos'], Decimal('0'))
+
+    def test_el_reembolso_no_es_un_neutro_mas(self):
+        """No se mezcla con los traspasos —no «cuadra» con nada— ni se esconde
+        al ocultar los neutros."""
+        b = self.bizum('30')
+        self.vincular(b)
+        panel = self.panel(traspasos='0')
+        self.assertEqual(panel['num_traspasos'], 0)
+        self.assertIn(b.id, [m.id for g in panel['grupos'] for m in g['movimientos']])
+        self.assertEqual(panel['kpi_sin_categorizar'], 0)
+
+    # ── Ver, deshacer y editar ───────────────────────────────────────────
+
+    def test_deshacer_un_bizum_lo_devuelve_a_ingreso(self):
+        b = self.bizum('30')
+        self.vincular(b)
+        respuesta = self.soltar(b)
+        self.assertEqual(respuesta.json()['gasto']['reembolsado'], 0.0)
+
+        b.refresh_from_db()
+        self.assertIsNone(b.reembolsa)
+        self.assertTrue(b.cuenta_como_ingreso)
+        self.assertEqual(self.panel()['kpi_gastos'], Decimal('-180'))
+
+    def test_deshacer_el_efectivo_lo_borra(self):
+        """Solo existía como reembolso: suelto sería un ingreso que nunca fue."""
+        self.efectivo('30')
+        efectivo = MovimientoBancario.objects.get(reembolsa=self.cena)
+        self.assertTrue(efectivo.manual)
+        self.assertEqual(efectivo.concepto, 'Efectivo de Juan')
+
+        self.soltar(efectivo)
+        self.assertFalse(MovimientoBancario.objects.filter(pk=efectivo.pk).exists())
+
+    def test_editar_el_efectivo(self):
+        self.efectivo('30')
+        efectivo = MovimientoBancario.objects.get(reembolsa=self.cena)
+        respuesta = self.efectivo('45', 'Juan y Pedro', reembolso=efectivo)
+
+        self.assertEqual(respuesta.status_code, 200)
+        efectivo.refresh_from_db()
+        self.assertEqual(efectivo.importe, Decimal('45'))
+        self.assertEqual(efectivo.concepto, 'Efectivo de Juan y Pedro')
+        self.assertEqual(MovimientoBancario.objects.filter(reembolsa=self.cena).count(), 1)
+        self.assertEqual(respuesta.json()['gasto']['tu_parte'], 135.0)
+
+    def test_no_te_pueden_devolver_mas_de_lo_que_pagaste(self):
+        self.efectivo('150')
+        respuesta = self.vincular(self.bizum('40'))
+        self.assertEqual(respuesta.status_code, 400)
+        self.assertEqual(respuesta.json()['error'], 'supera')
+        self.assertEqual(self.efectivo('31').status_code, 400)
+        self.assertEqual(self.efectivo('30').status_code, 200)
+
+    def test_al_editar_el_efectivo_no_compite_consigo_mismo(self):
+        self.efectivo('180')
+        efectivo = MovimientoBancario.objects.get(reembolsa=self.cena)
+        self.assertEqual(self.efectivo('170', reembolso=efectivo).status_code, 200)
+
+    def test_borrar_el_gasto_se_lleva_el_efectivo_pero_no_el_bizum(self):
+        b = self.bizum('30')
+        self.vincular(b)
+        self.efectivo('30')
+        self.cena.delete()
+
+        b.refresh_from_db()
+        self.assertIsNone(b.reembolsa)
+        self.assertFalse(MovimientoBancario.objects.filter(manual=True).exists())
+
+    def test_solo_se_comparte_un_gasto(self):
+        nomina = self.mov('2000', 1, 'Nómina', self.otros_ingresos)
+        respuesta = self.client.post(
+            reverse('extractos:compartido_vincular', args=[nomina.id]),
+            {'ingreso': self.bizum().id},
+        )
+        self.assertEqual(respuesta.status_code, 400)
+        # Y un gasto no puede ser el reembolso de otro.
+        respuesta = self.vincular(self.mov('-20', 13, 'Taxi'))
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_no_se_toca_otro_hogar(self):
+        otro = Hogar.objects.create(nombre='Otro')
+        ajeno = MovimientoBancario.objects.create(
+            hogar=otro, fecha=date(2026, 9, 13), concepto='Bizum', importe=Decimal('30'),
+        )
+        self.assertEqual(self.vincular(ajeno).status_code, 400)
+        self.assertEqual(
+            self.client.get(reverse('extractos:compartido', args=[ajeno.id])).status_code, 404,
+        )
+
+    # ── Lo que ofrece el diálogo ─────────────────────────────────────────
+
+    def test_desde_el_gasto_sugiere_los_bizum_de_alrededor(self):
+        ana = self.bizum('30', 13, 'Ana')
+        self.mov('2000', 14, 'Nómina', self.otros_ingresos)
+        lejos = self.bizum('30', 1, 'Viejo', mes=6)
+        ya_puesto = self.bizum('30', 15, 'Luis')
+        otro_gasto = self.mov('-60', 14, 'Cine', self.restaurantes)
+        self.vincular(ya_puesto, otro_gasto)
+
+        datos = self.client.get(reverse('extractos:compartido', args=[self.cena.id])).json()
+        self.assertEqual(datos['sentido'], 'gasto')
+        ids = [c['id'] for c in datos['candidatos']]
+        self.assertEqual(ids[0], ana.id)
+        self.assertTrue(datos['candidatos'][0]['sugerido'])
+        self.assertNotIn(lejos.id, ids)
+        self.assertNotIn(ya_puesto.id, ids)
+        # La nómina sale —se ofrece todo—, pero no cabe y va al final.
+        self.assertFalse(datos['candidatos'][-1]['cabe'])
+
+    def test_desde_el_bizum_ofrece_los_gastos_en_los_que_cabe(self):
+        b = self.bizum('30')
+        self.mov('-20', 11, 'Taxi', self.restaurantes)
+        datos = self.client.get(reverse('extractos:compartido', args=[b.id])).json()
+        self.assertEqual(datos['sentido'], 'ingreso')
+        ids = [g['id'] for g in datos['candidatos']]
+        self.assertEqual(ids, [self.cena.id])
+        self.assertTrue(datos['candidatos'][0]['sugerido'])  # 180 = 6 × 30
+
+        # Ya emparejado, abrirlo desde el Bizum enseña su gasto.
+        self.vincular(b)
+        datos = self.client.get(reverse('extractos:compartido', args=[b.id])).json()
+        self.assertEqual(datos['sentido'], 'gasto')
+        self.assertEqual(datos['gasto']['id'], self.cena.id)
+
+    def test_la_fila_ensena_las_dos_cifras_y_el_boton_esta_a_la_vista(self):
+        self.vincular(self.bizum('150'))
+        html = self.client.get(reverse('extractos:listar'), {'anio': '2026', 'mes': '9'}).content.decode()
+        self.assertIn('ext-importe-compartido', html)
+        self.assertIn('te devolvieron 150', html)
+        self.assertIn('ext-compartido-resumen', html)
+        self.assertIn('reembolso · La Tagliatella', html)
+
+    def test_aviso_de_bizum_que_cuentan_como_ingreso(self):
+        self.bizum('30')
+        self.assertEqual(self.panel()['num_bizums_sueltos'], 1)
+
+    # ── Cobros repartidos y reserva ──────────────────────────────────────
+
+    def test_en_un_cobro_repartido_el_reembolso_baja_a_las_partes(self):
+        ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+        self.client.post(
+            reverse('extractos:dividir_movimiento', args=[self.cena.id]),
+            {'importe': ['-120', '-60'], 'concepto': ['Cena', 'Copas'],
+             'categoria_id': [self.restaurantes.id, ocio.id]},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+        self.assertEqual(self.cena.partes.count(), 2)
+        self.vincular(self.bizum('90'))
+
+        panel = self.panel()
+        self.assertEqual(panel['kpi_gastos'], Decimal('-90'))
+        self.assertEqual(self.categoria_en_panel(panel, 'Restaurantes')['importe'], Decimal('60'))
+        self.assertEqual(self.categoria_en_panel(panel, 'Ocio')['importe'], Decimal('30'))
+        self.assertEqual(panel['reembolsado'], Decimal('90'))
+
+    def test_la_reserva_solo_cubre_tu_parte(self):
+        self.vincular(self.bizum('150'))
+        hucha = self.mov('100', 10, 'De la hucha')
+        self.client.post(
+            reverse('extractos:cubrir_con_reserva', args=[hucha.id]), {'cubre': self.cena.id},
+        )
+        self.cena.refresh_from_db()
+        self.assertEqual(self.cena.impacto_real, Decimal('0'))
+
+    def test_un_reembolso_no_puede_ser_ademas_dinero_de_la_reserva(self):
+        """El mismo dinero rebajaría dos gastos."""
+        b = self.bizum('30')
+        self.vincular(b)
+        otro = self.mov('-100', 14, 'Taller')
+        respuesta = self.client.post(
+            reverse('extractos:cubrir_con_reserva', args=[b.id]), {'cubre': otro.id},
+        )
+        self.assertEqual(respuesta.status_code, 400)
+
+    def test_el_dashboard_dice_lo_que_te_devolvieron(self):
+        from .resumen import resumen_del_mes
+        self.vincular(self.bizum('150'))
+        request = RequestFactory().get('/')
+        request.user = self.user
+        with mock.patch('extractos.resumen.date') as falso:
+            falso.today.return_value = date(2026, 9, 20)
+            resumen = resumen_del_mes(self.hogar, request)
+        self.assertEqual(resumen['reembolsado'], Decimal('150'))
+        self.assertEqual(resumen['gasto'], Decimal('30'))
