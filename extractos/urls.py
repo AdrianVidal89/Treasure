@@ -30,6 +30,7 @@ urlpatterns = [
     path('movimiento/dividir/aprender/', views.aprender_division, name='aprender_division'),
     path('movimientos/lote/', views.accion_lote, name='accion_lote'),
     path('etiquetas/', views.etiquetas, name='etiquetas'),
+    path('anuales/', views.anuales, name='anuales'),
     path('etiquetas/comercio/', views.etiquetar_comercio, name='etiquetar_comercio'),
     path('sin-categorizar/', views.sin_categorizar, name='sin_categorizar'),
     path('reglas/', views.reglas, name='reglas'),

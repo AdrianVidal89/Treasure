@@ -34,7 +34,14 @@ def extractos_nav(context, activo=''):
         'activo': activo,
         'num_reglas': num_reglas,
         'periodo': periodo,
+        # La pestaña de los anuales solo entiende de años.
+        'anio': _anio(request),
     }
+
+
+def _anio(request):
+    valor = (request.GET.get('anio') or '').strip() if request is not None else ''
+    return valor if valor.isdigit() else ''
 
 
 def _periodo(request):

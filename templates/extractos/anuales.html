@@ -1,0 +1,411 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% load extractos_nav %}
+{% load l10n %}
+
+{% block title %}Fijos anuales · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-calendar"/></svg> Gastos fijos anuales</h1>
+            <div class="page-sub">
+                Lo que declaraste como <strong>fijo anual</strong> —el IBI, los seguros, la revisión— frente a lo que
+                de verdad has pagado. Un pago cuenta para una partida si en Movimientos lo marcaste con
+                <strong>«pago anual»</strong>, o si su categoría solo tiene esa partida.
+            </div>
+        </div>
+    </div>
+
+    {% extractos_nav 'anuales' %}
+
+    <form method="get" class="an-anio">
+        <label for="an-anio-sel">Año</label>
+        <select id="an-anio-sel" name="anio" onchange="this.form.submit()">
+            {% for a in d.anios %}<option value="{{ a }}" {% if a == d.anio %}selected{% endif %}>{{ a }}</option>{% endfor %}
+        </select>
+    </form>
+
+    {% if not d.filas %}
+    <div class="an-vacio">
+        <svg class="icon"><use href="#i-info"/></svg>
+        <div>
+            <strong>No tienes gastos declarados como fijos anuales.</strong>
+            Decláralos en <a href="{% url 'finanzas:listar_gastos' %}">Gastos</a> dentro del bloque
+            «Fijos anuales», con su periodicidad y su mes de pago, y aquí verás si están pagados.
+        </div>
+    </div>
+    {% else %}
+
+    <!-- ══════════ EL AÑO EN TRES CIFRAS ══════════ -->
+    <section class="an-kpis">
+        <div class="an-kpi">
+            <span class="an-kpi-lbl">Declarado para {{ d.anio }}</span>
+            <span class="an-kpi-val">{{ d.previsto|euro:0 }}</span>
+            <span class="an-kpi-sub">{{ d.num_partidas }} partida{{ d.num_partidas|pluralize:"s" }}</span>
+        </div>
+        <div class="an-kpi pagado">
+            <span class="an-kpi-lbl">Pagado</span>
+            <span class="an-kpi-val">{{ d.pagado|euro:0 }}</span>
+            <span class="an-kpi-barra" title="{{ d.pct_pagado|floatformat:0 }} % de lo declarado"><i style="width:{{ d.pct_pagado|unlocalize }}%;"></i></span>
+            <span class="an-kpi-sub">{{ d.num_pagadas }} de {{ d.num_partidas }} pagada{{ d.num_partidas|pluralize:"s" }}</span>
+        </div>
+        <div class="an-kpi {% if d.num_atrasadas %}atrasado{% endif %}">
+            <span class="an-kpi-lbl">Falta por pagar</span>
+            <span class="an-kpi-val">{{ d.falta|euro:0 }}</span>
+            <span class="an-kpi-sub">
+                {% if d.num_atrasadas %}<strong class="an-rojo">{{ d.num_atrasadas }} sin pagar y ya tocaba</strong>
+                {% elif d.falta %}todo lo que falta aún no toca
+                {% else %}nada pendiente{% endif %}
+            </span>
+        </div>
+    </section>
+
+    <!-- ══════════ EL AÑO, MES A MES ══════════ -->
+    <section class="an-grafico">
+        <div class="an-grafico-head">
+            <div>
+                <h3>{{ d.anio }}, mes a mes</h3>
+                <span class="an-grafico-nota">pasa el ratón por un mes para ver qué se esperaba pagar y qué se pagó</span>
+            </div>
+            <div class="an-leyenda" aria-hidden="true">
+                <span><i class="previsto"></i> Previsto</span>
+                <span><i class="pagado"></i> Pagado</span>
+            </div>
+        </div>
+        {% if d.num_sin_mes %}
+        <p class="an-aviso-mes">
+            {{ d.num_sin_mes }} partida{{ d.num_sin_mes|pluralize:"s" }} sin mes de pago: no sale{{ d.num_sin_mes|pluralize:"n" }} en lo previsto.
+            Pónselo desde su fila para verla{{ d.num_sin_mes|pluralize:"s" }} aquí.
+        </p>
+        {% endif %}
+        <div class="an-lienzo" id="an-lienzo" role="img"
+             aria-label="Barras por mes de lo previsto y lo pagado en fijos anuales en {{ d.anio }}"></div>
+        <div class="an-tip" id="an-tip" hidden></div>
+    </section>
+
+    <!-- ══════════ PARTIDA A PARTIDA ══════════ -->
+    <section class="an-lista">
+        {% for f in d.filas %}
+        <article class="an-fila {{ f.estado }}">
+            <span class="an-estado {{ f.estado }}">
+                {% if f.estado == 'pagado' %}<svg class="icon"><use href="#i-check"/></svg>
+                {% elif f.estado == 'atrasado' %}<svg class="icon"><use href="#i-alert"/></svg>
+                {% else %}<svg class="icon"><use href="#i-calendar"/></svg>{% endif %}
+            </span>
+
+            <div class="an-que">
+                <span class="an-nombre">{{ f.nombre }}</span>
+                <span class="an-meta">
+                    {% if f.categoria %}{{ f.categoria }} · {% endif %}{{ f.periodicidad|lower }}
+                    {% if f.cuotas %}· se paga en {% for c in f.cuotas %}{{ c.nombre_mes|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                    {% elif not f.plurianual %}· <a href="{% url 'finanzas:editar_partida' f.partida.id %}">poner mes de pago</a>{% endif %}
+                </span>
+                <span class="an-chapa {{ f.estado }}">{{ f.frase }}</span>
+            </div>
+
+            <div class="an-cifras">
+                <div class="an-cifra">
+                    <span class="an-cifra-lbl">Declarado</span>
+                    <span class="an-cifra-val">{{ f.esperado|euro }}</span>
+                    {% if f.plurianual %}<span class="an-cifra-sub">provisionas {{ f.provision_anual|euro:0 }}/año</span>{% endif %}
+                </div>
+                <div class="an-cifra">
+                    <span class="an-cifra-lbl">Pagado</span>
+                    <span class="an-cifra-val {% if f.pagado %}an-verde{% else %}an-apagado{% endif %}">{{ f.pagado|euro }}</span>
+                    {% if f.falta and f.estado == 'atrasado' or f.falta and f.estado == 'parcial' %}<span class="an-cifra-sub">faltan {{ f.falta|euro }}</span>{% endif %}
+                </div>
+            </div>
+
+            <div class="an-pie">
+                <span class="an-barra"><i style="width:{{ f.pct|unlocalize }}%;"></i></span>
+                {% if f.pagos %}
+                <span class="an-pagos">
+                    {% for x in f.pagos %}
+                    <span class="an-pago{% if x.deducido %} deducido{% endif %}"
+                          title="{{ x.mov.concepto }}{% if x.deducido %} · deducido por la categoría: márcalo como «pago anual» en Movimientos para confirmarlo{% endif %}">
+                        {{ x.fecha|date:"d M" }} · {{ x.importe|euro }}{% if x.deducido %} ·&nbsp;deducido{% endif %}
+                    </span>
+                    {% endfor %}
+                    {% if f.fuera_de_mes %}<span class="an-otro-mes">pagado en otro mes del previsto</span>{% endif %}
+                </span>
+                {% else %}
+                <span class="an-pagos an-apagado">ningún pago en {{ d.anio }}</span>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </section>
+
+    {% if d.sin_asignar %}
+    <!-- ══════════ PAGOS QUE NO SE SABE DE QUÉ SON ══════════ -->
+    <section class="an-sin-asignar">
+        <h3>Pagos de fijos anuales sin partida · {{ d.total_sin_asignar|euro }}</h3>
+        <p>
+            Están en una categoría de fijos anuales que tiene varias partidas (o ninguna), así que no se puede
+            saber de cuál son. Ábrelos en Movimientos y márcalos con <strong>«pago anual»</strong>.
+        </p>
+        {% for m in d.sin_asignar %}
+        <a class="an-suelto" href="{% url 'extractos:listar' %}?anio={{ m.fecha.year }}&mes={{ m.fecha.month }}{% if m.categoria_id %}&categoria={{ m.categoria_id }}{% endif %}">
+            <span>{{ m.fecha|date:"d/m" }} · {{ m.concepto }}{% if m.categoria %} · <span class="an-apagado">{{ m.categoria.nombre }}</span>{% endif %}</span>
+            <strong>{{ m.importe_neto|euro }}</strong>
+        </a>
+        {% endfor %}
+    </section>
+    {% endif %}
+    {% endif %}
+</div>
+
+{{ grafico_json|json_script:"an-datos" }}
+
+<style>
+.an-anio { display:flex; align-items:center; gap:8px; justify-content:flex-end; margin:-6px 0 16px; font-size:0.82rem; color:var(--muted); }
+.an-anio select { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:0.84rem; }
+.an-vacio { display:flex; gap:10px; padding:16px 18px; border-radius:12px; border:1px dashed var(--border-strong); font-size:0.88rem; line-height:1.5; }
+.an-vacio .icon { color:var(--info); flex:0 0 auto; margin-top:2px; }
+
+.an-kpis { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; margin-bottom:14px; }
+.an-kpi {
+    display:flex; flex-direction:column; gap:4px; padding:16px 20px; border-radius:16px;
+    background:var(--surface); border:1px solid var(--border);
+}
+.an-kpi-lbl { font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.an-kpi-val { font-size:1.8rem; font-weight:800; line-height:1.15; font-variant-numeric:tabular-nums; }
+.an-kpi.pagado .an-kpi-val { color:var(--success); }
+.an-kpi.atrasado { border-color:color-mix(in srgb, var(--danger) 45%, var(--border)); }
+.an-kpi.atrasado .an-kpi-val { color:var(--danger); }
+.an-kpi-sub { font-size:0.76rem; color:var(--muted); }
+.an-kpi-barra, .an-barra { display:block; height:8px; border-radius:999px; background:var(--app-bg); overflow:hidden; }
+.an-kpi-barra i, .an-barra i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg, var(--success), var(--success-2)); }
+.an-rojo { color:var(--danger); }
+.an-verde { color:var(--success); }
+.an-apagado { color:var(--muted); }
+@media (max-width:760px){ .an-kpis { grid-template-columns:1fr; } }
+
+.an-grafico {
+    position:relative; background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    padding:18px 20px 12px; margin-bottom:16px;
+}
+.an-grafico-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
+.an-grafico-head h3 { margin:0; font-size:1rem; }
+.an-grafico-nota { font-size:0.76rem; color:var(--muted); }
+.an-leyenda { display:flex; gap:14px; font-size:0.78rem; color:var(--text-color); }
+.an-leyenda span { display:inline-flex; align-items:center; gap:6px; }
+.an-leyenda i { display:inline-block; width:14px; height:12px; border-radius:3px; }
+.an-leyenda i.pagado { background:var(--accent-color); }
+.an-leyenda i.previsto {
+    border:1.5px solid var(--muted);
+    background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 45%, transparent) 0 2px, transparent 2px 5px);
+}
+.an-aviso-mes { font-size:0.76rem; color:var(--muted); margin:0 0 6px; }
+.an-lienzo { width:100%; height:280px; }
+.an-lienzo svg { display:block; width:100%; height:100%; overflow:visible; }
+.an-lienzo text { font-size:11px; fill:var(--muted); font-family:inherit; }
+.an-lienzo .mes-hoy text.mes { fill:var(--text-color); font-weight:700; }
+.an-lienzo .rejilla { stroke:var(--border); stroke-width:1; }
+.an-lienzo .base { stroke:var(--border-strong); stroke-width:1; }
+.an-lienzo .bar-pagado { fill:var(--accent-color); }
+.an-lienzo .bar-previsto { fill:url(#an-rayado); stroke:var(--muted); stroke-width:1.5; }
+.an-lienzo .hoy { stroke:var(--text-color); stroke-width:1; stroke-dasharray:3 3; opacity:.55; }
+.an-lienzo .col-fondo { fill:transparent; }
+.an-lienzo .col.activa .col-fondo { fill:color-mix(in srgb, var(--primary-color) 6%, transparent); }
+.an-lienzo .etq { font-size:10px; fill:var(--text-color); font-variant-numeric:tabular-nums; }
+.an-tip {
+    position:absolute; z-index:5; pointer-events:none; min-width:210px; max-width:300px;
+    background:var(--surface); color:var(--text-color); border:1px solid var(--border-strong);
+    border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.18); padding:10px 12px; font-size:0.78rem;
+}
+.an-tip[hidden] { display:none; }
+.an-tip h5 { margin:0 0 6px; font-size:0.84rem; }
+.an-tip .grupo { margin-top:6px; }
+.an-tip .grupo-t { display:flex; justify-content:space-between; gap:10px; font-weight:700; }
+.an-tip .grupo-t i { display:inline-block; width:10px; height:9px; border-radius:2px; margin-right:5px; vertical-align:baseline; }
+.an-tip .grupo-t i.pagado { background:var(--accent-color); }
+.an-tip .grupo-t i.previsto { border:1.5px solid var(--muted); }
+.an-tip .item { display:flex; justify-content:space-between; gap:10px; color:var(--muted); padding-left:15px; }
+.an-tip .item b { color:var(--text-color); font-weight:600; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.an-tip .nada { color:var(--muted); padding-left:15px; font-style:italic; }
+
+.an-lista { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
+.an-fila {
+    display:grid; grid-template-columns:36px 1fr auto; grid-template-areas:"est que cif" "est pie pie";
+    gap:8px 14px; align-items:center; padding:14px 18px; border-radius:14px;
+    background:var(--surface); border:1px solid var(--border);
+}
+.an-fila.atrasado { border-color:color-mix(in srgb, var(--danger) 45%, var(--border)); box-shadow:inset 3px 0 0 var(--danger); }
+.an-fila.pagado { box-shadow:inset 3px 0 0 var(--success); }
+.an-fila.parcial { box-shadow:inset 3px 0 0 var(--warning); }
+.an-estado { grid-area:est; align-self:start; width:34px; height:34px; border-radius:10px; display:grid; place-items:center; }
+.an-estado .icon { width:18px; height:18px; }
+.an-estado.pagado { background:color-mix(in srgb, var(--success) 14%, transparent); color:var(--success); }
+.an-estado.atrasado { background:color-mix(in srgb, var(--danger) 14%, transparent); color:var(--danger); }
+.an-estado.parcial { background:color-mix(in srgb, var(--warning) 16%, transparent); color:var(--warning); }
+.an-estado.pendiente, .an-estado.no_toca { background:var(--app-bg); color:var(--muted); }
+.an-que { grid-area:que; display:flex; flex-direction:column; gap:3px; min-width:0; }
+.an-nombre { font-weight:700; font-size:0.95rem; }
+.an-meta { font-size:0.76rem; color:var(--muted); }
+.an-chapa {
+    align-self:flex-start; font-size:0.7rem; font-weight:700; padding:2px 9px; border-radius:999px; margin-top:2px;
+    border:1px solid currentColor;
+}
+.an-chapa.pagado { color:var(--success); background:color-mix(in srgb, var(--success) 10%, transparent); }
+.an-chapa.atrasado { color:var(--danger); background:color-mix(in srgb, var(--danger) 10%, transparent); }
+.an-chapa.parcial { color:var(--warning); background:color-mix(in srgb, var(--warning) 10%, transparent); }
+.an-chapa.pendiente, .an-chapa.no_toca { color:var(--muted); }
+.an-cifras { grid-area:cif; display:flex; gap:22px; }
+.an-cifra { display:flex; flex-direction:column; align-items:flex-end; gap:1px; min-width:96px; }
+.an-cifra-lbl { font-size:0.66rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; }
+.an-cifra-val { font-size:1.05rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.an-cifra-sub { font-size:0.72rem; color:var(--muted); }
+.an-pie { grid-area:pie; display:flex; flex-direction:column; gap:6px; }
+.an-pagos { display:flex; gap:6px; flex-wrap:wrap; font-size:0.74rem; }
+.an-pago {
+    padding:1px 8px; border-radius:999px; font-variant-numeric:tabular-nums;
+    background:color-mix(in srgb, var(--success) 10%, transparent); color:var(--text-color);
+    border:1px solid color-mix(in srgb, var(--success) 35%, transparent);
+}
+.an-pago.deducido { border-style:dashed; }
+.an-otro-mes { color:var(--warning); font-weight:600; }
+@media (max-width:640px){
+    .an-fila { grid-template-columns:34px 1fr; grid-template-areas:"est que" "cif cif" "pie pie"; }
+    .an-cifras { justify-content:space-between; }
+    .an-cifra { align-items:flex-start; }
+}
+
+.an-sin-asignar { padding:16px 18px; border-radius:14px; border:1px dashed var(--border-strong); }
+.an-sin-asignar h3 { margin:0 0 4px; font-size:0.95rem; }
+.an-sin-asignar p { margin:0 0 10px; font-size:0.8rem; color:var(--muted); }
+.an-suelto {
+    display:flex; justify-content:space-between; gap:12px; padding:8px 12px; border-radius:9px;
+    text-decoration:none; color:var(--text-color); font-size:0.83rem; border:1px solid var(--border); margin-bottom:6px;
+}
+.an-suelto:hover { border-color:var(--primary-color); }
+</style>
+
+<script>
+(function () {
+    var datos = JSON.parse(document.getElementById('an-datos').textContent || '[]');
+    var lienzo = document.getElementById('an-lienzo');
+    var tip = document.getElementById('an-tip');
+    if (!lienzo || !datos.length) return;
+    var MES_HOY = {{ d.mes_hoy|default_if_none:"null" }};
+    var CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    var NS = 'http://www.w3.org/2000/svg';
+
+    function euro(v, dec) {
+        return Number(v).toLocaleString('es-ES', {minimumFractionDigits: dec, maximumFractionDigits: dec}) + ' €';
+    }
+    function el(nombre, attrs, padre) {
+        var n = document.createElementNS(NS, nombre);
+        Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+        if (padre) padre.appendChild(n);
+        return n;
+    }
+    /* Barra con las puntas de arriba redondeadas y la base plana, pegada al eje. */
+    function barra(x, y, w, h, r) {
+        r = Math.min(r, w / 2, h);
+        return 'M' + x + ',' + (y + h) + 'V' + (y + r) + 'Q' + x + ',' + y + ' ' + (x + r) + ',' + y +
+               'H' + (x + w - r) + 'Q' + (x + w) + ',' + y + ' ' + (x + w) + ',' + (y + r) + 'V' + (y + h) + 'Z';
+    }
+    function redondo(max) {
+        if (max <= 0) return 100;
+        var p = Math.pow(10, Math.floor(Math.log10(max)));
+        var pasos = [1, 2, 2.5, 5, 10];
+        for (var i = 0; i < pasos.length; i++) if (pasos[i] * p * 4 >= max) return pasos[i] * p * 4;
+        return 10 * p * 4;
+    }
+
+    function pintar() {
+        lienzo.innerHTML = '';
+        var W = lienzo.clientWidth, H = lienzo.clientHeight;
+        var m = {t: 18, r: 8, b: 26, l: 52};
+        var aw = W - m.l - m.r, ah = H - m.t - m.b;
+        var tope = redondo(Math.max.apply(null, datos.map(function (d) {
+            return Math.max(d.total_previsto, d.total_pagado);
+        })));
+        var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'none'}, lienzo);
+        var defs = el('defs', {}, svg);
+        var pat = el('pattern', {id: 'an-rayado', width: 5, height: 5, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)'}, defs);
+        el('rect', {width: 5, height: 5, fill: 'transparent'}, pat);
+        var raya = el('line', {x1: 0, y1: 0, x2: 0, y2: 5, 'stroke-width': 2}, pat);
+        raya.style.stroke = 'color-mix(in srgb, var(--muted) 55%, transparent)';
+
+        function y(v) { return m.t + ah - v / tope * ah; }
+        for (var i = 0; i <= 4; i++) {
+            var v = tope / 4 * i;
+            el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), 'class': i ? 'rejilla' : 'base'}, svg);
+            var t = el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end'}, svg);
+            t.textContent = euro(v, 0);
+        }
+
+        var col = aw / 12;
+        var bw = Math.max(Math.min(col * 0.3, 26), 4);
+        datos.forEach(function (d, idx) {
+            var x0 = m.l + col * idx;
+            var g = el('g', {'class': 'col' + (d.mes === MES_HOY ? ' mes-hoy' : '')}, svg);
+            el('rect', {x: x0 + 1, y: m.t, width: col - 2, height: ah, rx: 6, 'class': 'col-fondo'}, g);
+            var cx = x0 + col / 2;
+            /* 2px de hueco entre las dos barras del mes. */
+            if (d.total_previsto > 0) {
+                var hp = Math.max(ah * d.total_previsto / tope, 2);
+                el('path', {d: barra(cx - bw - 1, y(0) - hp, bw, hp, 4), 'class': 'bar-previsto'}, g);
+            }
+            if (d.total_pagado > 0) {
+                var hq = Math.max(ah * d.total_pagado / tope, 2);
+                el('path', {d: barra(cx + 1, y(0) - hq, bw, hq, 4), 'class': 'bar-pagado'}, g);
+            }
+            var etq = el('text', {x: cx, y: H - 8, 'text-anchor': 'middle', 'class': 'mes'}, g);
+            /* Sin sitio para «ene», la inicial: amontonadas no se leía ninguna. */
+            etq.textContent = col < 30 ? CORTOS[idx].charAt(0).toUpperCase() : CORTOS[idx];
+            if (d.mes === MES_HOY) {
+                el('line', {x1: cx, x2: cx, y1: m.t - 6, y2: y(0), 'class': 'hoy'}, g);
+                var h = el('text', {x: cx, y: m.t - 8, 'text-anchor': 'middle', 'class': 'etq'}, g);
+                h.textContent = 'hoy';
+            }
+            /* El objetivo del ratón es la columna entera, no la barra: las
+               barras finas son difíciles de atinar. */
+            g.addEventListener('mouseenter', function () { mostrar(d, g, x0 + col); });
+            g.addEventListener('mouseleave', ocultar);
+            g.addEventListener('click', function () { mostrar(d, g, x0 + col); });
+        });
+    }
+
+    function grupo(titulo, clase, total, items, vacio) {
+        var html = '<div class="grupo"><div class="grupo-t"><span><i class="' + clase + '"></i>' + titulo +
+                   '</span><span>' + euro(total, 2) + '</span></div>';
+        if (!items.length) return html + '<div class="nada">' + vacio + '</div></div>';
+        items.forEach(function (it) {
+            var n = document.createElement('span');
+            n.textContent = it.nombre + (it.fecha ? ' · ' + it.fecha : '');
+            html += '<div class="item"><span>' + n.innerHTML + '</span><b>' + euro(it.importe, 2) + '</b></div>';
+        });
+        return html + '</div>';
+    }
+
+    function mostrar(d, g, xDerecha) {
+        lienzo.querySelectorAll('.col.activa').forEach(function (c) { c.classList.remove('activa'); });
+        g.classList.add('activa');
+        tip.innerHTML = '<h5>' + d.nombre + '</h5>' +
+            grupo('Previsto', 'previsto', d.total_previsto, d.previsto, 'nada previsto este mes') +
+            grupo('Pagado', 'pagado', d.total_pagado, d.pagado, 'nada pagado este mes');
+        tip.hidden = false;
+        var caja = lienzo.getBoundingClientRect(), padre = tip.parentElement.getBoundingClientRect();
+        var izquierda = caja.left - padre.left + xDerecha + 8;
+        if (izquierda + tip.offsetWidth > padre.width - 8) {
+            izquierda = Math.max(8, izquierda - tip.offsetWidth - (caja.width / 12) - 16);
+        }
+        tip.style.left = izquierda + 'px';
+        tip.style.top = (caja.top - padre.top + 10) + 'px';
+    }
+    function ocultar() {
+        tip.hidden = true;
+        lienzo.querySelectorAll('.col.activa').forEach(function (c) { c.classList.remove('activa'); });
+    }
+
+    pintar();
+    var espera;
+    window.addEventListener('resize', function () { clearTimeout(espera); espera = setTimeout(pintar, 120); });
+})();
+</script>
+{% endblock %}

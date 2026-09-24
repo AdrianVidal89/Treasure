@@ -6203,3 +6203,141 @@ class GastoCompartidoTests(TestCase):
             resumen = resumen_del_mes(self.hogar, request)
         self.assertEqual(resumen['reembolsado'], Decimal('150'))
         self.assertEqual(resumen['gasto'], Decimal('30'))
+
+
+class FijosAnualesTests(TestCase):
+    """«Este gasto se declaró, y esto se pagó, o aún no se pagó.»"""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        cat = lambda n: CategoriaGasto.objects.get(hogar=self.hogar, nombre=n)
+        self.cat_ibi, self.cat_seguro = cat('IBI'), cat('Seguro coche')
+        self.cat_hogar, self.cat_mant = cat('Seguro hogar'), cat('Mantenimiento vehicular')
+        self.ibi = self.partida('IBI', self.cat_ibi, '520', 'anual', 6)
+        self.seguro = self.partida('Seguro coche', self.cat_seguro, '380', 'anual', 3)
+        self.hogar_sem = self.partida('Seguro hogar', self.cat_hogar, '150', 'semestral', 1)
+        self.revision = self.partida('Revisión', self.cat_mant, '273', 'anual', 11)
+        self.neumaticos = self.partida('Neumáticos', self.cat_mant, '543', 'trienal', 10)
+        self.hoy = date(2026, 9, 24)
+
+    def partida(self, nombre, categoria, importe, periodicidad, mes):
+        return PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=categoria, nombre=nombre, importe=Decimal(importe),
+            periodicidad=periodicidad, mes_pago=mes,
+        )
+
+    def pago(self, importe, mes, dia, categoria, partida=None, concepto='Recibo'):
+        return MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=date(2026, mes, dia), concepto=f'{concepto} {mes}/{dia}',
+            importe=Decimal(importe), categoria=categoria, partida_conciliada=partida,
+        )
+
+    def analizar(self, anio=2026):
+        from .anuales import analizar_anuales
+        datos = analizar_anuales(self.hogar, anio, hoy=self.hoy)
+        return datos, {f['nombre']: f for f in datos['filas']}
+
+    def test_pagado_pendiente_y_atrasado(self):
+        self.pago('-520', 6, 15, self.cat_ibi)            # deducido por la categoría
+        datos, filas = self.analizar()
+
+        self.assertEqual(filas['IBI']['estado'], 'pagado')
+        self.assertTrue(filas['IBI']['hay_deducidos'])
+        # El seguro tocaba en marzo y no hay pago: ya tocaba.
+        self.assertEqual(filas['Seguro coche']['estado'], 'atrasado')
+        self.assertIn('marzo', filas['Seguro coche']['frase'])
+        # La revisión es en noviembre: aún no toca.
+        self.assertEqual(filas['Revisión']['estado'], 'pendiente')
+        self.assertIn('noviembre', filas['Revisión']['frase'])
+        self.assertEqual(datos['num_atrasadas'], 2)  # seguro coche y seguro hogar
+        # Los atrasados salen primero.
+        self.assertEqual(datos['filas'][0]['estado'], 'atrasado')
+
+    def test_semestral_espera_dos_pagos(self):
+        self.pago('-150', 1, 10, self.cat_hogar)
+        _, filas = self.analizar()
+        fila = filas['Seguro hogar']
+        self.assertEqual([c['mes'] for c in fila['cuotas']], [1, 7])
+        self.assertEqual(fila['esperado'], Decimal('300'))
+        # Enero pagado, julio ya pasó sin pago.
+        self.assertEqual(fila['estado'], 'atrasado')
+        self.assertEqual(fila['falta'], Decimal('150'))
+
+    def test_una_categoria_con_dos_partidas_necesita_que_se_marque(self):
+        suelto = self.pago('-273', 11, 3, self.cat_mant)
+        datos, filas = self.analizar()
+        self.assertEqual(filas['Revisión']['pagado'], Decimal('0'))
+        self.assertEqual([m.id for m in datos['sin_asignar']], [suelto.id])
+
+        suelto.partida_conciliada = self.revision
+        suelto.save()
+        datos, filas = self.analizar()
+        self.assertEqual(filas['Revisión']['estado'], 'pagado')
+        self.assertFalse(datos['sin_asignar'])
+
+    def test_plurianual_no_cuenta_en_lo_previsto_del_año(self):
+        datos, filas = self.analizar()
+        self.assertEqual(filas['Neumáticos']['estado'], 'no_toca')
+        self.assertEqual(datos['previsto'], Decimal('520') + 380 + 300 + 273)
+        self.assertFalse(filas['Neumáticos']['cuotas'])
+
+    def test_la_grafica_pone_cada_cosa_en_su_mes(self):
+        self.pago('-380', 4, 2, self.cat_seguro)   # previsto en marzo, pagado en abril
+        datos, filas = self.analizar()
+        g = {d['mes']: d for d in datos['grafico']}
+        self.assertEqual(g[3]['total_previsto'], 380)
+        self.assertEqual(g[3]['total_pagado'], 0)
+        self.assertEqual(g[4]['total_pagado'], 380)
+        self.assertEqual(g[4]['pagado'][0]['fecha'], '02/04')
+        self.assertTrue(filas['Seguro coche']['fuera_de_mes'])
+        self.assertEqual(filas['Seguro coche']['estado'], 'pagado')
+
+    def test_pagado_de_mas_lo_dice(self):
+        self.pago('-400', 3, 1, self.cat_seguro)
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'pagado')
+        self.assertIn('20,00 € más', filas['Seguro coche']['frase'])
+
+    def test_un_año_pasado_sin_pago_es_no_pagado(self):
+        _, filas = self.analizar(2025)
+        self.assertEqual(filas['Revisión']['estado'], 'atrasado')
+        self.assertIn('No se pagó', filas['Revisión']['frase'])
+
+    def test_los_pagos_de_otros_años_y_bloques_no_cuentan(self):
+        MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=date(2025, 6, 1), concepto='IBI 2025',
+            importe=Decimal('-520'), categoria=self.cat_ibi,
+        )
+        self.pago('-50', 6, 2, CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio'))
+        datos, filas = self.analizar()
+        self.assertEqual(filas['IBI']['pagado'], Decimal('0'))
+        self.assertFalse(datos['sin_asignar'])
+
+    def test_la_pestaña_se_ve(self):
+        self.pago('-520', 6, 15, self.cat_ibi)
+        respuesta = self.client.get(reverse('extractos:anuales'), {'anio': '2026'})
+        self.assertEqual(respuesta.status_code, 200)
+        html = respuesta.content.decode()
+        self.assertIn('Gastos fijos anuales', html)
+        self.assertIn('an-datos', html)
+        self.assertIn('Seguro coche', html)
+        # Y está en las pestañas de Movimientos.
+        html = self.client.get(reverse('extractos:listar'), {'anio': '2026', 'mes': '9'}).content.decode()
+        self.assertIn(reverse('extractos:anuales'), html)
+
+    def test_sin_partidas_anuales_lo_explica(self):
+        PartidaGasto.objects.all().delete()
+        html = self.client.get(reverse('extractos:anuales')).content.decode()
+        self.assertIn('No tienes gastos declarados como fijos anuales', html)
+
+    def test_pagado_por_centimos_no_deja_nada_pendiente(self):
+        self.pago('-518.40', 6, 15, self.cat_ibi)
+        datos, filas = self.analizar()
+        self.assertEqual(filas['IBI']['estado'], 'pagado')
+        self.assertEqual(filas['IBI']['falta'], Decimal('0'))
