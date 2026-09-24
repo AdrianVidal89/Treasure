@@ -1,11 +1,14 @@
 import datetime
+import json
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, render, redirect
 
 from .models import (
-    FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso, Propiedad, Inversion,
+    EstudioVehiculo, FondoFamiliar, SaldoRealFondo, PartidaGasto, FuenteIngreso,
+    Propiedad, Inversion,
 )
 from . import hipoteca
 from .distribucion import _neto_fuente_base, calcular_flujos
@@ -320,5 +323,58 @@ def simulador_vehiculo(request):
     datos = _datos_financieros(hogar)
     return render(request, 'finanzas/simuladores/vehiculo.html', {
         'hogar': hogar,
+        'estudios': [e.como_dict() for e in EstudioVehiculo.objects.filter(hogar=hogar)
+                     .select_related('usuario')],
         **datos,
     })
+
+
+# ── Estudios guardados del comparador de coche ──────────────────────────────
+# El tope evita que un cliente roto (o malicioso) llene la base de datos con
+# un «estudio» de megas: uno real con cuatro opciones ocupa unos pocos KB.
+TAMANO_MAXIMO_ESTUDIO = 100_000
+
+
+@login_required
+def guardar_estudio_vehiculo(request):
+    """Crea un estudio, o lo actualiza si viene su `id`."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+    if len(request.body) > TAMANO_MAXIMO_ESTUDIO:
+        return JsonResponse({'ok': False, 'error': 'demasiado_grande'}, status=400)
+    try:
+        cuerpo = json.loads(request.body or b'{}')
+    except ValueError:
+        return JsonResponse({'ok': False, 'error': 'json'}, status=400)
+    if not isinstance(cuerpo, dict):
+        return JsonResponse({'ok': False, 'error': 'json'}, status=400)
+
+    nombre = str(cuerpo.get('nombre') or '').strip()[:120]
+    datos, resumen = cuerpo.get('datos'), cuerpo.get('resumen') or {}
+    if not nombre:
+        return JsonResponse({'ok': False, 'error': 'nombre',
+                             'mensaje': 'Ponle un nombre al estudio.'}, status=400)
+    if not isinstance(datos, dict) or not isinstance(resumen, dict):
+        return JsonResponse({'ok': False, 'error': 'datos'}, status=400)
+
+    if cuerpo.get('id'):
+        estudio = get_object_or_404(EstudioVehiculo, pk=cuerpo['id'], hogar=hogar)
+    else:
+        estudio = EstudioVehiculo(hogar=hogar, usuario=request.user)
+    estudio.nombre, estudio.datos, estudio.resumen = nombre, datos, resumen
+    estudio.save()
+    return JsonResponse({'ok': True, 'estudio': estudio.como_dict()})
+
+
+@login_required
+def eliminar_estudio_vehiculo(request, pk):
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
+    get_object_or_404(EstudioVehiculo, pk=pk, hogar=hogar).delete()
+    return JsonResponse({'ok': True})

@@ -1,0 +1,947 @@
+{% load static %}
+{% comment %}
+Comparador de coche: leasing, financiado o al contado, hasta cuatro opciones a
+la vez. La cuenta está en static/js/comparador_vehiculo.js; aquí solo se pinta.
+
+Lo que se escribe se guarda solo en el navegador (como en Vivienda: salir y
+volver no lo pierde) y, cuando se quiere conservar, se guarda como ESTUDIO en
+la app, del hogar, para abrirlo después o compararlo con otros.
+{% endcomment %}
+{{ estudios|json_script:"cv-estudios-data" }}
+
+<section class="cv" id="cv">
+    <!-- ══════════ EL VEREDICTO ══════════ -->
+    <div class="cv-hero" id="cv-hero">
+        <div class="cv-hero-texto">
+            <span class="cv-hero-lbl" id="cv-hero-lbl">Veredicto</span>
+            <div class="cv-hero-titulo" id="cv-hero-titulo">—</div>
+            <div class="cv-hero-sub" id="cv-hero-sub"></div>
+        </div>
+        <div class="cv-podio" id="cv-podio"></div>
+    </div>
+
+    <!-- ══════════ LO COMÚN A TODAS LAS OPCIONES ══════════ -->
+    <div class="cv-global">
+        <label class="cv-g-campo">
+            <span class="cv-g-lbl">Periodo que se compara <b id="cv-lbl-horizonte"></b></span>
+            <input type="range" id="cv-horizonte" min="12" max="120" step="1">
+        </label>
+        <label class="cv-g-campo">
+            <span class="cv-g-lbl">Kilómetros al año <b id="cv-lbl-km"></b></span>
+            <input type="range" id="cv-km" min="3000" max="60000" step="1000">
+        </label>
+        <label class="cv-g-campo cv-g-corto" title="Lo que rendiría el dinero si no se gastara en el coche (un depósito, un fondo). Pagar 30.000 € el primer día no es lo mismo que pagarlos en cuatro años.">
+            <span class="cv-g-lbl">Rentabilidad del dinero</span>
+            <span class="cv-entrada"><input type="number" id="cv-rentabilidad" min="0" max="20" step="0.1"><em>%/año</em></span>
+        </label>
+        <div class="cv-g-acciones">
+            <button type="button" class="cv-btn cv-btn-primario" id="cv-guardar">
+                <svg class="icon"><use href="#i-download"/></svg> Guardar estudio
+            </button>
+            <button type="button" class="cv-btn" id="cv-ver-estudios">
+                <svg class="icon"><use href="#i-file"/></svg> Estudios <span class="cv-contador" id="cv-num-estudios">0</span>
+            </button>
+        </div>
+    </div>
+    <div class="cv-estudio-actual" id="cv-estudio-actual" hidden></div>
+
+    <!-- ══════════ LAS OPCIONES ══════════ -->
+    <div class="cv-opciones" id="cv-opciones"></div>
+    <div class="cv-anadir-fila">
+        <button type="button" class="cv-anadir" id="cv-anadir-leasing"><svg class="icon"><use href="#i-plus"/></svg> Leasing</button>
+        <button type="button" class="cv-anadir" id="cv-anadir-financiado"><svg class="icon"><use href="#i-plus"/></svg> Compra financiada</button>
+        <button type="button" class="cv-anadir" id="cv-anadir-contado"><svg class="icon"><use href="#i-plus"/></svg> Compra al contado</button>
+        <span class="cv-anadir-nota" id="cv-anadir-nota"></span>
+    </div>
+
+    <!-- ══════════ LOS NÚMEROS, UNO AL LADO DEL OTRO ══════════ -->
+    <div class="cv-panel">
+        <div class="cv-panel-head">
+            <h3>Los números sobre la mesa</h3>
+            <span class="cv-nota"><span class="cv-mejor-mini">mejor</span> marca la opción que gana en cada fila</span>
+        </div>
+        <div class="cv-tabla-wrap"><table class="cv-tabla" id="cv-tabla"></table></div>
+        <ul class="cv-avisos" id="cv-avisos"></ul>
+    </div>
+
+    <div class="cv-graficos">
+        <div class="cv-panel">
+            <div class="cv-panel-head">
+                <h3>Coste real al final del periodo</h3>
+                <div class="cv-leyenda-simple">
+                    <span><i class="solido"></i> el coche (pagos − lo que vale al final)</span>
+                    <span><i class="rayado"></i> usarlo (seguro, taller, energía…)</span>
+                </div>
+            </div>
+            <div class="cv-barras" id="cv-barras"></div>
+        </div>
+        <div class="cv-panel">
+            <div class="cv-panel-head">
+                <h3>Dinero que sale de la cuenta, mes a mes</h3>
+                <span class="cv-nota">acumulado · pasa el ratón para ver un mes</span>
+            </div>
+            <div class="cv-leyenda" id="cv-leyenda"></div>
+            <div class="cv-lineas" id="cv-lineas"></div>
+            <div class="cv-tip" id="cv-tip" hidden></div>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════ GUARDAR ══════════ -->
+<div class="cv-modal" id="cv-modal-guardar" hidden>
+    <div class="cv-modal-fondo" data-cv-cerrar></div>
+    <form class="cv-modal-caja" id="cv-form-guardar">
+        <h3>Guardar el estudio</h3>
+        <p class="cv-nota">Queda guardado en la app, para ti y para tu hogar: podrás abrirlo, seguir tocándolo y compararlo con otros.</p>
+        <label class="cv-campo-largo">
+            <span>Nombre</span>
+            <input type="text" name="nombre" maxlength="120" required placeholder="BMW X2: leasing vs compra">
+        </label>
+        <p class="cv-error" id="cv-error-guardar" hidden></p>
+        <div class="cv-modal-pie">
+            <button type="button" class="cv-btn" data-cv-cerrar>Cancelar</button>
+            <button type="submit" class="cv-btn" id="cv-guardar-nuevo" name="como" value="nuevo">Guardar como nuevo</button>
+            <button type="submit" class="cv-btn cv-btn-primario" id="cv-guardar-actualizar" name="como" value="actualizar" hidden>Actualizar</button>
+        </div>
+    </form>
+</div>
+
+<!-- ══════════ ESTUDIOS GUARDADOS ══════════ -->
+<div class="cv-modal" id="cv-modal-estudios" hidden>
+    <div class="cv-modal-fondo" data-cv-cerrar></div>
+    <div class="cv-modal-caja cv-caja-ancha">
+        <div class="cv-modal-titulo">
+            <h3>Estudios guardados</h3>
+            <button type="button" class="cv-cerrar" data-cv-cerrar aria-label="Cerrar">&times;</button>
+        </div>
+        <p class="cv-nota">Marca varios para ver todas sus opciones juntas, ordenadas por lo que cuestan: así se compara el X2 en leasing de un estudio con otro coche comprado de otro.</p>
+        <div id="cv-lista-estudios"></div>
+        <div id="cv-cruce" hidden>
+            <h4 class="cv-cruce-titulo">Todas las opciones de los estudios marcados</h4>
+            <div class="cv-tabla-wrap"><table class="cv-tabla" id="cv-tabla-cruce"></table></div>
+            <p class="cv-nota" id="cv-cruce-aviso"></p>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Colores de las opciones: los cuatro primeros de la paleta categórica,
+   validados para leerse por separado también con daltonismo. Cada opción
+   guarda el suyo: quitar una no repinta las demás. */
+.cv { --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --cv-grad-a:#1b4332; --cv-grad-b:#2a78d6; }
+:root[data-theme="black"] .cv { --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --cv-grad-a:#0b2b20; --cv-grad-b:#1d4f8f; }
+
+.cv-hero {
+    position:relative; overflow:hidden; display:flex; gap:24px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+    padding:24px 28px; border-radius:20px; margin-bottom:16px; color:#fff;
+    background:
+        radial-gradient(circle at 85% -20%, rgba(255,255,255,.18), transparent 45%),
+        linear-gradient(120deg, var(--cv-grad-a), var(--cv-grad-b));
+    box-shadow:0 18px 40px -18px rgba(27,67,50,.55);
+}
+.cv-hero-texto { display:flex; flex-direction:column; gap:6px; min-width:260px; flex:1; }
+.cv-hero-lbl { font-size:0.72rem; text-transform:uppercase; letter-spacing:.08em; font-weight:700; opacity:.8; }
+.cv-hero-titulo { font-size:1.7rem; font-weight:800; line-height:1.15; }
+.cv-hero-titulo b { background:rgba(255,255,255,.16); padding:0 8px; border-radius:8px; }
+.cv-hero-sub { font-size:0.9rem; opacity:.92; line-height:1.5; }
+.cv-hero-sub strong { font-variant-numeric:tabular-nums; }
+.cv-podio { display:flex; gap:10px; flex-wrap:wrap; }
+.cv-podio-item {
+    min-width:130px; padding:10px 14px; border-radius:14px; background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.22); backdrop-filter:blur(4px);
+}
+.cv-podio-item.gana { background:rgba(255,255,255,.95); color:#1c2321; }
+.cv-podio-nombre { display:flex; align-items:center; gap:6px; font-size:0.74rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:170px; }
+.cv-podio-nombre i { width:9px; height:9px; border-radius:50%; flex:0 0 auto; background:var(--c); box-shadow:0 0 0 2px rgba(255,255,255,.8); }
+.cv-podio-cifra { font-size:1.2rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.cv-podio-sub { font-size:0.7rem; opacity:.8; font-variant-numeric:tabular-nums; }
+
+.cv-global {
+    display:flex; gap:18px; align-items:flex-end; flex-wrap:wrap; padding:16px 20px; margin-bottom:10px;
+    background:var(--surface); border:1px solid var(--border); border-radius:16px;
+}
+.cv-g-campo { display:flex; flex-direction:column; gap:8px; flex:1; min-width:180px; }
+.cv-g-corto { flex:0 0 150px; min-width:140px; }
+.cv-g-lbl { font-size:0.78rem; color:var(--muted); display:flex; justify-content:space-between; gap:8px; }
+.cv-g-lbl b { color:var(--text-color); font-variant-numeric:tabular-nums; }
+.cv-g-acciones { display:flex; gap:8px; flex-wrap:wrap; }
+.cv-btn {
+    display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-family:inherit; font-size:0.82rem; font-weight:600;
+    padding:9px 14px; border-radius:10px; border:1px solid var(--border-strong); background:var(--surface); color:var(--text-color);
+}
+.cv-btn:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.cv-btn .icon { width:15px; height:15px; }
+.cv-btn-primario { background:var(--primary-color); border-color:var(--primary-color); color:var(--on-primary, #fff); }
+.cv-btn-primario:hover { background:var(--primary-strong); color:var(--on-primary, #fff); }
+.cv-contador { background:var(--app-bg); color:var(--text-color); border-radius:999px; padding:0 7px; font-size:0.72rem; }
+.cv-estudio-actual { font-size:0.8rem; color:var(--muted); margin:0 0 14px 4px; }
+.cv-estudio-actual strong { color:var(--text-color); }
+
+.cv-entrada {
+    display:flex; align-items:center; border:1px solid var(--border-strong); border-radius:9px; background:var(--app-bg);
+    overflow:hidden; transition:border-color .15s, box-shadow .15s;
+}
+.cv-entrada:focus-within { border-color:var(--primary-color); box-shadow:0 0 0 3px var(--glow-soft, rgba(45,106,79,.12)); }
+.cv-entrada input {
+    flex:1; min-width:0; width:100%; border:none; background:transparent; color:var(--text-color); padding:8px 10px;
+    font-size:0.88rem; font-variant-numeric:tabular-nums; outline:none; font-family:inherit;
+}
+.cv-entrada em { font-style:normal; font-size:0.72rem; color:var(--muted); padding:0 10px 0 2px; white-space:nowrap; }
+.cv-entrada.apagada { opacity:.45; }
+.cv-entrada.apagada input { text-decoration:line-through; }
+
+.cv-opciones { display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:14px; margin-bottom:10px; }
+.cv-op {
+    position:relative; display:flex; flex-direction:column; gap:12px; padding:16px 16px 14px; border-radius:18px;
+    background:var(--surface); border:1px solid var(--border); border-top:4px solid var(--c);
+    transition:box-shadow .2s, transform .2s;
+}
+.cv-op.gana { box-shadow:0 0 0 2px var(--c), 0 14px 30px -16px var(--c); }
+.cv-op-cab { display:flex; align-items:center; gap:8px; }
+.cv-op-nombre {
+    flex:1; min-width:0; border:none; background:transparent; color:var(--text-color); font-size:1.02rem; font-weight:800;
+    font-family:inherit; padding:4px 6px; margin-left:-6px; border-radius:7px;
+}
+.cv-op-nombre:hover, .cv-op-nombre:focus { background:var(--app-bg); outline:none; }
+.cv-op-icono { background:none; border:none; cursor:pointer; color:var(--muted); padding:4px; border-radius:7px; }
+.cv-op-icono:hover { color:var(--text-color); background:var(--app-bg); }
+.cv-op-icono.borrar:hover { color:var(--danger); }
+.cv-op-icono .icon { width:16px; height:16px; }
+.cv-tipos { display:grid; grid-template-columns:repeat(3,1fr); gap:3px; padding:3px; border-radius:11px; background:var(--app-bg); border:1px solid var(--border); }
+.cv-tipos button {
+    border:none; background:none; cursor:pointer; font-family:inherit; font-size:0.76rem; font-weight:700; color:var(--muted);
+    padding:7px 4px; border-radius:8px;
+}
+.cv-tipos button.activo { background:var(--surface); color:var(--text-color); box-shadow:0 1px 3px rgba(0,0,0,.12), inset 0 -2px 0 var(--c); }
+.cv-seccion-t { font-size:0.66rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:800; margin:2px 0 -4px; }
+.cv-campos { display:grid; grid-template-columns:1fr 1fr; gap:8px 10px; }
+.cv-campo { display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:var(--muted); }
+.cv-campo.ancho { grid-column:1 / -1; }
+.cv-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.cv-chip {
+    display:inline-flex; align-items:center; gap:5px; cursor:pointer; user-select:none; font-size:0.74rem; font-weight:600;
+    padding:5px 10px; border-radius:999px; border:1px dashed var(--border-strong); color:var(--muted); background:transparent; font-family:inherit;
+}
+.cv-chip.activo { border-style:solid; border-color:var(--c); color:var(--text-color); background:color-mix(in srgb, var(--c) 14%, transparent); }
+.cv-chip.activo::before { content:'✓'; color:var(--c); font-weight:800; }
+.cv-final { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:3px; border-radius:10px; background:var(--app-bg); }
+.cv-final button { border:none; background:none; cursor:pointer; font-family:inherit; font-size:0.74rem; font-weight:600; color:var(--muted); padding:7px 6px; border-radius:8px; }
+.cv-final button.activo { background:var(--surface); color:var(--text-color); box-shadow:0 1px 3px rgba(0,0,0,.12); }
+.cv-op-pie {
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; padding-top:12px; margin-top:auto;
+    border-top:1px dashed var(--border-strong);
+}
+.cv-op-kpi { display:flex; flex-direction:column; gap:1px; }
+.cv-op-kpi span { font-size:0.62rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+.cv-op-kpi b { font-size:0.98rem; font-variant-numeric:tabular-nums; }
+.cv-op-kpi.grande b { font-size:1.12rem; }
+.cv-op-medalla {
+    position:absolute; top:-13px; right:14px; font-size:0.66rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+    padding:3px 10px; border-radius:999px; background:var(--c); color:#fff; box-shadow:0 4px 12px -4px var(--c);
+}
+.cv-op-medalla.otra { background:var(--surface); color:var(--muted); border:1px solid var(--border-strong); box-shadow:none; }
+
+.cv-anadir-fila { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
+.cv-anadir {
+    display:inline-flex; align-items:center; gap:6px; cursor:pointer; font-family:inherit; font-size:0.8rem; font-weight:600;
+    padding:8px 14px; border-radius:999px; border:1px dashed var(--border-strong); background:transparent; color:var(--muted);
+}
+.cv-anadir:hover:not(:disabled) { border-style:solid; border-color:var(--primary-color); color:var(--primary-color); }
+.cv-anadir:disabled { opacity:.4; cursor:not-allowed; }
+.cv-anadir .icon { width:14px; height:14px; }
+.cv-anadir-nota { font-size:0.76rem; color:var(--muted); }
+
+.cv-panel { position:relative; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:18px 20px; margin-bottom:14px; }
+.cv-panel-head { display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.cv-panel-head h3 { margin:0; font-size:1rem; }
+.cv-nota { font-size:0.76rem; color:var(--muted); }
+.cv-mejor-mini, .cv-tabla .mejor-chip {
+    display:inline-block; font-size:0.6rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em;
+    padding:1px 6px; border-radius:999px; color:var(--success); border:1px solid currentColor; vertical-align:middle;
+}
+.cv-tabla-wrap { overflow-x:auto; }
+.cv-tabla { width:100%; border-collapse:collapse; font-size:0.84rem; }
+.cv-tabla th, .cv-tabla td { padding:9px 10px; border-bottom:1px solid var(--border); text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.cv-tabla th:first-child, .cv-tabla td:first-child { text-align:left; color:var(--muted); white-space:normal; min-width:170px; }
+.cv-tabla thead th { font-size:0.8rem; color:var(--text-color); border-bottom:2px solid var(--border-strong); }
+.cv-tabla thead th i { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--c); margin-right:6px; }
+.cv-tabla td.mejor { color:var(--success); font-weight:800; }
+.cv-tabla tr.destacada td { font-size:0.95rem; font-weight:800; background:color-mix(in srgb, var(--primary-color) 5%, transparent); }
+.cv-tabla tr.destacada td:first-child { color:var(--text-color); }
+.cv-tabla td small { display:block; font-size:0.68rem; color:var(--muted); font-weight:500; }
+.cv-avisos { margin:10px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:6px; }
+.cv-avisos li { font-size:0.78rem; padding:7px 11px; border-radius:9px; background:color-mix(in srgb, var(--warning) 10%, transparent); border:1px solid color-mix(in srgb, var(--warning) 30%, transparent); }
+.cv-avisos li b { font-weight:700; }
+
+.cv-graficos { display:grid; grid-template-columns:1fr 1.3fr; gap:14px; }
+@media (max-width:980px){ .cv-graficos { grid-template-columns:1fr; } }
+.cv-leyenda-simple { display:flex; gap:12px; flex-wrap:wrap; font-size:0.72rem; color:var(--muted); }
+.cv-leyenda-simple i { display:inline-block; width:12px; height:10px; border-radius:2px; vertical-align:middle; margin-right:4px; background:var(--muted); }
+.cv-leyenda-simple i.rayado { background:repeating-linear-gradient(135deg, var(--muted) 0 2px, transparent 2px 4px); border:1px solid var(--muted); }
+.cv-barras { display:flex; flex-direction:column; gap:12px; }
+.cv-barra-fila { display:grid; grid-template-columns:minmax(90px, 150px) 1fr; gap:10px; align-items:center; }
+.cv-barra-nombre { font-size:0.78rem; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cv-barra-pista { display:flex; align-items:center; gap:8px; }
+.cv-barra { flex:1; display:flex; height:22px; gap:2px; }
+.cv-barra i { display:block; height:100%; }
+.cv-barra i.coche { background:var(--c); border-radius:4px 0 0 4px; }
+.cv-barra i.uso {
+    border-radius:0 4px 4px 0; border:1.5px solid var(--c); box-sizing:border-box;
+    background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--c) 55%, transparent) 0 3px, transparent 3px 6px);
+}
+.cv-barra-valor { font-size:0.82rem; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cv-barra-valor small { font-weight:500; color:var(--muted); margin-left:4px; }
+.cv-leyenda { display:flex; gap:14px; flex-wrap:wrap; font-size:0.76rem; margin-bottom:6px; }
+.cv-leyenda span { display:inline-flex; align-items:center; gap:6px; }
+.cv-leyenda i { width:14px; height:3px; border-radius:2px; background:var(--c); }
+.cv-lineas { height:260px; }
+.cv-lineas svg { display:block; width:100%; height:100%; overflow:visible; }
+.cv-lineas text { font-size:11px; fill:var(--muted); font-family:inherit; }
+.cv-lineas .rejilla { stroke:var(--border); }
+.cv-lineas .base { stroke:var(--border-strong); }
+.cv-lineas .guia { stroke:var(--text-color); stroke-dasharray:3 3; opacity:.5; }
+.cv-tip {
+    position:absolute; z-index:5; pointer-events:none; min-width:200px; background:var(--surface); color:var(--text-color);
+    border:1px solid var(--border-strong); border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.18); padding:9px 12px; font-size:0.78rem;
+}
+.cv-tip[hidden] { display:none; }
+.cv-tip h5 { margin:0 0 6px; font-size:0.82rem; }
+.cv-tip div { display:flex; justify-content:space-between; gap:12px; }
+.cv-tip div span { display:inline-flex; align-items:center; gap:6px; color:var(--muted); }
+.cv-tip div span i { width:9px; height:9px; border-radius:50%; background:var(--c); }
+.cv-tip b { font-variant-numeric:tabular-nums; }
+
+.cv-modal { position:fixed; inset:0; z-index:300; display:flex; align-items:center; justify-content:center; padding:18px; }
+.cv-modal[hidden] { display:none; }
+.cv-modal-fondo { position:absolute; inset:0; background:rgba(0,0,0,.5); backdrop-filter:blur(2px); }
+.cv-modal-caja {
+    position:relative; width:min(460px, 100%); max-height:88vh; overflow-y:auto; background:var(--surface); color:var(--text-color);
+    border:1px solid var(--border-strong); border-radius:18px; padding:20px 22px; box-shadow:0 24px 60px rgba(0,0,0,.35);
+}
+.cv-caja-ancha { width:min(900px, 100%); }
+.cv-modal-caja h3 { margin:0 0 6px; font-size:1.05rem; }
+.cv-modal-titulo { display:flex; justify-content:space-between; align-items:center; }
+.cv-cerrar { background:none; border:none; font-size:1.6rem; color:var(--muted); cursor:pointer; line-height:1; }
+.cv-campo-largo { display:flex; flex-direction:column; gap:5px; font-size:0.78rem; color:var(--muted); margin:14px 0; }
+.cv-campo-largo input { border:1px solid var(--border-strong); background:var(--app-bg); color:var(--text-color); border-radius:9px; padding:10px 12px; font-size:0.92rem; font-family:inherit; }
+.cv-modal-pie { display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+.cv-modal-pie [hidden] { display:none; }
+.cv-error { color:var(--danger); font-size:0.8rem; }
+.cv-estudio {
+    display:grid; grid-template-columns:22px 1fr auto; gap:6px 12px; align-items:start; padding:12px 14px; margin-bottom:8px;
+    border:1px solid var(--border); border-radius:13px; background:var(--app-bg);
+}
+.cv-estudio.abierto { border-color:var(--primary-color); }
+.cv-estudio input[type=checkbox] { margin-top:4px; accent-color:var(--primary-color); width:16px; height:16px; }
+.cv-estudio-nombre { font-weight:800; font-size:0.92rem; }
+.cv-estudio-meta { font-size:0.72rem; color:var(--muted); }
+.cv-estudio-ops { grid-column:2 / -1; display:flex; flex-wrap:wrap; gap:6px; }
+.cv-estudio-op { font-size:0.72rem; padding:3px 9px; border-radius:999px; background:var(--surface); border:1px solid var(--border); font-variant-numeric:tabular-nums; }
+.cv-estudio-op.gana { border-color:var(--success); color:var(--success); font-weight:700; }
+.cv-estudio-acc { display:flex; gap:6px; }
+.cv-estudio-acc button { font-size:0.76rem; padding:6px 10px; }
+.cv-vacio { font-size:0.84rem; color:var(--muted); padding:16px; text-align:center; border:1px dashed var(--border-strong); border-radius:12px; }
+.cv-cruce-titulo { margin:16px 0 8px; font-size:0.9rem; }
+.cv-caja-ancha .cv-tabla th, .cv-caja-ancha .cv-tabla td { white-space:normal; }
+.cv-caja-ancha .cv-tabla td:nth-child(2), .cv-caja-ancha .cv-tabla th:nth-child(2) { text-align:left; }
+@media (max-width:560px){
+    .cv-hero { padding:18px; } .cv-hero-titulo { font-size:1.3rem; }
+    .cv-g-corto { flex:1 1 100%; }
+    .cv-estudio { grid-template-columns:22px 1fr; } .cv-estudio-acc { grid-column:2; }
+}
+</style>
+
+<script src="{% static 'js/comparador_vehiculo.js' %}"></script>
+<script>
+(function () {
+    'use strict';
+    var C = window.ComparadorVehiculo;
+    var ALMACEN = 'treasure:sim-vehiculo-comparador:v1';
+    var MAX_OPCIONES = 4;
+    var URL_GUARDAR = "{% url 'finanzas:guardar_estudio_vehiculo' %}";
+    var URL_ELIMINAR = "/finanzas/simuladores/vehiculo/estudios/__ID__/eliminar/";
+    var NOMBRES_TIPO = {leasing: 'Leasing', financiado: 'Financiado', contado: 'Al contado'};
+    var $ = function (id) { return document.getElementById(id); };
+
+    function euro(v, dec) {
+        dec = dec || 0;
+        return Number(v || 0).toLocaleString('es-ES', {minimumFractionDigits: dec, maximumFractionDigits: dec}) + ' €';
+    }
+    function esc(t) { var d = document.createElement('span'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+    function csrf() { var m = document.cookie.match(/csrftoken=([^;]+)/); return m ? m[1] : ''; }
+    function color(o) { return 'var(--s' + (o.color || 1) + ')'; }
+
+    // ── Estado ───────────────────────────────────────────────────────────
+    var USO_POR_DEFECTO = {
+        seguro_anual: 750, mantenimiento_anual: 450, neumaticos_anual: 250, impuesto_anual: 120,
+        consumo: 6.5, precio_energia: 1.60,
+    };
+    function nuevaOpcion(tipo, nombre, extra) {
+        var o = Object.assign({
+            id: 'op' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+            tipo: tipo, nombre: nombre, precio: 48000, gastos_iniciales: tipo === 'leasing' ? 0 : 400,
+            valor_final_pct: '',
+            entrada: 11000, cuota: 450, meses: tipo === 'financiado' ? 60 : 48, cuota_final: 22000,
+            quedarse: false, km_contratados: 15000, coste_km_extra: 0.10,
+            incl_mantenimiento: true, incl_neumaticos: true, incl_seguro: false, incl_impuesto: false,
+            tin: 7.99, comision_pct: 2,
+        }, USO_POR_DEFECTO, extra || {});
+        return o;
+    }
+    function estadoInicial() {
+        return {
+            global: {horizonte: 48, km_anuales: 15000, rentabilidad: 3},
+            opciones: [
+                Object.assign(nuevaOpcion('leasing', 'BMW X2 · leasing'), {color: 1}),
+                Object.assign(nuevaOpcion('financiado', 'BMW X2 · financiado'), {color: 2}),
+                Object.assign(nuevaOpcion('contado', 'BMW X2 · al contado'), {color: 3}),
+            ],
+            estudio: null,  // {id, nombre} si viene de un estudio guardado
+        };
+    }
+    var S = estadoInicial();
+    var ESTUDIOS = JSON.parse($('cv-estudios-data').textContent || '[]');
+
+    function guardarLocal() {
+        try { localStorage.setItem(ALMACEN, JSON.stringify(S)); } catch (e) { /* privado o lleno */ }
+    }
+    function cargarLocal() {
+        try {
+            var d = JSON.parse(localStorage.getItem(ALMACEN) || 'null');
+            if (d && d.global && Array.isArray(d.opciones)) S = d;
+        } catch (e) { /* ignorar */ }
+    }
+    function colorLibre() {
+        var usados = S.opciones.map(function (o) { return o.color; });
+        for (var i = 1; i <= MAX_OPCIONES; i++) if (usados.indexOf(i) < 0) return i;
+        return 1;
+    }
+
+    // ── Las tarjetas de cada opción ─────────────────────────────────────
+    function campo(o, clave, etiqueta, sufijo, opts) {
+        opts = opts || {};
+        var valor = o[clave];
+        var placeholder = opts.placeholder != null ? ' placeholder="' + esc(opts.placeholder) + '"' : '';
+        return '<label class="cv-campo' + (opts.ancho ? ' ancho' : '') + '"' + (opts.titulo ? ' title="' + esc(opts.titulo) + '"' : '') + '>' +
+            '<span>' + etiqueta + '</span>' +
+            '<span class="cv-entrada' + (opts.apagada ? ' apagada' : '') + '">' +
+            '<input type="number" step="any" min="0" data-campo="' + clave + '" value="' + esc(valor) + '"' + placeholder + (opts.apagada ? ' disabled' : '') + '>' +
+            '<em>' + sufijo + '</em></span></label>';
+    }
+    function chip(o, clave, etiqueta) {
+        return '<button type="button" class="cv-chip' + (o[clave] ? ' activo' : '') + '" data-toggle="' + clave + '">' + etiqueta + '</button>';
+    }
+
+    function tarjeta(o) {
+        var inc = function (k) { return o.tipo === 'leasing' && !!o['incl_' + k]; };
+        var h = '';
+        h += '<div class="cv-op-cab">' +
+             '<input class="cv-op-nombre" data-campo-texto="nombre" value="' + esc(o.nombre) + '" maxlength="60" aria-label="Nombre de la opción">' +
+             '<button type="button" class="cv-op-icono" data-accion="duplicar" title="Duplicar para probar una variante"><svg class="icon"><use href="#i-plus"/></svg></button>' +
+             '<button type="button" class="cv-op-icono borrar" data-accion="borrar" title="Quitar esta opción"><svg class="icon"><use href="#i-trash"/></svg></button></div>';
+        h += '<div class="cv-tipos" role="tablist">' + ['leasing', 'financiado', 'contado'].map(function (t) {
+            return '<button type="button" data-tipo="' + t + '" class="' + (o.tipo === t ? 'activo' : '') + '">' + NOMBRES_TIPO[t] + '</button>';
+        }).join('') + '</div>';
+
+        h += '<div class="cv-seccion-t">El coche</div><div class="cv-campos">';
+        h += campo(o, 'precio', 'Precio (PVP)', '€');
+        h += campo(o, 'gastos_iniciales', 'Gastos iniciales', '€', {titulo: 'Matriculación, transporte, transferencia…'});
+        h += campo(o, 'valor_final_pct', 'Valdrá al final', '% del PVP', {
+            ancho: true, placeholder: 'auto ≈ ' + C.valorResidualEstimado(S.global.horizonte).toFixed(0),
+            titulo: 'Lo que podrías venderlo al final del periodo. Vacío = depreciación típica (−20 % el primer año, −13 % los siguientes).',
+        });
+        h += '</div>';
+
+        if (o.tipo === 'leasing') {
+            h += '<div class="cv-seccion-t">El contrato</div><div class="cv-campos">';
+            h += campo(o, 'entrada', 'Entrada', '€');
+            h += campo(o, 'cuota', 'Cuota', '€/mes');
+            h += campo(o, 'meses', 'Duración', 'meses');
+            h += campo(o, 'cuota_final', 'Cuota final', '€');
+            h += '<div class="cv-campo ancho"><span>Al acabar el contrato</span><div class="cv-final">' +
+                 '<button type="button" data-quedarse="0" class="' + (o.quedarse ? '' : 'activo') + '">Lo devuelvo</button>' +
+                 '<button type="button" data-quedarse="1" class="' + (o.quedarse ? 'activo' : '') + '">Me lo quedo (pago la final)</button></div></div>';
+            if (!o.quedarse) {
+                h += campo(o, 'km_contratados', 'Km contratados', 'km/año');
+                h += campo(o, 'coste_km_extra', 'Km de más', '€/km');
+            }
+            h += '</div>';
+            h += '<div class="cv-seccion-t">La cuota incluye</div><div class="cv-chips">' +
+                 chip(o, 'incl_mantenimiento', 'Mantenimiento') + chip(o, 'incl_neumaticos', 'Neumáticos') +
+                 chip(o, 'incl_seguro', 'Seguro') + chip(o, 'incl_impuesto', 'Impuesto circulación') + '</div>';
+        } else if (o.tipo === 'financiado') {
+            h += '<div class="cv-seccion-t">La financiación</div><div class="cv-campos">';
+            h += campo(o, 'entrada', 'Entrada', '€');
+            h += campo(o, 'tin', 'Interés (TIN)', '%');
+            h += campo(o, 'meses', 'Plazo', 'meses');
+            h += campo(o, 'comision_pct', 'Comisión apertura', '%');
+            h += '</div>';
+        }
+
+        h += '<div class="cv-seccion-t">Usarlo</div><div class="cv-campos">';
+        h += campo(o, 'seguro_anual', 'Seguro', '€/año', {apagada: inc('seguro')});
+        h += campo(o, 'mantenimiento_anual', 'Mantenimiento', '€/año', {apagada: inc('mantenimiento')});
+        h += campo(o, 'neumaticos_anual', 'Neumáticos', '€/año', {apagada: inc('neumaticos')});
+        h += campo(o, 'impuesto_anual', 'Impuesto circ.', '€/año', {apagada: inc('impuesto')});
+        h += campo(o, 'consumo', 'Consumo', 'l ó kWh/100', {titulo: 'Litros (o kWh si es eléctrico) cada 100 km'});
+        h += campo(o, 'precio_energia', 'Precio energía', '€/l ó kWh');
+        h += '</div>';
+
+        h += '<div class="cv-op-pie">' +
+             '<div class="cv-op-kpi grande"><span>Coste real</span><b data-kpi="coste_real">—</b></div>' +
+             '<div class="cv-op-kpi"><span>Al mes</span><b data-kpi="coste_mensual">—</b></div>' +
+             '<div class="cv-op-kpi"><span>Por km</span><b data-kpi="coste_km">—</b></div></div>';
+        h += '<span class="cv-op-medalla" data-medalla></span>';
+        return h;
+    }
+
+    function pintarOpciones() {
+        var cont = $('cv-opciones');
+        cont.innerHTML = '';
+        S.opciones.forEach(function (o) {
+            var art = document.createElement('article');
+            art.className = 'cv-op';
+            art.dataset.id = o.id;
+            art.style.setProperty('--c', color(o));
+            art.innerHTML = tarjeta(o);
+            cont.appendChild(art);
+        });
+        var lleno = S.opciones.length >= MAX_OPCIONES;
+        ['leasing', 'financiado', 'contado'].forEach(function (t) { $('cv-anadir-' + t).disabled = lleno; });
+        $('cv-anadir-nota').textContent = lleno ? 'Máximo cuatro opciones a la vez: guarda el estudio y abre otro para seguir comparando.' : '';
+    }
+
+    function opcionDe(el) {
+        var art = el.closest('.cv-op');
+        if (!art) return null;
+        return S.opciones.find(function (o) { return o.id === art.dataset.id; });
+    }
+
+    // ── Calcular y pintar resultados ────────────────────────────────────
+    var FILAS = [
+        {k: 'desembolso_inicial', t: 'Pagas el primer día', mejor: 'min', ayuda: 'Entrada, pago al contado, comisión y gastos iniciales.'},
+        {k: 'pago_mensual_tipico', t: 'Lo que sale un mes normal', mejor: 'min', ayuda: 'Cuota + seguro, taller, impuesto y energía prorrateados.'},
+        {k: 'cuota', t: 'Cuota del coche', mejor: null, dec: 2, fmt: function (v) { return v ? euro(v, 2) + '/mes' : '—'; }},
+        {k: 'total_pagado', t: 'Total pagado en el periodo', mejor: 'min'},
+        {k: 'deuda_final', t: 'Aún debes al final', mejor: 'min', fmt: function (v) { return v ? euro(v) : '—'; }},
+        {k: 'valor_final', t: 'El coche vale al final', mejor: 'max', fmt: function (v, r) {
+            return r.es_tuyo ? euro(v) + '<small>' + r.valor_final_pct.toFixed(0) + ' % del PVP · es tuyo</small>' : '0 €<small>lo devuelves</small>'; }},
+        {k: 'coste_real', t: 'Coste real', mejor: 'min', destacada: true, ayuda: 'Pagado + lo que debes − lo que vale el coche si es tuyo.'},
+        {k: 'coste_mensual', t: 'Coste real al mes', mejor: 'min', destacada: true},
+        {k: 'coste_km', t: 'Coste por km', mejor: 'min', fmt: function (v) { return euro(v, 3); }},
+        {k: 'sobrecoste_financiacion', t: 'Te cuesta financiarte', mejor: 'min', ayuda: 'Intereses y comisión; en un leasing que te quedas, lo pagado por encima del PVP.', fmt: function (v, r, o) {
+            return (o.tipo === 'contado' || (o.tipo === 'leasing' && !o.quedarse)) ? '—' : euro(v); }},
+        {k: 'coste_con_oportunidad', t: 'Coste contando lo que rendiría el dinero', mejor: 'min', soloRentabilidad: true},
+    ];
+
+    function calcular() {
+        return C.comparar(S.opciones, S.global);
+    }
+
+    function pintarResultados() {
+        var g = S.global;
+        $('cv-lbl-horizonte').textContent = g.horizonte + ' meses (' + (g.horizonte / 12).toLocaleString('es-ES', {maximumFractionDigits: 1}) + ' años)';
+        $('cv-lbl-km').textContent = Number(g.km_anuales).toLocaleString('es-ES') + ' km';
+        if (!S.opciones.length) {
+            $('cv-hero-titulo').textContent = 'Añade una opción para empezar';
+            $('cv-hero-sub').textContent = ''; $('cv-podio').innerHTML = '';
+            $('cv-tabla').innerHTML = ''; $('cv-barras').innerHTML = ''; $('cv-lineas').innerHTML = '';
+            $('cv-leyenda').innerHTML = ''; $('cv-avisos').innerHTML = '';
+            return;
+        }
+        var c = calcular();
+        var res = c.resultados, mejor = c.mejor;
+
+        // Veredicto
+        $('cv-hero-lbl').textContent = 'Veredicto · a ' + g.horizonte + ' meses y ' + Number(g.km_anuales).toLocaleString('es-ES') + ' km/año';
+        if (res.length === 1) {
+            $('cv-hero-titulo').innerHTML = '<b>' + esc(mejor.opcion.nombre) + '</b> te cuesta ' + euro(mejor.r.coste_real);
+            $('cv-hero-sub').innerHTML = 'Añade otra opción para compararla.';
+        } else {
+            var segundo = c.orden[1];
+            var dif = segundo.r.coste_real - mejor.r.coste_real;
+            $('cv-hero-titulo').innerHTML = '<b>' + esc(mejor.opcion.nombre) + '</b> sale mejor';
+            $('cv-hero-sub').innerHTML = c.orden.slice(1).map(function (x) {
+                var d = x.r.coste_real - mejor.r.coste_real;
+                return '<strong>' + euro(d) + '</strong> menos que «' + esc(x.opcion.nombre) + '» (' + euro(d / g.horizonte) + '/mes)';
+            }).join(' · ') + (dif < 500 ? '<br>Diferencia pequeña: decide por lo que no está en los números (qué coche te gusta, flexibilidad, si quieres cambiar pronto).' : '');
+        }
+        $('cv-podio').innerHTML = c.orden.map(function (x, i) {
+            return '<div class="cv-podio-item' + (i === 0 ? ' gana' : '') + '" style="--c:' + color(x.opcion) + '">' +
+                '<div class="cv-podio-nombre"><i></i>' + (i + 1) + 'º · ' + esc(x.opcion.nombre) + '</div>' +
+                '<div class="cv-podio-cifra">' + euro(x.r.coste_real) + '</div>' +
+                '<div class="cv-podio-sub">' + euro(x.r.coste_mensual) + '/mes · ' + euro(x.r.coste_km, 2) + '/km</div></div>';
+        }).join('');
+
+        // Pie de cada tarjeta
+        res.forEach(function (x) {
+            var art = document.querySelector('.cv-op[data-id="' + x.opcion.id + '"]');
+            if (!art) return;
+            art.classList.toggle('gana', res.length > 1 && x === mejor);
+            art.querySelector('[data-kpi="coste_real"]').textContent = euro(x.r.coste_real);
+            art.querySelector('[data-kpi="coste_mensual"]').textContent = euro(x.r.coste_mensual);
+            art.querySelector('[data-kpi="coste_km"]').textContent = euro(x.r.coste_km, 2);
+            var med = art.querySelector('[data-medalla]');
+            med.hidden = res.length < 2;
+            med.className = 'cv-op-medalla' + (x === mejor ? '' : ' otra');
+            med.textContent = x === mejor ? 'La mejor' : x.puesto + 'º · +' + euro(x.diferencia);
+        });
+
+        // Tabla
+        var h = '<thead><tr><th></th>' + res.map(function (x) {
+            return '<th style="--c:' + color(x.opcion) + '"><i></i>' + esc(x.opcion.nombre) + '<br><small class="cv-nota">' + NOMBRES_TIPO[x.opcion.tipo] + '</small></th>';
+        }).join('') + '</tr></thead><tbody>';
+        FILAS.forEach(function (f) {
+            if (f.soloRentabilidad && !(g.rentabilidad > 0)) return;
+            var valores = res.map(function (x) { return x.r[f.k]; });
+            var aplica = res.map(function (x) {
+                if (f.k === 'sobrecoste_financiacion') return !(x.opcion.tipo === 'contado' || (x.opcion.tipo === 'leasing' && !x.opcion.quedarse));
+                if (f.k === 'cuota' || f.k === 'deuda_final') return false;
+                return true;
+            });
+            var candidatos = valores.filter(function (v, i) { return aplica[i]; });
+            var objetivo = f.mejor === 'min' ? Math.min.apply(null, candidatos) : f.mejor === 'max' ? Math.max.apply(null, candidatos) : null;
+            var hayEmpate = candidatos.every(function (v) { return Math.abs(v - candidatos[0]) < 0.5; });
+            h += '<tr class="' + (f.destacada ? 'destacada' : '') + '"><td' + (f.ayuda ? ' title="' + esc(f.ayuda) + '"' : '') + '>' + f.t + '</td>';
+            res.forEach(function (x, i) {
+                var v = valores[i];
+                var gana = res.length > 1 && f.mejor && aplica[i] && !hayEmpate && Math.abs(v - objetivo) < 0.005;
+                var texto = f.fmt ? f.fmt(v, x.r, x.opcion) : euro(v);
+                h += '<td class="' + (gana ? 'mejor' : '') + '">' + texto + (gana ? ' <span class="mejor-chip">mejor</span>' : '') + '</td>';
+            });
+            h += '</tr>';
+        });
+        h += '<tr><td>Diferencia con la mejor</td>' + res.map(function (x) {
+            return '<td>' + (x.diferencia < 0.5 ? '—' : '+' + euro(x.diferencia) + '<small>+' + euro(x.diferencia / g.horizonte) + '/mes</small>') + '</td>';
+        }).join('') + '</tr></tbody>';
+        $('cv-tabla').innerHTML = h;
+
+        // Avisos
+        $('cv-avisos').innerHTML = res.map(function (x) {
+            return x.r.avisos.map(function (a) { return '<li><b>' + esc(x.opcion.nombre) + ':</b> ' + esc(a) + '</li>'; }).join('');
+        }).join('');
+
+        pintarBarras(c);
+        pintarLineas(c);
+    }
+
+    function pintarBarras(c) {
+        var tope = Math.max.apply(null, c.orden.map(function (x) { return Math.max(x.r.coste_coche, 0) + Math.max(x.r.total_uso, 0); })) || 1;
+        $('cv-barras').innerHTML = c.orden.map(function (x) {
+            var coche = Math.max(x.r.coste_coche, 0), uso = Math.max(x.r.total_uso, 0);
+            return '<div class="cv-barra-fila" style="--c:' + color(x.opcion) + '">' +
+                '<span class="cv-barra-nombre" title="' + esc(x.opcion.nombre) + '">' + esc(x.opcion.nombre) + '</span>' +
+                '<div class="cv-barra-pista"><div class="cv-barra" title="Coche ' + euro(coche) + ' · uso ' + euro(uso) + '">' +
+                (coche > 0 ? '<i class="coche" style="width:' + (coche / tope * 100) + '%"></i>' : '') +
+                (uso > 0 ? '<i class="uso" style="width:' + (uso / tope * 100) + '%"></i>' : '') +
+                '</div><span class="cv-barra-valor">' + euro(x.r.coste_real) + '<small>' + euro(coche) + ' + ' + euro(uso) + '</small></span></div></div>';
+        }).join('');
+    }
+
+    // ── Líneas: dinero acumulado ────────────────────────────────────────
+    var NS = 'http://www.w3.org/2000/svg';
+    function el(n, a, p) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
+    var ultimo = null;
+    function pintarLineas(c) {
+        ultimo = c;
+        var cont = $('cv-lineas');
+        cont.innerHTML = '';
+        $('cv-leyenda').innerHTML = c.resultados.map(function (x) {
+            return '<span style="--c:' + color(x.opcion) + '"><i></i>' + esc(x.opcion.nombre) + '</span>';
+        }).join('');
+        var W = cont.clientWidth, Hh = cont.clientHeight;
+        if (!W) return;
+        var m = {t: 10, r: 12, b: 24, l: 58};
+        var H = S.global.horizonte;
+        var tope = Math.max.apply(null, c.resultados.map(function (x) { return x.r.acumulado[H]; })) || 1;
+        var paso = Math.pow(10, Math.floor(Math.log10(tope)));
+        tope = Math.ceil(tope / paso) * paso;
+        var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + Hh}, cont);
+        var x = function (mes) { return m.l + (W - m.l - m.r) * mes / H; };
+        var y = function (v) { return m.t + (Hh - m.t - m.b) * (1 - v / tope); };
+        for (var i = 0; i <= 4; i++) {
+            var v = tope * i / 4;
+            el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), 'class': i ? 'rejilla' : 'base'}, svg);
+            el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end'}, svg).textContent = euro(v);
+        }
+        var cadaAño = H > 72 ? 24 : 12;
+        for (var mes = 0; mes <= H; mes += cadaAño) {
+            el('text', {x: x(mes), y: Hh - 6, 'text-anchor': 'middle'}, svg).textContent = mes ? (mes / 12) + (mes === 12 ? ' año' : ' años') : 'firma';
+        }
+        c.resultados.forEach(function (r) {
+            var d = r.r.acumulado.map(function (val, mes) { return (mes ? 'L' : 'M') + x(mes).toFixed(1) + ',' + y(val).toFixed(1); }).join('');
+            var p = el('path', {d: d, fill: 'none', 'stroke-width': 2, 'stroke-linejoin': 'round'}, svg);
+            p.style.stroke = color(r.opcion);
+        });
+        var guia = el('line', {y1: m.t, y2: Hh - m.b, 'class': 'guia'}, svg);
+        guia.style.display = 'none';
+        var puntos = c.resultados.map(function (r) {
+            var pt = el('circle', {r: 4.5, 'stroke-width': 2}, svg);
+            pt.style.fill = color(r.opcion); pt.style.stroke = 'var(--surface)'; pt.style.display = 'none';
+            return pt;
+        });
+        var zona = el('rect', {x: m.l, y: m.t, width: W - m.l - m.r, height: Hh - m.t - m.b, fill: 'transparent'}, svg);
+        var tip = $('cv-tip');
+        function mover(ev) {
+            var caja = svg.getBoundingClientRect();
+            var px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - caja.left;
+            var mesSel = Math.max(0, Math.min(H, Math.round((px - m.l) / (W - m.l - m.r) * H)));
+            guia.setAttribute('x1', x(mesSel)); guia.setAttribute('x2', x(mesSel)); guia.style.display = '';
+            c.resultados.forEach(function (r, i) {
+                puntos[i].setAttribute('cx', x(mesSel)); puntos[i].setAttribute('cy', y(r.r.acumulado[mesSel])); puntos[i].style.display = '';
+            });
+            var filas = c.resultados.slice().sort(function (a, b) { return b.r.acumulado[mesSel] - a.r.acumulado[mesSel]; });
+            tip.innerHTML = '<h5>' + (mesSel ? 'Mes ' + mesSel : 'El día de la firma') + '</h5>' + filas.map(function (r) {
+                return '<div><span style="--c:' + color(r.opcion) + '"><i></i>' + esc(r.opcion.nombre) + '</span><b>' + euro(r.r.acumulado[mesSel]) + '</b></div>';
+            }).join('') + (mesSel === H ? '<div style="margin-top:6px"><span>coste real = esto + lo que debes − lo que vale el coche</span></div>' : '');
+            tip.hidden = false;
+            var panel = tip.parentElement.getBoundingClientRect();
+            var izq = caja.left - panel.left + x(mesSel) + 12;
+            if (izq + tip.offsetWidth > panel.width - 8) izq = caja.left - panel.left + x(mesSel) - tip.offsetWidth - 12;
+            tip.style.left = Math.max(8, izq) + 'px';
+            tip.style.top = (caja.top - panel.top + 8) + 'px';
+        }
+        function salir() { tip.hidden = true; guia.style.display = 'none'; puntos.forEach(function (p) { p.style.display = 'none'; }); }
+        zona.addEventListener('mousemove', mover);
+        zona.addEventListener('touchstart', mover, {passive: true});
+        zona.addEventListener('touchmove', mover, {passive: true});
+        zona.addEventListener('mouseleave', salir);
+    }
+
+    function todo() {
+        pintarResultados();
+        guardarLocal();
+        pintarEstudioActual();
+    }
+
+    // ── Eventos de las tarjetas ─────────────────────────────────────────
+    var cont = $('cv-opciones');
+    cont.addEventListener('input', function (e) {
+        var o = opcionDe(e.target);
+        if (!o) return;
+        if (e.target.dataset.campo) {
+            var v = e.target.value;
+            o[e.target.dataset.campo] = (v === '' && e.target.dataset.campo === 'valor_final_pct') ? '' : (v === '' ? 0 : parseFloat(v));
+        } else if (e.target.dataset.campoTexto) {
+            o[e.target.dataset.campoTexto] = e.target.value;
+        }
+        todo();
+    });
+    cont.addEventListener('click', function (e) {
+        var b = e.target.closest('button');
+        if (!b) return;
+        var o = opcionDe(b);
+        if (!o) return;
+        if (b.dataset.tipo) {
+            o.tipo = b.dataset.tipo;
+            if (o.tipo !== 'leasing' && !o.gastos_iniciales) o.gastos_iniciales = 400;
+        } else if (b.dataset.toggle) {
+            o[b.dataset.toggle] = !o[b.dataset.toggle];
+        } else if (b.dataset.quedarse) {
+            o.quedarse = b.dataset.quedarse === '1';
+        } else if (b.dataset.accion === 'borrar') {
+            S.opciones = S.opciones.filter(function (x) { return x !== o; });
+        } else if (b.dataset.accion === 'duplicar') {
+            if (S.opciones.length >= MAX_OPCIONES) return;
+            var copia = JSON.parse(JSON.stringify(o));
+            copia.id = 'op' + Date.now().toString(36);
+            copia.nombre = o.nombre + ' (variante)';
+            copia.color = colorLibre();
+            S.opciones.splice(S.opciones.indexOf(o) + 1, 0, copia);
+        } else {
+            return;
+        }
+        pintarOpciones();
+        todo();
+    });
+    ['leasing', 'financiado', 'contado'].forEach(function (t) {
+        $('cv-anadir-' + t).addEventListener('click', function () {
+            if (S.opciones.length >= MAX_OPCIONES) return;
+            var base = S.opciones[S.opciones.length - 1];
+            // Se parte del mismo coche que la última opción: lo normal es
+            // comparar el mismo modelo pagado de otra forma.
+            var extra = base ? {precio: base.precio, seguro_anual: base.seguro_anual, mantenimiento_anual: base.mantenimiento_anual,
+                                 neumaticos_anual: base.neumaticos_anual, impuesto_anual: base.impuesto_anual,
+                                 consumo: base.consumo, precio_energia: base.precio_energia} : {};
+            var nombreBase = base ? base.nombre.split(' · ')[0] : 'Coche';
+            var o = nuevaOpcion(t, nombreBase + ' · ' + NOMBRES_TIPO[t].toLowerCase(), extra);
+            o.color = colorLibre();
+            S.opciones.push(o);
+            pintarOpciones();
+            todo();
+        });
+    });
+
+    // ── Lo común ────────────────────────────────────────────────────────
+    function enlazarGlobal(id, clave) {
+        var input = $(id);
+        input.value = S.global[clave];
+        input.addEventListener('input', function () {
+            S.global[clave] = parseFloat(input.value) || 0;
+            // El valor residual por defecto depende del periodo: se repinta el marcador.
+            if (clave === 'horizonte') {
+                document.querySelectorAll('[data-campo="valor_final_pct"]').forEach(function (i) {
+                    i.placeholder = 'auto ≈ ' + C.valorResidualEstimado(S.global.horizonte).toFixed(0);
+                });
+            }
+            todo();
+        });
+    }
+
+    // ── Estudios guardados ─────────────────────────────────────────────
+    function resumenActual() {
+        var c = calcular();
+        return {
+            horizonte: S.global.horizonte, km_anuales: S.global.km_anuales,
+            ganador: c.mejor ? c.mejor.opcion.nombre : '',
+            opciones: c.resultados.map(function (x) {
+                return {nombre: x.opcion.nombre, tipo: x.opcion.tipo, color: x.opcion.color,
+                        coste_real: Math.round(x.r.coste_real), coste_mensual: Math.round(x.r.coste_mensual),
+                        coste_km: Math.round(x.r.coste_km * 1000) / 1000, pago_mensual_tipico: Math.round(x.r.pago_mensual_tipico),
+                        desembolso_inicial: Math.round(x.r.desembolso_inicial), gana: x === c.mejor};
+            }),
+        };
+    }
+    function pintarEstudioActual() {
+        var caja = $('cv-estudio-actual');
+        $('cv-num-estudios').textContent = ESTUDIOS.length;
+        if (S.estudio) {
+            caja.hidden = false;
+            caja.innerHTML = 'Estudio abierto: <strong>' + esc(S.estudio.nombre) + '</strong> · los cambios se quedan en este navegador hasta que pulses «Guardar estudio».';
+        } else {
+            caja.hidden = true;
+        }
+    }
+    function abrirModal(id) { $(id).hidden = false; document.body.style.overflow = 'hidden'; }
+    function cerrarModales() {
+        document.querySelectorAll('.cv-modal').forEach(function (m) { m.hidden = true; });
+        document.body.style.overflow = '';
+    }
+    document.addEventListener('click', function (e) { if (e.target.closest('[data-cv-cerrar]')) cerrarModales(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') cerrarModales(); });
+
+    $('cv-guardar').addEventListener('click', function () {
+        var f = $('cv-form-guardar');
+        f.nombre.value = S.estudio ? S.estudio.nombre : (S.opciones[0] ? S.opciones[0].nombre.split(' · ')[0] + ': ' + S.opciones.map(function (o) { return NOMBRES_TIPO[o.tipo].toLowerCase(); }).join(' vs ') : '');
+        $('cv-guardar-actualizar').hidden = !S.estudio;
+        $('cv-guardar-actualizar').textContent = S.estudio ? 'Actualizar «' + S.estudio.nombre + '»' : 'Actualizar';
+        $('cv-error-guardar').hidden = true;
+        abrirModal('cv-modal-guardar');
+        f.nombre.focus(); f.nombre.select();
+    });
+    $('cv-form-guardar').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var como = (e.submitter && e.submitter.value) || 'nuevo';
+        var nombre = e.target.nombre.value.trim();
+        var datos = {global: S.global, opciones: S.opciones};
+        fetch(URL_GUARDAR, {
+            method: 'POST',
+            headers: {'X-CSRFToken': csrf(), 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+            body: JSON.stringify({id: como === 'actualizar' && S.estudio ? S.estudio.id : null, nombre: nombre, datos: datos, resumen: resumenActual()}),
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d.ok) { var er = $('cv-error-guardar'); er.textContent = d.mensaje || 'No se ha podido guardar.'; er.hidden = false; return; }
+            ESTUDIOS = [d.estudio].concat(ESTUDIOS.filter(function (x) { return x.id !== d.estudio.id; }));
+            S.estudio = {id: d.estudio.id, nombre: d.estudio.nombre};
+            cerrarModales();
+            todo();
+        }).catch(function () { var er = $('cv-error-guardar'); er.textContent = 'Sin conexión: no se ha guardado.'; er.hidden = false; });
+    });
+
+    var marcados = {};
+    function pintarEstudios() {
+        var lista = $('cv-lista-estudios');
+        if (!ESTUDIOS.length) {
+            lista.innerHTML = '<div class="cv-vacio">Aún no has guardado ningún estudio. Configura las opciones y pulsa «Guardar estudio».</div>';
+            $('cv-cruce').hidden = true;
+            return;
+        }
+        lista.innerHTML = ESTUDIOS.map(function (es) {
+            var r = es.resumen || {};
+            return '<div class="cv-estudio' + (S.estudio && S.estudio.id === es.id ? ' abierto' : '') + '" data-id="' + es.id + '">' +
+                '<input type="checkbox" data-marcar ' + (marcados[es.id] ? 'checked' : '') + ' aria-label="Comparar">' +
+                '<div><div class="cv-estudio-nombre">' + esc(es.nombre) + '</div>' +
+                '<div class="cv-estudio-meta">' + esc(es.actualizado) + (es.autor ? ' · ' + esc(es.autor) : '') +
+                (r.horizonte ? ' · ' + r.horizonte + ' meses, ' + Number(r.km_anuales).toLocaleString('es-ES') + ' km/año' : '') + '</div></div>' +
+                '<div class="cv-estudio-acc"><button type="button" class="cv-btn cv-btn-primario" data-abrir>Abrir</button>' +
+                '<button type="button" class="cv-btn" data-eliminar title="Eliminar"><svg class="icon"><use href="#i-trash"/></svg></button></div>' +
+                '<div class="cv-estudio-ops">' + (r.opciones || []).map(function (o) {
+                    return '<span class="cv-estudio-op' + (o.gana ? ' gana' : '') + '">' + (o.gana ? '✓ ' : '') + esc(o.nombre) + ' · ' +
+                        euro(o.coste_real) + ' · ' + euro(o.coste_mensual) + '/mes</span>';
+                }).join('') + '</div></div>';
+        }).join('');
+        pintarCruce();
+    }
+    function pintarCruce() {
+        var elegidos = ESTUDIOS.filter(function (e) { return marcados[e.id]; });
+        var caja = $('cv-cruce');
+        if (!elegidos.length) { caja.hidden = true; return; }
+        caja.hidden = false;
+        var filas = [];
+        elegidos.forEach(function (e) {
+            ((e.resumen || {}).opciones || []).forEach(function (o) {
+                filas.push({estudio: e.nombre, o: o, h: e.resumen.horizonte, km: e.resumen.km_anuales});
+            });
+        });
+        filas.sort(function (a, b) { return a.o.coste_mensual - b.o.coste_mensual; });
+        var mejor = filas[0] ? filas[0].o.coste_mensual : 0;
+        $('cv-tabla-cruce').innerHTML = '<thead><tr><th>Opción</th><th>Estudio</th><th>Periodo</th><th>Pagas el primer día</th><th>Un mes normal</th><th>Coste real</th><th>Coste real/mes</th><th>€/km</th></tr></thead><tbody>' +
+            filas.map(function (f, i) {
+                return '<tr><td><b style="color:var(--text-color)">' + (i + 1) + 'º · ' + esc(f.o.nombre) + '</b></td><td>' + esc(f.estudio) + '</td><td>' + f.h + ' m</td>' +
+                    '<td>' + euro(f.o.desembolso_inicial) + '</td><td>' + euro(f.o.pago_mensual_tipico) + '</td><td>' + euro(f.o.coste_real) + '</td>' +
+                    '<td class="' + (i === 0 ? 'mejor' : '') + '">' + euro(f.o.coste_mensual) + (i ? '<small>+' + euro(f.o.coste_mensual - mejor) + '/mes</small>' : '') + '</td>' +
+                    '<td>' + euro(f.o.coste_km, 3) + '</td></tr>';
+            }).join('') + '</tbody>';
+        var periodos = {};
+        filas.forEach(function (f) { periodos[f.h + '|' + f.km] = true; });
+        $('cv-cruce-aviso').textContent = Object.keys(periodos).length > 1
+            ? 'Ojo: los estudios usan periodos o kilómetros distintos. Se ordena por coste real AL MES, que es lo que se puede comparar entre periodos distintos.'
+            : 'Ordenado por coste real al mes.';
+    }
+    $('cv-ver-estudios').addEventListener('click', function () { pintarEstudios(); abrirModal('cv-modal-estudios'); });
+    $('cv-lista-estudios').addEventListener('click', function (e) {
+        var fila = e.target.closest('.cv-estudio');
+        if (!fila) return;
+        var es = ESTUDIOS.find(function (x) { return String(x.id) === fila.dataset.id; });
+        if (!es) return;
+        if (e.target.closest('[data-abrir]')) {
+            var d = JSON.parse(JSON.stringify(es.datos || {}));
+            if (!d.global || !Array.isArray(d.opciones)) return;
+            S = {global: d.global, opciones: d.opciones, estudio: {id: es.id, nombre: es.nombre}};
+            $('cv-horizonte').value = S.global.horizonte; $('cv-km').value = S.global.km_anuales; $('cv-rentabilidad').value = S.global.rentabilidad;
+            cerrarModales();
+            pintarOpciones();
+            todo();
+        } else if (e.target.closest('[data-eliminar]')) {
+            if (!window.confirm('¿Eliminar el estudio «' + es.nombre + '»? No se puede deshacer.')) return;
+            fetch(URL_ELIMINAR.replace('__ID__', es.id), {
+                method: 'POST', headers: {'X-CSRFToken': csrf(), 'X-Requested-With': 'XMLHttpRequest'},
+            }).then(function (r) { return r.json(); }).then(function (d) {
+                if (!d.ok) return;
+                ESTUDIOS = ESTUDIOS.filter(function (x) { return x.id !== es.id; });
+                delete marcados[es.id];
+                if (S.estudio && S.estudio.id === es.id) S.estudio = null;
+                pintarEstudios();
+                todo();
+            });
+        }
+    });
+    $('cv-lista-estudios').addEventListener('change', function (e) {
+        if (!e.target.matches('[data-marcar]')) return;
+        var fila = e.target.closest('.cv-estudio');
+        marcados[fila.dataset.id] = e.target.checked;
+        pintarCruce();
+    });
+
+    // ── Arranque ───────────────────────────────────────────────────────
+    cargarLocal();
+    enlazarGlobal('cv-horizonte', 'horizonte');
+    enlazarGlobal('cv-km', 'km_anuales');
+    enlazarGlobal('cv-rentabilidad', 'rentabilidad');
+    pintarOpciones();
+    todo();
+    var espera;
+    window.addEventListener('resize', function () { clearTimeout(espera); espera = setTimeout(function () { if (ultimo) pintarLineas(calcular()); }, 150); });
+    // La pestaña puede estar oculta al cargar (0 px de ancho): se repinta al mostrarla.
+    document.addEventListener('treasure:pestana-vehiculo', function (e) { if (e.detail === 'comparar') pintarLineas(calcular()); });
+})();
+</script>

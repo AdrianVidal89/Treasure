@@ -1,11 +1,23 @@
 {% extends "base.html" %}
 {% load l10n %}
+{% load static %}
 {% block title %}Simulador de Vehículo - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
 {% block content %}
 <style>
 .sim-wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+.sim-wrap.ancho { max-width: 1320px; }
+/* Pestañas del simulador de coche: préstamo y comparador. */
+.veh-pestanas { display:flex; gap:6px; margin: 0 0 22px; padding:5px; border-radius:14px; background:var(--surface); border:1px solid var(--border); width:max-content; max-width:100%; overflow-x:auto; }
+.veh-pestanas button {
+    display:inline-flex; align-items:center; gap:8px; border:none; background:none; cursor:pointer; font-family:inherit;
+    font-size:0.88rem; font-weight:700; color:var(--muted); padding:10px 16px; border-radius:10px; white-space:nowrap;
+}
+.veh-pestanas button:hover { color:var(--text-color); }
+.veh-pestanas button.activa { background:var(--primary-color); color:var(--on-primary, #fff); box-shadow:0 6px 16px -8px var(--primary-color); }
+.veh-pestanas .nuevo { font-size:0.6rem; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border-radius:999px; background:#eb6834; color:#fff; }
+.veh-panel[hidden] { display:none; }
 .sim-header { margin-bottom: 28px; }
 .sim-header h1 { margin: 0 0 6px; font-size: 1.7rem; font-weight: 700; }
 .sim-header p { color: var(--muted); margin: 0; font-size: 0.9rem; }
@@ -64,12 +76,30 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
 
 {{ sim_data|json_script:"sim-data" }}
 
-<div class="sim-wrap">
+<div class="sim-wrap" id="veh-wrap">
     <div class="tab-bar">
         <a href="{% url 'finanzas:simulador_vivienda' %}">Vivienda</a>
         <a href="{% url 'finanzas:simulador_vehiculo' %}" class="active">Vehículo</a>
     </div>
 
+    <div class="veh-pestanas" role="tablist">
+        <button type="button" role="tab" data-veh-tab="prestamo">
+            <svg class="icon"><use href="#i-car"/></svg> Préstamo: ¿cuánto coche me puedo permitir?
+        </button>
+        <button type="button" role="tab" data-veh-tab="comparar">
+            <svg class="icon"><use href="#i-evolution"/></svg> Compra vs leasing <span class="nuevo">nuevo</span>
+        </button>
+    </div>
+
+    <div class="veh-panel" id="veh-panel-comparar" hidden>
+        <div class="sim-header">
+            <h1><span class="title-gradient">Compra vs leasing</span></h1>
+            <p>Pon hasta cuatro formas de tener coche —el mismo modelo pagado distinto, u otro coche— y mira cuál sale mejor al final del periodo, contando lo que pagas, lo que incluye la cuota y lo que vale el coche al acabar.</p>
+        </div>
+        {% include "finanzas/simuladores/_comparador_vehiculo.html" %}
+    </div>
+
+    <div class="veh-panel" id="veh-panel-prestamo">
     <div class="sim-header">
         <h1><span class="title-gradient">Simulador de Vehículo</span></h1>
         <p>Calcula cuánto coche te puedes permitir con tu capital y capacidad de pago actual.</p>
@@ -252,7 +282,38 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px;
             </div>
         </div>
     </div>
+    </div>
 </div>
+
+<script>
+/* Pestañas: se recuerda la última abierta, y el enlace con #comparar la abre. */
+(function () {
+    var CLAVE = 'treasure:sim-vehiculo:pestana';
+    function abrir(cual) {
+        document.querySelectorAll('[data-veh-tab]').forEach(function (b) {
+            b.classList.toggle('activa', b.dataset.vehTab === cual);
+            b.setAttribute('aria-selected', b.dataset.vehTab === cual ? 'true' : 'false');
+        });
+        document.getElementById('veh-panel-prestamo').hidden = cual !== 'prestamo';
+        document.getElementById('veh-panel-comparar').hidden = cual !== 'comparar';
+        document.getElementById('veh-wrap').classList.toggle('ancho', cual === 'comparar');
+        try { localStorage.setItem(CLAVE, cual); } catch (e) {}
+        document.dispatchEvent(new CustomEvent('treasure:pestana-vehiculo', {detail: cual}));
+    }
+    document.querySelectorAll('[data-veh-tab]').forEach(function (b) {
+        b.addEventListener('click', function () { abrir(b.dataset.vehTab); history.replaceState(null, '', '#' + b.dataset.vehTab); });
+    });
+    var inicial = (location.hash || '').replace('#', '');
+    if (inicial !== 'prestamo' && inicial !== 'comparar') {
+        try { inicial = localStorage.getItem(CLAVE) || 'prestamo'; } catch (e) { inicial = 'prestamo'; }
+    }
+    abrir(inicial === 'comparar' ? 'comparar' : 'prestamo');
+    window.addEventListener('hashchange', function () {
+        var h = location.hash.replace('#', '');
+        if (h === 'prestamo' || h === 'comparar') abrir(h);
+    });
+})();
+</script>
 
 <script>
 const D = JSON.parse(document.getElementById('sim-data').textContent);
@@ -426,11 +487,32 @@ function actualizar() {
     }
 }
 
-['sl-precio','sl-cap-pct','sl-entrada-pct','sl-tipo','sl-plazo','sl-max-pct','sl-gastos-pct'].forEach(function(id) {
-    document.getElementById(id).addEventListener('input', actualizar);
+// Como en Vivienda: lo que tocas se queda al salir y volver.
+const ALMACEN_PRESTAMO = 'treasure:sim-vehiculo-prestamo:v1';
+const SLIDERS = ['sl-precio','sl-cap-pct','sl-entrada-pct','sl-tipo','sl-plazo','sl-max-pct','sl-gastos-pct'];
+function guardarPrestamo() {
+    const datos = {modo: modoFinanciado ? 'financiado' : 'contado', valores: {}};
+    SLIDERS.forEach(function (id) { datos.valores[id] = document.getElementById(id).value; });
+    try { localStorage.setItem(ALMACEN_PRESTAMO, JSON.stringify(datos)); } catch (e) {}
+}
+SLIDERS.forEach(function(id) {
+    document.getElementById(id).addEventListener('input', function () { actualizar(); guardarPrestamo(); });
+});
+['btn-financiado', 'btn-contado'].forEach(function (id) {
+    document.getElementById(id).addEventListener('click', guardarPrestamo);
 });
 
 (function() {
+    let guardado = null;
+    try { guardado = JSON.parse(localStorage.getItem(ALMACEN_PRESTAMO) || 'null'); } catch (e) {}
+    if (guardado && guardado.valores) {
+        Object.keys(guardado.valores).forEach(function (id) {
+            const el = document.getElementById(id);
+            if (el) el.value = guardado.valores[id];
+        });
+        setModo(guardado.modo === 'contado' ? 'contado' : 'financiado');
+        return;
+    }
     const base      = LIBRE > 0 ? LIBRE : INGRESOS;
     const maxCuota  = base * 0.20;
     const precioSug = maxPrecioCoche(maxCuota, 30, 7, 5);
