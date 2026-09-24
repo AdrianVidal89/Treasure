@@ -9,6 +9,9 @@ Pestañas del módulo de Extractos. Las categorías se gestionan desde aquí
     <a href="{% url 'finanzas:listar_categorias' %}" class="ext-nav-tab {% if activo == 'categorias' %}activa{% endif %}">
         <svg class="icon"><use href="#i-tag"/></svg> Categorías
     </a>
+    <a href="{% url 'extractos:anuales' %}{% if anio %}?anio={{ anio }}{% endif %}" class="ext-nav-tab {% if activo == 'anuales' %}activa{% endif %}">
+        <svg class="icon"><use href="#i-calendar"/></svg> Análisis gastos fijos anuales
+    </a>
     <a href="{% url 'extractos:etiquetas' %}" class="ext-nav-tab {% if activo == 'etiquetas' %}activa{% endif %}">
         <svg class="icon"><use href="#i-grip"/></svg> Etiquetas
     </a>

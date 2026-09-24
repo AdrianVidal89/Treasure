@@ -20,6 +20,7 @@ from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_G
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
 from . import reparto
+from .anuales import analizar_anuales
 from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
 from .categorizacion import categorizar, categorizar_lote
 from .models import (
@@ -3263,6 +3264,21 @@ def etiquetas(request):
         'filas': filas,
         'paleta': Etiqueta.PALETA,
         'color_sugerido': Etiqueta.color_sugerido(hogar),
+    })
+
+
+@login_required
+def anuales(request):
+    """Los fijos anuales del año: qué se declaró, qué se ha pagado y cuándo."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+    anio = _entero_o_none(request.GET.get('anio')) or date.today().year
+    datos = analizar_anuales(hogar, anio)
+    return render(request, 'extractos/anuales.html', {
+        'd': datos,
+        'grafico_json': datos['grafico'],
     })
 
 
