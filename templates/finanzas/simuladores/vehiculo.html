@@ -21,19 +21,11 @@
 .sim-header { margin-bottom: 28px; }
 .sim-header h1 { margin: 0 0 6px; font-size: 1.7rem; font-weight: 700; }
 .sim-header p { color: var(--muted); margin: 0; font-size: 0.9rem; }
-.tab-bar { display: flex; gap: 0; margin-bottom: 20px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
-.tab-bar a { flex: 1; text-align: center; padding: 10px; font-size: 0.85rem; font-weight: 600; text-decoration: none; color: var(--muted); background: var(--app-bg); transition: all 0.2s; }
-.tab-bar a.active { background: var(--primary-color); color: var(--on-primary, #fff); }
 </style>
 
 {{ sim_data|json_script:"sim-data" }}
 
 <div class="sim-wrap" id="veh-wrap">
-    <div class="tab-bar">
-        <a href="{% url 'finanzas:simulador_vivienda' %}">Vivienda</a>
-        <a href="{% url 'finanzas:simulador_vehiculo' %}" class="active">Vehículo</a>
-    </div>
-
     <div class="veh-pestanas" role="tablist">
         <button type="button" role="tab" data-veh-tab="prestamo">
             <svg class="icon"><use href="#i-car"/></svg> Préstamo: ¿cuánto coche me puedo permitir?
