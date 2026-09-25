@@ -209,7 +209,12 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
-html, body { max-width: 100%; overflow-x: hidden; }
+/* `clip` y no `hidden`: los dos cortan el desbordamiento horizontal, pero
+   `hidden` convierte a body en un contenedor de scroll que no se desplaza, y
+   entonces nada con position:sticky se queda fijo (ni la cabecera de la app ni
+   la cuenta de la hipoteca en el simulador). Quien no entienda `clip` se queda
+   con `hidden`, como antes. */
+html, body { max-width: 100%; overflow-x: hidden; overflow-x: clip; }
 
 body {
     margin: 0;

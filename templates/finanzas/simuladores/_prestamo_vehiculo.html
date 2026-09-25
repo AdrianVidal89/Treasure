@@ -1,0 +1,623 @@
+{% load static %}
+{% comment %}
+«¿Cuánto coche me puedo permitir?», con la misma forma que el simulador de
+vivienda: tu situación (con la fuente de datos a elegir), tus coches de hoy,
+lo que decides a la izquierda y lo que sale a la derecha. La cuenta está en
+static/js/prestamo_vehiculo.js.
+
+Antes el veredicto solo miraba la cuota contra unos umbrales fijos y el slider
+de «máx. % de ingresos» no lo movía: con una cuota de 1.500 € seguía diciendo
+que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
+{% endcomment %}
+
+<div class="pv">
+    <div class="sim-header">
+        <h1><span class="title-gradient">¿Cuánto coche me puedo permitir?</span></h1>
+        <p>Con tus datos reales: la cuota contra tu límite, todas tus deudas, lo que ya te cuestan tus coches y lo que te quedaría al mes. Antes de comprar, no después.</p>
+    </div>
+
+    <!-- ═══ TU SITUACIÓN ═══ -->
+    <div class="pv-card">
+        <h2>Tu situación</h2>
+        <p class="pv-hint" style="margin:-8px 0 12px;">Con qué cifras simular: lo que dice tu presupuesto, o lo que de verdad entra y sale cada mes según Evolución.</p>
+        <div class="pv-tabs" id="pv-fuentes"></div>
+        <p class="pv-hint" id="pv-fuente-detalle" style="margin:-4px 0 14px;"></p>
+        <div class="pv-ctx">
+            <div><span class="pv-lbl">Liquidez</span><b style="color:var(--info)" id="pv-ctx-liquidez">—</b>
+                {% if capital_depositos %}<small>incluye €{{ capital_depositos|floatformat:0 }} en depósitos</small>{% endif %}</div>
+            <div><span class="pv-lbl">Ingresos/mes</span><b style="color:var(--success)" id="pv-ctx-ingresos">—</b></div>
+            <div><span class="pv-lbl">Gastos/mes</span><b style="color:var(--danger)" id="pv-ctx-gastos">—</b><small>ya incluyen tus coches</small></div>
+            <div><span class="pv-lbl">Libre/mes</span><b id="pv-ctx-libre">—</b></div>
+            <div><span class="pv-lbl">Ahorras/mes</span><b id="pv-ctx-ahorro">—</b></div>
+        </div>
+        <label class="pv-campo pv-otras">
+            <span>Cuotas de préstamos que ya pagas (hipoteca incluida) <em id="pv-otras-hint"></em></span>
+            <span class="pv-entrada"><input type="number" id="pv-otras" min="0" step="10"><em>€/mes</em></span>
+        </label>
+    </div>
+
+    <!-- ═══ TUS COCHES DE HOY ═══ -->
+    <div class="pv-card">
+        <h2>Los coches que ya tienes</h2>
+        <div id="pv-vehiculos"></div>
+    </div>
+
+    <!-- ═══ LA CUENTA, FIJA ARRIBA ═══ -->
+    <div class="pv-barra" id="pv-barra">
+        <div class="pv-barra-cuenta">
+            <div class="pv-cifra"><span class="pv-lbl">Precio</span><b id="pb-precio">—</b></div>
+            <span class="pv-op">−</span>
+            <div class="pv-cifra"><span class="pv-lbl">Entrada</span><b id="pb-entrada">—</b></div>
+            <span class="pv-op">=</span>
+            <div class="pv-cifra pv-principal"><span class="pv-lbl">Préstamo</span><b id="pb-prestamo">—</b></div>
+        </div>
+        <div class="pv-barra-extra">
+            <div class="pv-cifra"><span class="pv-lbl">Cuota</span><b id="pb-cuota">—</b></div>
+            <div class="pv-cifra"><span class="pv-lbl">Coche al mes</span><b id="pb-coste">—</b><small>cuota + uso</small></div>
+            <span class="pv-chip-veredicto" id="pb-veredicto">—</span>
+        </div>
+    </div>
+
+    <div class="pv-grid">
+        <!-- ═══ LO QUE DECIDES ═══ -->
+        <div>
+            <div class="pv-card">
+                <h2>El coche</h2>
+                <div class="pv-ctrl">
+                    <div class="pv-ctrl-head"><span>Precio</span>
+                        <span class="pv-entrada pv-entrada-corta"><input type="number" id="pv-precio-num" min="1000" step="500"><em>€</em></span></div>
+                    <input type="range" id="pv-precio" min="3000" max="120000" step="500">
+                </div>
+                <div class="pv-campos">
+                    <label class="pv-campo"><span>Motor</span>
+                        <select id="pv-propulsion"></select></label>
+                    <label class="pv-campo"><span>Gastos de compra <em>(transporte, matriculación, transferencia)</em></span>
+                        <span class="pv-entrada"><input type="number" id="pv-gastos-pct" min="0" max="20" step="0.5"><em>% del precio</em></span></label>
+                </div>
+                <div class="pv-ctrl">
+                    <div class="pv-ctrl-head"><span>Kilómetros al año</span><b id="pv-lbl-km">—</b></div>
+                    <input type="range" id="pv-km" min="3000" max="50000" step="1000">
+                </div>
+                <label class="pv-check"><input type="checkbox" id="pv-carga"> Puedo cargar en casa o en el trabajo</label>
+                <p class="pv-hint" id="pv-consejo-motor"></p>
+            </div>
+
+            <div class="pv-card">
+                <h2>Cómo lo pagas</h2>
+                <div class="pv-tabs" id="pv-modo">
+                    <button type="button" data-modo="financiado" class="activa">Financiado</button>
+                    <button type="button" data-modo="contado">Al contado</button>
+                </div>
+                <div id="pv-financiacion">
+                    <div class="pv-ctrl">
+                        <div class="pv-ctrl-head"><span>Entrada que pones tú</span><b id="pv-lbl-entrada">—</b></div>
+                        <input type="range" id="pv-entrada" min="0" max="80" step="5">
+                    </div>
+                    <div class="pv-ctrl">
+                        <div class="pv-ctrl-head"><span>Interés (TIN)</span><b id="pv-lbl-tin">—</b></div>
+                        <input type="range" id="pv-tin" min="0" max="15" step="0.25">
+                    </div>
+                    <div class="pv-ctrl">
+                        <div class="pv-ctrl-head"><span>Plazo</span><b id="pv-lbl-plazo">—</b></div>
+                        <input type="range" id="pv-plazo" min="12" max="96" step="12">
+                    </div>
+                </div>
+            </div>
+
+            <div class="pv-card">
+                <h2>Tu límite</h2>
+                <div class="pv-ctrl">
+                    <div class="pv-ctrl-head"><span>Máx. cuota del coche sobre tus ingresos</span><b id="pv-lbl-max">—</b></div>
+                    <input type="range" id="pv-max" min="5" max="30" step="1">
+                    <p class="pv-hint">Lo prudente: un 10-15 %. Este límite <strong>decide</strong> el veredicto y el precio máximo: si la cuota lo pasa, la respuesta es no.</p>
+                </div>
+            </div>
+
+            <div class="pv-card">
+                <h2>Coste de tenerlo</h2>
+                <p class="pv-hint" style="margin-top:-8px;">Aparte de la cuota. Se sugiere por el precio, el motor y los km; si sabes lo que te costará, escríbelo y manda tu cifra.</p>
+                <div id="pv-uso"></div>
+                <div class="pv-uso-total"><span>Total al mes</span><strong id="pv-uso-total">—</strong></div>
+            </div>
+        </div>
+
+        <!-- ═══ LO QUE SALE ═══ -->
+        <div>
+            <div class="pv-card">
+                <h2>¿Te lo puedes permitir?</h2>
+                <div class="pv-veredicto" id="pv-veredicto">
+                    <div class="pv-veredicto-icono"></div>
+                    <div><div class="pv-veredicto-titulo" id="pv-ver-titulo">—</div><div class="pv-veredicto-sub" id="pv-ver-sub"></div></div>
+                </div>
+                <ul class="pv-reglas" id="pv-reglas"></ul>
+                <div class="pv-aviso pv-aviso-rojo" id="pv-cuando" hidden></div>
+            </div>
+
+            <div class="pv-card" id="pv-card-prestamo">
+                <h2 id="pv-titulo-prestamo">El préstamo que pides</h2>
+                <div class="pv-grande" id="pv-prestamo">—</div>
+                <div class="pv-frase" id="pv-frase"></div>
+                <div class="pv-res">
+                    <div><span class="pv-lbl">Intereses</span><b id="pv-intereses">—</b><small id="pv-intereses-sub"></small></div>
+                    <div><span class="pv-lbl">Pagas en total</span><b id="pv-total">—</b><small>entrada + cuotas + gastos</small></div>
+                    <div><span class="pv-lbl">Te quedan de liquidez</span><b id="pv-queda">—</b><small id="pv-queda-sub"></small></div>
+                </div>
+            </div>
+
+            <div class="pv-card">
+                <h2>Tu techo</h2>
+                <div class="pv-techo">
+                    <div class="pv-headline"><span class="pv-lbl">Recomendado · todo en verde</span><b id="pv-techo-rec">—</b></div>
+                    <div class="pv-headline"><span class="pv-lbl">Como mucho · sin nada en rojo</span><b id="pv-techo-lim">—</b></div>
+                </div>
+                <p class="pv-hint" id="pv-techo-sub"></p>
+            </div>
+
+            <div class="pv-card">
+                <h2>¿Qué coche te encaja?</h2>
+                <div class="pv-segmentos" id="pv-segmentos"></div>
+            </div>
+
+            <div class="pv-card">
+                <h2>Tu mes, después de comprar</h2>
+                <div class="pv-tabla" id="pv-mes"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="pv-card">
+        <h2>Consejos para esta compra</h2>
+        <ul class="pv-consejos" id="pv-consejos"></ul>
+    </div>
+</div>
+
+<style>
+.pv .sim-header h1 { margin: 0 0 6px; font-size: 1.6rem; }
+.pv .sim-header p { color: var(--muted); font-size: 0.88rem; margin: 0 0 20px; max-width: 75ch; }
+.pv-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; margin-bottom: 18px; }
+.pv-card h2 { font-size: 1rem; margin: 0 0 16px; }
+.pv-hint { font-size: 0.76rem; color: var(--muted); line-height: 1.5; margin: 8px 0 0; }
+.pv-lbl { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 700; }
+.pv-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.pv-tabs button {
+    padding: 7px 13px; font-size: 0.8rem; font-weight: 600; border-radius: 8px; cursor: pointer; font-family: inherit;
+    border: 1px solid var(--border); background: var(--app-bg); color: var(--muted);
+}
+.pv-tabs button.activa { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 12%, transparent); color: var(--primary-color); }
+.pv-tabs button:disabled { opacity: .45; cursor: not-allowed; }
+.pv-ctx { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 14px; margin-bottom: 14px; }
+.pv-ctx b { display: block; font-size: 1.25rem; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.pv-ctx small { font-size: 0.68rem; color: var(--muted); }
+.pv-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.pv-campo { display: flex; flex-direction: column; gap: 5px; font-size: 0.76rem; color: var(--muted); }
+.pv-campo em { font-style: normal; opacity: .8; }
+.pv-campo select { background: var(--input-bg); color: var(--text-color); border: 1px solid var(--border-strong); border-radius: 9px; padding: 8px 10px; font-size: 0.86rem; }
+.pv-otras { max-width: 420px; }
+.pv-entrada { display: flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 9px; background: var(--input-bg); overflow: hidden; }
+.pv-entrada:focus-within { border-color: var(--primary-color); }
+.pv-entrada input { flex: 1; min-width: 0; width: 100%; border: none; background: transparent; color: var(--text-color); padding: 8px 10px; font-size: 0.88rem; font-variant-numeric: tabular-nums; outline: none; font-family: inherit; }
+.pv-entrada em { font-style: normal; font-size: 0.72rem; color: var(--muted); padding: 0 10px 0 2px; white-space: nowrap; }
+.pv-entrada-corta { width: 140px; }
+.pv-ctrl { margin-bottom: 16px; }
+.pv-ctrl-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 0.82rem; color: var(--muted); }
+.pv-ctrl-head b { color: var(--text-color); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pv-ctrl input[type=range] { width: 100%; margin: 0; accent-color: var(--primary-color); }
+.pv-check { display: flex; gap: 8px; align-items: center; font-size: 0.84rem; cursor: pointer; }
+.pv-check input { width: 16px; height: 16px; accent-color: var(--primary-color); }
+
+.pv-vehiculo { display: grid; grid-template-columns: 1fr auto; gap: 6px 14px; padding: 12px 14px; border-radius: 12px; background: var(--app-bg); border: 1px solid var(--border); margin-bottom: 8px; }
+.pv-vehiculo.vendido { border-color: var(--success); background: color-mix(in srgb, var(--success) 7%, transparent); }
+.pv-vehiculo-nombre { font-weight: 700; }
+.pv-vehiculo-meta { font-size: 0.74rem; color: var(--muted); }
+.pv-vehiculo-coste { text-align: right; font-variant-numeric: tabular-nums; }
+.pv-vehiculo-coste b { font-size: 1.05rem; }
+.pv-vehiculo-coste small { display: block; font-size: 0.7rem; color: var(--muted); }
+.pv-vehiculo-venta { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.8rem; }
+.pv-vehiculo-venta .pv-entrada { width: 150px; }
+
+.pv-barra {
+    position: sticky; top: 70px; z-index: 50; display: flex; justify-content: space-between; gap: 12px 24px; align-items: center; flex-wrap: wrap;
+    padding: 12px 20px; margin-bottom: 18px; border-radius: 16px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px);
+    border: 1px solid var(--border); box-shadow: 0 10px 30px -18px rgba(0,0,0,.35);
+}
+.pv-barra-cuenta, .pv-barra-extra { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.pv-cifra { display: flex; flex-direction: column; }
+.pv-cifra b { font-size: 1.1rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pv-cifra small { font-size: 0.68rem; color: var(--muted); }
+.pv-op { font-size: 1.25rem; color: var(--muted); }
+.pv-principal { padding: 3px 12px; border-radius: 11px; background: color-mix(in srgb, var(--info) 12%, transparent); border: 1px solid color-mix(in srgb, var(--info) 35%, transparent); }
+.pv-principal b { font-size: 1.4rem; color: var(--info); }
+.pv-chip-veredicto { font-size: 0.78rem; font-weight: 800; padding: 6px 12px; border-radius: 999px; color: #fff; background: var(--muted); white-space: nowrap; }
+.pv-chip-veredicto.verde { background: var(--success); } .pv-chip-veredicto.ambar { background: var(--warning); } .pv-chip-veredicto.rojo { background: var(--danger); }
+
+.pv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 18px; align-items: start; }
+
+.pv-veredicto { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 12px; margin-bottom: 14px; }
+.pv-veredicto-icono { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+.pv-veredicto-titulo { font-weight: 800; font-size: 1.05rem; }
+.pv-veredicto-sub { font-size: 0.8rem; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+.pv-veredicto.verde { background: color-mix(in srgb, var(--success) 9%, transparent); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); }
+.pv-veredicto.verde .pv-veredicto-icono { background: var(--success); } .pv-veredicto.verde .pv-veredicto-titulo { color: var(--success); }
+.pv-veredicto.ambar { background: color-mix(in srgb, var(--warning) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warning) 32%, transparent); }
+.pv-veredicto.ambar .pv-veredicto-icono { background: var(--warning); } .pv-veredicto.ambar .pv-veredicto-titulo { color: var(--warning); }
+.pv-veredicto.rojo { background: color-mix(in srgb, var(--danger) 9%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); }
+.pv-veredicto.rojo .pv-veredicto-icono { background: var(--danger); } .pv-veredicto.rojo .pv-veredicto-titulo { color: var(--danger); }
+.pv-reglas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pv-reglas li { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 9px 12px; border-radius: 10px; background: var(--app-bg); font-size: 0.8rem; line-height: 1.45; }
+.pv-reglas li b { display: block; font-size: 0.84rem; }
+.pv-reglas li span.detalle { color: var(--muted); }
+.pv-reglas .icono { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 0.8rem; color: #fff; }
+.pv-reglas .si .icono { background: var(--success); } .pv-reglas .reservas .icono { background: var(--warning); } .pv-reglas .no .icono { background: var(--danger); }
+.pv-reglas li.no { box-shadow: inset 3px 0 0 var(--danger); } .pv-reglas li.reservas { box-shadow: inset 3px 0 0 var(--warning); }
+.pv-aviso { border-radius: 10px; padding: 11px 14px; font-size: 0.82rem; line-height: 1.5; margin-top: 12px; }
+.pv-aviso[hidden] { display: none; }
+.pv-aviso-rojo { background: color-mix(in srgb, var(--danger) 9%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); }
+
+.pv-grande { font-size: 2.2rem; font-weight: 800; color: var(--info); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.pv-frase { font-size: 0.86rem; color: var(--muted); margin: 6px 0 14px; line-height: 1.5; }
+.pv-frase strong { color: var(--text-color); }
+.pv-res { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 10px; }
+.pv-res > div { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; }
+.pv-res b { display: block; font-size: 1.05rem; font-variant-numeric: tabular-nums; margin-top: 3px; }
+.pv-res small { font-size: 0.68rem; color: var(--muted); }
+.pv-techo { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pv-headline b { display: block; font-size: 1.9rem; font-weight: 800; color: var(--success); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.pv-headline:last-child b { color: var(--warning); }
+
+.pv-segmentos { display: flex; flex-direction: column; gap: 6px; }
+.pv-seg { display: grid; grid-template-columns: 110px 1fr; gap: 10px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border); font-size: 0.8rem; align-items: center; }
+.pv-seg b { font-variant-numeric: tabular-nums; }
+.pv-seg .que { color: var(--muted); }
+.pv-seg .que strong { color: var(--text-color); display: block; }
+.pv-seg.alcance { border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+.pv-seg.tuyo { border-color: var(--success); background: color-mix(in srgb, var(--success) 10%, transparent); box-shadow: 0 0 0 1px var(--success); }
+.pv-seg.fuera { opacity: .45; }
+.pv-seg .marca { font-size: 0.62rem; text-transform: uppercase; font-weight: 800; letter-spacing: .05em; color: var(--success); }
+.pv-seg .marca.elegido { color: var(--info); }
+
+.pv-tabla { font-size: 0.84rem; }
+.pv-tabla .fila { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--surface-2); }
+.pv-tabla .fila.total { font-weight: 800; border-top: 1px solid var(--border); border-bottom: none; }
+.pv-tabla .k { color: var(--muted); } .pv-tabla .fila.total .k { color: var(--text-color); }
+.pv-tabla .v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.pv-uso-fila { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--surface-2); }
+.pv-uso-nombre { flex: 1; min-width: 0; font-size: 0.85rem; }
+.pv-uso-nombre small { display: block; font-size: 0.7rem; color: var(--muted); margin-top: 2px; }
+.pv-uso-nombre button { border: none; background: none; padding: 0; margin-left: 6px; font: inherit; color: var(--info); cursor: pointer; text-decoration: underline; }
+.pv-uso-fila .pv-entrada { width: 130px; flex-shrink: 0; }
+.pv-uso-fila .pv-entrada.manual { border-color: var(--info); }
+.pv-uso-total { display: flex; justify-content: space-between; margin-top: 10px; font-size: 0.86rem; }
+.pv-uso-total strong { color: var(--warning); font-variant-numeric: tabular-nums; }
+
+.pv-consejos { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; font-size: 0.86rem; line-height: 1.5; }
+.pv-consejos li::marker { color: var(--primary-color); }
+.pv-consejos li.fuerte { font-weight: 600; }
+
+@media (max-width: 760px) {
+    .pv-barra { top: 66px; padding: 8px 12px; flex-wrap: nowrap; gap: 10px; }
+    .pv-barra-extra { gap: 8px; flex-wrap: nowrap; }
+    .pv-principal { padding: 2px 8px; } .pv-principal b { font-size: 1.1rem; }
+    .pv-cifra b { font-size: 0.95rem; }
+    .pv-chip-veredicto { font-size: 0.68rem; padding: 5px 8px; white-space: normal; text-align: center; max-width: 92px; }
+    .pv-barra-cuenta > .pv-cifra:not(.pv-principal), .pv-op, .pv-barra-extra .pv-cifra:nth-child(2) { display: none; }
+    .pv-campos, .pv-techo { grid-template-columns: 1fr; }
+    .pv-seg { grid-template-columns: 1fr; }
+}
+</style>
+
+<script src="{% static 'js/prestamo_vehiculo.js' %}"></script>
+<script>
+(function () {
+    'use strict';
+    var P = window.PrestamoVehiculo;
+    var D = JSON.parse(document.getElementById('sim-data').textContent);
+    var ALMACEN = 'treasure:sim-vehiculo-prestamo:v2';
+    var $ = function (id) { return document.getElementById(id); };
+    var fmt = function (n) { return Math.round(n || 0).toLocaleString('es-ES') + ' €'; };
+    var pct = function (n) { return isFinite(n) ? n.toLocaleString('es-ES', {maximumFractionDigits: 1}) + ' %' : '—'; };
+    function esc(t) { var s = document.createElement('span'); s.textContent = t == null ? '' : String(t); return s.innerHTML; }
+
+    var FUENTES = D.fuentes || {presupuesto: {clave: 'presupuesto', etiqueta: 'Presupuesto', detalle: '', disponible: true,
+        ingresos: D.ingresos_netos_mensuales, gastos: D.gastos_totales_mensuales, ahorro: D.ahorro_mensual_estimado}};
+    var VEHICULOS = D.vehiculos || [];
+    var USO = [
+        {clave: 'seguro_anual', etiqueta: 'Seguro', unidad: '€/año', concepto: 'seguro', anual: true},
+        {clave: 'energia_mensual', etiqueta: 'Combustible o carga', unidad: '€/mes', concepto: 'energia'},
+        {clave: 'mantenimiento_anual', etiqueta: 'Mantenimiento y neumáticos', unidad: '€/año', concepto: 'mantenimiento', anual: true},
+        {clave: 'impuestos_anual', etiqueta: 'Impuesto de circulación e ITV', unidad: '€/año', concepto: 'impuestos', anual: true},
+        {clave: 'parking_mensual', etiqueta: 'Parking y peajes', unidad: '€/mes', concepto: 'parking'},
+    ];
+
+    // ── Estado (se guarda en el navegador, como en Vivienda) ─────────────
+    var S = {
+        fuente: 'presupuesto', precio: 25000, propulsion: 'hibrido', gastos_pct: 2, km: 15000, carga: false,
+        contado: false, entrada: 20, tin: 7, plazo: 60, max: 15,
+        otras: null, uso: {}, vendidos: {},
+    };
+    try {
+        var guardado = JSON.parse(localStorage.getItem(ALMACEN) || 'null');
+        if (guardado) S = Object.assign(S, guardado);
+    } catch (e) {}
+    if (!FUENTES[S.fuente] || !FUENTES[S.fuente].disponible) S.fuente = 'presupuesto';
+    function guardar() { try { localStorage.setItem(ALMACEN, JSON.stringify(S)); } catch (e) {} }
+
+    // ── Controles ────────────────────────────────────────────────────────
+    var sel = $('pv-propulsion');
+    Object.keys(P.PROPULSIONES).forEach(function (k) {
+        var o = document.createElement('option'); o.value = k; o.textContent = P.PROPULSIONES[k].nombre; sel.appendChild(o);
+    });
+    function pintarFuentes() {
+        var bar = $('pv-fuentes'); bar.innerHTML = '';
+        ['presupuesto', 'media', 'mediana', 'ultimo'].forEach(function (k) {
+            var f = FUENTES[k]; if (!f) return;
+            var b = document.createElement('button');
+            b.type = 'button'; b.textContent = f.etiqueta; b.disabled = !f.disponible;
+            b.title = f.disponible ? f.detalle : f.detalle;
+            if (k === S.fuente) b.classList.add('activa');
+            b.addEventListener('click', function () { S.fuente = k; pintarFuentes(); todo(); });
+            bar.appendChild(b);
+        });
+    }
+    var enlaces = [
+        ['pv-precio', 'precio'], ['pv-precio-num', 'precio'], ['pv-km', 'km'], ['pv-gastos-pct', 'gastos_pct'],
+        ['pv-entrada', 'entrada'], ['pv-tin', 'tin'], ['pv-plazo', 'plazo'], ['pv-max', 'max'],
+    ];
+    enlaces.forEach(function (par) {
+        $(par[0]).addEventListener('input', function (e) { S[par[1]] = parseFloat(e.target.value) || 0; todo(par[0]); });
+    });
+    sel.addEventListener('change', function () { S.propulsion = sel.value; todo(); });
+    $('pv-carga').addEventListener('change', function (e) { S.carga = e.target.checked; todo(); });
+    $('pv-otras').addEventListener('input', function (e) { S.otras = e.target.value === '' ? null : parseFloat(e.target.value) || 0; todo('pv-otras'); });
+    $('pv-modo').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-modo]'); if (!b) return;
+        S.contado = b.dataset.modo === 'contado'; todo();
+    });
+
+    // Tus coches: vender o no
+    function pintarVehiculos() {
+        var caja = $('pv-vehiculos');
+        if (!VEHICULOS.length) {
+            caja.innerHTML = '<p class="pv-hint" style="margin:0">No tienes coches dados de alta. Si ya tienes uno, añádelo en ' +
+                '<a href="{% url "finanzas:listar_vehiculos" %}">Vehículos</a> e imputa sus gastos: así el simulador sabe lo que ya te cuesta y puede contar con venderlo.</p>';
+            return;
+        }
+        caja.innerHTML = VEHICULOS.map(function (v) {
+            var vend = S.vendidos[v.id];
+            var real = v.real_mensual != null ? ' · real ' + fmt(v.real_mensual) + '/mes' : '';
+            return '<div class="pv-vehiculo' + (vend ? ' vendido' : '') + '" data-id="' + v.id + '">' +
+                '<div><div class="pv-vehiculo-nombre">' + esc(v.nombre) + '</div><div class="pv-vehiculo-meta">' +
+                esc([v.tipo, v.modelo].filter(Boolean).join(' · ')) + (v.valor_actual ? ' · vale ' + fmt(v.valor_actual) : '') + '</div></div>' +
+                '<div class="pv-vehiculo-coste"><b>' + fmt(v.uso_mensual + v.cuota_prestamo) + '/mes</b><small>' +
+                (v.cuota_prestamo ? 'cuota ' + fmt(v.cuota_prestamo) + ' + ' : '') + 'uso ' + fmt(v.uso_mensual) + real + '</small></div>' +
+                '<div class="pv-vehiculo-venta"><label class="pv-check"><input type="checkbox" data-vender ' + (vend ? 'checked' : '') +
+                '> Lo vendo al comprar el nuevo</label>' +
+                (vend ? '<span>por</span><span class="pv-entrada"><input type="number" data-venta min="0" step="100" value="' +
+                        (vend.venta != null ? vend.venta : v.valor_actual) + '"><em>€ netos</em></span>' +
+                        '<span class="pv-hint" style="margin:0">Su cuota y sus gastos dejan de salir; lo que saques entra como capital (si tiene préstamo, pon lo que te queda tras cancelarlo).</span>' : '') +
+                '</div></div>';
+        }).join('');
+    }
+    $('pv-vehiculos').addEventListener('change', function (e) {
+        var fila = e.target.closest('.pv-vehiculo'); if (!fila) return;
+        var v = VEHICULOS.find(function (x) { return String(x.id) === fila.dataset.id; });
+        if (e.target.matches('[data-vender]')) {
+            if (e.target.checked) S.vendidos[v.id] = {venta: v.valor_actual};
+            else delete S.vendidos[v.id];
+            pintarVehiculos(); todo();
+        }
+    });
+    $('pv-vehiculos').addEventListener('input', function (e) {
+        if (!e.target.matches('[data-venta]')) return;
+        var fila = e.target.closest('.pv-vehiculo');
+        S.vendidos[fila.dataset.id] = {venta: parseFloat(e.target.value) || 0};
+        todo('venta');
+    });
+
+    // Coste de tenerlo
+    function sugerido() { return P.sugerenciasUso(S.precio, S.km, S.propulsion); }
+    function valorUso(clave) { return S.uso[clave] != null ? S.uso[clave] : sugerido()[clave]; }
+    function usoActual() { var u = {}; USO.forEach(function (r) { u[r.clave] = valorUso(r.clave); }); return u; }
+    function pintarUso() {
+        var sug = sugerido();
+        var html = USO.map(function (r) {
+            var manual = S.uso[r.clave] != null;
+            // Lo que ya gastas en ese concepto en tus coches, como referencia.
+            var tuyos = VEHICULOS.filter(function (v) { return v.conceptos && v.conceptos[r.concepto]; }).map(function (v) {
+                var mensual = v.conceptos[r.concepto];
+                var enUnidad = r.anual ? mensual * 12 : mensual;
+                return v.nombre + ': ' + fmt(enUnidad) + ' <button type="button" data-copiar="' + r.clave + '" data-valor="' + Math.round(enUnidad) + '">usar</button>';
+            });
+            return '<div class="pv-uso-fila"><div class="pv-uso-nombre">' + r.etiqueta +
+                '<small>' + (manual ? 'Tu cifra · sugerido ' + fmt(sug[r.clave]) + ' <button type="button" data-reset="' + r.clave + '">usar sugerido</button>'
+                                    : 'Sugerido para este coche') +
+                (tuyos.length ? '<br>Hoy pagas: ' + tuyos.join(' · ') : '') + '</small></div>' +
+                '<span class="pv-entrada' + (manual ? ' manual' : '') + '"><input type="number" min="0" step="10" data-uso="' + r.clave + '" value="' +
+                Math.round(valorUso(r.clave)) + '"><em>' + r.unidad + '</em></span></div>';
+        }).join('');
+        $('pv-uso').innerHTML = html;
+    }
+    $('pv-uso').addEventListener('input', function (e) {
+        if (!e.target.dataset.uso) return;
+        S.uso[e.target.dataset.uso] = e.target.value === '' ? null : parseFloat(e.target.value) || 0;
+        todo('uso');
+    });
+    $('pv-uso').addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        if (b.dataset.reset) delete S.uso[b.dataset.reset];
+        if (b.dataset.copiar) S.uso[b.dataset.copiar] = parseFloat(b.dataset.valor) || 0;
+        todo();
+    });
+
+    // ── La cuenta ────────────────────────────────────────────────────────
+    function entradaMotor(precio, usoMensual) {
+        var f = FUENTES[S.fuente] || FUENTES.presupuesto;
+        var liberadoCuota = 0, liberadoUso = 0, venta = 0, cochesHoy = 0;
+        VEHICULOS.forEach(function (v) {
+            cochesHoy += v.uso_mensual + v.cuota_prestamo;
+            var vend = S.vendidos[v.id];
+            if (vend) { liberadoCuota += v.cuota_prestamo; liberadoUso += v.uso_mensual; venta += vend.venta || 0; }
+        });
+        return {
+            precio: precio, entrada_pct: S.entrada, tin: S.tin, meses: S.plazo, contado: S.contado,
+            gastos_compra_pct: S.gastos_pct, uso_mensual: usoMensual,
+            ingresos: f.ingresos, gastos: f.gastos, liquidez: D.capital_liquidez, venta: venta,
+            otras_cuotas: S.otras != null ? S.otras : (D.otras_cuotas || 0),
+            liberado_cuota: liberadoCuota, liberado_uso: liberadoUso, coste_coches_hoy: cochesHoy,
+            max_pct: S.max, colchon_meses: 6,
+        };
+    }
+
+    function todo(origen) {
+        var f = FUENTES[S.fuente] || FUENTES.presupuesto;
+        // Controles con el estado
+        if (origen !== 'pv-precio') $('pv-precio').value = Math.min(S.precio, 120000);
+        if (origen !== 'pv-precio-num') $('pv-precio-num').value = S.precio;
+        $('pv-km').value = S.km; $('pv-gastos-pct').value = S.gastos_pct; $('pv-entrada').value = S.entrada;
+        $('pv-tin').value = S.tin; $('pv-plazo').value = S.plazo; $('pv-max').value = S.max;
+        sel.value = S.propulsion; $('pv-carga').checked = S.carga;
+        if (origen !== 'pv-otras') $('pv-otras').value = S.otras != null ? S.otras : Math.round(D.otras_cuotas || 0);
+        $('pv-otras-hint').textContent = D.otras_cuotas > 0 ? '(de tu presupuesto: ' + fmt(D.otras_cuotas) + '/mes)' : '(no hay ninguna en tu presupuesto)';
+        document.querySelectorAll('#pv-modo [data-modo]').forEach(function (b) {
+            b.classList.toggle('activa', (b.dataset.modo === 'contado') === S.contado);
+        });
+        $('pv-financiacion').hidden = S.contado;
+        if (origen !== 'uso') pintarUso();
+
+        // Situación
+        $('pv-fuente-detalle').textContent = f.detalle;
+        $('pv-ctx-liquidez').textContent = fmt(D.capital_liquidez);
+        $('pv-ctx-ingresos').textContent = fmt(f.ingresos);
+        $('pv-ctx-gastos').textContent = fmt(f.gastos);
+        $('pv-ctx-libre').textContent = fmt(f.ingresos - f.gastos);
+        $('pv-ctx-libre').style.color = f.ingresos - f.gastos < 0 ? 'var(--danger)' : 'var(--warning)';
+        $('pv-ctx-ahorro').textContent = fmt(f.ahorro);
+
+        var u = usoActual();
+        var usoMes = P.usoMensual(u);
+        $('pv-uso-total').textContent = fmt(usoMes) + '/mes';
+        var e = entradaMotor(S.precio, usoMes);
+        var r = P.evaluar(e);
+
+        $('pv-lbl-km').textContent = S.km.toLocaleString('es-ES') + ' km';
+        $('pv-lbl-entrada').textContent = S.entrada + ' % · ' + fmt(r.entrada);
+        $('pv-lbl-tin').textContent = pct(S.tin);
+        $('pv-lbl-plazo').textContent = S.plazo + ' meses (' + (S.plazo / 12).toLocaleString('es-ES', {maximumFractionDigits: 1}) + ' años)';
+        $('pv-lbl-max').textContent = S.max + ' % · ' + fmt(f.ingresos * S.max / 100) + '/mes';
+        var motor = P.consejoPropulsion(S.km, S.carga);
+        $('pv-consejo-motor').innerHTML = (motor.rec !== S.propulsion ? '<strong>Para tu uso encaja mejor: ' + P.PROPULSIONES[motor.rec].nombre.toLowerCase() + '.</strong> ' : '') + motor.texto;
+
+        // Barra fija
+        $('pb-precio').textContent = fmt(r.precio);
+        $('pb-entrada').textContent = fmt(r.entrada);
+        $('pb-prestamo').textContent = S.contado ? 'al contado' : fmt(r.prestamo);
+        $('pb-cuota').textContent = S.contado ? '—' : fmt(r.cuota) + '/mes';
+        $('pb-coste').textContent = fmt(r.coste_mensual) + '/mes';
+        var chip = $('pb-veredicto');
+        chip.className = 'pv-chip-veredicto ' + r.veredicto.clase;
+        chip.textContent = r.veredicto.clase === 'verde' ? 'Te lo puedes permitir' : r.veredicto.clase === 'ambar' ? 'Con reservas' : 'No te lo puedes permitir';
+
+        // Veredicto y reglas
+        var ver = $('pv-veredicto');
+        ver.className = 'pv-veredicto ' + r.veredicto.clase;
+        $('pv-ver-titulo').textContent = r.veredicto.titulo;
+        $('pv-ver-sub').textContent = r.veredicto.fallan.length
+            ? (r.veredicto.clase === 'rojo' ? 'Falla: ' : 'A vigilar: ') + r.veredicto.fallan.join(', ').toLowerCase() + '.'
+            : 'Cumple todas las reglas de abajo.';
+        $('pv-reglas').innerHTML = r.reglas.map(function (x) {
+            var icono = x.estado === 'si' ? '✓' : (x.estado === 'reservas' ? '!' : '✕');
+            return '<li class="' + x.estado + '"><span class="icono">' + icono + '</span><div><b>' + esc(x.titulo) + '</b><span class="detalle">' + esc(x.detalle) + '</span></div></li>';
+        }).join('');
+        var cuando = $('pv-cuando');
+        if (r.queda_capital < 0) {
+            var meses = P.mesesHastaReunir(-r.queda_capital, f.ahorro);
+            cuando.hidden = false;
+            cuando.innerHTML = '<strong>Te faltan ' + fmt(-r.queda_capital) + '.</strong> ' + (meses === null
+                ? 'Con tu ahorro actual no llegas: ahorra más o baja el precio.'
+                : 'A tu ritmo de ahorro (' + fmt(f.ahorro) + '/mes) los reúnes en ' + meses + ' mes' + (meses === 1 ? '' : 'es') + '.');
+        } else {
+            cuando.hidden = true;
+        }
+
+        // Préstamo
+        $('pv-titulo-prestamo').textContent = S.contado ? 'Lo pagas al contado' : 'El préstamo que pides';
+        $('pv-prestamo').textContent = S.contado ? fmt(r.precio + r.gastos_compra) : fmt(r.prestamo);
+        $('pv-frase').innerHTML = S.contado
+            ? 'Precio <strong>' + fmt(r.precio) + '</strong> + gastos <strong>' + fmt(r.gastos_compra) + '</strong>, de una vez, sin intereses.'
+            : '<strong>' + fmt(r.precio) + '</strong> de precio − <strong>' + fmt(r.entrada) + '</strong> de entrada = <strong>' + fmt(r.prestamo) +
+              '</strong> a ' + r.meses + ' meses al ' + pct(S.tin) + ': <strong>' + fmt(r.cuota) + '/mes</strong>. Más ' + fmt(r.uso) + '/mes de usarlo: <strong>' + fmt(r.coste_mensual) + '/mes</strong> en total.';
+        $('pv-intereses').textContent = S.contado ? '0 €' : fmt(r.intereses);
+        $('pv-intereses-sub').textContent = S.contado || !r.prestamo ? '' : pct(r.intereses / r.prestamo * 100) + ' de lo que pides';
+        $('pv-total').textContent = fmt(r.entrada + r.total_devuelto + r.gastos_compra);
+        $('pv-queda').textContent = fmt(r.queda_capital);
+        $('pv-queda').style.color = r.queda_capital < 0 ? 'var(--danger)' : (r.queda_capital < r.colchon ? 'var(--warning)' : 'var(--success)');
+        $('pv-queda-sub').textContent = 'colchón recomendado: ' + fmt(r.colchon);
+
+        // Techo: las mismas reglas, buscando el precio
+        var usoPara = function (precio) {
+            var sug = P.sugerenciasUso(precio, S.km, S.propulsion);
+            var uu = {}; USO.forEach(function (x) { uu[x.clave] = S.uso[x.clave] != null ? S.uso[x.clave] : sug[x.clave]; });
+            return P.usoMensual(uu);
+        };
+        var techo = P.precioMaximo(e, usoPara);
+        $('pv-techo-rec').textContent = fmt(techo.recomendado);
+        $('pv-techo-lim').textContent = fmt(techo.limite);
+        $('pv-techo-sub').textContent = (S.contado ? 'Al contado' : 'Con ' + S.entrada + ' % de entrada, ' + S.plazo + ' meses al ' + pct(S.tin)) +
+            ', tu límite de cuota del ' + S.max + ' % y los costes de uso de un ' + P.PROPULSIONES[S.propulsion].nombre.toLowerCase() +
+            ' con ' + S.km.toLocaleString('es-ES') + ' km/año. Cambia cualquiera de ellos y se recalcula.';
+        if (!techo.recomendado || !techo.limite) {
+            // Ni el coche más barato pasa: se dice qué regla lo impide, que es
+            // lo que hay que cambiar (vender el otro coche, reducir deudas…).
+            var barato = P.evaluar(Object.assign({}, e, {precio: 1000, uso_mensual: usoPara(1000)}));
+            var bloquean = barato.reglas.filter(function (x) { return techo.limite ? x.estado !== 'si' : x.estado === 'no'; });
+            if (bloquean.length) {
+                $('pv-techo-sub').textContent = 'Ni un coche de 1.000 € pasaría ' + (techo.limite ? 'en verde' : 'sin rojos') +
+                    ': ' + bloquean.map(function (x) { return x.titulo.toLowerCase(); }).join(', ') + '. ' +
+                    (VEHICULOS.length ? '¿Y si vendes el que tienes? Márcalo arriba.' : 'Hay que liberar ingresos o deudas antes de comprar.');
+            }
+        }
+
+        // Segmentos
+        var segRec = P.segmento(techo.recomendado), segLim = P.segmento(techo.limite), segSel = P.segmento(S.precio);
+        var desde = 0;
+        $('pv-segmentos').innerHTML = P.SEGMENTOS.map(function (s, i) {
+            var rango = (i === P.SEGMENTOS.length - 1) ? 'más de ' + fmt(desde) : fmt(desde) + '–' + fmt(s.hasta);
+            desde = s.hasta;
+            // Hasta tu segmento recomendado, a tu alcance; entre el recomendado
+            // y el límite, apurando; por encima del límite, fuera.
+            var hayRec = techo.recomendado > 0, hayLim = techo.limite > 0;
+            var clase = hayRec && i === segRec ? 'tuyo' : (hayRec && i < segRec ? 'alcance' : (hayLim && i <= segLim ? '' : 'fuera'));
+            var marca = hayRec && i === segRec ? '<span class="marca">tu segmento</span>'
+                      : (hayLim && i <= segLim && (!hayRec || i > segRec) ? '<span class="marca" style="color:var(--warning)">apurando</span>' : '');
+            if (i === segSel) marca += ' <span class="marca elegido">el que simulas</span>';
+            return '<div class="pv-seg ' + clase + '"><b>' + rango + '</b><div class="que"><strong>' + s.nombre + ' ' + marca + '</strong>' + s.que + '</div></div>';
+        }).join('');
+
+        // Tu mes
+        var liberado = e.liberado_cuota + e.liberado_uso;
+        var filas = [
+            ['Ingresos', fmt(f.ingresos)],
+            ['− Gastos de hoy (con tus coches)', fmt(f.gastos)],
+            ['= Libre hoy', fmt(r.libre_hoy), true],
+        ];
+        if (liberado > 0) filas.push(['+ Lo que deja de costar el coche que vendes', fmt(liberado)]);
+        if (!S.contado) filas.push(['− Cuota del coche nuevo', fmt(r.cuota)]);
+        filas.push(['− Usar el coche nuevo', fmt(r.uso)]);
+        filas.push(['= Te quedaría libre', '<span style="color:' + (r.libre_despues < 0 ? 'var(--danger)' : 'var(--success)') + '">' + fmt(r.libre_despues) + '</span>', true]);
+        $('pv-mes').innerHTML = filas.map(function (x) {
+            return '<div class="fila' + (x[2] ? ' total' : '') + '"><span class="k">' + x[0] + '</span><span class="v">' + x[1] + '</span></div>';
+        }).join('');
+
+        // Consejos
+        var lista = P.consejos(e, r);
+        $('pv-consejos').innerHTML = lista.map(function (t, i) { return '<li' + (i < lista.length - 4 ? ' class="fuerte"' : '') + '>' + esc(t) + '</li>'; }).join('');
+
+        guardar();
+    }
+
+    pintarFuentes();
+    pintarVehiculos();
+    todo();
+})();
+</script>

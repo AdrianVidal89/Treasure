@@ -76,6 +76,27 @@
         {% endif %}
     </div>
 
+    <!-- ═══ LA CUENTA, SIEMPRE A LA VISTA ═════════════════════════════════
+         Toques lo que toques, arriba se lee lo que vas a pedir al banco. Antes
+         la pantalla hablaba de cuotas y ratios y el importe del préstamo solo
+         salía de refilón, en letra pequeña. -->
+    <div class="hip-barra" id="hip-barra" aria-live="polite">
+        <div class="hip-cuenta">
+            <div class="hip-cifra"><span class="hip-lbl">Precio</span><b id="hb-precio">—</b></div>
+            <span class="hip-op">−</span>
+            <div class="hip-cifra"><span class="hip-lbl">Entrada · pones tú</span><b id="hb-entrada">—</b><small id="hb-entrada-pct"></small></div>
+            <span class="hip-op">=</span>
+            <div class="hip-cifra hip-principal"><span class="hip-lbl">Hipoteca que pides</span><b id="hb-hipoteca">—</b><small id="hb-hipoteca-pct"></small></div>
+        </div>
+        <div class="hip-extra">
+            <div class="hip-cifra"><span class="hip-lbl">Cuota</span><b id="hb-cuota">—</b><small id="hb-cuota-sub"></small></div>
+            <div class="hip-cifra"><span class="hip-lbl">De tu bolsillo</span><b id="hb-bolsillo">—</b><small>entrada + gastos</small></div>
+        </div>
+        <div class="hip-proporcion" aria-hidden="true">
+            <i class="entrada" id="hb-bar-entrada"></i><i class="hipoteca" id="hb-bar-hipoteca"></i><i class="gastos" id="hb-bar-gastos"></i>
+        </div>
+    </div>
+
     <div class="sim-grid">
         <!-- ═══ COLUMNA IZQUIERDA · LO QUE DECIDES ══════════════════════════ -->
         <div>
@@ -135,8 +156,9 @@
                 </div>
 
                 <div class="ctrl">
-                    <div class="ctrl-head"><span class="ctrl-lbl">Entrada mínima</span><span class="ctrl-val" id="lbl-entrada">—</span></div>
+                    <div class="ctrl-head"><span class="ctrl-lbl">Entrada que pones tú</span><span class="ctrl-val" id="lbl-entrada">—</span></div>
                     <input type="range" id="sl-entrada" min="0" max="60" step="1" value="20">
+                    <p class="hint" id="hint-entrada"></p>
                 </div>
                 <div class="ctrl">
                     <div class="ctrl-head"><span class="ctrl-lbl">Plazo</span><span class="ctrl-val" id="lbl-plazo">—</span></div>
@@ -184,6 +206,24 @@
 
         <!-- ═══ COLUMNA DERECHA · LO QUE SALE ═══════════════════════════════ -->
         <div>
+            <!-- LA HIPOTECA QUE PIDES -->
+            <div class="card glass-panel hip-card">
+                <h2>La hipoteca que pides</h2>
+                <div class="hip-grande" id="hc-hipoteca">—</div>
+                <div class="hip-frase" id="hc-frase"></div>
+                <div class="hip-reparto" aria-hidden="true">
+                    <i class="entrada" id="hc-bar-entrada"></i><i class="hipoteca" id="hc-bar-hipoteca"></i><i class="gastos" id="hc-bar-gastos"></i>
+                </div>
+                <div class="hip-leyenda" id="hc-leyenda"></div>
+                <div class="res-grid" style="margin-top:14px;">
+                    <div class="res"><div class="lbl">Devuelves al banco</div><div class="val" id="hc-total">—</div><div class="sub" id="hc-total-sub"></div></div>
+                    <div class="res"><div class="lbl">Intereses</div><div class="val" id="hc-intereses">—</div><div class="sub" id="hc-intereses-sub"></div></div>
+                    <div class="res"><div class="lbl">Te quedan tras comprar</div><div class="val" id="hc-queda">—</div><div class="sub">de tu liquidez</div></div>
+                </div>
+                <div class="aviso aviso-warn" id="hc-ltv" hidden></div>
+                <div class="aviso hip-sugerencia" id="hc-mas" hidden></div>
+            </div>
+
             <!-- VEREDICTO -->
             <div class="card glass-panel">
                 <h2>¿Te la puedes permitir?</h2>
@@ -237,11 +277,17 @@
             <!-- CAPACIDAD MÁXIMA -->
             <div class="card glass-panel">
                 <h2>Tu techo</h2>
-                <div class="headline">
-                    <div class="lbl">Precio máximo que puedes asumir</div>
-                    <div class="val" id="r-max-precio">—</div>
-                    <div class="sub" id="r-max-sub"></div>
+                <div class="techo-doble">
+                    <div class="headline">
+                        <div class="lbl">Precio máximo que puedes asumir</div>
+                        <div class="val" id="r-max-precio">—</div>
+                    </div>
+                    <div class="headline">
+                        <div class="lbl">Hipoteca máxima que pedirías</div>
+                        <div class="val" id="r-max-hipoteca">—</div>
+                    </div>
                 </div>
+                <div class="sub techo-sub" id="r-max-sub"></div>
             </div>
 
             <!-- TEST DE ESTRÉS -->
@@ -308,6 +354,52 @@
 .sim-header h1 { margin: 0 0 6px; }
 .sim-header p { color: var(--muted); font-size: 0.88rem; margin: 0 0 22px; max-width: 70ch; }
 
+/* ── La cuenta de la hipoteca, fija arriba ── */
+.hip-barra {
+    position: sticky; top: 70px; z-index: 50; display: grid; grid-template-columns: auto 1fr; gap: 10px 26px; align-items: center;
+    padding: 14px 22px 12px; margin-bottom: 20px; border-radius: 16px;
+    background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(10px);
+    border: 1px solid var(--border); box-shadow: 0 10px 30px -18px rgba(0,0,0,.35);
+}
+.hip-cuenta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.hip-extra { display: flex; gap: 26px; justify-content: flex-end; flex-wrap: wrap; }
+.hip-cifra { display: flex; flex-direction: column; min-width: 0; }
+.hip-lbl { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 700; white-space: nowrap; }
+.hip-cifra b { font-size: 1.15rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.hip-cifra small { font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
+.hip-op { font-size: 1.3rem; color: var(--muted); font-weight: 300; }
+.hip-principal { padding: 4px 14px; border-radius: 12px; background: color-mix(in srgb, var(--info) 12%, transparent); border: 1px solid color-mix(in srgb, var(--info) 35%, transparent); }
+.hip-principal b { font-size: 1.55rem; color: var(--info); }
+.hip-proporcion, .hip-reparto { grid-column: 1 / -1; display: flex; gap: 2px; height: 8px; border-radius: 999px; overflow: hidden; background: var(--app-bg); }
+.hip-reparto { height: 14px; margin: 14px 0 8px; }
+.hip-proporcion i, .hip-reparto i { display: block; height: 100%; transition: width .35s cubic-bezier(.16,1,.3,1); }
+.hip-proporcion .entrada, .hip-reparto .entrada { background: var(--success); }
+.hip-proporcion .hipoteca, .hip-reparto .hipoteca { background: var(--info); }
+.hip-proporcion .gastos, .hip-reparto .gastos { background: repeating-linear-gradient(135deg, var(--warning) 0 3px, color-mix(in srgb, var(--warning) 35%, transparent) 3px 6px); }
+.hip-card .hip-grande { font-size: 2.3rem; font-weight: 800; color: var(--info); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.hip-frase { font-size: 0.86rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+.hip-frase strong { color: var(--text-color); font-variant-numeric: tabular-nums; }
+.hip-leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.76rem; color: var(--muted); }
+.hip-leyenda span { display: inline-flex; align-items: center; gap: 6px; }
+.hip-leyenda i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.hip-leyenda b { color: var(--text-color); font-variant-numeric: tabular-nums; }
+.hip-sugerencia { background: color-mix(in srgb, var(--success) 8%, transparent); border: 1px solid color-mix(in srgb, var(--success) 30%, transparent); }
+.hip-sugerencia button {
+    margin-top: 8px; border: none; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 0.8rem;
+    padding: 7px 12px; border-radius: 8px; background: var(--success); color: var(--on-primary, #fff);
+}
+.techo-doble { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.techo-doble .headline:last-child .val { color: var(--info); }
+.techo-sub { font-size: 0.78rem; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+@media (max-width: 760px) {
+    /* En el móvil, una línea: lo que pides y la cuota. El resto está debajo. */
+    .hip-barra { grid-template-columns: 1fr auto; top: 66px; padding: 8px 12px; gap: 6px 12px; }
+    .hip-cuenta > .hip-cifra:not(.hip-principal), .hip-op, .hip-extra .hip-cifra:last-child { display: none; }
+    .hip-principal { padding: 2px 10px; }
+    .hip-principal b { font-size: 1.2rem; }
+    .hip-cifra b { font-size: 1rem; }
+    .techo-doble { grid-template-columns: 1fr; }
+}
 .sim-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 20px; align-items: start; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; margin-bottom: 20px; }
 .card h2 { font-size: 1rem; margin: 0 0 16px; color: var(--text-color); }
@@ -699,6 +791,8 @@ function actualizar() {
               otras: otras, ccaa: ccaa, obraNueva: obraNueva, joven: joven,
               entradaMin: entradaMin, cuotaTope: cuotaTope};
 
+    render_hipoteca();
+
     const hintOtras = $('hint-otras-cuotas');
     hintOtras.textContent = D_SIM.otras_cuotas > 0
         ? 'Vienen de tus gastos en «Hipoteca / Alquiler» y de las partidas que suenan a préstamo: ' +
@@ -785,9 +879,10 @@ function actualizar() {
     const gMax = H.gastosCompra(precioMax, ccaa, obraNueva, joven, DEF);
     const hipMax = Math.max(0, precioMax - Math.max(0, capitalDisponible - gMax.total));
     $('r-max-precio').textContent = fmt(precioMax);
+    $('r-max-hipoteca').textContent = fmt(hipMax);
     $('r-max-sub').textContent = 'Con ' + fmt(capitalDisponible) + ' de capital y una cuota tope de ' +
         fmt(cuotaTope) + '/mes (' + maxPct + '% de ' + (baseMode === 'ingresos' ? 'tus ingresos netos' : 'tu libre mensual') +
-        (ESTADO.otras > 0 ? ', menos ' + fmt(ESTADO.otras) + ' de otras cuotas' : '') + '). Hipoteca de ' + fmt(hipMax) + '.';
+        (ESTADO.otras > 0 ? ', menos ' + fmt(ESTADO.otras) + ' de otras cuotas' : '') + '), poniendo de entrada todo tu capital menos los gastos de compra.';
 
     guardarEstado();
 
@@ -795,6 +890,93 @@ function actualizar() {
     render_mes();
     render_amortizacion();
     render_cuando_llego();
+}
+
+// ── La hipoteca que pides ───────────────────────────────────────────────────
+/* Precio − entrada = hipoteca. Es la cifra que se lleva al banco y la que
+   manda en todo lo demás (cuota, intereses, ratio), así que se escribe
+   entera, arriba y en su tarjeta, cada vez que algo cambia. */
+function render_hipoteca() {
+    const E = ESTADO;
+    const pctHip = E.precio > 0 ? E.hipoteca / E.precio * 100 : 0;
+    const bolsillo = E.entrada + E.gastos.total;
+    const total = E.precio + E.gastos.total;
+    const ancho = function (v) { return (total > 0 ? v / total * 100 : 0) + '%'; };
+
+    // Barra fija
+    $('hb-precio').textContent = fmt(E.precio);
+    $('hb-entrada').textContent = fmt(E.entrada);
+    $('hb-entrada-pct').textContent = E.entradaMin + ' % del precio';
+    $('hb-hipoteca').textContent = fmt(E.hipoteca);
+    $('hb-hipoteca-pct').textContent = pct(pctHip) + ' del precio · ' + E.plazo + ' años';
+    $('hb-cuota').textContent = fmt(E.cuotaHoy) + '/mes';
+    $('hb-cuota-sub').textContent = modalidad === 'fijo' ? 'fija' : 'hoy; hasta ' + fmt(E.cuotaPeor);
+    $('hb-bolsillo').textContent = fmt(bolsillo);
+    $('hb-bar-entrada').style.width = ancho(E.entrada);
+    $('hb-bar-hipoteca').style.width = ancho(E.hipoteca);
+    $('hb-bar-gastos').style.width = ancho(E.gastos.total);
+
+    // Junto al slider de la entrada
+    $('lbl-entrada').textContent = E.entradaMin + '% · ' + fmt(E.entrada);
+    $('hint-entrada').innerHTML = 'Pides al banco <strong>' + fmt(E.hipoteca) + '</strong> (el ' + pct(pctHip) +
+        ' del precio). Los gastos de compra (' + fmt(E.gastos.total) + ') no se financian: van aparte, de tu bolsillo.';
+
+    // Tarjeta
+    const intereses = E.hipoteca > 0 ? H.totalIntereses(E.hipoteca, E.cfg, E.plazo) : 0;
+    $('hc-hipoteca').textContent = fmt(E.hipoteca);
+    $('hc-frase').innerHTML = '<strong>' + fmt(E.precio) + '</strong> de precio − <strong>' + fmt(E.entrada) +
+        '</strong> de entrada = <strong>' + fmt(E.hipoteca) + '</strong> que te presta el banco, el ' + pct(pctHip) +
+        ' del precio, a ' + E.plazo + ' años: <strong>' + fmt(E.cuotaHoy) + '/mes</strong>' +
+        (modalidad === 'fijo' ? '.' : ' hoy (hasta ' + fmt(E.cuotaPeor) + ' si el euríbor sube 2 puntos).');
+    $('hc-bar-entrada').style.width = ancho(E.entrada);
+    $('hc-bar-hipoteca').style.width = ancho(E.hipoteca);
+    $('hc-bar-gastos').style.width = ancho(E.gastos.total);
+    $('hc-leyenda').innerHTML =
+        '<span><i style="background:var(--success)"></i>Entrada, tuya · <b>' + fmt(E.entrada) + '</b></span>' +
+        '<span><i style="background:var(--info)"></i>Hipoteca, del banco · <b>' + fmt(E.hipoteca) + '</b></span>' +
+        '<span><i style="background:var(--warning)"></i>Gastos de compra, tuyos · <b>' + fmt(E.gastos.total) + '</b></span>';
+    $('hc-total').textContent = fmt(E.hipoteca + intereses);
+    $('hc-total-sub').textContent = 'en ' + E.plazo + ' años' + (modalidad === 'fijo' ? '' : ', con el tipo de hoy');
+    $('hc-intereses').textContent = fmt(intereses);
+    $('hc-intereses-sub').textContent = E.hipoteca > 0 ? pct(intereses / E.hipoteca * 100) + ' de lo que pides' : '';
+    const queda = E.capitalDisponible - bolsillo;
+    $('hc-queda').textContent = fmt(queda);
+    $('hc-queda').style.color = queda < 0 ? 'var(--danger)' : '';
+
+    // Más del 80 %: la banca rara vez llega ahí.
+    const ltv = $('hc-ltv');
+    if (pctHip > 80.5) {
+        ltv.hidden = false;
+        ltv.innerHTML = '<strong>Pides el ' + pct(pctHip) + ' del precio.</strong> La banca suele financiar como mucho el 80 % ' +
+            '(del precio o de la tasación, lo que sea menor). Por encima hace falta un aval o una línea como la del ICO para jóvenes.';
+    } else {
+        ltv.hidden = true;
+    }
+
+    // ¿Te sobra dinero? Cuánto bajaría la hipoteca si lo pusieras de entrada,
+    // sin tocar el colchón de seis meses.
+    const mas = $('hc-mas');
+    const colchon = GASTOS * 6;
+    const sobra = E.capitalDisponible - bolsillo - colchon;
+    const pctPosible = Math.min(60, Math.floor((E.entrada + Math.max(sobra, 0)) / E.precio * 100));
+    if (sobra > 1000 && pctPosible > E.entradaMin && E.hipoteca > 0) {
+        const nuevaEntrada = E.precio * pctPosible / 100;
+        const nuevaHip = Math.max(0, E.precio - nuevaEntrada);
+        const nuevaCuota = H.cuotaMensual(nuevaHip, H.tipoEnAño(E.cfg, 0), E.plazo);
+        const nuevosIntereses = nuevaHip > 0 ? H.totalIntereses(nuevaHip, E.cfg, E.plazo) : 0;
+        mas.hidden = false;
+        mas.innerHTML = 'Después de comprar y de guardar el colchón de 6 meses (' + fmt(colchon) + ') te sobran <strong>' +
+            fmt(sobra) + '</strong>. Si pones el <strong>' + pctPosible + ' %</strong> de entrada (' + fmt(nuevaEntrada) +
+            '), pedirías <strong>' + fmt(nuevaHip) + '</strong>: cuota de ' + fmt(nuevaCuota) + '/mes (' +
+            fmt(E.cuotaHoy - nuevaCuota) + ' menos) y ' + fmt(intereses - nuevosIntereses) + ' menos de intereses.' +
+            '<br><button type="button" id="hc-usar">Poner el ' + pctPosible + ' % de entrada</button>';
+        $('hc-usar').addEventListener('click', function () {
+            $('sl-entrada').value = pctPosible;
+            $('sl-entrada').dispatchEvent(new Event('input'));
+        });
+    } else {
+        mas.hidden = true;
+    }
 }
 
 // ── Test de estrés ──────────────────────────────────────────────────────────

@@ -314,6 +314,65 @@ def simulador_vivienda(request):
     })
 
 
+# Palabras con las que se reconoce qué concepto es cada gasto de un coche. Se
+# mira el nombre de la partida y el de su categoría; lo que no encaja en
+# ninguno va a «otros».
+CONCEPTOS_VEHICULO = [
+    ('prestamo', ('préstamo', 'prestamo', 'financiación', 'financiacion', 'crédito', 'credito',
+                  'leasing', 'renting', 'cuota coche')),
+    ('seguro', ('seguro',)),
+    ('energia', ('gasolina', 'combustible', 'diésel', 'diesel', 'gasoil', 'carga', 'electricidad',
+                 'recarga', 'gas ')),
+    ('mantenimiento', ('mantenimiento', 'taller', 'revisión', 'revision', 'neumático', 'neumatico',
+                       'ruedas', 'aceite', 'reparación', 'reparacion')),
+    ('impuestos', ('itv', 'impuesto', 'ivtm', 'circulación', 'circulacion', 'numérico', 'numerico')),
+    ('parking', ('parking', 'aparcamiento', 'garaje', 'peaje', 'ora ')),
+]
+
+
+def _concepto_vehiculo(partida):
+    texto = f"{partida.nombre} {partida.categoria.nombre if partida.categoria else ''}".lower() + ' '
+    for concepto, palabras in CONCEPTOS_VEHICULO:
+        if any(p in texto for p in palabras):
+            return concepto
+    return 'otros'
+
+
+def _vehiculos_del_hogar(hogar):
+    """Lo que cuesta cada coche que ya tienes, por concepto y al mes.
+
+    Sirve para dos cosas, igual que el alquiler en el simulador de vivienda:
+    saber cuánto se lleva ya el coche de la renta de la casa, y poder decir
+    «este lo vendo»: entonces su cuota y sus gastos dejan de salir y su venta
+    entra como capital.
+    """
+    from . import costes_activo
+    from .models import Vehiculo
+
+    anio = datetime.date.today().year
+    salida = []
+    for v in Vehiculo.objects.filter(hogar=hogar, activo=True).exclude(tipo='bici'):
+        conceptos = {}
+        for p in PartidaGasto.objects.filter(vehiculo=v, activo=True).select_related('categoria'):
+            clave = _concepto_vehiculo(p)
+            conceptos[clave] = conceptos.get(clave, Decimal('0')) + p.importe_mensual
+        ficha = costes_activo.costes(v, anio)
+        cuota = conceptos.pop('prestamo', Decimal('0'))
+        uso = sum(conceptos.values(), Decimal('0'))
+        salida.append({
+            'id': v.pk,
+            'nombre': v.nombre,
+            'modelo': v.marca_modelo,
+            'tipo': v.get_tipo_display(),
+            'valor_actual': round(float(v.valor_actual or 0), 2),
+            'cuota_prestamo': round(float(cuota), 2),
+            'uso_mensual': round(float(uso), 2),
+            'conceptos': {k: round(float(val), 2) for k, val in conceptos.items()},
+            'real_mensual': round(float(ficha['ritmo_mensual']), 2) if ficha['hay_ritmo'] else None,
+        })
+    return salida
+
+
 @login_required
 def simulador_vehiculo(request):
     profile, hogar = _get_hogar(request)
@@ -321,6 +380,11 @@ def simulador_vehiculo(request):
         return redirect('dashboard')
 
     datos = _datos_financieros(hogar)
+    datos['sim_data'] = {
+        **datos['sim_data'],
+        'fuentes': _fuentes_de_datos(hogar, datos['sim_data']),
+        'vehiculos': _vehiculos_del_hogar(hogar),
+    }
     return render(request, 'finanzas/simuladores/vehiculo.html', {
         'hogar': hogar,
         'estudios': [e.como_dict() for e in EstudioVehiculo.objects.filter(hogar=hogar)
