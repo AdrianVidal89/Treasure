@@ -4208,3 +4208,118 @@ class MotorComparadorVehiculoTests(TestCase):
         # 30.000 € el primer día, cuatro años al 3 %: casi 3.800 € que no rinden.
         self.assertGreater(r['oportunidad'], 3700)
         self.assertAlmostEqual(r['coste_con_oportunidad'], r['coste_real'] + r['oportunidad'], places=2)
+
+
+class SimuladorPrestamoVehiculoTests(TestCase):
+    """«¿Cuánto coche me puedo permitir?»: el límite que pones decide, y cuentan
+    tus deudas, tus coches y tu mes."""
+
+    def correr(self, codigo):
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+        from unittest import SkipTest
+        if not shutil.which('node'):
+            raise SkipTest('node no está instalado')
+        motor = Path(__file__).resolve().parent.parent / 'static' / 'js' / 'prestamo_vehiculo.js'
+        script = f"require({json.dumps(str(motor))}); const P = globalThis.PrestamoVehiculo;\n{codigo}"
+        salida = subprocess.run(['node', '-e', script], capture_output=True, text=True, timeout=20)
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        return json.loads(salida.stdout)
+
+    BASE = ("{precio: 30000, entrada_pct: 20, tin: 7, meses: 60, gastos_compra_pct: 2, "
+            "uso_mensual: 200, ingresos: 3400, gastos: 2100, liquidez: 40000, otras_cuotas: 0, "
+            "coste_coches_hoy: 0, max_pct: 15}")
+
+    def evaluar(self, **cambios):
+        import json
+        return self.correr(
+            f"const e = Object.assign({self.BASE}, {json.dumps(cambios)});"
+            "const r = P.evaluar(e);"
+            "console.log(JSON.stringify({clase: r.veredicto.clase, cuota: r.cuota,"
+            " reglas: Object.fromEntries(r.reglas.map(x => [x.clave, x.estado]))}));"
+        )
+
+    def test_una_cuota_de_1500_es_un_no(self):
+        """El caso que lo destapó: el slider no movía el veredicto."""
+        r = self.evaluar(precio=90000, entrada_pct=10)
+        self.assertGreater(r['cuota'], 1400)
+        self.assertEqual(r['clase'], 'rojo')
+        self.assertEqual(r['reglas']['cuota'], 'no')
+
+    def test_el_limite_del_slider_decide(self):
+        self.assertEqual(self.evaluar(max_pct=15)['reglas']['cuota'], 'si')   # 380 € = 11 %
+        r = self.evaluar(max_pct=8)
+        self.assertEqual(r['reglas']['cuota'], 'no')
+        self.assertEqual(r['clase'], 'rojo')
+
+    def test_sin_ingresos_no_se_puede_decir_que_si(self):
+        self.assertEqual(self.evaluar(ingresos=0)['clase'], 'rojo')
+
+    def test_las_otras_deudas_cuentan(self):
+        r = self.evaluar(otras_cuotas=1000)
+        self.assertEqual(r['reglas']['deuda'], 'no')     # 1.380 € = 40,6 %
+
+    def test_vender_tu_coche_libera_su_cuota(self):
+        con = self.evaluar(otras_cuotas=1000, coste_coches_hoy=1150)
+        sin = self.evaluar(otras_cuotas=1000, coste_coches_hoy=1150,
+                           liberado_cuota=900, liberado_uso=250, venta=12000)
+        self.assertEqual(con['clase'], 'rojo')
+        self.assertEqual(con['reglas']['coches'], 'no')     # 1.730 € = 51 %
+        self.assertEqual(sin['reglas']['deuda'], 'si')
+        # Solo queda el nuevo: 380 € de cuota + 200 € de uso = 17 %, por
+        # encima del 15 % recomendable pero lejos del 25 %.
+        self.assertEqual(sin['reglas']['coches'], 'reservas')
+
+    def test_sin_dinero_para_la_entrada_es_un_no(self):
+        self.assertEqual(self.evaluar(liquidez=3000)['reglas']['capital'], 'no')
+        # Con dinero pero comiéndose el colchón: con reservas.
+        self.assertEqual(self.evaluar(liquidez=15000)['reglas']['capital'], 'reservas')
+
+    def test_el_techo_sale_de_las_mismas_reglas(self):
+        r = self.correr(
+            f"const e = {self.BASE}; const uso = p => 200;"
+            "const t = P.precioMaximo(e, uso);"
+            "const enTecho = P.evaluar(Object.assign({}, e, {precio: t.recomendado}));"
+            "const encima = P.evaluar(Object.assign({}, e, {precio: t.recomendado + 1000}));"
+            "const enLimite = P.evaluar(Object.assign({}, e, {precio: t.limite}));"
+            "const pasado = P.evaluar(Object.assign({}, e, {precio: t.limite + 1000}));"
+            "console.log(JSON.stringify({t, a: enTecho.veredicto.clase, b: encima.veredicto.clase,"
+            " c: enLimite.veredicto.clase, d: pasado.veredicto.clase}));"
+        )
+        self.assertGreater(r['t']['limite'], r['t']['recomendado'])
+        self.assertEqual(r['a'], 'verde')
+        self.assertNotEqual(r['b'], 'verde')
+        self.assertNotEqual(r['c'], 'rojo')
+        self.assertEqual(r['d'], 'rojo')
+
+    def test_al_contado_no_hay_cuota(self):
+        r = self.evaluar(contado=True, liquidez=60000)
+        self.assertEqual(r['cuota'], 0)
+        self.assertEqual(r['reglas']['cuota'], 'si')
+
+    def test_la_pagina_lleva_tus_coches_y_las_fuentes(self):
+        from core.models import Hogar
+        from .models import CategoriaGasto, PartidaGasto, Vehiculo
+        hogar = Hogar.objects.create(nombre='Casa')
+        user = User.objects.create_user(username='ana', password='clave-de-prueba')
+        user.userprofile.hogar = hogar
+        user.userprofile.save()
+        self.client.force_login(user)
+        cat = CategoriaGasto.objects.create(hogar=hogar, nombre='Seguro coche', tipo='anual')
+        coche = Vehiculo.objects.create(hogar=hogar, nombre='Golf', valor_actual=Decimal('14000'))
+        PartidaGasto.objects.create(hogar=hogar, categoria=cat, nombre='Seguro Golf',
+                                    importe=Decimal('600'), periodicidad='anual', vehiculo=coche)
+        PartidaGasto.objects.create(hogar=hogar, nombre='Préstamo coche', bloque='fijo',
+                                    importe=Decimal('210'), vehiculo=coche)
+
+        respuesta = self.client.get(reverse('finanzas:simulador_vehiculo'))
+        datos = respuesta.context['sim_data']
+        self.assertIn('fuentes', datos)
+        golf = datos['vehiculos'][0]
+        self.assertEqual(golf['nombre'], 'Golf')
+        self.assertEqual(golf['cuota_prestamo'], 210.0)
+        self.assertEqual(golf['conceptos']['seguro'], 50.0)
+        self.assertEqual(golf['uso_mensual'], 50.0)
+        self.assertIn('prestamo_vehiculo.js', respuesta.content.decode())
