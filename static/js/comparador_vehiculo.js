@@ -87,6 +87,11 @@ function simular(o, g) {
     let intereses = 0;
     let cuota = 0;
     let exceso = 0;
+    // Las piezas de la cuenta, para poder enseñarla sumando: sin ellas el
+    // «coste real» era una cifra que nadie podía comprobar a mano.
+    let numCuotas = 0;
+    let pagoFinal = 0;
+    let pagoFinalTipo = '';
 
     pagos[0] += Math.max(num(o.gastos_iniciales), 0);
 
@@ -102,6 +107,7 @@ function simular(o, g) {
         pagos[0] += entrada + comision;
         const pagadas = Math.min(meses, H);
         for (let m = 1; m <= pagadas; m++) pagos[m] += cuota;
+        numCuotas = pagadas;
         deuda = saldoPendiente(capital, tin, meses, pagadas);
         // Intereses: lo pagado en cuotas menos el capital que se ha devuelto,
         // más la comisión, que es coste de financiarse y no del coche.
@@ -118,6 +124,7 @@ function simular(o, g) {
         pagos[0] += Math.max(num(o.entrada), 0);
         const pagadas = Math.min(meses, H);
         for (let m = 1; m <= pagadas; m++) pagos[m] += cuota;
+        numCuotas = pagadas;
 
         // Kilómetros por encima de lo contratado: se pagan al devolverlo.
         const contratados = num(o.km_contratados);
@@ -126,8 +133,8 @@ function simular(o, g) {
         }
 
         if (meses <= H) {
-            if (quedarse) pagos[meses] += final;
-            else pagos[meses] += exceso;
+            if (quedarse) { pagos[meses] += final; pagoFinal = final; pagoFinalTipo = 'cuota_final'; }
+            else if (exceso > 0) { pagos[meses] += exceso; pagoFinal = exceso; pagoFinalTipo = 'km'; }
         } else {
             deuda = cuota * (meses - H) + (quedarse ? final : 0) + (quedarse ? 0 : exceso);
             avisos.push('El contrato dura ' + meses + ' meses y el periodo ' + H + ': las ' + (meses - H) +
@@ -152,8 +159,8 @@ function simular(o, g) {
     }
 
     // Lo que vale el coche al final, si es tuyo.
-    const pctFinal = (o.valor_final_pct === '' || o.valor_final_pct === null || o.valor_final_pct === undefined)
-        ? valorResidualEstimado(H) : num(o.valor_final_pct);
+    const valorEstimado = (o.valor_final_pct === '' || o.valor_final_pct === null || o.valor_final_pct === undefined);
+    const pctFinal = valorEstimado ? valorResidualEstimado(H) : num(o.valor_final_pct);
     const valorFinal = esTuyo ? precio * Math.max(pctFinal, 0) / 100 : 0;
 
     // El uso, mes a mes mientras tienes el coche.
@@ -186,6 +193,12 @@ function simular(o, g) {
         horizonte: H,
         desembolso_inicial: flujos[0],
         cuota: cuota,
+        num_cuotas: numCuotas,
+        total_cuotas: cuota * numCuotas,
+        pago_final: pagoFinal,
+        pago_final_tipo: pagoFinalTipo,
+        valor_estimado: valorEstimado,
+        meses_con_coche: mesesConCoche,
         uso_mensual: uso.total,
         uso_fijo_mensual: uso.fijo,
         energia_mensual: uso.energia,

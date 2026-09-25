@@ -4177,6 +4177,29 @@ class MotorComparadorVehiculoTests(TestCase):
         self.assertAlmostEqual(r['dif'][0], 5000, places=2)
         self.assertEqual(r['dif'][1], 0)
 
+    def test_las_piezas_de_la_tabla_suman_el_coste_real(self):
+        """La tabla escribe la cuenta: primer día + cuotas + pago final + uso =
+        lo pagado; + lo que debes − lo que vale el coche = coste real. Tiene que
+        cuadrar al céntimo en los tres tipos, o la tabla mentiría."""
+        r = self.correr(f"""
+            const ops = [
+                Object.assign({{tipo: 'leasing', precio: 48000, gastos_iniciales: 852, entrada: 11000,
+                    cuota: 350, meses: 48, cuota_final: 26813, quedarse: true}}, {self.USO}),
+                Object.assign({{tipo: 'leasing', precio: 48000, entrada: 5000, cuota: 400, meses: 36,
+                    quedarse: false, km_contratados: 10000, coste_km_extra: 0.1}}, {self.USO}),
+                Object.assign({{tipo: 'financiado', precio: 48000, gastos_iniciales: 400, entrada: 11000,
+                    tin: 7.99, meses: 60, comision_pct: 2}}, {self.USO}),
+                Object.assign({{tipo: 'contado', precio: 48000, gastos_iniciales: 400}}, {self.USO}),
+            ];
+            console.log(JSON.stringify(ops.map(o => {{
+                const s = C.simular(o, {self.G});
+                const pagado = s.desembolso_inicial + s.total_cuotas + s.pago_final + s.total_uso;
+                return [pagado - s.total_pagado, pagado + s.deuda_final - s.valor_final - s.coste_real];
+            }})));""")
+        for diferencias in r:
+            for d in diferencias:
+                self.assertAlmostEqual(d, 0, places=6)
+
     def test_la_rentabilidad_encarece_pagar_antes(self):
         r = self.correr(f"""
             const g = {{horizonte: 48, km_anuales: 15000, rentabilidad: 3}};
