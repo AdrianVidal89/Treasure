@@ -4029,3 +4029,159 @@ class PeriodicidadPlurianualTests(TestCase):
         creada = PartidaGasto.objects.get(hogar=self.hogar, nombre='Neumáticos')
         self.assertEqual(creada.periodicidad, 'trienal')
         self.assertEqual(creada.importe_mensual, Decimal('13.06'))
+
+
+class ComparadorVehiculoTests(TestCase):
+    """Compra vs leasing: guardar estudios y que la cuenta sea la buena."""
+
+    def setUp(self):
+        from core.models import Hogar
+        self.hogar = Hogar.objects.create(nombre='Casa')
+        self.user = User.objects.create_user(username='ana', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+
+    def guardar(self, **cuerpo):
+        import json
+        cuerpo.setdefault('nombre', 'X2: leasing vs compra')
+        cuerpo.setdefault('datos', {'global': {'horizonte': 48}, 'opciones': []})
+        cuerpo.setdefault('resumen', {'ganador': 'X2 leasing'})
+        return self.client.post(
+            reverse('finanzas:guardar_estudio_vehiculo'), json.dumps(cuerpo),
+            content_type='application/json',
+        )
+
+    def test_la_pagina_tiene_las_dos_pestanas(self):
+        html = self.client.get(reverse('finanzas:simulador_vehiculo')).content.decode()
+        self.assertIn('data-veh-tab="prestamo"', html)
+        self.assertIn('data-veh-tab="comparar"', html)
+        self.assertIn('comparador_vehiculo.js', html)
+        self.assertIn('cv-estudios-data', html)
+
+    def test_guardar_actualizar_y_borrar_un_estudio(self):
+        from .models import EstudioVehiculo
+        r = self.guardar()
+        self.assertEqual(r.status_code, 200)
+        estudio = EstudioVehiculo.objects.get()
+        self.assertEqual(estudio.hogar, self.hogar)
+        self.assertEqual(estudio.usuario, self.user)
+
+        r = self.guardar(id=estudio.id, nombre='Otro nombre')
+        self.assertEqual(r.json()['estudio']['nombre'], 'Otro nombre')
+        self.assertEqual(EstudioVehiculo.objects.count(), 1)
+
+        # Aparece en la página para abrirlo.
+        html = self.client.get(reverse('finanzas:simulador_vehiculo')).content.decode()
+        self.assertIn('Otro nombre', html)
+
+        r = self.client.post(reverse('finanzas:eliminar_estudio_vehiculo', args=[estudio.id]))
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(EstudioVehiculo.objects.exists())
+
+    def test_sin_nombre_o_con_datos_raros_no_se_guarda(self):
+        self.assertEqual(self.guardar(nombre='  ').status_code, 400)
+        self.assertEqual(self.guardar(datos=[1, 2]).status_code, 400)
+        r = self.client.post(reverse('finanzas:guardar_estudio_vehiculo'), 'no es json',
+                             content_type='application/json')
+        self.assertEqual(r.status_code, 400)
+        r = self.guardar(datos={'x': 'a' * 200_000})
+        self.assertEqual(r.status_code, 400)
+
+    def test_no_se_toca_el_estudio_de_otro_hogar(self):
+        from core.models import Hogar
+        from .models import EstudioVehiculo
+        ajeno = EstudioVehiculo.objects.create(
+            hogar=Hogar.objects.create(nombre='Otra'), nombre='Suyo', datos={},
+        )
+        self.assertEqual(self.guardar(id=ajeno.id).status_code, 404)
+        r = self.client.post(reverse('finanzas:eliminar_estudio_vehiculo', args=[ajeno.id]))
+        self.assertEqual(r.status_code, 404)
+        self.assertTrue(EstudioVehiculo.objects.filter(pk=ajeno.pk).exists())
+
+
+class MotorComparadorVehiculoTests(TestCase):
+    """La cuenta del comparador, ejecutando el mismo JS que usa la página."""
+
+    def correr(self, codigo):
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+        from unittest import SkipTest
+        if not shutil.which('node'):
+            raise SkipTest('node no está instalado')
+        motor = Path(__file__).resolve().parent.parent / 'static' / 'js' / 'comparador_vehiculo.js'
+        script = f"require({json.dumps(str(motor))}); const C = globalThis.ComparadorVehiculo;\n{codigo}"
+        salida = subprocess.run(['node', '-e', script], capture_output=True, text=True, timeout=20)
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        return json.loads(salida.stdout)
+
+    USO = ("{seguro_anual: 700, mantenimiento_anual: 400, neumaticos_anual: 250, "
+           "impuesto_anual: 120, consumo: 6.5, precio_energia: 1.6}")
+    G = "{horizonte: 48, km_anuales: 15000, rentabilidad: 0}"
+
+    def test_leasing_que_devuelves(self):
+        r = self.correr(f"""
+            const o = Object.assign({{tipo: 'leasing', precio: 48000, entrada: 11000, cuota: 450,
+                meses: 48, cuota_final: 22000, quedarse: false, km_contratados: 15000,
+                coste_km_extra: 0.1, incl_mantenimiento: true, incl_neumaticos: true}}, {self.USO});
+            console.log(JSON.stringify(C.simular(o, {self.G})));""")
+        # 11.000 + 450 × 48 = 32.600 de coche; uso: (700 + 120) × 4 + 1.560 × 4 de gasolina.
+        self.assertAlmostEqual(r['total_pagos_coche'], 32600, places=2)
+        self.assertAlmostEqual(r['total_uso'], 820 * 4 + 1560 * 4, places=2)
+        self.assertEqual(r['valor_final'], 0)
+        self.assertAlmostEqual(r['coste_real'], 42120, places=2)
+        self.assertAlmostEqual(r['coste_km'], 42120 / 60000, places=4)
+
+    def test_contado_resta_lo_que_vale_el_coche(self):
+        r = self.correr(f"""
+            const o = Object.assign({{tipo: 'contado', precio: 40000, gastos_iniciales: 0,
+                valor_final_pct: 50}}, {self.USO});
+            console.log(JSON.stringify(C.simular(o, {self.G})));""")
+        self.assertAlmostEqual(r['valor_final'], 20000, places=2)
+        self.assertAlmostEqual(r['coste_real'], 40000 + 1470 * 4 + 1560 * 4 - 20000, places=2)
+
+    def test_prestamo_mas_largo_que_el_periodo_deja_deuda(self):
+        r = self.correr(f"""
+            const o = Object.assign({{tipo: 'financiado', precio: 30000, entrada: 0, tin: 6,
+                meses: 60, comision_pct: 0, valor_final_pct: 0}}, {self.USO});
+            const s = C.simular(o, {self.G});
+            console.log(JSON.stringify({{deuda: s.deuda_final, cuota: s.cuota, total: s.total_pagos_coche,
+                real: s.coste_real, uso: s.total_uso, intereses: s.sobrecoste_financiacion,
+                saldo: C.saldoPendiente(30000, 6, 60, 48)}}));""")
+        self.assertAlmostEqual(r['deuda'], r['saldo'], places=2)
+        self.assertGreater(r['deuda'], 0)
+        # Lo pagado + lo que se debe = el préstamo + los intereses hasta hoy.
+        self.assertAlmostEqual(r['total'] + r['deuda'] - r['intereses'], 30000, places=2)
+        self.assertAlmostEqual(r['real'], r['total'] + r['deuda'] + r['uso'], places=2)
+
+    def test_km_de_mas_y_aviso_si_se_devuelve_antes(self):
+        r = self.correr(f"""
+            const o = Object.assign({{tipo: 'leasing', precio: 48000, entrada: 0, cuota: 400,
+                meses: 36, cuota_final: 0, quedarse: false, km_contratados: 10000, coste_km_extra: 0.1}}, {self.USO});
+            console.log(JSON.stringify(C.simular(o, {self.G})));""")
+        # 5.000 km de más al año × 3 años × 0,10 €.
+        self.assertAlmostEqual(r['exceso_km'], 1500, places=2)
+        self.assertTrue(any('no tienes coche' in a for a in r['avisos']))
+
+    def test_comparar_ordena_y_dice_la_diferencia(self):
+        r = self.correr(f"""
+            const a = Object.assign({{tipo: 'contado', precio: 20000, valor_final_pct: 50}}, {self.USO});
+            const b = Object.assign({{tipo: 'contado', precio: 30000, valor_final_pct: 50}}, {self.USO});
+            const c = C.comparar([b, a], {self.G});
+            console.log(JSON.stringify({{mejor: c.mejor.opcion.precio,
+                dif: c.resultados.map(x => x.diferencia)}}));""")
+        self.assertEqual(r['mejor'], 20000)
+        self.assertAlmostEqual(r['dif'][0], 5000, places=2)
+        self.assertEqual(r['dif'][1], 0)
+
+    def test_la_rentabilidad_encarece_pagar_antes(self):
+        r = self.correr(f"""
+            const g = {{horizonte: 48, km_anuales: 15000, rentabilidad: 3}};
+            const o = Object.assign({{tipo: 'contado', precio: 30000}}, {self.USO});
+            console.log(JSON.stringify(C.simular(o, g)));""")
+        # 30.000 € el primer día, cuatro años al 3 %: casi 3.800 € que no rinden.
+        self.assertGreater(r['oportunidad'], 3700)
+        self.assertAlmostEqual(r['coste_con_oportunidad'], r['coste_real'] + r['oportunidad'], places=2)

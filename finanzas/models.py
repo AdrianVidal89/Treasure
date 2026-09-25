@@ -1701,3 +1701,44 @@ class HistorialPropiedad(models.Model):
 
     def __str__(self):
         return f"{self.propiedad.nombre} {self.mes}/{self.año}: €{self.valor_mercado}"
+
+
+class EstudioVehiculo(models.Model):
+    """Un estudio del comparador de coche guardado para volver a él.
+
+    Comprar un coche se decide en semanas, no en una tarde: se prueba el X2 en
+    leasing, luego comprado, luego otro modelo, y hace falta tener los números
+    de cada intento a mano para compararlos. Se guarda la configuración entera
+    —para poder abrirla y seguir tocándola— y un resumen con las cifras que
+    salieron, para compararlos en la lista sin tener que abrir cada uno.
+
+    Es del HOGAR: el coche se decide en casa, y cualquiera de los dos tiene que
+    poder abrir lo que estudió el otro.
+    """
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='estudios_vehiculo')
+    usuario = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='estudios_vehiculo')
+    nombre = models.CharField(max_length=120)
+    datos = models.JSONField(default=dict, help_text='Configuración completa del comparador.')
+    resumen = models.JSONField(default=dict, blank=True,
+                               help_text='Cifras de cada opción al guardarlo, para la lista.')
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-actualizado']
+        verbose_name = 'Estudio de vehículo'
+        verbose_name_plural = 'Estudios de vehículo'
+
+    def __str__(self):
+        return self.nombre
+
+    def como_dict(self):
+        return {
+            'id': self.pk,
+            'nombre': self.nombre,
+            'datos': self.datos,
+            'resumen': self.resumen,
+            'autor': self.usuario.get_username() if self.usuario else '',
+            'actualizado': self.actualizado.strftime('%d/%m/%Y %H:%M'),
+        }
