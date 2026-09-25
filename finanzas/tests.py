@@ -4268,9 +4268,10 @@ class SimuladorPrestamoVehiculoTests(TestCase):
         self.assertEqual(con['clase'], 'rojo')
         self.assertEqual(con['reglas']['coches'], 'no')     # 1.730 € = 51 %
         self.assertEqual(sin['reglas']['deuda'], 'si')
-        # Solo queda el nuevo: 380 € de cuota + 200 € de uso = 17 %, por
-        # encima del 15 % recomendable pero lejos del 25 %.
-        self.assertEqual(sin['reglas']['coches'], 'reservas')
+        # Solo queda el nuevo, y los 12.000 € de la venta van a su entrada:
+        # la cuota baja y el coste de los coches vuelve a verde.
+        self.assertEqual(sin['reglas']['coches'], 'si')
+        self.assertNotEqual(sin['clase'], 'rojo')
 
     def test_sin_dinero_para_la_entrada_es_un_no(self):
         self.assertEqual(self.evaluar(liquidez=3000)['reglas']['capital'], 'no')
@@ -4323,3 +4324,35 @@ class SimuladorPrestamoVehiculoTests(TestCase):
         self.assertEqual(golf['conceptos']['seguro'], 50.0)
         self.assertEqual(golf['uso_mensual'], 50.0)
         self.assertIn('prestamo_vehiculo.js', respuesta.content.decode())
+
+
+class VentaDelCocheViejoTests(TestCase):
+    """Vender los coches que tienes tiene que notarse donde se mira: en la
+    entrada, en el préstamo y en la cuota."""
+
+    correr = SimuladorPrestamoVehiculoTests.correr
+    BASE = SimuladorPrestamoVehiculoTests.BASE
+
+    def test_la_venta_va_a_la_entrada_y_baja_el_prestamo(self):
+        import json
+        r = self.correr(
+            f"const e = Object.assign({self.BASE}, {{precio: 49000, entrada_pct: 60, venta: 10000}});"
+            "const con = P.evaluar(e);"
+            "const sin = P.evaluar(Object.assign({}, e, {venta_a_entrada: false}));"
+            "console.log(JSON.stringify({con: [con.entrada, con.prestamo, con.cuota, con.queda_capital],"
+            " sin: [sin.entrada, sin.prestamo, sin.cuota, sin.queda_capital], ventaEnt: con.entrada_venta}));"
+        )
+        self.assertEqual(r['con'][0], 29400 + 10000)
+        self.assertEqual(r['con'][1], 49000 - 39400)
+        self.assertEqual(r['sin'][1], 49000 - 29400)
+        self.assertLess(r['con'][2], r['sin'][2])
+        self.assertEqual(r['ventaEnt'], 10000)
+        # El dinero es el mismo: o está en la entrada o en la liquidez.
+        self.assertAlmostEqual(r['sin'][3] - r['con'][3], 10000, places=2)
+
+    def test_la_venta_no_pasa_del_precio(self):
+        r = self.correr(
+            f"const r = P.evaluar(Object.assign({self.BASE}, {{precio: 12000, entrada_pct: 50, venta: 10000}}));"
+            "console.log(JSON.stringify([r.entrada, r.prestamo, r.entrada_venta]));"
+        )
+        self.assertEqual(r, [12000, 0, 6000])
