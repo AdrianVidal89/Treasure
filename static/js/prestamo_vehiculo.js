@@ -98,7 +98,14 @@ function evaluar(e) {
     const I = num(e.ingresos);
     const contado = !!e.contado;
     const gastosCompra = precio * num(e.gastos_compra_pct) / 100;
-    const entrada = contado ? precio : Math.min(precio, precio * num(e.entrada_pct) / 100);
+    // Lo que sacas vendiendo tus coches va, por defecto, a la entrada del
+    // nuevo: es para lo que se vende el viejo, y es lo que hace bajar el
+    // préstamo y la cuota. Si no, se queda como liquidez.
+    const venta = Math.max(num(e.venta), 0);
+    const ventaAEntrada = e.venta_a_entrada !== false && !contado;
+    const entradaPropia = contado ? precio : Math.min(precio, precio * num(e.entrada_pct) / 100);
+    const entradaVenta = ventaAEntrada ? Math.min(venta, precio - entradaPropia) : 0;
+    const entrada = entradaPropia + entradaVenta;
     const prestamo = contado ? 0 : Math.max(precio - entrada, 0);
     const meses = Math.max(Math.round(num(e.meses)), 1);
     const cuota = contado ? 0 : cuotaMensual(prestamo, num(e.tin), meses);
@@ -106,7 +113,7 @@ function evaluar(e) {
     const intereses = Math.max(totalDevuelto - prestamo, 0);
     const uso = Math.max(num(e.uso_mensual), 0);
 
-    const capital = Math.max(num(e.liquidez), 0) + Math.max(num(e.venta), 0);
+    const capital = Math.max(num(e.liquidez), 0) + venta;
     const necesario = entrada + gastosCompra;
     const colchon = Math.max(num(e.gastos), 0) * (e.colchon_meses == null ? 6 : num(e.colchon_meses));
     const quedaCapital = capital - necesario;
@@ -120,6 +127,9 @@ function evaluar(e) {
     const pct = function (v) { return I > 0 ? v / I * 100 : Infinity; };
     const r = {
         precio: precio, entrada: entrada, prestamo: prestamo, cuota: cuota, meses: meses,
+        entrada_propia: entradaPropia, entrada_venta: entradaVenta, venta: venta,
+        prestamo_sin_venta: contado ? 0 : Math.max(precio - entradaPropia, 0),
+        cuota_sin_venta: contado ? 0 : cuotaMensual(Math.max(precio - entradaPropia, 0), num(e.tin), meses),
         intereses: intereses, total_devuelto: totalDevuelto, gastos_compra: gastosCompra,
         necesario: necesario, capital: capital, queda_capital: quedaCapital, colchon: colchon,
         uso: uso, coste_mensual: cuota + uso, coste_coches: costeCoches,
@@ -172,7 +182,8 @@ function evaluar(e) {
               : 'Pagas ' + f(necesario) + ' y te quedan ' + f(quedaCapital) + '. ' +
                 (quedaCapital < colchon ? 'Por debajo del colchón de 6 meses (' + f(colchon) + ').' : 'El colchón de 6 meses (' + f(colchon) + ') queda intacto.'));
     if (!contado) {
-        const entradaPct = num(e.entrada_pct);
+        // Cuenta la entrada entera, también la que sale de vender el viejo.
+        const entradaPct = precio > 0 ? entrada / precio * 100 : 0;
         const bien = entradaPct >= ENTRADA_MIN && meses <= PLAZO_MAX;
         regla('condiciones', 'Entrada y plazo', bien ? 'si' : 'reservas',
               'Entrada del ' + p(entradaPct) + ' y ' + meses + ' meses. Lo prudente: al menos un ' + ENTRADA_MIN +

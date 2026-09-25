@@ -40,6 +40,7 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
     <div class="pv-card">
         <h2>Los coches que ya tienes</h2>
         <div id="pv-vehiculos"></div>
+        <div class="pv-venta-resumen" id="pv-venta-resumen" hidden></div>
     </div>
 
     <!-- ═══ LA CUENTA, FIJA ARRIBA ═══ -->
@@ -47,7 +48,7 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
         <div class="pv-barra-cuenta">
             <div class="pv-cifra"><span class="pv-lbl">Precio</span><b id="pb-precio">—</b></div>
             <span class="pv-op">−</span>
-            <div class="pv-cifra"><span class="pv-lbl">Entrada</span><b id="pb-entrada">—</b></div>
+            <div class="pv-cifra"><span class="pv-lbl">Entrada</span><b id="pb-entrada">—</b><small class="venta" id="pb-entrada-venta"></small></div>
             <span class="pv-op">=</span>
             <div class="pv-cifra pv-principal"><span class="pv-lbl">Préstamo</span><b id="pb-prestamo">—</b></div>
         </div>
@@ -214,6 +215,13 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
 .pv-vehiculo-coste small { display: block; font-size: 0.7rem; color: var(--muted); }
 .pv-vehiculo-venta { grid-column: 1 / -1; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.8rem; }
 .pv-vehiculo-venta .pv-entrada { width: 150px; }
+.pv-venta-resumen {
+    margin-top: 10px; padding: 12px 14px; border-radius: 12px; font-size: 0.84rem; line-height: 1.55;
+    background: color-mix(in srgb, var(--info) 9%, transparent); border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+}
+.pv-venta-resumen strong { font-variant-numeric: tabular-nums; }
+.pv-venta-resumen .pv-check { margin-top: 8px; }
+.pv-cifra small.venta { color: var(--info); }
 
 .pv-barra {
     position: sticky; top: 70px; z-index: 50; display: flex; justify-content: space-between; gap: 12px 24px; align-items: center; flex-wrap: wrap;
@@ -334,7 +342,7 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
     var S = {
         fuente: 'presupuesto', precio: 25000, propulsion: 'hibrido', gastos_pct: 2, km: 15000, carga: false,
         contado: false, entrada: 20, tin: 7, plazo: 60, max: 15,
-        otras: null, uso: {}, vendidos: {},
+        otras: null, uso: {}, vendidos: {}, venta_a_entrada: true,
     };
     try {
         var guardado = JSON.parse(localStorage.getItem(ALMACEN) || 'null');
@@ -395,7 +403,7 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
                 '> Lo vendo al comprar el nuevo</label>' +
                 (vend ? '<span>por</span><span class="pv-entrada"><input type="number" data-venta min="0" step="100" value="' +
                         (vend.venta != null ? vend.venta : v.valor_actual) + '"><em>€ netos</em></span>' +
-                        '<span class="pv-hint" style="margin:0">Su cuota y sus gastos dejan de salir; lo que saques entra como capital (si tiene préstamo, pon lo que te queda tras cancelarlo).</span>' : '') +
+                        '<span class="pv-hint" style="margin:0">Su cuota y sus gastos dejan de salir, y lo que saques va a la entrada del nuevo. Si tiene préstamo, pon lo que te queda tras cancelarlo.</span>' : '') +
                 '</div></div>';
         }).join('');
     }
@@ -465,7 +473,7 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
             ingresos: f.ingresos, gastos: f.gastos, liquidez: D.capital_liquidez, venta: venta,
             otras_cuotas: S.otras != null ? S.otras : (D.otras_cuotas || 0),
             liberado_cuota: liberadoCuota, liberado_uso: liberadoUso, coste_coches_hoy: cochesHoy,
-            max_pct: S.max, colchon_meses: 6,
+            max_pct: S.max, colchon_meses: 6, venta_a_entrada: S.venta_a_entrada,
         };
     }
 
@@ -501,7 +509,29 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
         var r = P.evaluar(e);
 
         $('pv-lbl-km').textContent = S.km.toLocaleString('es-ES') + ' km';
-        $('pv-lbl-entrada').textContent = S.entrada + ' % · ' + fmt(r.entrada);
+        $('pv-lbl-entrada').textContent = S.entrada + ' % · ' + fmt(r.entrada_propia) +
+            (r.entrada_venta ? ' + ' + fmt(r.entrada_venta) + ' de la venta' : '');
+
+        // Lo que pasa al vender tus coches, dicho donde se marcan.
+        var nVendidos = VEHICULOS.filter(function (v) { return S.vendidos[v.id]; }).length;
+        var resumen = $('pv-venta-resumen');
+        if (nVendidos) {
+            var liberado = e.liberado_cuota + e.liberado_uso;
+            resumen.hidden = false;
+            resumen.innerHTML = 'Vendes ' + (nVendidos === 1 ? 'un coche' : nVendidos + ' coches') + ' por <strong>' + fmt(r.venta) + '</strong> y dejas de pagar <strong>' +
+                fmt(liberado) + '/mes</strong> en ellos. ' +
+                (S.contado ? 'Al contado, ese dinero se suma a tu liquidez para pagarlo.'
+                    : (r.entrada_venta
+                        ? 'Va a la entrada del nuevo: pides <strong>' + fmt(r.prestamo) + '</strong> en vez de ' + fmt(r.prestamo_sin_venta) +
+                          ', y la cuota baja de ' + fmt(r.cuota_sin_venta) + ' a <strong>' + fmt(r.cuota) + '/mes</strong>.'
+                        : 'Se queda como liquidez: no toca el préstamo.')) +
+                (S.contado ? '' : '<label class="pv-check"><input type="checkbox" id="pv-venta-entrada"' + (S.venta_a_entrada ? ' checked' : '') +
+                    '> Usar lo de la venta como entrada del coche nuevo</label>');
+            var chk = $('pv-venta-entrada');
+            if (chk) chk.addEventListener('change', function () { S.venta_a_entrada = chk.checked; todo(); });
+        } else {
+            resumen.hidden = true;
+        }
         $('pv-lbl-tin').textContent = pct(S.tin);
         $('pv-lbl-plazo').textContent = S.plazo + ' meses (' + (S.plazo / 12).toLocaleString('es-ES', {maximumFractionDigits: 1}) + ' años)';
         $('pv-lbl-max').textContent = S.max + ' % · ' + fmt(f.ingresos * S.max / 100) + '/mes';
@@ -511,6 +541,7 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
         // Barra fija
         $('pb-precio').textContent = fmt(r.precio);
         $('pb-entrada').textContent = fmt(r.entrada);
+        $('pb-entrada-venta').textContent = r.entrada_venta ? 'incluye ' + fmt(r.entrada_venta) + ' de la venta' : '';
         $('pb-prestamo').textContent = S.contado ? 'al contado' : fmt(r.prestamo);
         $('pb-cuota').textContent = S.contado ? '—' : fmt(r.cuota) + '/mes';
         $('pb-coste').textContent = fmt(r.coste_mensual) + '/mes';
@@ -545,7 +576,9 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
         $('pv-prestamo').textContent = S.contado ? fmt(r.precio + r.gastos_compra) : fmt(r.prestamo);
         $('pv-frase').innerHTML = S.contado
             ? 'Precio <strong>' + fmt(r.precio) + '</strong> + gastos <strong>' + fmt(r.gastos_compra) + '</strong>, de una vez, sin intereses.'
-            : '<strong>' + fmt(r.precio) + '</strong> de precio − <strong>' + fmt(r.entrada) + '</strong> de entrada = <strong>' + fmt(r.prestamo) +
+            : '<strong>' + fmt(r.precio) + '</strong> de precio − <strong>' + fmt(r.entrada) + '</strong> de entrada' +
+              (r.entrada_venta ? ' (' + fmt(r.entrada_propia) + ' tuyos + ' + fmt(r.entrada_venta) + ' de vender tus coches)' : '') +
+              ' = <strong>' + fmt(r.prestamo) +
               '</strong> a ' + r.meses + ' meses al ' + pct(S.tin) + ': <strong>' + fmt(r.cuota) + '/mes</strong>. Más ' + fmt(r.uso) + '/mes de usarlo: <strong>' + fmt(r.coste_mensual) + '/mes</strong> en total.';
         $('pv-intereses').textContent = S.contado ? '0 €' : fmt(r.intereses);
         $('pv-intereses-sub').textContent = S.contado || !r.prestamo ? '' : pct(r.intereses / r.prestamo * 100) + ' de lo que pides';
