@@ -274,22 +274,6 @@
                 </details>
             </div>
 
-            <!-- CAPACIDAD MÁXIMA -->
-            <div class="card glass-panel">
-                <h2>Tu techo</h2>
-                <div class="techo-doble">
-                    <div class="headline">
-                        <div class="lbl">Precio máximo que puedes asumir</div>
-                        <div class="val" id="r-max-precio">—</div>
-                    </div>
-                    <div class="headline">
-                        <div class="lbl">Hipoteca máxima que pedirías</div>
-                        <div class="val" id="r-max-hipoteca">—</div>
-                    </div>
-                </div>
-                <div class="sub techo-sub" id="r-max-sub"></div>
-            </div>
-
             <!-- TEST DE ESTRÉS -->
             <div class="card glass-panel">
                 <h2>Si las cosas se tuercen</h2>
@@ -347,6 +331,31 @@
         <p class="hint" id="proy-info"></p>
     </div>
 
+    <!-- ═══ TU TECHO TEÓRICO ══════════════════════════════════════════════
+         Plegado y al final, a propósito: es un máximo TEÓRICO —lo que saldría
+         estirando la cuota hasta tu límite y poniendo todo tu capital—, no una
+         recomendación. En grande y arriba se leía como «esto es lo que puedes
+         comprar», y pesaba más que el veredicto de la casa que simulas. -->
+    <details class="techo-teorico">
+        <summary>
+            <span>Tu techo <strong>teórico</strong></span>
+            <span class="techo-resumen" id="r-max-resumen"></span>
+        </summary>
+        <p class="techo-aviso">Es un máximo <strong>teórico</strong>, no una recomendación: sale de llevar la cuota justo
+            hasta tu límite y meter de entrada todo tu capital, sin dejar colchón. Útil como referencia; para decidir, mira el veredicto de arriba.</p>
+        <div class="techo-doble">
+            <div>
+                <div class="lbl">Precio máximo teórico</div>
+                <div class="val" id="r-max-precio">—</div>
+            </div>
+            <div>
+                <div class="lbl">Hipoteca máxima teórica</div>
+                <div class="val" id="r-max-hipoteca">—</div>
+            </div>
+        </div>
+        <div class="techo-sub" id="r-max-sub"></div>
+    </details>
+
 </div>
 
 <style>
@@ -388,9 +397,16 @@
     margin-top: 8px; border: none; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 0.8rem;
     padding: 7px 12px; border-radius: 8px; background: var(--success); color: var(--on-primary, #fff);
 }
+/* El techo teórico: plegado, pequeño y al final. Referencia, no consejo. */
+.techo-teorico { margin: 4px 0 24px; padding: 10px 16px; border: 1px dashed var(--border-strong); border-radius: 12px; color: var(--muted); }
+.techo-teorico summary { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; cursor: pointer; font-size: 0.82rem; }
+.techo-teorico summary strong { color: var(--text-color); text-transform: uppercase; letter-spacing: .04em; font-size: 0.74rem; }
+.techo-resumen { font-variant-numeric: tabular-nums; font-size: 0.78rem; }
+.techo-aviso { font-size: 0.76rem; line-height: 1.5; margin: 10px 0; }
 .techo-doble { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.techo-doble .headline:last-child .val { color: var(--info); }
-.techo-sub { font-size: 0.78rem; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+.techo-doble .lbl { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .05em; }
+.techo-doble .val { font-size: 1.05rem; font-weight: 700; color: var(--text-color); font-variant-numeric: tabular-nums; }
+.techo-sub { font-size: 0.74rem; color: var(--muted); margin-top: 8px; line-height: 1.5; }
 @media (max-width: 760px) {
     /* En el móvil, una línea: lo que pides y la cuota. El resto está debajo. */
     .hip-barra { grid-template-columns: 1fr auto; top: 66px; padding: 8px 12px; gap: 6px 12px; }
@@ -880,6 +896,7 @@ function actualizar() {
     const hipMax = Math.max(0, precioMax - Math.max(0, capitalDisponible - gMax.total));
     $('r-max-precio').textContent = fmt(precioMax);
     $('r-max-hipoteca').textContent = fmt(hipMax);
+    $('r-max-resumen').textContent = fmt(precioMax) + ' de precio · ' + fmt(hipMax) + ' de hipoteca';
     $('r-max-sub').textContent = 'Con ' + fmt(capitalDisponible) + ' de capital y una cuota tope de ' +
         fmt(cuotaTope) + '/mes (' + maxPct + '% de ' + (baseMode === 'ingresos' ? 'tus ingresos netos' : 'tu libre mensual') +
         (ESTADO.otras > 0 ? ', menos ' + fmt(ESTADO.otras) + ' de otras cuotas' : '') + '), poniendo de entrada todo tu capital menos los gastos de compra.';
