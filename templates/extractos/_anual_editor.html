@@ -1,0 +1,50 @@
+{% load custom_filters %}{% load l10n %}
+            <!-- Cuándo se paga, sin irse a Gastos: aquí es donde se ve que falta. -->
+            <form method="post" action="{% url 'extractos:anuales_calendario' f.partida.id %}"
+                  class="an-editor{% if f.fraccionado %} varios{% endif %}" id="an-ed-{{ f.partida.id }}" hidden
+                  data-plazos="{{ f.admite_plazos|yesno:'1,0' }}">
+                {% csrf_token %}
+                <input type="hidden" name="anio" value="{{ d.anio }}">
+                <div class="an-ed-cab">
+                    <strong>{% if f.admite_plazos %}¿Cuándo se paga?{% elif f.plurianual %}¿Cuándo toca?{% else %}Mes del primer pago{% endif %}</strong>
+                    {% if f.admite_plazos %}<span class="an-apagado">Declarado {{ f.partida.importe|euro }} al año</span>
+                    {% elif f.plurianual %}<span class="an-apagado">{{ f.periodicidad|lower }}: los siguientes se cuentan desde esta fecha</span>{% endif %}
+                </div>
+                <div class="an-ed-filas">
+                    {% if f.fraccionado %}
+                    {% for c in f.cuotas %}
+                    <div class="an-ed-fila">
+                        <select name="mes" aria-label="Mes del plazo">
+                            <option value="">— sin mes —</option>
+                            {% for num, nombre in d.meses %}<option value="{{ num }}" {% if num == c.mes %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+                        </select>
+                        <input type="text" name="importe" inputmode="decimal" value="{{ c.importe|floatformat:2 }}" placeholder="lo que falte" aria-label="Importe del plazo">
+                        <button type="button" class="an-ed-quitar" title="Quitar este plazo" aria-label="Quitar este plazo"><svg class="icon"><use href="#i-close"/></svg></button>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="an-ed-fila">
+                        <select name="mes" aria-label="Mes de pago">
+                            <option value="">— sin mes —</option>
+                            {% for num, nombre in d.meses %}<option value="{{ num }}" {% if num == f.partida.mes_pago %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+                        </select>
+                        {% if f.plurianual %}
+                        <input type="number" name="anio_pago" class="an-ed-anio" min="1990" max="2200" step="1"
+                               value="{% if f.proximo %}{{ f.proximo.anio|unlocalize }}{% endif %}" placeholder="año" aria-label="Año en que toca">
+                        {% endif %}
+                        {% if f.admite_plazos %}
+                        <input type="text" name="importe" inputmode="decimal" value="" placeholder="lo que falte" aria-label="Importe del plazo">
+                        <button type="button" class="an-ed-quitar" title="Quitar este plazo" aria-label="Quitar este plazo"><svg class="icon"><use href="#i-close"/></svg></button>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% if f.admite_plazos %}
+                <button type="button" class="an-ed-mas"><svg class="icon"><use href="#i-plus"/></svg> Pagarlo en otro plazo más</button>
+                <p class="an-ed-nota">Con varios plazos, deja un importe en blanco y se lleva lo que falte hasta {{ f.partida.importe|euro }}; en blanco todos, a partes iguales.</p>
+                {% endif %}
+                <div class="an-ed-botones">
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                    <button type="button" class="btn btn-ghost an-ed-cancelar">Cancelar</button>
+                </div>
+            </form>

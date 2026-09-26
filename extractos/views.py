@@ -20,7 +20,7 @@ from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_G
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
 from . import reparto
-from .anuales import analizar_anuales
+from .anuales import analizar_anuales, dar_por_pagado, guardar_calendario
 from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
 from .categorizacion import categorizar, categorizar_lote
 from .models import (
@@ -3280,6 +3280,48 @@ def anuales(request):
         'd': datos,
         'grafico_json': datos['grafico'],
     })
+
+
+@login_required
+def anuales_calendario(request, pk):
+    """Cambia el mes de pago de una partida, o la parte en plazos, sin salir
+    de Fijos anuales: es ahí donde se ve que falta o que está mal."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return redirect('dashboard')
+    partida = get_object_or_404(PartidaGasto, pk=pk, hogar=hogar)
+    anio = _entero_o_none(request.POST.get('anio'))
+    destino = reverse('extractos:anuales') + (f'?anio={anio}' if anio else '') + f'#partida-{partida.id}'
+    if request.method != 'POST':
+        return redirect(destino)
+    meses = request.POST.getlist('mes')
+    error = guardar_calendario(
+        partida, meses, request.POST.getlist('importe') or [''] * len(meses),
+        anio_pago=request.POST.get('anio_pago'),
+    )
+    if error:
+        messages.error(request, f'{partida.nombre}: {error}')
+    elif partida.plazos_de_pago or partida.anio_pago:
+        messages.success(request, f'{partida.nombre}: se paga en {partida.meses_pago_display.lower()}.')
+    elif partida.mes_pago:
+        messages.success(request, f'{partida.nombre}: se paga en {partida.get_mes_pago_display().lower()}.')
+    else:
+        messages.success(request, f'{partida.nombre}: sin mes de pago.')
+    return redirect(destino)
+
+
+@login_required
+def anuales_dar_por_pagado(request, pk):
+    """«Esto ya está pagado» aunque el recibo no cuadre con lo declarado."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return redirect('dashboard')
+    partida = get_object_or_404(PartidaGasto, pk=pk, hogar=hogar)
+    anio = _entero_o_none(request.POST.get('anio')) or date.today().year
+    destino = reverse('extractos:anuales') + f'?anio={anio}#partida-{partida.id}'
+    if request.method == 'POST':
+        dar_por_pagado(partida, anio, si=request.POST.get('deshacer') != '1')
+    return redirect(destino)
 
 
 # ---------------------------------------------------------------------------

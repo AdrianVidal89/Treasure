@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth.models import User
+from django.contrib.messages import get_messages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -6283,9 +6284,12 @@ class FijosAnualesTests(TestCase):
 
     def test_plurianual_no_cuenta_en_lo_previsto_del_año(self):
         datos, filas = self.analizar()
-        self.assertEqual(filas['Neumáticos']['estado'], 'no_toca')
+        self.assertNotIn('Neumáticos', filas)
+        ahorro = {f['nombre']: f for f in datos['ahorro']}
+        self.assertEqual(ahorro['Neumáticos']['estado'], 'no_toca')
         self.assertEqual(datos['previsto'], Decimal('520') + 380 + 300 + 273)
-        self.assertFalse(filas['Neumáticos']['cuotas'])
+        self.assertFalse(ahorro['Neumáticos']['cuotas'])
+        self.assertEqual(datos['ahorro_anual'], Decimal('181.00'))
 
     def test_la_grafica_pone_cada_cosa_en_su_mes(self):
         self.pago('-380', 4, 2, self.cat_seguro)   # previsto en marzo, pagado en abril
@@ -6341,3 +6345,197 @@ class FijosAnualesTests(TestCase):
         datos, filas = self.analizar()
         self.assertEqual(filas['IBI']['estado'], 'pagado')
         self.assertEqual(filas['IBI']['falta'], Decimal('0'))
+
+    # --- Cuándo se paga, cambiado desde la propia fila ---
+
+    def calendario(self, partida, meses, importes=None, anio='2026', anio_pago_=''):
+        return self.client.post(
+            reverse('extractos:anuales_calendario', args=[partida.id]),
+            {'mes': meses, 'importe': importes or [''] * len(meses), 'anio': anio,
+             'anio_pago': anio_pago_},
+        )
+
+    def test_cambia_el_mes_de_pago_desde_la_fila(self):
+        respuesta = self.calendario(self.seguro, ['10'])
+        self.assertRedirects(
+            respuesta, reverse('extractos:anuales') + f'?anio=2026#partida-{self.seguro.id}',
+            fetch_redirect_response=False,
+        )
+        self.seguro.refresh_from_db()
+        self.assertEqual(self.seguro.mes_pago, 10)
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'pendiente')
+
+    def test_quitar_el_mes_lo_deja_sin_mes(self):
+        self.calendario(self.seguro, [''])
+        self.seguro.refresh_from_db()
+        self.assertIsNone(self.seguro.mes_pago)
+
+    def test_ibi_en_dos_plazos_a_partes_iguales(self):
+        self.calendario(self.ibi, ['11', '6'])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.mes_pago, 6)
+        self.assertEqual(self.ibi.plazos_de_pago, [(6, Decimal('260.00')), (11, Decimal('260.00'))])
+        self.assertEqual(self.ibi.meses_pago_display, 'Junio y noviembre')
+
+        # Pagado el de junio (por céntimos de menos): al día, falta noviembre.
+        self.pago('-259.10', 6, 2, self.cat_ibi)
+        datos, filas = self.analizar()
+        fila = filas['IBI']
+        self.assertEqual([c['mes'] for c in fila['cuotas']], [6, 11])
+        self.assertEqual(fila['estado'], 'parcial')
+        self.assertIn('noviembre', fila['frase'])
+        self.assertFalse(fila['fuera_de_mes'])
+        g = {d['mes']: d for d in datos['grafico']}
+        self.assertEqual(g[6]['total_previsto'], 260)
+        self.assertEqual(g[11]['total_previsto'], 260 + 273)   # con la revisión
+
+    def test_plazo_de_junio_sin_pagar_ya_tocaba(self):
+        self.calendario(self.ibi, ['6', '11'], ['200', ''])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos_de_pago, [(6, Decimal('200')), (11, Decimal('320'))])
+        _, filas = self.analizar()
+        self.assertEqual(filas['IBI']['estado'], 'atrasado')
+        self.assertIn('junio', filas['IBI']['frase'])
+
+    def test_plazos_que_no_cuadran_no_se_guardan(self):
+        respuesta = self.calendario(self.ibi, ['6', '11'], ['200', '200'])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos, [])
+        self.assertEqual(self.ibi.mes_pago, 6)
+        mensajes = [str(m) for m in get_messages(respuesta.wsgi_request)]
+        self.assertTrue(any('400,00 €' in m and '520,00 €' in m for m in mensajes))
+
+    def test_dos_plazos_en_el_mismo_mes_no(self):
+        self.calendario(self.ibi, ['6', '6'])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos, [])
+
+    def test_un_semestral_no_se_parte_en_plazos(self):
+        self.calendario(self.hogar_sem, ['1', '4'])
+        self.hogar_sem.refresh_from_db()
+        self.assertEqual(self.hogar_sem.plazos, [])
+        self.assertEqual(self.hogar_sem.mes_pago, 1)
+
+    def test_los_plazos_siguen_al_importe_declarado(self):
+        self.calendario(self.ibi, ['6', '11'], ['130', '390'])   # 25 % y 75 %
+        self.ibi.refresh_from_db()
+        self.ibi.importe = Decimal('600')
+        self.ibi.save()
+        self.assertEqual(self.ibi.plazos_de_pago, [(6, Decimal('150.00')), (11, Decimal('450.00'))])
+
+    def test_no_se_edita_la_partida_de_otro_hogar(self):
+        otro = Hogar.objects.create(nombre='Otro')
+        ajena = PartidaGasto.objects.create(
+            hogar=otro, nombre='IBI ajeno', importe=Decimal('100'), periodicidad='anual', mes_pago=6,
+        )
+        respuesta = self.calendario(ajena, ['9'])
+        self.assertEqual(respuesta.status_code, 404)
+
+    def test_la_fila_trae_el_editor(self):
+        self.calendario(self.ibi, ['6', '11'])
+        html = self.client.get(reverse('extractos:anuales'), {'anio': '2026'}).content.decode()
+        self.assertIn(reverse('extractos:anuales_calendario', args=[self.ibi.id]), html)
+        self.assertIn('en 2 plazos', html)
+        self.assertIn('Pagarlo en otro plazo más', html)
+
+    def test_cambiar_el_mes_en_gastos_deshace_los_plazos(self):
+        self.calendario(self.ibi, ['6', '11'])
+        datos = {
+            'categoria_id': self.cat_ibi.id, 'nombre': 'IBI', 'importe': '520',
+            'periodicidad': 'anual', 'mes_pago': '6',
+        }
+        self.client.post(reverse('finanzas:editar_partida', args=[self.ibi.id]), datos)
+        self.ibi.refresh_from_db()
+        self.assertEqual(len(self.ibi.plazos_de_pago), 2)   # mismo mes: se conservan
+        datos['mes_pago'] = '7'
+        self.client.post(reverse('finanzas:editar_partida', args=[self.ibi.id]), datos)
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos, [])
+        self.assertEqual(self.ibi.mes_pago, 7)
+
+    # --- «Dar por pagado» ---
+
+    def test_dar_por_pagado_aunque_falten_unos_euros(self):
+        self.pago('-370.91', 3, 1, self.cat_seguro)
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'atrasado')
+
+        url = reverse('extractos:anuales_dar_por_pagado', args=[self.seguro.id])
+        self.client.post(url, {'anio': '2026'})
+        datos, filas = self.analizar()
+        fila = filas['Seguro coche']
+        self.assertEqual(fila['estado'], 'pagado')
+        self.assertIn('9,09 € menos', fila['frase'])
+        self.assertEqual(fila['falta'], Decimal('0'))
+        self.assertEqual(fila['pagado'], Decimal('370.91'))   # lo pagado no se inventa
+        # Solo ese año.
+        _, filas = self.analizar(2025)
+        self.assertEqual(filas['Seguro coche']['estado'], 'atrasado')
+
+        self.client.post(url, {'anio': '2026', 'deshacer': '1'})
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'atrasado')
+
+    # --- Los de varios años ---
+
+    def test_de_varios_años_sale_el_año_que_toca(self):
+        # Neumáticos cada 36 meses, tocaron en octubre de 2023: toca oct 2026.
+        self.calendario(self.neumaticos, ['10'], anio_pago_='2023')
+        self.neumaticos.refresh_from_db()
+        self.assertEqual(self.neumaticos.anio_pago, 2023)
+        self.assertEqual(self.neumaticos.vencimientos_en(2026), [10])
+        self.assertEqual(self.neumaticos.vencimientos_en(2027), [])
+        self.assertEqual(self.neumaticos.vencimientos_en(2029), [10])
+
+        datos, filas = self.analizar()
+        fila = filas['Neumáticos']
+        self.assertEqual(fila['estado'], 'pendiente')
+        self.assertIn('octubre', fila['frase'])
+        self.assertEqual(fila['esperado'], Decimal('543'))
+        self.assertEqual(datos['previsto'], Decimal('520') + 380 + 300 + 273 + 543)
+        g = {d['mes']: d for d in datos['grafico']}
+        self.assertEqual(g[10]['total_previsto'], 543)
+        self.assertFalse(datos['ahorro'])
+
+        # En 2027 no toca: está ahorrando, y dice cuándo le toca.
+        datos, filas = self.analizar(2027)
+        self.assertNotIn('Neumáticos', filas)
+        self.assertEqual(datos['ahorro'][0]['proximo']['anio'], 2029)
+
+    def test_de_varios_años_pagado_cuenta_la_reserva(self):
+        self.calendario(self.neumaticos, ['10'], anio_pago_='2026')
+        pago = self.pago('-500', 10, 5, self.cat_mant, partida=self.neumaticos)
+        MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=date(2026, 10, 5), concepto='Desde la hucha',
+            importe=Decimal('400'), cubre=pago,
+        )
+        self.hoy = date(2026, 10, 20)
+        datos, filas = self.analizar()
+        fila = filas['Neumáticos']
+        self.assertEqual(fila['estado'], 'pagado')
+        self.assertIn('43,00 € menos', fila['frase'])
+        self.assertEqual(fila['de_reserva'], Decimal('400'))
+        self.assertEqual(fila['de_bolsillo'], Decimal('100'))
+        self.assertEqual(fila['falta'], Decimal('0'))
+        self.assertIsNone(fila['recolocar'])
+
+    def test_de_varios_años_pagado_antes_ofrece_contar_desde_ahi(self):
+        self.calendario(self.neumaticos, ['10'], anio_pago_='2028')
+        self.pago('-560', 4, 3, self.cat_mant, partida=self.neumaticos)
+        _, filas = self.analizar()
+        fila = filas['Neumáticos']
+        self.assertEqual(fila['estado'], 'pagado')
+        self.assertIn('no tocaba este año', fila['frase'])
+        self.assertEqual(fila['recolocar']['mes'], 4)
+        html = self.client.get(reverse('extractos:anuales'), {'anio': '2026'}).content.decode()
+        self.assertIn('Contar los siguientes desde este pago', html)
+
+        self.calendario(self.neumaticos, ['4'], anio_pago_='2026')
+        self.neumaticos.refresh_from_db()
+        self.assertEqual(self.neumaticos.proximo_pago(date(2026, 5, 1)), (2029, 4))
+
+    def test_la_seccion_de_ahorro_se_ve(self):
+        html = self.client.get(reverse('extractos:anuales'), {'anio': '2026'}).content.decode()
+        self.assertIn('Ahorrando para más adelante', html)
+        self.assertIn('poner cuándo toca', html)

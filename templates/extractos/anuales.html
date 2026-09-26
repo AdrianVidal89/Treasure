@@ -88,7 +88,7 @@
     <!-- ══════════ PARTIDA A PARTIDA ══════════ -->
     <section class="an-lista">
         {% for f in d.filas %}
-        <article class="an-fila {{ f.estado }}">
+        <article class="an-fila {{ f.estado }}" id="partida-{{ f.partida.id }}">
             <span class="an-estado {{ f.estado }}">
                 {% if f.estado == 'pagado' %}<svg class="icon"><use href="#i-check"/></svg>
                 {% elif f.estado == 'atrasado' %}<svg class="icon"><use href="#i-alert"/></svg>
@@ -99,8 +99,13 @@
                 <span class="an-nombre">{{ f.nombre }}</span>
                 <span class="an-meta">
                     {% if f.categoria %}{{ f.categoria }} · {% endif %}{{ f.periodicidad|lower }}
-                    {% if f.cuotas %}· se paga en {% for c in f.cuotas %}{{ c.nombre_mes|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}
-                    {% elif not f.plurianual %}· <a href="{% url 'finanzas:editar_partida' f.partida.id %}">poner mes de pago</a>{% endif %}
+                    {% if f.plurianual %}{% if f.cuotas %}· toca en {{ f.cuotas.0.nombre_mes|lower }} de {{ d.anio|unlocalize }}{% elif f.proximo %}· el próximo, en {{ f.proximo.nombre_mes|lower }} de {{ f.proximo.anio|unlocalize }}{% endif %}
+                    {% elif f.cuotas %}· {% if f.fraccionado %}en {{ f.cuotas|length }} plazos: {% for c in f.cuotas %}{{ c.nombre_mes|lower }} ({{ c.importe|euro }}){% if not forloop.last %}, {% endif %}{% endfor %}{% else %}se paga en {% for c in f.cuotas %}{{ c.nombre_mes|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+                    {% endif %}
+                    · <button type="button" class="an-cambiar" aria-expanded="false" aria-controls="an-ed-{{ f.partida.id }}">
+                        {% if f.plurianual %}{% if f.anclado %}cambiar cuándo toca{% else %}poner cuándo toca{% endif %}
+                        {% elif f.partida.mes_pago %}cambiar{% if f.admite_plazos %} mes o plazos{% else %} mes{% endif %}{% else %}poner mes de pago{% endif %}
+                    </button>
                 </span>
                 <span class="an-chapa {{ f.estado }}">{{ f.frase }}</span>
             </div>
@@ -109,7 +114,7 @@
                 <div class="an-cifra">
                     <span class="an-cifra-lbl">Declarado</span>
                     <span class="an-cifra-val">{{ f.esperado|euro }}</span>
-                    {% if f.plurianual %}<span class="an-cifra-sub">provisionas {{ f.provision_anual|euro:0 }}/año</span>{% endif %}
+                    {% if f.plurianual %}<span class="an-cifra-sub">para {{ f.meses_periodo }} meses · {{ f.provision_anual|euro:0 }}/año</span>{% endif %}
                 </div>
                 <div class="an-cifra">
                     <span class="an-cifra-lbl">Pagado</span>
@@ -133,10 +138,84 @@
                 {% else %}
                 <span class="an-pagos an-apagado">ningún pago en {{ d.anio }}</span>
                 {% endif %}
+                {% if f.de_reserva %}
+                <span class="an-reserva">
+                    <svg class="icon"><use href="#i-check"/></svg>
+                    La reserva puso <strong>{{ f.de_reserva|euro }}</strong>{% if f.de_bolsillo %} · de tu bolsillo, <strong>{{ f.de_bolsillo|euro }}</strong>{% endif %}
+                </span>
+                {% elif f.plurianual and f.pagado %}
+                <span class="an-reserva an-apagado">Si salió de lo que tenías apartado, emparéjalo en Movimientos con «de la reserva» y aquí verás cuánto cubrió.</span>
+                {% endif %}
+                {% if f.dado_por_pagado or f.estado == 'atrasado' or f.estado == 'parcial' and not f.fraccionado or f.recolocar %}
+                <div class="an-acciones">
+                    {% if f.dado_por_pagado %}
+                    <form method="post" action="{% url 'extractos:anuales_dar_por_pagado' f.partida.id %}">
+                        {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}"><input type="hidden" name="deshacer" value="1">
+                        <button type="submit" class="an-accion">deshacer «dado por pagado»</button>
+                    </form>
+                    {% elif f.estado == 'atrasado' or f.estado == 'parcial' and not f.fraccionado %}
+                    <form method="post" action="{% url 'extractos:anuales_dar_por_pagado' f.partida.id %}">
+                        {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}">
+                        <button type="submit" class="an-accion fuerte" title="El recibo no cuadra con lo declarado, pero no hay nada más que pagar en {{ d.anio|unlocalize }}">
+                            <svg class="icon"><use href="#i-check"/></svg> Dar por pagado{% if f.pagado %} con {{ f.pagado|euro }}{% endif %}
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if f.recolocar %}
+                    <form method="post" action="{% url 'extractos:anuales_calendario' f.partida.id %}">
+                        {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}">
+                        <input type="hidden" name="mes" value="{{ f.recolocar.mes }}"><input type="hidden" name="anio_pago" value="{{ f.recolocar.fecha.year|unlocalize }}">
+                        <button type="submit" class="an-accion" title="Los siguientes pagos se contarán cada {{ f.meses_periodo }} meses desde {{ f.recolocar.fecha|date:'F Y'|lower }}">
+                            <svg class="icon"><use href="#i-calendar"/></svg> Contar los siguientes desde este pago
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
+
+            {% include 'extractos/_anual_editor.html' %}
         </article>
         {% endfor %}
     </section>
+
+    {% if d.ahorro %}
+    <!-- ══════════ LOS DE VARIOS AÑOS QUE NO TOCAN ESTE AÑO ══════════ -->
+    <section class="an-ahorro">
+        <h3>Ahorrando para más adelante · {{ d.ahorro_anual|euro:0 }}/año</h3>
+        <p>
+            Gastos de más de un año —unos neumáticos, una caldera— que en {{ d.anio|unlocalize }} no toca pagar: se van apartando
+            y no cuentan en lo de arriba. El año que toquen saldrán en la lista con su importe entero; si los pagas
+            antes, también.
+            {% if d.num_sin_fecha %}<strong>Dile a {{ d.num_sin_fecha }} cuándo toca{{ d.num_sin_fecha|pluralize:"n" }}</strong> para que salgan solos ese año.{% endif %}
+        </p>
+        {% for f in d.ahorro %}
+        <article class="an-hucha" id="partida-{{ f.partida.id }}">
+            <div class="an-que">
+                <span class="an-nombre">{{ f.nombre }}</span>
+                <span class="an-meta">
+                    {% if f.categoria %}{{ f.categoria }} · {% endif %}{{ f.periodicidad|lower }} ·
+                    {% if f.proximo %}toca en {{ f.proximo.nombre_mes|lower }} de {{ f.proximo.anio|unlocalize }}{% else %}<span class="an-rojo">sin fecha</span>{% endif %}
+                    · <button type="button" class="an-cambiar" aria-expanded="false" aria-controls="an-ed-{{ f.partida.id }}">
+                        {% if f.anclado %}cambiar cuándo toca{% else %}poner cuándo toca{% endif %}
+                    </button>
+                </span>
+            </div>
+            <div class="an-cifras">
+                <div class="an-cifra">
+                    <span class="an-cifra-lbl">Cuesta</span>
+                    <span class="an-cifra-val">{{ f.esperado|euro }}</span>
+                </div>
+                <div class="an-cifra">
+                    <span class="an-cifra-lbl">Apartas</span>
+                    <span class="an-cifra-val an-apagado">{{ f.provision_anual|euro:0 }}/año</span>
+                </div>
+            </div>
+            {% include 'extractos/_anual_editor.html' %}
+        </article>
+        {% endfor %}
+    </section>
+    {% endif %}
 
     {% if d.sin_asignar %}
     <!-- ══════════ PAGOS QUE NO SE SABE DE QUÉ SON ══════════ -->
@@ -229,7 +308,7 @@
 
 .an-lista { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
 .an-fila {
-    display:grid; grid-template-columns:36px 1fr auto; grid-template-areas:"est que cif" "est pie pie";
+    display:grid; grid-template-columns:36px 1fr auto; grid-template-areas:"est que cif" "est pie pie" "est ed ed";
     gap:8px 14px; align-items:center; padding:14px 18px; border-radius:14px;
     background:var(--surface); border:1px solid var(--border);
 }
@@ -267,10 +346,72 @@
 }
 .an-pago.deducido { border-style:dashed; }
 .an-otro-mes { color:var(--warning); font-weight:600; }
+.an-cambiar {
+    background:none; border:0; padding:0; font:inherit; color:var(--primary-color); cursor:pointer;
+    text-decoration:underline; text-underline-offset:2px;
+}
+.an-cambiar:hover { color:var(--accent-color); }
+.an-editor {
+    grid-area:ed; display:flex; flex-direction:column; gap:8px; margin-top:4px; padding:12px 14px;
+    border-radius:12px; background:var(--app-bg); border:1px solid var(--border);
+}
+.an-editor[hidden] { display:none; }
+.an-ed-cab { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:0.82rem; }
+.an-ed-filas { display:flex; flex-direction:column; gap:6px; }
+.an-ed-fila { display:flex; gap:6px; align-items:center; }
+.an-ed-fila select, .an-ed-fila input {
+    background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:8px;
+    padding:7px 10px; font-size:0.84rem; min-width:0;
+}
+.an-ed-fila select { flex:1 1 160px; max-width:220px; }
+.an-ed-fila input { flex:0 1 130px; font-variant-numeric:tabular-nums; }
+/* Con un solo plazo el importe sobra: es el declarado. */
+.an-editor:not(.varios) .an-ed-fila input[name=importe], .an-editor:not(.varios) .an-ed-quitar { display:none; }
+.an-ed-fila input.an-ed-anio { flex:0 0 96px; }
+.an-ed-quitar {
+    display:grid; place-items:center; width:30px; height:30px; flex:0 0 auto; border-radius:8px;
+    background:none; border:1px solid transparent; color:var(--muted); cursor:pointer;
+}
+.an-ed-quitar:hover { color:var(--danger); border-color:var(--border); }
+.an-ed-quitar .icon { width:14px; height:14px; }
+.an-ed-mas {
+    align-self:flex-start; display:inline-flex; align-items:center; gap:5px; background:none; border:0; padding:2px 0;
+    font:inherit; font-size:0.8rem; color:var(--primary-color); cursor:pointer;
+}
+.an-ed-mas .icon { width:14px; height:14px; }
+.an-ed-nota { margin:0; font-size:0.74rem; color:var(--muted); }
+.an-ed-botones { display:flex; gap:8px; }
 @media (max-width:640px){
-    .an-fila { grid-template-columns:34px 1fr; grid-template-areas:"est que" "cif cif" "pie pie"; }
+    .an-fila { grid-template-columns:34px 1fr; grid-template-areas:"est que" "cif cif" "pie pie" "ed ed"; }
     .an-cifras { justify-content:space-between; }
     .an-cifra { align-items:flex-start; }
+}
+
+.an-reserva { display:flex; align-items:center; gap:6px; font-size:0.76rem; }
+.an-reserva .icon { width:14px; height:14px; color:var(--success); }
+.an-acciones { display:flex; gap:8px; flex-wrap:wrap; }
+.an-acciones form { margin:0; }
+.an-accion {
+    display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; cursor:pointer;
+    font:inherit; font-size:0.74rem; font-weight:600; background:none; color:var(--muted); border:1px solid var(--border);
+}
+.an-accion:hover { color:var(--text-color); border-color:var(--border-strong); }
+.an-accion.fuerte { color:var(--success); border-color:color-mix(in srgb, var(--success) 45%, var(--border)); }
+.an-accion.fuerte:hover { background:color-mix(in srgb, var(--success) 10%, transparent); }
+.an-accion .icon { width:13px; height:13px; }
+
+.an-ahorro { padding:16px 18px; border-radius:14px; border:1px dashed var(--border-strong); margin-bottom:18px; }
+.an-ahorro h3 { margin:0 0 4px; font-size:0.95rem; }
+.an-ahorro > p { margin:0 0 10px; font-size:0.8rem; color:var(--muted); line-height:1.5; }
+.an-hucha {
+    display:grid; grid-template-columns:1fr auto; grid-template-areas:"que cif" "ed ed"; gap:6px 14px; align-items:center;
+    padding:10px 14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); margin-bottom:6px;
+}
+.an-hucha .an-cifra-val { font-size:0.95rem; }
+@media (max-width:640px){
+    .an-hucha { grid-template-columns:1fr; grid-template-areas:"que" "cif" "ed"; }
+    .an-hucha .an-cifras { justify-content:space-between; }
+    .an-hucha .an-cifra { align-items:flex-start; }
 }
 
 .an-sin-asignar { padding:16px 18px; border-radius:14px; border:1px dashed var(--border-strong); }
@@ -284,6 +425,50 @@
 </style>
 
 <script>
+/* Editor del mes de pago y los plazos de cada fila. */
+(function () {
+    document.querySelectorAll('.an-cambiar').forEach(function (boton) {
+        var form = document.getElementById(boton.getAttribute('aria-controls'));
+        if (!form) return;
+        var filas = form.querySelector('.an-ed-filas');
+        var original = filas.innerHTML, originalVarios = form.classList.contains('varios');
+        function cuantas() { return filas.querySelectorAll('.an-ed-fila').length; }
+        function marcar() { form.classList.toggle('varios', cuantas() > 1); }
+        function abrir(si) {
+            form.hidden = !si;
+            boton.setAttribute('aria-expanded', si ? 'true' : 'false');
+            if (si) { var s = form.querySelector('select'); if (s) s.focus(); }
+        }
+        boton.addEventListener('click', function () { abrir(form.hidden); });
+        form.querySelector('.an-ed-cancelar').addEventListener('click', function () {
+            /* Deshace también los plazos añadidos o quitados, no solo los valores. */
+            filas.innerHTML = original;
+            form.classList.toggle('varios', originalVarios);
+            abrir(false);
+        });
+        var mas = form.querySelector('.an-ed-mas');
+        if (mas) mas.addEventListener('click', function () {
+            var nueva = filas.querySelector('.an-ed-fila').cloneNode(true);
+            nueva.querySelector('select').value = '';
+            nueva.querySelector('input').value = '';
+            filas.appendChild(nueva);
+            marcar();
+            nueva.querySelector('select').focus();
+        });
+        filas.addEventListener('click', function (e) {
+            var quitar = e.target.closest('.an-ed-quitar');
+            if (!quitar || cuantas() < 2) return;
+            quitar.closest('.an-ed-fila').remove();
+            marcar();
+        });
+    });
+    /* Tras guardar se vuelve a la fila: que se vea el cambio sin buscarla. */
+    if (location.hash.indexOf('#partida-') === 0) {
+        var fila = document.querySelector(location.hash);
+        if (fila) fila.scrollIntoView({block: 'center'});
+    }
+})();
+
 (function () {
     var datos = JSON.parse(document.getElementById('an-datos').textContent || '[]');
     var lienzo = document.getElementById('an-lienzo');

@@ -337,7 +337,7 @@
                         <div class="gasto-partida-meta">
                             <span class="badge-cat">{% if p.categoria %}{{ p.categoria.nombre }}{% else %}{{ p.get_bloque_display }} · sin desglosar{% endif %}</span>
                             {% if p.periodicidad != 'mensual' %} &middot; {{ p.get_periodicidad_display }}{% endif %}
-                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.meses_pago_display }}{% endif %}
                         </div>
                     </div>
                     <div class="gasto-partida-right">
@@ -388,7 +388,7 @@
                         <div class="gasto-partida-nombre">{{ p.nombre }}</div>
                         <div class="gasto-partida-meta">
                             {% if p.periodicidad != 'mensual' %}{{ p.get_periodicidad_display }}{% endif %}
-                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.meses_pago_display }}{% endif %}
                         </div>
                     </div>
                     <div class="gasto-partida-right">
@@ -439,7 +439,7 @@
                         <div class="gasto-partida-nombre">{{ p.nombre }}</div>
                         <div class="gasto-partida-meta">
                             {{ p.get_periodicidad_display }}
-                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.meses_pago_display }}{% endif %}
                         </div>
                     </div>
                     <div class="gasto-partida-right">
@@ -490,7 +490,7 @@
                         <div class="gasto-partida-nombre">{{ p.nombre }}</div>
                         <div class="gasto-partida-meta">
                             {% if p.periodicidad != 'mensual' %}{{ p.get_periodicidad_display }}{% endif %}
-                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.meses_pago_display }}{% endif %}
                         </div>
                     </div>
                     <div class="gasto-partida-right">
@@ -541,7 +541,7 @@
                         <div class="gasto-partida-nombre">{{ p.nombre }}</div>
                         <div class="gasto-partida-meta">
                             {% if p.periodicidad != 'mensual' %}{{ p.get_periodicidad_display }}{% endif %}
-                            {% if p.mes_pago %} &middot; {{ p.get_mes_pago_display }}{% endif %}
+                            {% if p.mes_pago %} &middot; {{ p.meses_pago_display }}{% endif %}
                         </div>
                     </div>
                     <div class="gasto-partida-right">

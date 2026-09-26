@@ -32,27 +32,130 @@ MESES = dict(MESES_CHOICES)
 TOLERANCIA = Decimal('0.01')
 
 
-def _cuotas(partida):
+def _cuotas(partida, anio):
     """En qué meses del año se espera pagar, y cuánto cada vez.
 
     Vacío si no se ha dicho el mes de pago: sin él no hay «previsto en junio»
-    que enseñar, solo el total del año. Los que duran más de un año —unos
-    neumáticos cada tres— no tienen cuota «este año»: no se sabe si toca.
+    que enseñar, solo el total del año. Un anual fraccionado —el IBI en junio
+    y noviembre— tiene una cuota por plazo. Los que duran más de un año —unos
+    neumáticos cada tres— solo tienen cuota el año que tocan, y es el importe
+    entero: es el día que se vacía la bolsa.
     """
+    if partida.es_plurianual:
+        return [(mes, partida.importe) for mes in partida.vencimientos_en(anio)]
+    plazos = partida.plazos_de_pago
+    if plazos:
+        return plazos
     n = partida.meses_periodo
-    if not partida.mes_pago or n > 12:
+    if not partida.mes_pago:
         return []
     veces = max(12 // n, 1)
     meses = sorted(((partida.mes_pago - 1 + k * n) % 12) + 1 for k in range(veces))
     return [(mes, partida.importe) for mes in meses]
 
 
+def _euros(valor):
+    return f'{valor:.2f} €'.replace('.', ',')
+
+
+def guardar_calendario(partida, meses, importes, anio_pago=None):
+    """Cambia cuándo se paga una partida desde su fila de Fijos anuales.
+
+    `meses` e `importes` son las filas del formulario, en paralelo. Un mes es
+    un pago de una vez; dos o más, un anual fraccionado. Un importe en blanco
+    se lleva su parte igual de lo que no se haya repartido a mano: lo normal
+    es pagar el IBI a medias y no tener que escribir 120 dos veces.
+
+    En un gasto de varios años, `anio_pago` es el año de ese mes: cuándo
+    toca (o tocó) un pago, del que se cuentan los demás.
+
+    Devuelve el error que enseñar, o None si se guardó.
+    """
+    if partida.es_plurianual:
+        try:
+            anio_pago = int(anio_pago) if anio_pago not in (None, '') else None
+        except (TypeError, ValueError):
+            return f'«{anio_pago}» no es un año.'
+        if anio_pago is not None and not 1990 <= anio_pago <= 2200:
+            return f'{anio_pago} no parece un año.'
+    else:
+        anio_pago = None
+    filas = []
+    for mes, importe in zip(meses, importes):
+        try:
+            mes = int(mes)
+        except (TypeError, ValueError):
+            continue  # fila vacía
+        if not 1 <= mes <= 12:
+            continue
+        texto = (importe or '').strip().replace('€', '').replace(' ', '')
+        if ',' in texto:
+            texto = texto.replace('.', '').replace(',', '.')
+        try:
+            valor = Decimal(texto) if texto else None
+        except ArithmeticError:
+            return f'«{importe}» no es un importe.'
+        if valor is not None and valor < 0:
+            return 'Un plazo no puede ser negativo.'
+        filas.append((mes, valor))
+
+    if len({m for m, _ in filas}) != len(filas):
+        return 'Hay dos plazos en el mismo mes: júntalos en uno.'
+
+    if len(filas) <= 1:
+        partida.mes_pago = filas[0][0] if filas else None
+        partida.plazos = []
+        partida.anio_pago = anio_pago if partida.mes_pago else None
+        partida.save(update_fields=['mes_pago', 'plazos', 'anio_pago'])
+        return None
+
+    if partida.meses_periodo != 12:
+        return 'Solo un gasto anual se puede pagar en varios plazos.'
+
+    escritos = sum((v for _, v in filas if v is not None), Decimal('0'))
+    en_blanco = [m for m, v in filas if v is None]
+    resto = partida.importe - escritos
+    if en_blanco:
+        if resto < 0:
+            return (f'Los plazos escritos ya suman {_euros(escritos)}, más de los '
+                    f'{_euros(partida.importe)} declarados.')
+        parte = (resto / len(en_blanco)).quantize(Decimal('0.01'))
+        repartido = {m: parte for m in en_blanco}
+        repartido[en_blanco[-1]] = resto - parte * (len(en_blanco) - 1)
+        filas = [(m, v if v is not None else repartido[m]) for m, v in filas]
+    elif abs(resto) > Decimal('0.01'):
+        return (f'Los plazos suman {_euros(escritos)} y el gasto está declarado en '
+                f'{_euros(partida.importe)}. Deja uno en blanco y se lleva lo que falte.')
+
+    filas.sort()
+    partida.plazos = [{'mes': m, 'importe': str(v)} for m, v in filas]
+    partida.mes_pago = filas[0][0]
+    partida.anio_pago = None
+    partida.save(update_fields=['mes_pago', 'plazos', 'anio_pago'])
+    return None
+
+
+def dar_por_pagado(partida, anio, si=True):
+    """Marca (o desmarca) la partida como pagada del todo en `anio`.
+
+    Para cuando el recibo vino por menos de lo declarado y no hay nada más
+    que pagar: la cuenta no puede saberlo y seguiría diciendo que falta.
+    """
+    anios = {int(a) for a in partida.anios_dados_por_pagados or []}
+    if si:
+        anios.add(anio)
+    else:
+        anios.discard(anio)
+    partida.anios_dados_por_pagados = sorted(anios)
+    partida.save(update_fields=['anios_dados_por_pagados'])
+
+
 def _pagos_del_anio(hogar, anio):
     return [
         m for m in MovimientoBancario.objects.filter(hogar=hogar, fecha__year=anio)
         .select_related('categoria', 'partida_conciliada', 'dividido_de')
-        .prefetch_related('partes', 'reembolsos', 'dividido_de__partes',
-                          'dividido_de__reembolsos')
+        .prefetch_related('partes', 'reembolsos', 'coberturas', 'dividido_de__partes',
+                          'dividido_de__reembolsos', 'dividido_de__coberturas')
         .order_by('fecha', 'id')
         if m.cuenta_como_gasto and not m.es_neutro
     ]
@@ -62,16 +165,30 @@ def _estado(fila, anio, hoy):
     """«Pagado», «Te falta», «No se ha pagado»… y la frase que lo explica."""
     pagado, esperado = fila['pagado'], fila['esperado']
 
+    if fila['dado_por_pagado']:
+        if esperado > 0 and pagado < esperado * (1 - TOLERANCIA):
+            return 'pagado', f"Dado por pagado · {_euros(esperado - pagado)} menos de lo declarado"
+        return 'pagado', 'Dado por pagado'
+
     if fila['plurianual']:
+        # Unos neumáticos se compran una vez: con un pago, está hecho. Lo que
+        # cuenta es cuánto costaron frente a lo que se fue apartando.
         if pagado > 0:
-            return 'pagado', 'Pagado este año'
-        return 'no_toca', f"{fila['periodicidad']} · sin pago este año"
+            cuando = ' · no tocaba este año' if not fila['cuotas'] and fila['anclado'] else ''
+            if pagado > esperado * (1 + TOLERANCIA):
+                return 'pagado', f"Pagado · {_euros(pagado - esperado)} más de lo previsto{cuando}"
+            if pagado < esperado * (1 - TOLERANCIA):
+                return 'pagado', f"Pagado · {_euros(esperado - pagado)} menos de lo previsto{cuando}"
+            return 'pagado', 'Pagado' + cuando
+        if not fila['cuotas']:
+            return 'no_toca', f"{fila['periodicidad']} · no toca este año"
+        # El año que toca se mira como un anual más: pendiente o atrasado.
 
     if esperado <= 0:
         return ('pagado', 'Pagado') if pagado > 0 else ('pendiente', 'Sin importe declarado')
     if pagado >= esperado * (1 - TOLERANCIA):
         if pagado > esperado * (1 + TOLERANCIA):
-            return 'pagado', f"Pagado · {pagado - esperado:.2f} € más de lo declarado".replace('.', ',')
+            return 'pagado', f"Pagado · {_euros(pagado - esperado)} más de lo declarado"
         return 'pagado', 'Pagado'
 
     # Lo que ya debería estar pagado a estas alturas del año.
@@ -100,6 +217,9 @@ def _estado(fila, anio, hoy):
             cuando = f"toca en {siguiente['nombre_mes'].lower()}"
     else:
         cuando = 'sin mes de pago declarado'
+    if pagado > 0 and fila['fraccionado'] and siguiente:
+        # Lo que tocaba ya está: no es que falte, es que queda otro plazo.
+        return 'parcial', f"Al día · el siguiente plazo {cuando}"
     if pagado > 0:
         return 'parcial', f"Pagado en parte · {cuando}"
     return 'pendiente', f"Pendiente · {cuando}"
@@ -131,21 +251,31 @@ def analizar_anuales(hogar, anio, hoy=None):
             sin_asignar.append(m)
 
     filas = []
+    ahorro = []
     previsto_mes = defaultdict(list)
     pagado_mes = defaultdict(list)
     for p in partidas:
-        plurianual = p.meses_periodo > 12
+        plurianual = p.es_plurianual
         cuotas = [
             {'mes': mes, 'nombre_mes': MESES[mes], 'importe': importe}
-            for mes, importe in _cuotas(p)
+            for mes, importe in _cuotas(p, anio)
         ]
-        pagos = [
-            {'mov': m, 'importe': -m.importe_neto, 'deducido': deducido,
-             'fecha': m.fecha, 'mes': m.fecha.month}
-            for m, deducido in asignados.get(p.id, [])
-        ]
+        pagos = []
+        for m, deducido in asignados.get(p.id, []):
+            importe = -m.importe_neto
+            pagos.append({
+                'mov': m, 'importe': importe, 'deducido': deducido,
+                'fecha': m.fecha, 'mes': m.fecha.month,
+                # Lo que puso la hucha, emparejado en Movimientos con «de la
+                # reserva». Nunca más que el propio pago.
+                'de_reserva': min(m.cubierto_por_reserva, importe) if importe > 0 else Decimal('0'),
+            })
         pagado = sum((x['importe'] for x in pagos), Decimal('0'))
+        de_reserva = sum((x['de_reserva'] for x in pagos), Decimal('0'))
+        # Uno de varios años se espera entero el año que toca: es cuando se
+        # gasta la bolsa. Los demás años no se espera nada.
         esperado = p.importe if plurianual else p.importe_anual
+        proximo = p.proximo_pago(max(hoy, date(anio, 1, 1))) if plurianual else None
         fila = {
             'partida': p,
             'nombre': p.nombre,
@@ -154,11 +284,23 @@ def analizar_anuales(hogar, anio, hoy=None):
             'meses_periodo': p.meses_periodo,
             'plurianual': plurianual,
             'cuotas': cuotas,
+            'fraccionado': len(p.plazos_de_pago) > 1,
+            # Solo un anual se puede partir en plazos: un semestral ya son
+            # dos pagos por su periodicidad.
+            'admite_plazos': p.meses_periodo == 12,
             'sin_mes': not p.mes_pago,
             'esperado': esperado,
             'provision_anual': p.importe_anual,
             'pagado': pagado,
-            'falta': max(esperado - pagado, Decimal('0')) if not plurianual else Decimal('0'),
+            'de_reserva': de_reserva,
+            'de_bolsillo': max(pagado - de_reserva, Decimal('0')),
+            'falta': max(esperado - pagado, Decimal('0')),
+            'dado_por_pagado': anio in {int(a) for a in p.anios_dados_por_pagados or []},
+            'anclado': bool(plurianual and p.mes_pago and p.anio_pago),
+            'proximo': (
+                {'anio': proximo[0], 'mes': proximo[1], 'nombre_mes': MESES[proximo[1]]}
+                if proximo else None
+            ),
             'pagos': pagos,
             'hay_deducidos': any(x['deducido'] for x in pagos),
         }
@@ -174,6 +316,16 @@ def analizar_anuales(hogar, anio, hoy=None):
         fila['pct'] = (
             min(float(pagado / esperado * 100), 100) if esperado > 0 else (100 if pagado else 0)
         )
+        if fila['estado'] == 'pagado':
+            fila['pct'] = 100 if fila['dado_por_pagado'] or plurianual else fila['pct']
+        # Pagado un año que no tocaba: se ofrece contar desde ahí los siguientes.
+        fila['recolocar'] = (
+            pagos[-1] if plurianual and pagos and not cuotas else None
+        )
+        if fila['estado'] == 'no_toca':
+            # Años sin nada que pagar: se está llenando la bolsa, no falta nada.
+            ahorro.append(fila)
+            continue
         filas.append(fila)
 
         for c in cuotas:
@@ -189,7 +341,7 @@ def analizar_anuales(hogar, anio, hoy=None):
             'fecha': m.fecha.strftime('%d/%m'),
         })
 
-    orden = {'atrasado': 0, 'parcial': 1, 'pendiente': 2, 'pagado': 3, 'no_toca': 4}
+    orden = {'atrasado': 0, 'parcial': 1, 'pendiente': 2, 'pagado': 3}
     filas.sort(key=lambda f: (
         orden[f['estado']],
         f['cuotas'][0]['mes'] if f['cuotas'] else 13,
@@ -207,11 +359,16 @@ def analizar_anuales(hogar, anio, hoy=None):
         for n in range(1, 13)
     ]
 
-    anuales = [f for f in filas if not f['plurianual']]
-    previsto = sum((f['esperado'] for f in anuales), Decimal('0'))
+    # Todo lo de la lista es lo que toca este año: los anuales y los de varios
+    # años que vencen (o se pagaron) en él. Los que solo están ahorrando van
+    # aparte y no suman: no es dinero que haya que pagar este año.
+    previsto = sum((f['esperado'] for f in filas), Decimal('0'))
     pagado_partidas = sum((f['pagado'] for f in filas), Decimal('0'))
     total_sin_asignar = sum((-m.importe_neto for m in sin_asignar), Decimal('0'))
-    falta = sum((f['falta'] for f in anuales), Decimal('0'))
+    falta = sum((f['falta'] for f in filas), Decimal('0'))
+    ahorro.sort(key=lambda f: (
+        (f['proximo']['anio'], f['proximo']['mes']) if f['proximo'] else (9999, 13), f['nombre'],
+    ))
     anios = sorted(
         {d.year for d in MovimientoBancario.objects.filter(hogar=hogar).dates('fecha', 'year')}
         | {hoy.year},
@@ -227,6 +384,7 @@ def analizar_anuales(hogar, anio, hoy=None):
         'num_pagadas': sum(1 for f in filas if f['estado'] == 'pagado'),
         'num_atrasadas': sum(1 for f in filas if f['estado'] == 'atrasado'),
         'num_sin_mes': sum(1 for f in filas if f['sin_mes'] and not f['plurianual']),
+        'num_sin_fecha': sum(1 for f in ahorro if not f['anclado']),
         'previsto': previsto,
         'pagado': pagado_partidas,
         'falta': falta,
@@ -234,4 +392,7 @@ def analizar_anuales(hogar, anio, hoy=None):
         'sin_asignar': sin_asignar,
         'total_sin_asignar': total_sin_asignar,
         'grafico': grafico,
+        'meses': MESES_CHOICES,
+        'ahorro': ahorro,
+        'ahorro_anual': sum((f['provision_anual'] for f in ahorro), Decimal('0')),
     }

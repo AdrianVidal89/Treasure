@@ -401,7 +401,13 @@ def editar_partida(request, partida_id):
             request.POST.get('meses_personalizados'),
         )
         mes_pago = request.POST.get('mes_pago')
-        partida.mes_pago = int(mes_pago) if mes_pago else None
+        mes_pago = int(mes_pago) if mes_pago else None
+        # Los plazos de un anual fraccionado se ponen en Fijos anuales. Aquí
+        # solo se conservan si nadie ha tocado lo que los sostiene: cambiar
+        # el mes o dejar de ser anual es decir que ya no se paga así.
+        if partida.plazos and (mes_pago != partida.mes_pago or partida.meses_periodo != 12):
+            partida.plazos = []
+        partida.mes_pago = mes_pago
         responsable_id = request.POST.get('responsable_id')
         partida.responsable_id = int(responsable_id) if responsable_id else None
         costes_activo.asignar(
