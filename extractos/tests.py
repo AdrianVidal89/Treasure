@@ -6284,9 +6284,12 @@ class FijosAnualesTests(TestCase):
 
     def test_plurianual_no_cuenta_en_lo_previsto_del_año(self):
         datos, filas = self.analizar()
-        self.assertEqual(filas['Neumáticos']['estado'], 'no_toca')
+        self.assertNotIn('Neumáticos', filas)
+        ahorro = {f['nombre']: f for f in datos['ahorro']}
+        self.assertEqual(ahorro['Neumáticos']['estado'], 'no_toca')
         self.assertEqual(datos['previsto'], Decimal('520') + 380 + 300 + 273)
-        self.assertFalse(filas['Neumáticos']['cuotas'])
+        self.assertFalse(ahorro['Neumáticos']['cuotas'])
+        self.assertEqual(datos['ahorro_anual'], Decimal('181.00'))
 
     def test_la_grafica_pone_cada_cosa_en_su_mes(self):
         self.pago('-380', 4, 2, self.cat_seguro)   # previsto en marzo, pagado en abril
@@ -6345,10 +6348,11 @@ class FijosAnualesTests(TestCase):
 
     # --- Cuándo se paga, cambiado desde la propia fila ---
 
-    def calendario(self, partida, meses, importes=None, anio='2026'):
+    def calendario(self, partida, meses, importes=None, anio='2026', anio_pago_=''):
         return self.client.post(
             reverse('extractos:anuales_calendario', args=[partida.id]),
-            {'mes': meses, 'importe': importes or [''] * len(meses), 'anio': anio},
+            {'mes': meses, 'importe': importes or [''] * len(meses), 'anio': anio,
+             'anio_pago': anio_pago_},
         )
 
     def test_cambia_el_mes_de_pago_desde_la_fila(self):
@@ -6449,3 +6453,89 @@ class FijosAnualesTests(TestCase):
         self.ibi.refresh_from_db()
         self.assertEqual(self.ibi.plazos, [])
         self.assertEqual(self.ibi.mes_pago, 7)
+
+    # --- «Dar por pagado» ---
+
+    def test_dar_por_pagado_aunque_falten_unos_euros(self):
+        self.pago('-370.91', 3, 1, self.cat_seguro)
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'atrasado')
+
+        url = reverse('extractos:anuales_dar_por_pagado', args=[self.seguro.id])
+        self.client.post(url, {'anio': '2026'})
+        datos, filas = self.analizar()
+        fila = filas['Seguro coche']
+        self.assertEqual(fila['estado'], 'pagado')
+        self.assertIn('9,09 € menos', fila['frase'])
+        self.assertEqual(fila['falta'], Decimal('0'))
+        self.assertEqual(fila['pagado'], Decimal('370.91'))   # lo pagado no se inventa
+        # Solo ese año.
+        _, filas = self.analizar(2025)
+        self.assertEqual(filas['Seguro coche']['estado'], 'atrasado')
+
+        self.client.post(url, {'anio': '2026', 'deshacer': '1'})
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'atrasado')
+
+    # --- Los de varios años ---
+
+    def test_de_varios_años_sale_el_año_que_toca(self):
+        # Neumáticos cada 36 meses, tocaron en octubre de 2023: toca oct 2026.
+        self.calendario(self.neumaticos, ['10'], anio_pago_='2023')
+        self.neumaticos.refresh_from_db()
+        self.assertEqual(self.neumaticos.anio_pago, 2023)
+        self.assertEqual(self.neumaticos.vencimientos_en(2026), [10])
+        self.assertEqual(self.neumaticos.vencimientos_en(2027), [])
+        self.assertEqual(self.neumaticos.vencimientos_en(2029), [10])
+
+        datos, filas = self.analizar()
+        fila = filas['Neumáticos']
+        self.assertEqual(fila['estado'], 'pendiente')
+        self.assertIn('octubre', fila['frase'])
+        self.assertEqual(fila['esperado'], Decimal('543'))
+        self.assertEqual(datos['previsto'], Decimal('520') + 380 + 300 + 273 + 543)
+        g = {d['mes']: d for d in datos['grafico']}
+        self.assertEqual(g[10]['total_previsto'], 543)
+        self.assertFalse(datos['ahorro'])
+
+        # En 2027 no toca: está ahorrando, y dice cuándo le toca.
+        datos, filas = self.analizar(2027)
+        self.assertNotIn('Neumáticos', filas)
+        self.assertEqual(datos['ahorro'][0]['proximo']['anio'], 2029)
+
+    def test_de_varios_años_pagado_cuenta_la_reserva(self):
+        self.calendario(self.neumaticos, ['10'], anio_pago_='2026')
+        pago = self.pago('-500', 10, 5, self.cat_mant, partida=self.neumaticos)
+        MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=date(2026, 10, 5), concepto='Desde la hucha',
+            importe=Decimal('400'), cubre=pago,
+        )
+        self.hoy = date(2026, 10, 20)
+        datos, filas = self.analizar()
+        fila = filas['Neumáticos']
+        self.assertEqual(fila['estado'], 'pagado')
+        self.assertIn('43,00 € menos', fila['frase'])
+        self.assertEqual(fila['de_reserva'], Decimal('400'))
+        self.assertEqual(fila['de_bolsillo'], Decimal('100'))
+        self.assertEqual(fila['falta'], Decimal('0'))
+        self.assertIsNone(fila['recolocar'])
+
+    def test_de_varios_años_pagado_antes_ofrece_contar_desde_ahi(self):
+        self.calendario(self.neumaticos, ['10'], anio_pago_='2028')
+        self.pago('-560', 4, 3, self.cat_mant, partida=self.neumaticos)
+        _, filas = self.analizar()
+        fila = filas['Neumáticos']
+        self.assertEqual(fila['estado'], 'pagado')
+        self.assertIn('no tocaba este año', fila['frase'])
+        self.assertEqual(fila['recolocar']['mes'], 4)
+        html = self.client.get(reverse('extractos:anuales'), {'anio': '2026'}).content.decode()
+        self.assertIn('Contar los siguientes desde este pago', html)
+
+        self.calendario(self.neumaticos, ['4'], anio_pago_='2026')
+        self.neumaticos.refresh_from_db()
+        self.assertEqual(self.neumaticos.proximo_pago(date(2026, 5, 1)), (2029, 4))
+
+    def test_la_seccion_de_ahorro_se_ve(self):
+        html = self.client.get(reverse('extractos:anuales'), {'anio': '2026'}).content.decode()
+        self.assertIn('Ahorrando para más adelante', html)
+        self.assertIn('poner cuándo toca', html)

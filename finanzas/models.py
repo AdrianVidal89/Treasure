@@ -1118,6 +1118,17 @@ class PartidaGasto(ImputableAActivo):
     # sigan enseñando un mes con sentido.
     plazos = models.JSONField(default=list, blank=True,
         help_text="Anuales pagados en varias veces: mes e importe de cada plazo.")
+    # Los que duran más de un año —unos neumáticos cada tres— no se pagan
+    # «en octubre» sino en octubre DE UN AÑO. Con el año, `mes_pago` +
+    # `anio_pago` es una fecha en la que tocó o tocará, y las demás salen
+    # sumando el periodo hacia delante y hacia atrás.
+    anio_pago = models.PositiveSmallIntegerField(null=True, blank=True,
+        help_text="Solo gastos de más de un año: año en que toca (o tocó) un pago.")
+    # Años en los que el usuario dijo «esto ya está pagado» aunque el dinero
+    # no cuadre con lo declarado: el seguro vino 10 € más barato y no hay
+    # nada más que pagar.
+    anios_dados_por_pagados = models.JSONField(default=list, blank=True,
+        help_text="Años en que esta partida se dio por pagada aunque no cuadre el importe.")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fondo_asignado = models.ForeignKey(
@@ -1161,8 +1172,46 @@ class PartidaGasto(ImputableAActivo):
         return salida
 
     @property
+    def es_plurianual(self):
+        return self.meses_periodo > 12
+
+    def _ancla(self):
+        """El mes absoluto (año·12 + mes-1) de un pago conocido, o None."""
+        if not (self.es_plurianual and self.mes_pago and self.anio_pago):
+            return None
+        return self.anio_pago * 12 + self.mes_pago - 1
+
+    def vencimientos_en(self, anio):
+        """Meses de `anio` en los que toca pagar un gasto de varios años."""
+        ancla = self._ancla()
+        if ancla is None:
+            return []
+        n = self.meses_periodo
+        inicio, fin = anio * 12, anio * 12 + 11
+        t = ancla + -(-(inicio - ancla) // n) * n   # el primero desde enero
+        meses = []
+        while t <= fin:
+            meses.append(t % 12 + 1)
+            t += n
+        return meses
+
+    def proximo_pago(self, hoy):
+        """`(año, mes)` del siguiente pago de un gasto de varios años, desde el
+        mes de `hoy` incluido; None si no se sabe cuándo toca."""
+        ancla = self._ancla()
+        if ancla is None:
+            return None
+        ahora = hoy.year * 12 + hoy.month - 1
+        t = ancla + -(-(ahora - ancla) // self.meses_periodo) * self.meses_periodo
+        return t // 12, t % 12 + 1
+
+    @property
     def meses_pago_display(self):
-        """«Junio» o, fraccionado, «Junio y noviembre»."""
+        """«Junio»; fraccionado, «Junio y noviembre»; de varios años, «Octubre de 2028»."""
+        if self.es_plurianual and self.mes_pago:
+            proximo = self.proximo_pago(date.today())
+            if proximo:
+                return f"{dict(MESES_CHOICES)[proximo[1]]} de {proximo[0]}"
         plazos = self.plazos_de_pago
         if not plazos:
             return self.get_mes_pago_display() if self.mes_pago else ''

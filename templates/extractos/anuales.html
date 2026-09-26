@@ -99,10 +99,12 @@
                 <span class="an-nombre">{{ f.nombre }}</span>
                 <span class="an-meta">
                     {% if f.categoria %}{{ f.categoria }} · {% endif %}{{ f.periodicidad|lower }}
-                    {% if f.cuotas %}· {% if f.fraccionado %}en {{ f.cuotas|length }} plazos: {% for c in f.cuotas %}{{ c.nombre_mes|lower }} ({{ c.importe|euro }}){% if not forloop.last %}, {% endif %}{% endfor %}{% else %}se paga en {% for c in f.cuotas %}{{ c.nombre_mes|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
-                    {% elif f.plurianual and f.partida.mes_pago %}· toca en {{ f.partida.get_mes_pago_display|lower }}{% endif %}
+                    {% if f.plurianual %}{% if f.cuotas %}· toca en {{ f.cuotas.0.nombre_mes|lower }} de {{ d.anio|unlocalize }}{% elif f.proximo %}· el próximo, en {{ f.proximo.nombre_mes|lower }} de {{ f.proximo.anio|unlocalize }}{% endif %}
+                    {% elif f.cuotas %}· {% if f.fraccionado %}en {{ f.cuotas|length }} plazos: {% for c in f.cuotas %}{{ c.nombre_mes|lower }} ({{ c.importe|euro }}){% if not forloop.last %}, {% endif %}{% endfor %}{% else %}se paga en {% for c in f.cuotas %}{{ c.nombre_mes|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+                    {% endif %}
                     · <button type="button" class="an-cambiar" aria-expanded="false" aria-controls="an-ed-{{ f.partida.id }}">
-                        {% if f.partida.mes_pago %}cambiar{% if f.admite_plazos %} mes o plazos{% else %} mes{% endif %}{% else %}poner mes de pago{% endif %}
+                        {% if f.plurianual %}{% if f.anclado %}cambiar cuándo toca{% else %}poner cuándo toca{% endif %}
+                        {% elif f.partida.mes_pago %}cambiar{% if f.admite_plazos %} mes o plazos{% else %} mes{% endif %}{% else %}poner mes de pago{% endif %}
                     </button>
                 </span>
                 <span class="an-chapa {{ f.estado }}">{{ f.frase }}</span>
@@ -112,7 +114,7 @@
                 <div class="an-cifra">
                     <span class="an-cifra-lbl">Declarado</span>
                     <span class="an-cifra-val">{{ f.esperado|euro }}</span>
-                    {% if f.plurianual %}<span class="an-cifra-sub">provisionas {{ f.provision_anual|euro:0 }}/año</span>{% endif %}
+                    {% if f.plurianual %}<span class="an-cifra-sub">para {{ f.meses_periodo }} meses · {{ f.provision_anual|euro:0 }}/año</span>{% endif %}
                 </div>
                 <div class="an-cifra">
                     <span class="an-cifra-lbl">Pagado</span>
@@ -136,55 +138,84 @@
                 {% else %}
                 <span class="an-pagos an-apagado">ningún pago en {{ d.anio }}</span>
                 {% endif %}
-            </div>
-
-            <!-- Cuándo se paga, sin irse a Gastos: aquí es donde se ve que falta. -->
-            <form method="post" action="{% url 'extractos:anuales_calendario' f.partida.id %}"
-                  class="an-editor{% if f.fraccionado %} varios{% endif %}" id="an-ed-{{ f.partida.id }}" hidden
-                  data-plazos="{{ f.admite_plazos|yesno:'1,0' }}">
-                {% csrf_token %}
-                <input type="hidden" name="anio" value="{{ d.anio }}">
-                <div class="an-ed-cab">
-                    <strong>{% if f.admite_plazos %}¿Cuándo se paga?{% elif f.plurianual %}Mes en que toca{% else %}Mes del primer pago{% endif %}</strong>
-                    {% if f.admite_plazos %}<span class="an-apagado">Declarado {{ f.partida.importe|euro }} al año</span>{% endif %}
-                </div>
-                <div class="an-ed-filas">
-                    {% if f.fraccionado %}
-                    {% for c in f.cuotas %}
-                    <div class="an-ed-fila">
-                        <select name="mes" aria-label="Mes del plazo">
-                            <option value="">— sin mes —</option>
-                            {% for num, nombre in d.meses %}<option value="{{ num }}" {% if num == c.mes %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
-                        </select>
-                        <input type="text" name="importe" inputmode="decimal" value="{{ c.importe|floatformat:2 }}" placeholder="lo que falte" aria-label="Importe del plazo">
-                        <button type="button" class="an-ed-quitar" title="Quitar este plazo" aria-label="Quitar este plazo"><svg class="icon"><use href="#i-close"/></svg></button>
-                    </div>
-                    {% endfor %}
-                    {% else %}
-                    <div class="an-ed-fila">
-                        <select name="mes" aria-label="Mes de pago">
-                            <option value="">— sin mes —</option>
-                            {% for num, nombre in d.meses %}<option value="{{ num }}" {% if num == f.partida.mes_pago %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
-                        </select>
-                        {% if f.admite_plazos %}
-                        <input type="text" name="importe" inputmode="decimal" value="" placeholder="lo que falte" aria-label="Importe del plazo">
-                        <button type="button" class="an-ed-quitar" title="Quitar este plazo" aria-label="Quitar este plazo"><svg class="icon"><use href="#i-close"/></svg></button>
-                        {% endif %}
-                    </div>
+                {% if f.de_reserva %}
+                <span class="an-reserva">
+                    <svg class="icon"><use href="#i-check"/></svg>
+                    La reserva puso <strong>{{ f.de_reserva|euro }}</strong>{% if f.de_bolsillo %} · de tu bolsillo, <strong>{{ f.de_bolsillo|euro }}</strong>{% endif %}
+                </span>
+                {% elif f.plurianual and f.pagado %}
+                <span class="an-reserva an-apagado">Si salió de lo que tenías apartado, emparéjalo en Movimientos con «de la reserva» y aquí verás cuánto cubrió.</span>
+                {% endif %}
+                {% if f.dado_por_pagado or f.estado == 'atrasado' or f.estado == 'parcial' and not f.fraccionado or f.recolocar %}
+                <div class="an-acciones">
+                    {% if f.dado_por_pagado %}
+                    <form method="post" action="{% url 'extractos:anuales_dar_por_pagado' f.partida.id %}">
+                        {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}"><input type="hidden" name="deshacer" value="1">
+                        <button type="submit" class="an-accion">deshacer «dado por pagado»</button>
+                    </form>
+                    {% elif f.estado == 'atrasado' or f.estado == 'parcial' and not f.fraccionado %}
+                    <form method="post" action="{% url 'extractos:anuales_dar_por_pagado' f.partida.id %}">
+                        {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}">
+                        <button type="submit" class="an-accion fuerte" title="El recibo no cuadra con lo declarado, pero no hay nada más que pagar en {{ d.anio|unlocalize }}">
+                            <svg class="icon"><use href="#i-check"/></svg> Dar por pagado{% if f.pagado %} con {{ f.pagado|euro }}{% endif %}
+                        </button>
+                    </form>
+                    {% endif %}
+                    {% if f.recolocar %}
+                    <form method="post" action="{% url 'extractos:anuales_calendario' f.partida.id %}">
+                        {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}">
+                        <input type="hidden" name="mes" value="{{ f.recolocar.mes }}"><input type="hidden" name="anio_pago" value="{{ f.recolocar.fecha.year|unlocalize }}">
+                        <button type="submit" class="an-accion" title="Los siguientes pagos se contarán cada {{ f.meses_periodo }} meses desde {{ f.recolocar.fecha|date:'F Y'|lower }}">
+                            <svg class="icon"><use href="#i-calendar"/></svg> Contar los siguientes desde este pago
+                        </button>
+                    </form>
                     {% endif %}
                 </div>
-                {% if f.admite_plazos %}
-                <button type="button" class="an-ed-mas"><svg class="icon"><use href="#i-plus"/></svg> Pagarlo en otro plazo más</button>
-                <p class="an-ed-nota">Con varios plazos, deja un importe en blanco y se lleva lo que falte hasta {{ f.partida.importe|euro }}; en blanco todos, a partes iguales.</p>
                 {% endif %}
-                <div class="an-ed-botones">
-                    <button type="submit" class="btn btn-primary">Guardar</button>
-                    <button type="button" class="btn btn-ghost an-ed-cancelar">Cancelar</button>
-                </div>
-            </form>
+            </div>
+
+            {% include 'extractos/_anual_editor.html' %}
         </article>
         {% endfor %}
     </section>
+
+    {% if d.ahorro %}
+    <!-- ══════════ LOS DE VARIOS AÑOS QUE NO TOCAN ESTE AÑO ══════════ -->
+    <section class="an-ahorro">
+        <h3>Ahorrando para más adelante · {{ d.ahorro_anual|euro:0 }}/año</h3>
+        <p>
+            Gastos de más de un año —unos neumáticos, una caldera— que en {{ d.anio|unlocalize }} no toca pagar: se van apartando
+            y no cuentan en lo de arriba. El año que toquen saldrán en la lista con su importe entero; si los pagas
+            antes, también.
+            {% if d.num_sin_fecha %}<strong>Dile a {{ d.num_sin_fecha }} cuándo toca{{ d.num_sin_fecha|pluralize:"n" }}</strong> para que salgan solos ese año.{% endif %}
+        </p>
+        {% for f in d.ahorro %}
+        <article class="an-hucha" id="partida-{{ f.partida.id }}">
+            <div class="an-que">
+                <span class="an-nombre">{{ f.nombre }}</span>
+                <span class="an-meta">
+                    {% if f.categoria %}{{ f.categoria }} · {% endif %}{{ f.periodicidad|lower }} ·
+                    {% if f.proximo %}toca en {{ f.proximo.nombre_mes|lower }} de {{ f.proximo.anio|unlocalize }}{% else %}<span class="an-rojo">sin fecha</span>{% endif %}
+                    · <button type="button" class="an-cambiar" aria-expanded="false" aria-controls="an-ed-{{ f.partida.id }}">
+                        {% if f.anclado %}cambiar cuándo toca{% else %}poner cuándo toca{% endif %}
+                    </button>
+                </span>
+            </div>
+            <div class="an-cifras">
+                <div class="an-cifra">
+                    <span class="an-cifra-lbl">Cuesta</span>
+                    <span class="an-cifra-val">{{ f.esperado|euro }}</span>
+                </div>
+                <div class="an-cifra">
+                    <span class="an-cifra-lbl">Apartas</span>
+                    <span class="an-cifra-val an-apagado">{{ f.provision_anual|euro:0 }}/año</span>
+                </div>
+            </div>
+            {% include 'extractos/_anual_editor.html' %}
+        </article>
+        {% endfor %}
+    </section>
+    {% endif %}
 
     {% if d.sin_asignar %}
     <!-- ══════════ PAGOS QUE NO SE SABE DE QUÉ SON ══════════ -->
@@ -335,7 +366,8 @@
 .an-ed-fila select { flex:1 1 160px; max-width:220px; }
 .an-ed-fila input { flex:0 1 130px; font-variant-numeric:tabular-nums; }
 /* Con un solo plazo el importe sobra: es el declarado. */
-.an-editor:not(.varios) .an-ed-fila input, .an-editor:not(.varios) .an-ed-quitar { display:none; }
+.an-editor:not(.varios) .an-ed-fila input[name=importe], .an-editor:not(.varios) .an-ed-quitar { display:none; }
+.an-ed-fila input.an-ed-anio { flex:0 0 96px; }
 .an-ed-quitar {
     display:grid; place-items:center; width:30px; height:30px; flex:0 0 auto; border-radius:8px;
     background:none; border:1px solid transparent; color:var(--muted); cursor:pointer;
@@ -353,6 +385,33 @@
     .an-fila { grid-template-columns:34px 1fr; grid-template-areas:"est que" "cif cif" "pie pie" "ed ed"; }
     .an-cifras { justify-content:space-between; }
     .an-cifra { align-items:flex-start; }
+}
+
+.an-reserva { display:flex; align-items:center; gap:6px; font-size:0.76rem; }
+.an-reserva .icon { width:14px; height:14px; color:var(--success); }
+.an-acciones { display:flex; gap:8px; flex-wrap:wrap; }
+.an-acciones form { margin:0; }
+.an-accion {
+    display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; cursor:pointer;
+    font:inherit; font-size:0.74rem; font-weight:600; background:none; color:var(--muted); border:1px solid var(--border);
+}
+.an-accion:hover { color:var(--text-color); border-color:var(--border-strong); }
+.an-accion.fuerte { color:var(--success); border-color:color-mix(in srgb, var(--success) 45%, var(--border)); }
+.an-accion.fuerte:hover { background:color-mix(in srgb, var(--success) 10%, transparent); }
+.an-accion .icon { width:13px; height:13px; }
+
+.an-ahorro { padding:16px 18px; border-radius:14px; border:1px dashed var(--border-strong); margin-bottom:18px; }
+.an-ahorro h3 { margin:0 0 4px; font-size:0.95rem; }
+.an-ahorro > p { margin:0 0 10px; font-size:0.8rem; color:var(--muted); line-height:1.5; }
+.an-hucha {
+    display:grid; grid-template-columns:1fr auto; grid-template-areas:"que cif" "ed ed"; gap:6px 14px; align-items:center;
+    padding:10px 14px; border-radius:10px; background:var(--surface); border:1px solid var(--border); margin-bottom:6px;
+}
+.an-hucha .an-cifra-val { font-size:0.95rem; }
+@media (max-width:640px){
+    .an-hucha { grid-template-columns:1fr; grid-template-areas:"que" "cif" "ed"; }
+    .an-hucha .an-cifras { justify-content:space-between; }
+    .an-hucha .an-cifra { align-items:flex-start; }
 }
 
 .an-sin-asignar { padding:16px 18px; border-radius:14px; border:1px dashed var(--border-strong); }
