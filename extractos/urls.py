@@ -31,6 +31,7 @@ urlpatterns = [
     path('movimientos/lote/', views.accion_lote, name='accion_lote'),
     path('etiquetas/', views.etiquetas, name='etiquetas'),
     path('anuales/', views.anuales, name='anuales'),
+    path('anuales/partida/<int:pk>/calendario/', views.anuales_calendario, name='anuales_calendario'),
     path('etiquetas/comercio/', views.etiquetar_comercio, name='etiquetar_comercio'),
     path('sin-categorizar/', views.sin_categorizar, name='sin_categorizar'),
     path('reglas/', views.reglas, name='reglas'),

@@ -1111,6 +1111,13 @@ class PartidaGasto(ImputableAActivo):
                   'cada cuántos toca pagarlo.')
     mes_pago = models.IntegerField(choices=MESES_CHOICES, null=True, blank=True,
         help_text="Para gastos no mensuales: mes principal de pago.")
+    # Un anual que se paga en varias veces —el IBI fraccionado en junio y en
+    # noviembre—: [{"mes": 6, "importe": "120.00"}, {"mes": 11, …}]. Vacío es
+    # lo normal, un solo pago en `mes_pago`. Cuando hay plazos, `mes_pago`
+    # guarda el primero, para que las pantallas que solo miran ese campo
+    # sigan enseñando un mes con sentido.
+    plazos = models.JSONField(default=list, blank=True,
+        help_text="Anuales pagados en varias veces: mes e importe de cada plazo.")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fondo_asignado = models.ForeignKey(
@@ -1122,6 +1129,46 @@ class PartidaGasto(ImputableAActivo):
 
     def __str__(self):
         return f"{self.nombre} - {self.importe}"
+
+    @property
+    def plazos_de_pago(self):
+        """`[(mes, importe)]` de un anual fraccionado, o vacío si se paga de una vez.
+
+        Los importes se reescalan al importe declarado: si alguien sube el IBI
+        de 240 a 260 desde Gastos, los plazos siguen repartiéndolo en la misma
+        proporción en vez de sumar lo de antes. El último plazo se queda con
+        el céntimo que sobre del redondeo, para que la suma cuadre siempre.
+        """
+        if self.meses_periodo != 12 or len(self.plazos or []) < 2:
+            return []
+        try:
+            crudos = sorted((int(p['mes']), Decimal(str(p['importe']))) for p in self.plazos)
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            return []
+        total = sum(i for _, i in crudos)
+        if total <= 0:
+            n = len(crudos)
+            crudos = [(m, Decimal('1')) for m, _ in crudos]
+            total = Decimal(n)
+        salida, acumulado = [], Decimal('0')
+        for k, (mes, importe) in enumerate(crudos):
+            if k == len(crudos) - 1:
+                parte = self.importe - acumulado
+            else:
+                parte = (self.importe * importe / total).quantize(Decimal('0.01'))
+            acumulado += parte
+            salida.append((mes, parte))
+        return salida
+
+    @property
+    def meses_pago_display(self):
+        """«Junio» o, fraccionado, «Junio y noviembre»."""
+        plazos = self.plazos_de_pago
+        if not plazos:
+            return self.get_mes_pago_display() if self.mes_pago else ''
+        nombres = [dict(MESES_CHOICES)[m].lower() for m, _ in plazos]
+        texto = ', '.join(nombres[:-1]) + ' y ' + nombres[-1]
+        return texto[0].upper() + texto[1:]
 
     @property
     def tipo_bloque(self):

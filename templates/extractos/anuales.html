@@ -88,7 +88,7 @@
     <!-- ══════════ PARTIDA A PARTIDA ══════════ -->
     <section class="an-lista">
         {% for f in d.filas %}
-        <article class="an-fila {{ f.estado }}">
+        <article class="an-fila {{ f.estado }}" id="partida-{{ f.partida.id }}">
             <span class="an-estado {{ f.estado }}">
                 {% if f.estado == 'pagado' %}<svg class="icon"><use href="#i-check"/></svg>
                 {% elif f.estado == 'atrasado' %}<svg class="icon"><use href="#i-alert"/></svg>
@@ -99,8 +99,11 @@
                 <span class="an-nombre">{{ f.nombre }}</span>
                 <span class="an-meta">
                     {% if f.categoria %}{{ f.categoria }} · {% endif %}{{ f.periodicidad|lower }}
-                    {% if f.cuotas %}· se paga en {% for c in f.cuotas %}{{ c.nombre_mes|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}
-                    {% elif not f.plurianual %}· <a href="{% url 'finanzas:editar_partida' f.partida.id %}">poner mes de pago</a>{% endif %}
+                    {% if f.cuotas %}· {% if f.fraccionado %}en {{ f.cuotas|length }} plazos: {% for c in f.cuotas %}{{ c.nombre_mes|lower }} ({{ c.importe|euro }}){% if not forloop.last %}, {% endif %}{% endfor %}{% else %}se paga en {% for c in f.cuotas %}{{ c.nombre_mes|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+                    {% elif f.plurianual and f.partida.mes_pago %}· toca en {{ f.partida.get_mes_pago_display|lower }}{% endif %}
+                    · <button type="button" class="an-cambiar" aria-expanded="false" aria-controls="an-ed-{{ f.partida.id }}">
+                        {% if f.partida.mes_pago %}cambiar{% if f.admite_plazos %} mes o plazos{% else %} mes{% endif %}{% else %}poner mes de pago{% endif %}
+                    </button>
                 </span>
                 <span class="an-chapa {{ f.estado }}">{{ f.frase }}</span>
             </div>
@@ -134,6 +137,51 @@
                 <span class="an-pagos an-apagado">ningún pago en {{ d.anio }}</span>
                 {% endif %}
             </div>
+
+            <!-- Cuándo se paga, sin irse a Gastos: aquí es donde se ve que falta. -->
+            <form method="post" action="{% url 'extractos:anuales_calendario' f.partida.id %}"
+                  class="an-editor{% if f.fraccionado %} varios{% endif %}" id="an-ed-{{ f.partida.id }}" hidden
+                  data-plazos="{{ f.admite_plazos|yesno:'1,0' }}">
+                {% csrf_token %}
+                <input type="hidden" name="anio" value="{{ d.anio }}">
+                <div class="an-ed-cab">
+                    <strong>{% if f.admite_plazos %}¿Cuándo se paga?{% elif f.plurianual %}Mes en que toca{% else %}Mes del primer pago{% endif %}</strong>
+                    {% if f.admite_plazos %}<span class="an-apagado">Declarado {{ f.partida.importe|euro }} al año</span>{% endif %}
+                </div>
+                <div class="an-ed-filas">
+                    {% if f.fraccionado %}
+                    {% for c in f.cuotas %}
+                    <div class="an-ed-fila">
+                        <select name="mes" aria-label="Mes del plazo">
+                            <option value="">— sin mes —</option>
+                            {% for num, nombre in d.meses %}<option value="{{ num }}" {% if num == c.mes %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+                        </select>
+                        <input type="text" name="importe" inputmode="decimal" value="{{ c.importe|floatformat:2 }}" placeholder="lo que falte" aria-label="Importe del plazo">
+                        <button type="button" class="an-ed-quitar" title="Quitar este plazo" aria-label="Quitar este plazo"><svg class="icon"><use href="#i-close"/></svg></button>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="an-ed-fila">
+                        <select name="mes" aria-label="Mes de pago">
+                            <option value="">— sin mes —</option>
+                            {% for num, nombre in d.meses %}<option value="{{ num }}" {% if num == f.partida.mes_pago %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
+                        </select>
+                        {% if f.admite_plazos %}
+                        <input type="text" name="importe" inputmode="decimal" value="" placeholder="lo que falte" aria-label="Importe del plazo">
+                        <button type="button" class="an-ed-quitar" title="Quitar este plazo" aria-label="Quitar este plazo"><svg class="icon"><use href="#i-close"/></svg></button>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% if f.admite_plazos %}
+                <button type="button" class="an-ed-mas"><svg class="icon"><use href="#i-plus"/></svg> Pagarlo en otro plazo más</button>
+                <p class="an-ed-nota">Con varios plazos, deja un importe en blanco y se lleva lo que falte hasta {{ f.partida.importe|euro }}; en blanco todos, a partes iguales.</p>
+                {% endif %}
+                <div class="an-ed-botones">
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                    <button type="button" class="btn btn-ghost an-ed-cancelar">Cancelar</button>
+                </div>
+            </form>
         </article>
         {% endfor %}
     </section>
@@ -229,7 +277,7 @@
 
 .an-lista { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
 .an-fila {
-    display:grid; grid-template-columns:36px 1fr auto; grid-template-areas:"est que cif" "est pie pie";
+    display:grid; grid-template-columns:36px 1fr auto; grid-template-areas:"est que cif" "est pie pie" "est ed ed";
     gap:8px 14px; align-items:center; padding:14px 18px; border-radius:14px;
     background:var(--surface); border:1px solid var(--border);
 }
@@ -267,8 +315,42 @@
 }
 .an-pago.deducido { border-style:dashed; }
 .an-otro-mes { color:var(--warning); font-weight:600; }
+.an-cambiar {
+    background:none; border:0; padding:0; font:inherit; color:var(--primary-color); cursor:pointer;
+    text-decoration:underline; text-underline-offset:2px;
+}
+.an-cambiar:hover { color:var(--accent-color); }
+.an-editor {
+    grid-area:ed; display:flex; flex-direction:column; gap:8px; margin-top:4px; padding:12px 14px;
+    border-radius:12px; background:var(--app-bg); border:1px solid var(--border);
+}
+.an-editor[hidden] { display:none; }
+.an-ed-cab { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:0.82rem; }
+.an-ed-filas { display:flex; flex-direction:column; gap:6px; }
+.an-ed-fila { display:flex; gap:6px; align-items:center; }
+.an-ed-fila select, .an-ed-fila input {
+    background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:8px;
+    padding:7px 10px; font-size:0.84rem; min-width:0;
+}
+.an-ed-fila select { flex:1 1 160px; max-width:220px; }
+.an-ed-fila input { flex:0 1 130px; font-variant-numeric:tabular-nums; }
+/* Con un solo plazo el importe sobra: es el declarado. */
+.an-editor:not(.varios) .an-ed-fila input, .an-editor:not(.varios) .an-ed-quitar { display:none; }
+.an-ed-quitar {
+    display:grid; place-items:center; width:30px; height:30px; flex:0 0 auto; border-radius:8px;
+    background:none; border:1px solid transparent; color:var(--muted); cursor:pointer;
+}
+.an-ed-quitar:hover { color:var(--danger); border-color:var(--border); }
+.an-ed-quitar .icon { width:14px; height:14px; }
+.an-ed-mas {
+    align-self:flex-start; display:inline-flex; align-items:center; gap:5px; background:none; border:0; padding:2px 0;
+    font:inherit; font-size:0.8rem; color:var(--primary-color); cursor:pointer;
+}
+.an-ed-mas .icon { width:14px; height:14px; }
+.an-ed-nota { margin:0; font-size:0.74rem; color:var(--muted); }
+.an-ed-botones { display:flex; gap:8px; }
 @media (max-width:640px){
-    .an-fila { grid-template-columns:34px 1fr; grid-template-areas:"est que" "cif cif" "pie pie"; }
+    .an-fila { grid-template-columns:34px 1fr; grid-template-areas:"est que" "cif cif" "pie pie" "ed ed"; }
     .an-cifras { justify-content:space-between; }
     .an-cifra { align-items:flex-start; }
 }
@@ -284,6 +366,50 @@
 </style>
 
 <script>
+/* Editor del mes de pago y los plazos de cada fila. */
+(function () {
+    document.querySelectorAll('.an-cambiar').forEach(function (boton) {
+        var form = document.getElementById(boton.getAttribute('aria-controls'));
+        if (!form) return;
+        var filas = form.querySelector('.an-ed-filas');
+        var original = filas.innerHTML, originalVarios = form.classList.contains('varios');
+        function cuantas() { return filas.querySelectorAll('.an-ed-fila').length; }
+        function marcar() { form.classList.toggle('varios', cuantas() > 1); }
+        function abrir(si) {
+            form.hidden = !si;
+            boton.setAttribute('aria-expanded', si ? 'true' : 'false');
+            if (si) { var s = form.querySelector('select'); if (s) s.focus(); }
+        }
+        boton.addEventListener('click', function () { abrir(form.hidden); });
+        form.querySelector('.an-ed-cancelar').addEventListener('click', function () {
+            /* Deshace también los plazos añadidos o quitados, no solo los valores. */
+            filas.innerHTML = original;
+            form.classList.toggle('varios', originalVarios);
+            abrir(false);
+        });
+        var mas = form.querySelector('.an-ed-mas');
+        if (mas) mas.addEventListener('click', function () {
+            var nueva = filas.querySelector('.an-ed-fila').cloneNode(true);
+            nueva.querySelector('select').value = '';
+            nueva.querySelector('input').value = '';
+            filas.appendChild(nueva);
+            marcar();
+            nueva.querySelector('select').focus();
+        });
+        filas.addEventListener('click', function (e) {
+            var quitar = e.target.closest('.an-ed-quitar');
+            if (!quitar || cuantas() < 2) return;
+            quitar.closest('.an-ed-fila').remove();
+            marcar();
+        });
+    });
+    /* Tras guardar se vuelve a la fila: que se vea el cambio sin buscarla. */
+    if (location.hash.indexOf('#partida-') === 0) {
+        var fila = document.querySelector(location.hash);
+        if (fila) fila.scrollIntoView({block: 'center'});
+    }
+})();
+
 (function () {
     var datos = JSON.parse(document.getElementById('an-datos').textContent || '[]');
     var lienzo = document.getElementById('an-lienzo');

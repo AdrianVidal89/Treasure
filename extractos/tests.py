@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth.models import User
+from django.contrib.messages import get_messages
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -6341,3 +6342,110 @@ class FijosAnualesTests(TestCase):
         datos, filas = self.analizar()
         self.assertEqual(filas['IBI']['estado'], 'pagado')
         self.assertEqual(filas['IBI']['falta'], Decimal('0'))
+
+    # --- Cuándo se paga, cambiado desde la propia fila ---
+
+    def calendario(self, partida, meses, importes=None, anio='2026'):
+        return self.client.post(
+            reverse('extractos:anuales_calendario', args=[partida.id]),
+            {'mes': meses, 'importe': importes or [''] * len(meses), 'anio': anio},
+        )
+
+    def test_cambia_el_mes_de_pago_desde_la_fila(self):
+        respuesta = self.calendario(self.seguro, ['10'])
+        self.assertRedirects(
+            respuesta, reverse('extractos:anuales') + f'?anio=2026#partida-{self.seguro.id}',
+            fetch_redirect_response=False,
+        )
+        self.seguro.refresh_from_db()
+        self.assertEqual(self.seguro.mes_pago, 10)
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'pendiente')
+
+    def test_quitar_el_mes_lo_deja_sin_mes(self):
+        self.calendario(self.seguro, [''])
+        self.seguro.refresh_from_db()
+        self.assertIsNone(self.seguro.mes_pago)
+
+    def test_ibi_en_dos_plazos_a_partes_iguales(self):
+        self.calendario(self.ibi, ['11', '6'])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.mes_pago, 6)
+        self.assertEqual(self.ibi.plazos_de_pago, [(6, Decimal('260.00')), (11, Decimal('260.00'))])
+        self.assertEqual(self.ibi.meses_pago_display, 'Junio y noviembre')
+
+        # Pagado el de junio (por céntimos de menos): al día, falta noviembre.
+        self.pago('-259.10', 6, 2, self.cat_ibi)
+        datos, filas = self.analizar()
+        fila = filas['IBI']
+        self.assertEqual([c['mes'] for c in fila['cuotas']], [6, 11])
+        self.assertEqual(fila['estado'], 'parcial')
+        self.assertIn('noviembre', fila['frase'])
+        self.assertFalse(fila['fuera_de_mes'])
+        g = {d['mes']: d for d in datos['grafico']}
+        self.assertEqual(g[6]['total_previsto'], 260)
+        self.assertEqual(g[11]['total_previsto'], 260 + 273)   # con la revisión
+
+    def test_plazo_de_junio_sin_pagar_ya_tocaba(self):
+        self.calendario(self.ibi, ['6', '11'], ['200', ''])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos_de_pago, [(6, Decimal('200')), (11, Decimal('320'))])
+        _, filas = self.analizar()
+        self.assertEqual(filas['IBI']['estado'], 'atrasado')
+        self.assertIn('junio', filas['IBI']['frase'])
+
+    def test_plazos_que_no_cuadran_no_se_guardan(self):
+        respuesta = self.calendario(self.ibi, ['6', '11'], ['200', '200'])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos, [])
+        self.assertEqual(self.ibi.mes_pago, 6)
+        mensajes = [str(m) for m in get_messages(respuesta.wsgi_request)]
+        self.assertTrue(any('400,00 €' in m and '520,00 €' in m for m in mensajes))
+
+    def test_dos_plazos_en_el_mismo_mes_no(self):
+        self.calendario(self.ibi, ['6', '6'])
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos, [])
+
+    def test_un_semestral_no_se_parte_en_plazos(self):
+        self.calendario(self.hogar_sem, ['1', '4'])
+        self.hogar_sem.refresh_from_db()
+        self.assertEqual(self.hogar_sem.plazos, [])
+        self.assertEqual(self.hogar_sem.mes_pago, 1)
+
+    def test_los_plazos_siguen_al_importe_declarado(self):
+        self.calendario(self.ibi, ['6', '11'], ['130', '390'])   # 25 % y 75 %
+        self.ibi.refresh_from_db()
+        self.ibi.importe = Decimal('600')
+        self.ibi.save()
+        self.assertEqual(self.ibi.plazos_de_pago, [(6, Decimal('150.00')), (11, Decimal('450.00'))])
+
+    def test_no_se_edita_la_partida_de_otro_hogar(self):
+        otro = Hogar.objects.create(nombre='Otro')
+        ajena = PartidaGasto.objects.create(
+            hogar=otro, nombre='IBI ajeno', importe=Decimal('100'), periodicidad='anual', mes_pago=6,
+        )
+        respuesta = self.calendario(ajena, ['9'])
+        self.assertEqual(respuesta.status_code, 404)
+
+    def test_la_fila_trae_el_editor(self):
+        self.calendario(self.ibi, ['6', '11'])
+        html = self.client.get(reverse('extractos:anuales'), {'anio': '2026'}).content.decode()
+        self.assertIn(reverse('extractos:anuales_calendario', args=[self.ibi.id]), html)
+        self.assertIn('en 2 plazos', html)
+        self.assertIn('Pagarlo en otro plazo más', html)
+
+    def test_cambiar_el_mes_en_gastos_deshace_los_plazos(self):
+        self.calendario(self.ibi, ['6', '11'])
+        datos = {
+            'categoria_id': self.cat_ibi.id, 'nombre': 'IBI', 'importe': '520',
+            'periodicidad': 'anual', 'mes_pago': '6',
+        }
+        self.client.post(reverse('finanzas:editar_partida', args=[self.ibi.id]), datos)
+        self.ibi.refresh_from_db()
+        self.assertEqual(len(self.ibi.plazos_de_pago), 2)   # mismo mes: se conservan
+        datos['mes_pago'] = '7'
+        self.client.post(reverse('finanzas:editar_partida', args=[self.ibi.id]), datos)
+        self.ibi.refresh_from_db()
+        self.assertEqual(self.ibi.plazos, [])
+        self.assertEqual(self.ibi.mes_pago, 7)

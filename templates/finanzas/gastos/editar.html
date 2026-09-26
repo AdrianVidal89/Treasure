@@ -144,6 +144,13 @@
                         <option value="{{ num }}" {% if partida.mes_pago == num %}selected{% endif %}>{{ nombre_mes }}</option>
                         {% endfor %}
                     </select>
+                    {% if partida.plazos_de_pago %}
+                    <small style="display:block;margin-top:6px;font-size:0.75rem;color:var(--muted);">
+                        Se paga en {{ partida.plazos_de_pago|length }} plazos ({{ partida.meses_pago_display|lower }}).
+                        Cambiar aquí el mes lo deja en un solo pago; los plazos se ajustan en
+                        <a href="{% url 'extractos:anuales' %}#partida-{{ partida.id }}">Fijos anuales</a>.
+                    </small>
+                    {% endif %}
                 </div>
             </div>
 
