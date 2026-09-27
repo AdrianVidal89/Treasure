@@ -4157,14 +4157,91 @@ class MotorComparadorVehiculoTests(TestCase):
         self.assertAlmostEqual(r['total'] + r['deuda'] - r['intereses'], 30000, places=2)
         self.assertAlmostEqual(r['real'], r['total'] + r['deuda'] + r['uso'], places=2)
 
-    def test_km_de_mas_y_aviso_si_se_devuelve_antes(self):
+    def test_km_de_mas_y_el_leasing_se_renueva_al_devolverlo(self):
+        """Devolver el coche no te deja sin coche: se firma otro leasing igual."""
         r = self.correr(f"""
             const o = Object.assign({{tipo: 'leasing', precio: 48000, entrada: 0, cuota: 400,
                 meses: 36, cuota_final: 0, quedarse: false, km_contratados: 10000, coste_km_extra: 0.1}}, {self.USO});
             console.log(JSON.stringify(C.simular(o, {self.G})));""")
-        # 5.000 km de más al año × 3 años × 0,10 €.
-        self.assertAlmostEqual(r['exceso_km'], 1500, places=2)
-        self.assertTrue(any('no tienes coche' in a for a in r['avisos']))
+        # 48 cuotas: 36 del primer contrato y 12 del segundo.
+        self.assertEqual(r['num_cuotas'], 48)
+        self.assertAlmostEqual(r['total_cuotas'], 400 * 48, places=2)
+        self.assertEqual([e['mes'] for e in r['eventos']], [36])
+        # 5.000 km de más al año × 0,10 €: 1.500 pagados al devolver el primero
+        # y 500 que ya se deben del segundo.
+        self.assertAlmostEqual(r['exceso_km'], 2000, places=2)
+        self.assertAlmostEqual(r['deuda_final'], 500, places=2)
+        self.assertFalse(any('no tienes coche' in a for a in r['avisos']))
+
+    def test_la_entrada_del_leasing_en_curso_se_reparte(self):
+        """Acabar a mitad de un leasing no carga su entrada entera: solo la
+        parte de los meses usados, como las cuotas."""
+        r = self.correr(f"""
+            const o = Object.assign({{tipo: 'leasing', precio: 48000, entrada: 4800, cuota: 400,
+                meses: 48, quedarse: false}}, {self.USO});
+            const s = C.simular(o, {{horizonte: 72, km_anuales: 15000, rentabilidad: 0}});
+            console.log(JSON.stringify(s));""")
+        # Segundo contrato: 24 de 48 meses usados → la mitad de su entrada sin usar.
+        self.assertAlmostEqual(r['valor_final'], 2400, places=2)
+        self.assertAlmostEqual(r['coste_coche'], 4800 * 1.5 + 400 * 72, places=2)
+
+    def test_la_curva_acaba_en_el_coste_real(self):
+        """La gráfica pinta, mes a mes, el coste real de dejarlo ese mes: su
+        último punto es la cifra de la tabla, en todos los tipos."""
+        r = self.correr(f"""
+            const g = {{horizonte: 120, km_anuales: 15000, rentabilidad: 0, inflacion: 2, envejecimiento: 6}};
+            const ops = [
+                Object.assign({{tipo: 'leasing', precio: 40000, entrada: 5000, cuota: 450, meses: 48, quedarse: false}}, {self.USO}),
+                Object.assign({{tipo: 'leasing', precio: 40000, entrada: 5000, cuota: 350, meses: 48, cuota_final: 18000, quedarse: true}}, {self.USO}),
+                Object.assign({{tipo: 'financiado', precio: 40000, entrada: 10000, tin: 7, meses: 60, comision_pct: 2, cambio_cada: 72}}, {self.USO}),
+                Object.assign({{tipo: 'contado', precio: 40000, gastos_iniciales: 400, cambio_cada: 48}}, {self.USO}),
+            ];
+            console.log(JSON.stringify(ops.map(o => {{
+                const s = C.simular(o, g);
+                const pagado = s.desembolso_inicial + s.total_cuotas + s.pago_final + s.total_uso;
+                return [s.coste[120] - s.coste_real, pagado - s.total_pagado,
+                        pagado + s.deuda_final - s.valor_final - s.coste_real];
+            }})));""")
+        for diferencias in r:
+            for d in diferencias:
+                self.assertAlmostEqual(d, 0, places=6)
+
+    def test_cambiar_el_coche_vende_el_viejo_y_compra_otro(self):
+        r = self.correr(f"""
+            const g = {{horizonte: 96, km_anuales: 15000, rentabilidad: 0}};
+            const o = Object.assign({{tipo: 'contado', precio: 40000, valor_final_pct: 50, cambio_cada: 48}}, {self.USO});
+            console.log(JSON.stringify(C.simular(o, g)));""")
+        # Compra 40.000; a los 4 años vende por 20.000 y compra otro de 40.000,
+        # que a los 4 años vale otros 20.000: el coche ha costado 40.000.
+        self.assertEqual([e['mes'] for e in r['eventos']], [48])
+        self.assertAlmostEqual(r['pago_final'], 20000, places=2)
+        self.assertAlmostEqual(r['valor_final'], 20000, places=2)
+        self.assertAlmostEqual(r['coste_coche'], 40000, places=2)
+
+    def test_el_coche_viejo_gasta_mas_taller(self):
+        r = self.correr(f"""
+            const o = Object.assign({{tipo: 'contado', precio: 30000}}, {self.USO});
+            const sin = C.simular(o, {{horizonte: 120, km_anuales: 15000, envejecimiento: 0}});
+            const con = C.simular(o, {{horizonte: 120, km_anuales: 15000, envejecimiento: 10}});
+            console.log(JSON.stringify([sin.total_uso, con.total_uso]));""")
+        # Taller y neumáticos (650 €/año) crecen un 10 % por año de edad.
+        esperado = sum(650 * 1.1 ** (m / 12) / 12 for m in range(120))
+        self.assertAlmostEqual(r[1] - r[0], esperado - 6500, places=2)
+
+    def test_a_diez_anos_comprar_gana_al_leasing_que_gana_a_cuatro(self):
+        """El caso que lo destapó: a 48 meses el leasing que devuelves sale
+        mejor, pero al devolverlo hay que coger otro coche; si lo quieres diez
+        años, comprarlo y quedártelo sale mejor, y el veredicto dice desde
+        cuándo."""
+        r = self.correr(f"""
+            const leasing = Object.assign({{tipo: 'leasing', precio: 40000, entrada: 3000, cuota: 390,
+                meses: 48, quedarse: false, incl_mantenimiento: true, incl_neumaticos: true}}, {self.USO});
+            const contado = Object.assign({{tipo: 'contado', precio: 40000, gastos_iniciales: 400}}, {self.USO});
+            const g = h => ({{horizonte: h, km_anuales: 15000, rentabilidad: 0, inflacion: 2, envejecimiento: 6}});
+            const a4 = C.comparar([leasing, contado], g(48));
+            const a10 = C.comparar([leasing, contado], g(120));
+            console.log(JSON.stringify([a4.mejor.opcion.tipo, a10.mejor.opcion.tipo]));""")
+        self.assertEqual(r, ['leasing', 'contado'])
 
     def test_comparar_ordena_y_dice_la_diferencia(self):
         r = self.correr(f"""

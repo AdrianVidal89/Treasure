@@ -23,8 +23,8 @@ la app, del hogar, para abrirlo después o compararlo con otros.
     <!-- ══════════ LO COMÚN A TODAS LAS OPCIONES ══════════ -->
     <div class="cv-global">
         <label class="cv-g-campo">
-            <span class="cv-g-lbl">Periodo que se compara <b id="cv-lbl-horizonte"></b></span>
-            <input type="range" id="cv-horizonte" min="12" max="120" step="1">
+            <span class="cv-g-lbl" title="Lo que piensas tener coche, sea este u otros: el leasing que devuelves se renueva al acabar y el coche comprado se cambia cuando digas en su tarjeta.">Tiempo que quieres tener coche <b id="cv-lbl-horizonte"></b></span>
+            <input type="range" id="cv-horizonte" min="12" max="180" step="1">
         </label>
         <label class="cv-g-campo">
             <span class="cv-g-lbl">Kilómetros al año <b id="cv-lbl-km"></b></span>
@@ -33,6 +33,14 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         <label class="cv-g-campo cv-g-corto" title="Lo que rendiría el dinero si no se gastara en el coche (un depósito, un fondo). Pagar 30.000 € el primer día no es lo mismo que pagarlos en cuatro años.">
             <span class="cv-g-lbl">Rentabilidad del dinero</span>
             <span class="cv-entrada"><input type="number" id="cv-rentabilidad" min="0" max="20" step="0.1"><em>%/año</em></span>
+        </label>
+        <label class="cv-g-campo cv-g-corto" title="Cuánto suben al año los coches nuevos: encarece renovar el leasing y comprar el siguiente coche.">
+            <span class="cv-g-lbl">Suben los coches</span>
+            <span class="cv-entrada"><input type="number" id="cv-inflacion" min="0" max="20" step="0.1"><em>%/año</em></span>
+        </label>
+        <label class="cv-g-campo cv-g-corto" title="Cuánto sube cada año de edad del coche lo que gastas en taller y neumáticos. Un leasing siempre lleva un coche joven; uno comprado envejece.">
+            <span class="cv-g-lbl">Taller con la edad</span>
+            <span class="cv-entrada"><input type="number" id="cv-envejecimiento" min="0" max="30" step="0.5"><em>+%/año</em></span>
         </label>
         <div class="cv-g-acciones">
             <button type="button" class="cv-btn cv-btn-primario" id="cv-guardar">
@@ -77,9 +85,9 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         </div>
         <div class="cv-panel">
             <div class="cv-panel-head">
-                <h3>Dinero que sale de la cuenta, mes a mes</h3>
-                <span class="cv-nota">acumulado · pasa el ratón para ver un mes</span>
-                <p class="cv-nota cv-nota-linea">Las líneas son lo que PAGAS. Al final, el <b>◆</b> es el coste real: lo pagado menos lo que vale el coche si es tuyo, más lo que aún debes. Por eso una opción puede pagar más y costar menos.</p>
+                <h3>Lo que te cuesta el coche, mes a mes</h3>
+                <span class="cv-nota">pasa el ratón para ver un mes</span>
+                <p class="cv-nota cv-nota-linea">Cada punto es lo que te habría costado <b>dejarlo ese mes</b>: lo pagado hasta ahí, más lo que aún debes, menos lo que vale el coche si lo vendes. La línea más baja es la más barata en ese momento; donde dos se cruzan cambia la ganadora. Los <b>○</b> son renovaciones del leasing, cambios de coche o la cuota final.</p>
             </div>
             <div class="cv-leyenda" id="cv-leyenda"></div>
             <div class="cv-lineas" id="cv-lineas"></div>
@@ -311,8 +319,7 @@ la app, del hogar, para abrirlo después o compararlo con otros.
 .cv-leyenda i { width:14px; height:3px; border-radius:2px; background:var(--c); }
 .cv-lineas { height:260px; }
 .cv-nota-linea { width:100%; margin:4px 0 0; line-height:1.45; }
-.cv-lineas .caida { stroke-width:1.5; stroke-dasharray:3 3; }
-.cv-lineas .rombo-lbl { font-size:10px; font-weight:700; fill:var(--text-color); }
+.cv-lineas .evento { fill:var(--surface); stroke-width:2; }
 .cv-lineas svg { display:block; width:100%; height:100%; overflow:visible; }
 .cv-lineas text { font-size:11px; fill:var(--muted); font-family:inherit; }
 .cv-lineas .rejilla { stroke:var(--border); }
@@ -399,7 +406,7 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         var o = Object.assign({
             id: 'op' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
             tipo: tipo, nombre: nombre, precio: 48000, gastos_iniciales: tipo === 'leasing' ? 0 : 400,
-            valor_final_pct: '',
+            valor_final_pct: '', cambio_cada: '',
             entrada: 11000, cuota: 450, meses: tipo === 'financiado' ? 60 : 48, cuota_final: 22000,
             quedarse: false, km_contratados: 15000, coste_km_extra: 0.10,
             incl_mantenimiento: true, incl_neumaticos: true, incl_seguro: false, incl_impuesto: false,
@@ -407,9 +414,12 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         }, USO_POR_DEFECTO, extra || {});
         return o;
     }
+    // Diez años: el tiempo normal de tener coche, y lo bastante largo para que
+    // se vea que el leasing hay que renovarlo y el coche comprado envejece.
+    var GLOBAL_POR_DEFECTO = {horizonte: 120, km_anuales: 15000, rentabilidad: 3, inflacion: 2, envejecimiento: 6};
     function estadoInicial() {
         return {
-            global: {horizonte: 48, km_anuales: 15000, rentabilidad: 3},
+            global: Object.assign({}, GLOBAL_POR_DEFECTO),
             opciones: [
                 Object.assign(nuevaOpcion('leasing', 'BMW X2 · leasing'), {color: 1}),
                 Object.assign(nuevaOpcion('financiado', 'BMW X2 · financiado'), {color: 2}),
@@ -427,8 +437,15 @@ la app, del hogar, para abrirlo después o compararlo con otros.
     function cargarLocal() {
         try {
             var d = JSON.parse(localStorage.getItem(ALMACEN) || 'null');
-            if (d && d.global && Array.isArray(d.opciones)) S = d;
+            if (d && d.global && Array.isArray(d.opciones)) S = completar(d);
         } catch (e) { /* ignorar */ }
+    }
+    /* Estados guardados antes de que existieran los supuestos a largo plazo:
+       se rellenan con los de por defecto (su periodo ya venía puesto). */
+    function completar(d) {
+        d.global = Object.assign({}, GLOBAL_POR_DEFECTO, d.global);
+        d.opciones.forEach(function (o) { if (o.cambio_cada === undefined) o.cambio_cada = ''; });
+        return d;
     }
     function colorLibre() {
         var usados = S.opciones.map(function (o) { return o.color; });
@@ -465,10 +482,19 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         h += '<div class="cv-seccion-t">El coche</div><div class="cv-campos">';
         h += campo(o, 'precio', 'Precio (PVP)', '€');
         h += campo(o, 'gastos_iniciales', 'Gastos iniciales', '€', {titulo: 'Matriculación, transporte, transferencia…'});
-        h += campo(o, 'valor_final_pct', 'Valdrá al final', '% del PVP', {
-            ancho: true, placeholder: 'auto ≈ ' + C.valorResidualEstimado(S.global.horizonte).toFixed(0),
-            titulo: 'Lo que podrías venderlo al final del periodo. Vacío = depreciación típica (−20 % el primer año, −13 % los siguientes).',
-        });
+        if (o.tipo === 'contado' || o.tipo === 'financiado') {
+            h += campo(o, 'cambio_cada', 'Lo cambio cada', 'meses', {
+                placeholder: 'no lo cambio',
+                titulo: 'Cada cuánto vendes el coche y compras otro nuevo igual. Vacío = te lo quedas todo el tiempo que quieres tener coche.',
+            });
+        }
+        // Un leasing que devuelves no se vende: no hay valor que poner.
+        if (o.tipo !== 'leasing' || o.quedarse) {
+            h += campo(o, 'valor_final_pct', 'Valdrá al venderlo', '% del PVP', {
+                ancho: o.tipo === 'leasing', placeholder: 'auto',
+                titulo: 'Lo que podrías venderlo cuando lo cambies o al final. Vacío = depreciación típica (−20 % el primer año, −13 % los siguientes).',
+            });
+        }
         h += '</div>';
 
         if (o.tipo === 'leasing') {
@@ -478,7 +504,7 @@ la app, del hogar, para abrirlo después o compararlo con otros.
             h += campo(o, 'meses', 'Duración', 'meses');
             h += campo(o, 'cuota_final', 'Cuota final', '€');
             h += '<div class="cv-campo ancho"><span>Al acabar el contrato</span><div class="cv-final">' +
-                 '<button type="button" data-quedarse="0" class="' + (o.quedarse ? '' : 'activo') + '">Lo devuelvo</button>' +
+                 '<button type="button" data-quedarse="0" class="' + (o.quedarse ? '' : 'activo') + '" title="Al devolverlo firmas otro leasing igual con un coche nuevo, hasta cubrir el tiempo que quieres tener coche.">Lo devuelvo y cojo otro</button>' +
                  '<button type="button" data-quedarse="1" class="' + (o.quedarse ? 'activo' : '') + '">Me lo quedo (pago la final)</button></div></div>';
             if (!o.quedarse) {
                 h += campo(o, 'km_contratados', 'Km contratados', 'km/año');
@@ -546,25 +572,34 @@ la app, del hogar, para abrirlo después o compararlo con otros.
        demás se señala la menor cifra, sin llamarla mejor: pagar menos el
        primer día no es ganar si al final cuesta más. */
     var FILAS = [
-        {seccion: function (g) { return 'Lo que sale de tu cuenta en ' + g.horizonte + ' meses'; }},
+        {seccion: function (g) { return 'Lo que sale de tu cuenta en ' + plazo(g.horizonte) + ' (' + g.horizonte + ' meses)'; }},
         {k: 'desembolso_inicial', t: 'El primer día', ayuda: 'Entrada, pago al contado, comisión y gastos iniciales.', fmt: function (v, r, o) {
             var que = o.tipo === 'contado' ? 'precio + gastos' : o.tipo === 'financiado' ? 'entrada + comisión + gastos' : 'entrada + gastos';
             return euro(v) + '<small>' + que + '</small>'; }},
         {k: 'total_cuotas', op: '+', t: 'Cuotas', fmt: function (v, r) {
-            return r.num_cuotas ? euro(v) + '<small>' + r.num_cuotas + ' × ' + euro(r.cuota, 2) + '</small>' : '—'; }},
-        {k: 'pago_final', op: '+', t: 'Al acabar el contrato', fmt: function (v, r) {
-            if (r.pago_final_tipo === 'cuota_final') return euro(v) + '<small>cuota final</small>';
-            if (r.pago_final_tipo === 'km') return euro(v) + '<small>km de más</small>';
-            return '—'; }},
+            if (!r.num_cuotas) return '—';
+            // Al renovar con los coches más caros la cuota sube: ya no es N × cuota.
+            var fija = Math.abs(r.num_cuotas * r.cuota - v) < 0.5;
+            return euro(v) + '<small>' + r.num_cuotas + (fija ? ' × ' + euro(r.cuota, 2) : ' cuotas, desde ' + euro(r.cuota)) + '</small>'; }},
+        {k: 'pago_final', op: '+', t: 'Renovar, cambiar o cuota final', ayuda: 'Nuevas entradas al renovar el leasing, la cuota final, los km de más, o lo que pones al vender tu coche y comprar otro (ya descontado lo que te dan por él).', fmt: function (v, r, o) {
+            if (Math.abs(v) < 0.5) return '—';
+            var n = r.eventos.length, que;
+            if (o.tipo === 'leasing' && o.quedarse) que = 'cuota final';
+            else if (o.tipo === 'leasing') que = n ? n + (n === 1 ? ' renovación' : ' renovaciones') + (r.exceso_km ? ' y km de más' : '') : 'km de más';
+            else que = n + (n === 1 ? ' cambio' : ' cambios') + ' de coche, en neto';
+            return euro(v) + '<small>' + que + '</small>'; }},
         {k: 'total_uso', op: '+', t: 'Usarlo', ayuda: 'Seguro, mantenimiento, neumáticos, impuesto y energía, salvo lo que incluya la cuota.', fmt: function (v, r) {
-            return euro(v) + '<small>' + euro(r.uso_mensual) + '/mes · seguro, taller, energía…</small>'; }},
+            return euro(v) + '<small>' + euro(v / r.horizonte) + '/mes de media · seguro, taller, energía…</small>'; }},
         {k: 'total_pagado', op: '=', t: 'Total que sale de tu cuenta', total: true},
         {seccion: function () { return 'Lo que queda al final'; }},
         {k: 'deuda_final', op: '+', t: 'Lo que aún debes', fmt: function (v) { return v ? euro(v) : '—'; }},
         {k: 'valor_final', op: '−', t: 'Lo que vale el coche, si es tuyo', fmt: function (v, r) {
-            return r.es_tuyo
-                ? '−' + euro(v) + '<small>' + r.valor_final_pct.toFixed(0) + ' % del PVP' + (r.valor_estimado ? ' · estimado, cámbialo en «Valdrá al final»' : '') + '</small>'
-                : '0 €<small>lo devuelves: no es tuyo</small>'; }},
+            if (!r.es_tuyo) return v > 0.5
+                ? '−' + euro(v) + '<small>parte de la entrada del leasing en curso aún sin usar</small>'
+                : '0 €<small>lo devuelves: no es tuyo</small>';
+            var años = r.edad_final / 12;
+            return '−' + euro(v) + '<small>coche de ' + años.toLocaleString('es-ES', {maximumFractionDigits: 1}) + (años === 1 ? ' año' : ' años') +
+                ' · ' + r.valor_final_pct.toFixed(0) + ' %' + (r.valor_estimado ? ' estimado' : '') + '</small>'; }},
         {k: 'coste_real', op: '=', t: 'Coste real', mejor: 'min', destacada: true, ayuda: 'Lo que sale de tu cuenta + lo que aún debes − lo que vale el coche si es tuyo.'},
         {k: 'coste_mensual', t: 'Coste real al mes', mejor: 'min', destacada: true},
         {k: 'coste_km', t: 'Coste real por km', mejor: 'min', fmt: function (v) { return euro(v, 3); }},
@@ -595,7 +630,7 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         var res = c.resultados, mejor = c.mejor;
 
         // Veredicto
-        $('cv-hero-lbl').textContent = 'Veredicto · a ' + g.horizonte + ' meses y ' + Number(g.km_anuales).toLocaleString('es-ES') + ' km/año';
+        $('cv-hero-lbl').textContent = 'Veredicto · teniendo coche ' + plazo(g.horizonte) + ' y ' + Number(g.km_anuales).toLocaleString('es-ES') + ' km/año';
         if (res.length === 1) {
             $('cv-hero-titulo').innerHTML = '<b>' + esc(mejor.opcion.nombre) + '</b> te cuesta ' + euro(mejor.r.coste_real);
             $('cv-hero-sub').innerHTML = 'Añade otra opción para compararla.';
@@ -607,6 +642,11 @@ la app, del hogar, para abrirlo después o compararlo con otros.
                 var d = x.r.coste_real - mejor.r.coste_real;
                 return '<strong>' + euro(d) + '</strong> menos que «' + esc(x.opcion.nombre) + '» (' + euro(d / g.horizonte) + '/mes)';
             }).join(' · ') + (dif < 500 ? '<br>Diferencia pequeña: decide por lo que no está en los números (qué coche te gusta, flexibilidad, si quieres cambiar pronto).' : '');
+            var cruce = desdeCuandoGana(c);
+            if (cruce) {
+                $('cv-hero-sub').innerHTML += '<br>Gana a partir de los <strong>' + plazo(cruce.mes) + '</strong>: si vas a tener coche menos tiempo, sale mejor «' +
+                    esc(cruce.antes.opcion.nombre) + '». Mira dónde se cruzan las líneas en la gráfica.';
+            }
             if (g.rentabilidad > 0) {
                 var porOportunidad = res.slice().sort(function (a, b) { return a.r.coste_con_oportunidad - b.r.coste_con_oportunidad; })[0];
                 if (porOportunidad !== mejor) {
@@ -631,6 +671,12 @@ la app, del hogar, para abrirlo después o compararlo con otros.
             art.querySelector('[data-kpi="coste_real"]').textContent = euro(x.r.coste_real);
             art.querySelector('[data-kpi="coste_mensual"]').textContent = euro(x.r.coste_mensual);
             art.querySelector('[data-kpi="coste_km"]').textContent = euro(x.r.coste_km, 2);
+            var residual = art.querySelector('[data-campo="valor_final_pct"]');
+            if (residual) {
+                residual.placeholder = 'auto ≈ ' + C.valorResidualEstimado(x.r.edad_venta).toFixed(0);
+                residual.closest('.cv-campo').title = 'Lo que podrías venderlo a los ' + plazo(x.r.edad_venta) +
+                    ', cuando lo cambias o se acaba el tiempo. Vacío = depreciación típica (−20 % el primer año, −13 % los siguientes).';
+            }
             var med = art.querySelector('[data-medalla]');
             med.hidden = res.length < 2;
             med.className = 'cv-op-medalla' + (x === mejor ? '' : ' otra');
@@ -676,6 +722,22 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         pintarLineas(c);
     }
 
+    /* Desde qué mes la ganadora al final es ya la más barata sin volver a
+       perder, y cuál lo era justo antes. El primer mes no cuenta: el día de
+       la firma todas cuestan casi nada. */
+    function desdeCuandoGana(c) {
+        var H = S.global.horizonte, gana = c.mejor;
+        if (c.resultados.length < 2) return null;
+        var mes = H;
+        while (mes > 1) {
+            var anterior = mes - 1;
+            var mejorAntes = c.resultados.reduce(function (a, b) { return b.r.coste[anterior] < a.r.coste[anterior] ? b : a; });
+            if (mejorAntes !== gana && mejorAntes.r.coste[anterior] < gana.r.coste[anterior] - 0.5) return {mes: mes, antes: mejorAntes};
+            mes = anterior;
+        }
+        return null;
+    }
+
     function pintarBarras(c) {
         var tope = Math.max.apply(null, c.orden.map(function (x) { return Math.max(x.r.coste_coche, 0) + Math.max(x.r.total_uso, 0); })) || 1;
         $('cv-barras').innerHTML = c.orden.map(function (x) {
@@ -689,9 +751,20 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         }).join('');
     }
 
-    // ── Líneas: dinero acumulado ────────────────────────────────────────
+    // ── Líneas: lo que cuesta el coche si lo dejas cada mes ─────────────
+    /* Antes se pintaba el dinero PAGADO y, solo al final, se caía al coste
+       real: durante todo el periodo el contado parecía la peor opción porque
+       no se veía que el coche que tienes vale dinero. Ahora cada línea es el
+       coste real de dejarlo ese mes (vender o devolver), así que se pueden
+       comparar en cualquier punto y los cruces dicen desde cuándo gana cada
+       una. */
     var NS = 'http://www.w3.org/2000/svg';
     function el(n, a, p) { var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
+    function plazo(mes) {
+        if (mes < 12) return mes + (mes === 1 ? ' mes' : ' meses');
+        var a = mes / 12;
+        return a.toLocaleString('es-ES', {maximumFractionDigits: 1}) + (a === 1 ? ' año' : ' años');
+    }
     var ultimo = null;
     function pintarLineas(c) {
         ultimo = c;
@@ -702,38 +775,37 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         }).join('');
         var W = cont.clientWidth, Hh = cont.clientHeight;
         if (!W) return;
-        var m = {t: 10, r: 18, b: 24, l: 58};
+        var m = {t: 10, r: 18, b: 24, l: 64};
         var H = S.global.horizonte;
-        var tope = Math.max.apply(null, c.resultados.map(function (x) { return Math.max(x.r.acumulado[H], x.r.coste_real); })) || 1;
-        var paso = Math.pow(10, Math.floor(Math.log10(tope)));
-        tope = Math.ceil(tope / paso) * paso;
+        var todos = [];
+        c.resultados.forEach(function (x) { todos = todos.concat(x.r.coste); });
+        var tope = Math.max.apply(null, todos), suelo = Math.min(0, Math.min.apply(null, todos));
+        var paso = Math.pow(10, Math.floor(Math.log10(Math.max(tope - suelo, 1))));
+        tope = Math.ceil(tope / paso) * paso || paso;
+        suelo = Math.floor(suelo / paso) * paso;
         var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + Hh}, cont);
         var x = function (mes) { return m.l + (W - m.l - m.r) * mes / H; };
-        var y = function (v) { return m.t + (Hh - m.t - m.b) * (1 - v / tope); };
+        var y = function (v) { return m.t + (Hh - m.t - m.b) * (tope - v) / (tope - suelo); };
         for (var i = 0; i <= 4; i++) {
-            var v = tope * i / 4;
-            el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), 'class': i ? 'rejilla' : 'base'}, svg);
+            var v = suelo + (tope - suelo) * i / 4;
+            el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), 'class': Math.abs(v) < 0.5 ? 'base' : 'rejilla'}, svg);
             el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end'}, svg).textContent = euro(v);
         }
-        var cadaAño = H > 72 ? 24 : 12;
+        var cadaAño = H > 96 ? 24 : 12;
         for (var mes = 0; mes <= H; mes += cadaAño) {
-            el('text', {x: x(mes), y: Hh - 6, 'text-anchor': 'middle'}, svg).textContent = mes ? (mes / 12) + (mes === 12 ? ' año' : ' años') : 'firma';
+            el('text', {x: x(mes), y: Hh - 6, 'text-anchor': 'middle'}, svg).textContent = mes ? plazo(mes) : 'hoy';
         }
         c.resultados.forEach(function (r) {
-            var d = r.r.acumulado.map(function (val, mes) { return (mes ? 'L' : 'M') + x(mes).toFixed(1) + ',' + y(val).toFixed(1); }).join('');
-            var p = el('path', {d: d, fill: 'none', 'stroke-width': 2, 'stroke-linejoin': 'round'}, svg);
+            var d = r.r.coste.map(function (val, mes) { return (mes ? 'L' : 'M') + x(mes).toFixed(1) + ',' + y(val).toFixed(1); }).join('');
+            var p = el('path', {d: d, fill: 'none', 'stroke-width': 2.2, 'stroke-linejoin': 'round'}, svg);
             p.style.stroke = color(r.opcion);
         });
-        // Al final, del dinero pagado al coste real: la caída es lo que vale el
-        // coche (menos lo que se debe). Es la pieza que separaba la gráfica de
-        // la tabla.
+        // Renovaciones, cambios de coche y cuota final: donde la línea da un salto.
         c.resultados.forEach(function (r) {
-            var x0 = x(H), yPag = y(r.r.acumulado[H]), yReal = y(Math.max(r.r.coste_real, 0));
-            var caida = el('line', {x1: x0, x2: x0, y1: yPag, y2: yReal, 'class': 'caida'}, svg);
-            caida.style.stroke = color(r.opcion);
-            var t = 6;
-            var rombo = el('path', {d: 'M' + x0 + ',' + (yReal - t) + 'L' + (x0 + t) + ',' + yReal + 'L' + x0 + ',' + (yReal + t) + 'L' + (x0 - t) + ',' + yReal + 'Z', 'stroke-width': 1.5}, svg);
-            rombo.style.fill = color(r.opcion); rombo.style.stroke = 'var(--surface)';
+            r.r.eventos.forEach(function (ev) {
+                var punto = el('circle', {cx: x(ev.mes), cy: y(r.r.coste[ev.mes]), r: 4, 'class': 'evento'}, svg);
+                punto.style.stroke = color(r.opcion);
+            });
         });
         var guia = el('line', {y1: m.t, y2: Hh - m.b, 'class': 'guia'}, svg);
         guia.style.display = 'none';
@@ -750,20 +822,17 @@ la app, del hogar, para abrirlo después o compararlo con otros.
             var mesSel = Math.max(0, Math.min(H, Math.round((px - m.l) / (W - m.l - m.r) * H)));
             guia.setAttribute('x1', x(mesSel)); guia.setAttribute('x2', x(mesSel)); guia.style.display = '';
             c.resultados.forEach(function (r, i) {
-                puntos[i].setAttribute('cx', x(mesSel)); puntos[i].setAttribute('cy', y(r.r.acumulado[mesSel])); puntos[i].style.display = '';
+                puntos[i].setAttribute('cx', x(mesSel)); puntos[i].setAttribute('cy', y(r.r.coste[mesSel])); puntos[i].style.display = '';
             });
-            var filas = c.resultados.slice().sort(function (a, b) { return b.r.acumulado[mesSel] - a.r.acumulado[mesSel]; });
-            if (mesSel === H) {
-                tip.innerHTML = '<h5>Mes ' + H + ' · el final</h5>' + c.orden.map(function (r) {
-                    return '<div><span style="--c:' + color(r.opcion) + '"><i></i>' + esc(r.opcion.nombre) + '</span><b>' + euro(r.r.coste_real) + '</b></div>' +
-                        '<div class="cv-tip-det"><span>pagado ' + euro(r.r.acumulado[H]) + (r.r.deuda_final ? ' + debes ' + euro(r.r.deuda_final) : '') +
-                        (r.r.valor_final ? ' − coche ' + euro(r.r.valor_final) : '') + '</span></div>';
-                }).join('') + '<div class="cv-tip-det"><span>◆ coste real, de menor a mayor</span></div>';
-            } else {
-                tip.innerHTML = '<h5>' + (mesSel ? 'Mes ' + mesSel : 'El día de la firma') + ' · pagado hasta aquí</h5>' + filas.map(function (r) {
-                    return '<div><span style="--c:' + color(r.opcion) + '"><i></i>' + esc(r.opcion.nombre) + '</span><b>' + euro(r.r.acumulado[mesSel]) + '</b></div>';
-                }).join('');
-            }
+            var filas = c.resultados.slice().sort(function (a, b) { return a.r.coste[mesSel] - b.r.coste[mesSel]; });
+            tip.innerHTML = '<h5>' + (mesSel ? 'Si lo dejas a los ' + plazo(mesSel) : 'El día de la firma') + '</h5>' + filas.map(function (r) {
+                var rr = r.r, vale = rr.valor_mes[mesSel], debe = rr.deuda_mes[mesSel];
+                var ev = rr.eventos.filter(function (e) { return e.mes === mesSel; })[0];
+                return '<div><span style="--c:' + color(r.opcion) + '"><i></i>' + esc(r.opcion.nombre) + '</span><b>' + euro(rr.coste[mesSel]) + '</b></div>' +
+                    '<div class="cv-tip-det"><span>pagado ' + euro(rr.acumulado[mesSel]) + (debe > 0.5 ? ' + debes ' + euro(debe) : '') +
+                    (vale > 0.5 ? ' − ' + (rr.es_tuyo ? 'coche ' : 'entrada sin usar ') + euro(vale) : '') + '</span></div>' +
+                    (ev ? '<div class="cv-tip-det"><span>○ ' + esc(ev.texto) + '</span></div>' : '');
+            }).join('') + '<div class="cv-tip-det"><span>de menor a mayor coste</span></div>';
             tip.hidden = false;
             var panel = tip.parentElement.getBoundingClientRect();
             var izq = caja.left - panel.left + x(mesSel) + 12;
@@ -848,12 +917,6 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         input.value = S.global[clave];
         input.addEventListener('input', function () {
             S.global[clave] = parseFloat(input.value) || 0;
-            // El valor residual por defecto depende del periodo: se repinta el marcador.
-            if (clave === 'horizonte') {
-                document.querySelectorAll('[data-campo="valor_final_pct"]').forEach(function (i) {
-                    i.placeholder = 'auto ≈ ' + C.valorResidualEstimado(S.global.horizonte).toFixed(0);
-                });
-            }
             todo();
         });
     }
@@ -976,8 +1039,8 @@ la app, del hogar, para abrirlo después o compararlo con otros.
         if (e.target.closest('[data-abrir]')) {
             var d = JSON.parse(JSON.stringify(es.datos || {}));
             if (!d.global || !Array.isArray(d.opciones)) return;
-            S = {global: d.global, opciones: d.opciones, estudio: {id: es.id, nombre: es.nombre}};
-            $('cv-horizonte').value = S.global.horizonte; $('cv-km').value = S.global.km_anuales; $('cv-rentabilidad').value = S.global.rentabilidad;
+            S = completar({global: d.global, opciones: d.opciones, estudio: {id: es.id, nombre: es.nombre}});
+            GLOBALES.forEach(function (p) { $(p[0]).value = S.global[p[1]]; });
             cerrarModales();
             pintarOpciones();
             todo();
@@ -1003,10 +1066,10 @@ la app, del hogar, para abrirlo después o compararlo con otros.
     });
 
     // ── Arranque ───────────────────────────────────────────────────────
+    var GLOBALES = [['cv-horizonte', 'horizonte'], ['cv-km', 'km_anuales'], ['cv-rentabilidad', 'rentabilidad'],
+                    ['cv-inflacion', 'inflacion'], ['cv-envejecimiento', 'envejecimiento']];
     cargarLocal();
-    enlazarGlobal('cv-horizonte', 'horizonte');
-    enlazarGlobal('cv-km', 'km_anuales');
-    enlazarGlobal('cv-rentabilidad', 'rentabilidad');
+    GLOBALES.forEach(function (p) { enlazarGlobal(p[0], p[1]); });
     pintarOpciones();
     todo();
     var espera;
