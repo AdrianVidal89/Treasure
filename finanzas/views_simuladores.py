@@ -14,7 +14,7 @@ from . import hipoteca
 from .distribucion import _neto_fuente_base, calcular_flujos
 from .views_evolucion import (
     _delta_esperado_mes, _fecha_corte_mes, _liquidez_patrimonio_por_mes,
-    _saldos_liquidez_patrimonio, valor_depositos_hogar,
+    _saldos_liquidez_patrimonio, saldos_del_mes, valor_depositos_hogar,
 )
 
 
@@ -51,9 +51,7 @@ def _datos_financieros(hogar):
     desglose_fondos = []
 
     if ultimo_mes:
-        saldos = SaldoRealFondo.objects.filter(
-            fondo__hogar=hogar, año=ultimo_anio, mes=ultimo_mes
-        ).select_related('fondo')
+        saldos = saldos_del_mes(hogar, ultimo_anio, ultimo_mes)
         fecha_depositos = _fecha_corte_mes(ultimo_anio, ultimo_mes)
         capital_liquidez, patrimonio = _saldos_liquidez_patrimonio(
             saldos, hogar=hogar, fecha_depositos=fecha_depositos,

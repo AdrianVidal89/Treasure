@@ -17,7 +17,7 @@ from finanzas.models import (
 )
 from finanzas.distribucion import ahorro_esperado, calcular_flujos, clasificar_salud
 from finanzas.views_evolucion import (
-    _fecha_corte_mes, _saldos_liquidez_patrimonio,
+    _fecha_corte_mes, _saldos_liquidez_patrimonio, saldos_del_mes,
 )
 from core.models import UserProfile
 from extractos.resumen import resumen_del_mes
@@ -213,12 +213,7 @@ def dashboard_view(request):
             ultimo_mes_con_saldo = m
             break
 
-    saldos = (
-        SaldoRealFondo.objects.filter(
-            fondo__hogar=hogar, año=anio, mes=ultimo_mes_con_saldo
-        ).select_related('fondo')
-        if ultimo_mes_con_saldo else SaldoRealFondo.objects.none()
-    )
+    saldos = saldos_del_mes(hogar, anio, ultimo_mes_con_saldo) if ultimo_mes_con_saldo else []
     # Sin saldos registrados aún los depósitos siguen siendo líquidos: se valoran
     # al mes en curso.
     fecha_depositos = _fecha_corte_mes(anio, ultimo_mes_con_saldo or mes)

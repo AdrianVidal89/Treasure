@@ -198,9 +198,9 @@ ninguna parte. La marca de la barra es lo que va de mes: un 60 % gastado el día
     {% else %}
     <span class="ext-chip ok"><svg class="icon"><use href="#i-check"/></svg> Todo categorizado</span>
     {% endif %}
-    {% if panel.num_traspasos %}
+    {% if panel.num_traspasos_periodo %}
     <span class="ext-chip" title="Traspasos entre tus propias cuentas y categorías marcadas como neutras. No entran en ingresos ni en gastos.">
-        {{ panel.num_traspasos }} neutro{{ panel.num_traspasos|pluralize:"s" }} ·
+        {{ panel.num_traspasos_periodo }} neutro{{ panel.num_traspasos_periodo|pluralize:"s" }} ·
         {{ panel.kpi_traspaso_neto|euro }}
         {% if panel.traspasos_cuadran %}<em>cuadran</em>{% endif %}
     </span>

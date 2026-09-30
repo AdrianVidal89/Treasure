@@ -1559,7 +1559,12 @@ def _panel_context(hogar, todos, request, filtros=None):
         'tipos_bloque': [
             {'valor': t, 'etiqueta': ETIQUETAS_TIPO.get(t, t)} for t in ORDEN_TIPOS
         ],
+        # El interruptor de «Ocultar neutros» sale si hay alguno en cualquier
+        # parte; la chapa del periodo cuenta los del periodo, que son los que
+        # suma. Con el mismo número para las dos, septiembre decía «624
+        # neutros» —los de todos los meses— al lado del importe de solo sus 40.
         'num_traspasos': sum(1 for m in todos if m.es_neutro and not m.es_reembolso),
+        'num_traspasos_periodo': len(traspasos),
         'reembolsado': reembolsado_periodo,
         'compartido_total': compartido_total,
         'compartido_tu_parte': compartido_total - reembolsado_periodo,
@@ -2102,6 +2107,25 @@ def _estado_compartido(gasto):
     }
 
 
+# Lo que se deja pasar por encima de lo pendiente. Un amigo que te debe 51,97 €
+# te hace un Bizum de 52: es el mismo reembolso redondeado, y exigir que quepa
+# al céntimo lo escondía de la lista. Menos de un euro es redondeo; un euro o
+# más ya es otra cosa. El exceso no se pierde: `importe_neto` no se recorta a
+# cero, así que resta de la categoría y el balance sigue cuadrando.
+REEMBOLSO_REDONDEO = Decimal('1.00')
+
+
+def _cabe_con_redondeo(importe, pendiente):
+    """¿Cabe `importe` en `pendiente`, con el margen de un redondeo?
+
+    El margen solo vale si aún queda algo por devolver: a un gasto ya saldado
+    no se le cuelga otro Bizum por unos céntimos de holgura.
+    """
+    if importe <= pendiente:
+        return True
+    return pendiente > 0 and importe - pendiente < REEMBOLSO_REDONDEO
+
+
 def _candidatos_reembolso(hogar, gasto):
     """Ingresos de alrededor que pueden ser lo que te devolvieron de este gasto.
 
@@ -2123,7 +2147,7 @@ def _candidatos_reembolso(hogar, gasto):
     for m in cerca:
         if m.esta_dividido:
             continue
-        cabe = m.importe <= pendiente
+        cabe = _cabe_con_redondeo(m.importe, pendiente)
         pista = m.parece_reembolso
         filas.append((
             (not (cabe and pista), not cabe, abs((m.fecha - gasto.fecha).days)),
@@ -2148,7 +2172,9 @@ def _gastos_candidatos(hogar, ingreso):
     )
     filas = []
     for m in cerca:
-        if not _puede_compartirse(m) or m.pendiente_de_reembolso < ingreso.importe:
+        if not _puede_compartirse(m) or not _cabe_con_redondeo(
+            ingreso.importe, m.pendiente_de_reembolso,
+        ):
             continue
         total = -m.importe
         # ¿Es el gasto un múltiplo exacto de lo que te han pagado? Es la huella
@@ -2185,14 +2211,15 @@ def _respuesta_compartido(hogar, gasto_pk):
 def _cabe_reembolso(gasto, importe, excepto=None):
     """¿Cabe `importe` en lo que queda por devolver de este gasto?
 
-    Se comprueba al emparejar: devolverte más de lo que pagaste no es un
-    reembolso, y si se dejara pasar la categoría del gasto acabaría en negativo.
+    Se comprueba al emparejar: devolverte bastante más de lo que pagaste no es
+    un reembolso, y la categoría del gasto acabaría en negativo. Sí se deja el
+    margen de un redondeo (ver `_cabe_con_redondeo`).
     `excepto` es el reembolso que se está editando, que no compite consigo mismo.
     """
     pendiente = gasto.pendiente_de_reembolso
     if excepto is not None and excepto.reembolsa_id == gasto.pk:
         pendiente += excepto.importe
-    return importe <= pendiente, pendiente
+    return _cabe_con_redondeo(importe, pendiente), pendiente
 
 
 @login_required
@@ -3632,3 +3659,23 @@ def eliminar(request, pk):
         extracto.delete()
         messages.success(request, "Extracto eliminado.")
     return redirect('extractos:listar')
+
+
+@login_required
+def cuadre(request):
+    """El cuadre de un mes entre lo que dicen los extractos y lo que dicen los
+    saldos de Evolución (ver `cuadre.py`). Es un trozo de HTML que Evolución
+    pide al abrir el desplegable del mes: calcularlo para todos los meses al
+    cargar la página costaría un panel de Extractos entero por mes."""
+    from .cuadre import cuadre_del_mes
+
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+    anio = _entero_o_none(request.GET.get('anio'))
+    mes = _entero_o_none(request.GET.get('mes'))
+    if not anio or not mes or not 1 <= mes <= 12:
+        return JsonResponse({'ok': False, 'error': 'periodo'}, status=400)
+    return render(request, 'extractos/_cuadre.html', {
+        'c': cuadre_del_mes(hogar, anio, mes, request),
+    })

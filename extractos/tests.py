@@ -6073,6 +6073,27 @@ class GastoCompartidoTests(TestCase):
         self.assertEqual(self.efectivo('31').status_code, 400)
         self.assertEqual(self.efectivo('30').status_code, 200)
 
+    def test_un_bizum_redondeado_por_encima_sale_y_se_empareja(self):
+        """Te deben 51,97 y te hacen un Bizum de 52: es el mismo reembolso.
+        Desde el Bizum el gasto tiene que salir en la lista, y emparejarlo
+        deja el gasto en -0,03 sin descuadrar el mes."""
+        fabada = self.mov('-51.97', 30, 'Fabada Rafa', self.restaurantes)
+        b = self.bizum('52', 30, 'Rafa')
+
+        datos = self.client.get(reverse('extractos:compartido', args=[b.id])).json()
+        self.assertEqual(datos['sentido'], 'ingreso')
+        self.assertIn(fabada.id, [g['id'] for g in datos['candidatos']])
+
+        self.assertEqual(self.vincular(b, fabada).status_code, 200)
+        fabada.refresh_from_db()
+        self.assertEqual(fabada.importe_neto, Decimal('0.03'))
+
+    def test_el_redondeo_no_llega_a_un_euro_ni_a_un_gasto_saldado(self):
+        fabada = self.mov('-51.97', 30, 'Fabada Rafa', self.restaurantes)
+        self.assertEqual(self.vincular(self.bizum('52.97', 30), fabada).status_code, 400)
+        self.assertEqual(self.vincular(self.bizum('51.97', 30), fabada).status_code, 200)
+        self.assertEqual(self.vincular(self.bizum('0.50', 30), fabada).status_code, 400)
+
     def test_al_editar_el_efectivo_no_compite_consigo_mismo(self):
         self.efectivo('180')
         efectivo = MovimientoBancario.objects.get(reembolsa=self.cena)
@@ -6539,3 +6560,84 @@ class FijosAnualesTests(TestCase):
         html = self.client.get(reverse('extractos:anuales'), {'anio': '2026'}).content.decode()
         self.assertIn('Ahorrando para más adelante', html)
         self.assertIn('poner cuándo toca', html)
+
+
+class CuadreConEvolucionTests(TestCase):
+    """El balance de Extractos frente al ahorro de Evolución, puesto en fila."""
+
+    def setUp(self):
+        from finanzas.models import FondoFamiliar, SaldoRealFondo
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.anio = date.today().year - 1
+        self.extracto = ExtractoBancario.objects.create(
+            hogar=self.hogar, usuario=self.user, nombre_banco='CaixaBank',
+        )
+        self.caixa = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='CaixaBank Adrian', tipo_fondo='comun', cuenta_asociada='CaixaBank',
+        )
+        self.efectivo = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Efectivo', tipo_fondo='comun', cuenta_asociada='Cash',
+        )
+        SaldoRealFondo.objects.create(fondo=self.caixa, año=self.anio, mes=8, saldo=Decimal('1000'))
+        SaldoRealFondo.objects.create(fondo=self.efectivo, año=self.anio, mes=8, saldo=Decimal('300'))
+        # Septiembre: el banco se movió +1.300 y el efectivo no se apuntó.
+        SaldoRealFondo.objects.create(fondo=self.caixa, año=self.anio, mes=9, saldo=Decimal('2300'))
+        otros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        traspaso = CategoriaGasto.objects.get(hogar=self.hogar, nombre=CATEGORIA_TRASPASO)
+        self.mov('2000', 1, 'Nómina', otros)
+        self.mov('-500', 10, 'Mercadona')
+        self.mov('-200', 20, 'A cuenta de inversión', traspaso)
+
+    def mov(self, importe, dia, concepto, categoria=None):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(self.anio, 9, dia),
+            concepto=concepto, importe=Decimal(importe), categoria=categoria,
+        )
+
+    def cuadre(self):
+        from .cuadre import cuadre_del_mes
+        request = RequestFactory().get('/')
+        request.user = self.user
+        return cuadre_del_mes(self.hogar, self.anio, 9, request)
+
+    def test_del_balance_al_movimiento_real(self):
+        c = self.cuadre()
+        self.assertEqual(c['ext']['balance'], Decimal('1500'))
+        self.assertEqual(c['ext']['caja'], Decimal('1300'))
+        neutros = next(p for p in c['ext']['puente'] if p['texto'] == 'Traspasos y neutros')
+        self.assertEqual(neutros['importe'], Decimal('-200'))
+
+    def test_cuenta_a_cuenta_cuadra_y_el_efectivo_se_arrastra(self):
+        c = self.cuadre()
+        self.assertEqual(c['evo']['ahorro'], Decimal('1300'))
+        caixa = next(b for b in c['cuentas'] if b['banco'] == 'CaixaBank')
+        self.assertEqual([f['nombre'] for f in caixa['fondos']], ['CaixaBank Adrian'])
+        self.assertEqual(caixa['diferencia'], Decimal('0'))
+        self.assertFalse(caixa['no_cuadra'])
+        self.assertEqual(c['diferencia_caja'], Decimal('0'))
+        # El efectivo no se apuntó en septiembre: no cuenta como si se hubiera gastado.
+        self.assertEqual(c['sin_extracto'], [])
+
+    def test_lo_que_puso_la_reserva_se_ve_en_el_puente(self):
+        revision = self.mov('-1200', 15, 'Taller')
+        cobertura = self.mov('900', 14, 'De la hucha')
+        cobertura.cubre = revision
+        cobertura.save()
+        c = self.cuadre()
+        reserva = next(p for p in c['ext']['puente'] if p['texto'] == 'Lo que puso la reserva')
+        self.assertEqual(reserva['importe'], Decimal('-900'))
+        self.assertEqual(c['ext']['caja'], Decimal('1000'))
+        total = c['ext']['balance'] + sum(p['importe'] for p in c['ext']['puente'])
+        self.assertEqual(total, c['ext']['caja'])
+
+    def test_la_vista_pinta_el_cuadre(self):
+        respuesta = self.client.get(reverse('extractos:cuadre'), {'anio': self.anio, 'mes': 9})
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertContains(respuesta, 'Cuenta a cuenta')
+        self.assertContains(respuesta, 'CaixaBank Adrian')

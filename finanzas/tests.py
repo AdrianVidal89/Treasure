@@ -4433,3 +4433,79 @@ class VentaDelCocheViejoTests(TestCase):
             "console.log(JSON.stringify([r.entrada, r.prestamo, r.entrada_venta]));"
         )
         self.assertEqual(r, [12000, 0, 6000])
+
+
+class SaldoSinApuntarTests(TestCase):
+    """Un saldo que no se apunta un mes no es un saldo a cero.
+
+    Con todas las cuentas apuntadas menos una, esa cuenta restaba su saldo
+    entero del ahorro del mes —y lo devolvía el mes siguiente—. Se arrastra el
+    último saldo conocido.
+    """
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from .models import FondoFamiliar, SaldoRealFondo
+        self.user = User.objects.create_user('ahorrador', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.year = datetime.date.today().year - 1
+        self.nomina = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Nómina', tipo_fondo='comun')
+        self.provision = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Provisión', tipo_fondo='ahorro')
+        for mes, nomina in ((7, '1000'), (8, '1500'), (9, '2100')):
+            SaldoRealFondo.objects.create(fondo=self.nomina, año=self.year, mes=mes, saldo=Decimal(nomina))
+        # La provisión solo se apuntó en julio y en septiembre.
+        SaldoRealFondo.objects.create(fondo=self.provision, año=self.year, mes=7, saldo=Decimal('3000'))
+        SaldoRealFondo.objects.create(fondo=self.provision, año=self.year, mes=9, saldo=Decimal('3100'))
+
+    def _filas(self):
+        from .views_evolucion import _construir_tabla, _flujos_por_mes
+        _, filas = _construir_tabla(self.hogar, self.year, _flujos_por_mes(self.hogar, self.year))
+        return {f['mes']: f for f in filas}
+
+    def test_el_mes_sin_apuntar_arrastra_el_ultimo_saldo(self):
+        filas = self._filas()
+        self.assertEqual(filas[8]['liquidez'], Decimal('4500'))
+        self.assertEqual(filas[8]['ahorro_neto'], Decimal('500'))
+        self.assertEqual(filas[9]['ahorro_neto'], Decimal('700'))
+        celda = next(c for c in filas[8]['celdas'] if c['fondo'] == self.provision)
+        self.assertTrue(celda['arrastrado'])
+        self.assertEqual(celda['arrastrado_de'], 'jul')
+
+    def test_un_mes_sin_ningun_saldo_sigue_sin_datos(self):
+        filas = self._filas()
+        self.assertIsNone(filas[10]['liquidez'])
+        self.assertIsNone(filas[10]['ahorro_neto'])
+
+    def test_el_resumen_y_el_grafico_cuentan_lo_mismo(self):
+        from .views_evolucion import _liquidez_patrimonio_por_mes
+        datos = _liquidez_patrimonio_por_mes(self.hogar, self.year)
+        self.assertEqual(datos[8][0], Decimal('4500'))
+        self.assertEqual(datos[10], (None, None))
+
+    def test_enero_se_compara_con_diciembre_del_año_anterior(self):
+        from .models import SaldoRealFondo
+        SaldoRealFondo.objects.create(fondo=self.nomina, año=self.year, mes=12, saldo=Decimal('2000'))
+        SaldoRealFondo.objects.create(fondo=self.nomina, año=self.year + 1, mes=1, saldo=Decimal('2400'))
+        from .views_evolucion import _construir_tabla, _flujos_por_mes
+        _, filas = _construir_tabla(self.hogar, self.year + 1, _flujos_por_mes(self.hogar, self.year + 1))
+        enero = next(f for f in filas if f['mes'] == 1)
+        # Diciembre: 2000 + la provisión arrastrada (3100); enero igual con 2400.
+        self.assertEqual(enero['ahorro_neto'], Decimal('400'))
+
+    def test_el_crecimiento_del_año_no_cuenta_los_depositos_como_ahorro(self):
+        from .views_evolucion import _calcular_resumen, _flujos_por_mes
+        from .models import SaldoRealFondo
+        SaldoRealFondo.objects.create(fondo=self.nomina, año=self.year, mes=1, saldo=Decimal('1000'))
+        SaldoRealFondo.objects.create(fondo=self.provision, año=self.year, mes=1, saldo=Decimal('3000'))
+        dep = Inversion.objects.create(
+            usuario=self.user, nombre='Depo', tipo='DEPOSITO',
+            deposito_tipo_interes=Decimal('0'), deposito_frecuencia='anual')
+        MovimientoInversion.objects.create(
+            inversion=dep, fecha=datetime.date(self.year - 1, 12, 1), tipo='COMPRA',
+            cantidad=Decimal('50000'), precio_unitario=Decimal('1'))
+        resumen = _calcular_resumen(self.hogar, self.year, _flujos_por_mes(self.hogar, self.year))
+        # Septiembre (último mes con saldos): 2100 + 3100 + 50000; enero: 1000 + 3000 + 50000.
+        self.assertEqual(resumen['crecimiento_liquidez_ytd'], Decimal('1200'))
