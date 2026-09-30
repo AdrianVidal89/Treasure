@@ -1,0 +1,97 @@
+{% load custom_filters %}
+{% comment %}
+Cuadre de un mes entre Extractos y Evolución (ver extractos/cuadre.py). Se
+pinta dentro de la tarjeta del mes de Evolución; los estilos viven allí.
+{% endcomment %}
+<div class="cq">
+    <div class="cq-cifras">
+        <div class="cq-cifra">
+            <span class="cq-lbl">Balance en Extractos</span>
+            <span class="cq-val">{% if c.ext.balance > 0 %}+{% endif %}{{ c.ext.balance|euro }}</span>
+            <span class="cq-sub">ingresos − gastos, como se comparan con el presupuesto</span>
+        </div>
+        <div class="cq-cifra">
+            <span class="cq-lbl">Movimiento real de las cuentas importadas</span>
+            <span class="cq-val">{% if c.ext.caja > 0 %}+{% endif %}{{ c.ext.caja|euro }}</span>
+            <span class="cq-sub">la suma de todos los apuntes del banco del mes</span>
+        </div>
+        <div class="cq-cifra">
+            <span class="cq-lbl">Ahorro en Evolución</span>
+            {% if c.evo.hay %}
+            <span class="cq-val">{% if c.evo.ahorro > 0 %}+{% endif %}{{ c.evo.ahorro|euro }}</span>
+            <span class="cq-sub">liquidez de {{ c.mes_nombre|lower }} − la de {{ c.evo.mes_anterior|lower }}</span>
+            {% else %}
+            <span class="cq-val cq-muted">—</span>
+            <span class="cq-sub">faltan los saldos de {{ c.evo.mes_anterior|lower }} o de {{ c.mes_nombre|lower }}</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <h4 class="cq-h">Del balance al movimiento real</h4>
+    <table class="cq-tabla">
+        <tr class="cq-total"><td>Balance en Extractos</td><td class="cq-num">{{ c.ext.balance|euro }}</td></tr>
+        {% for p in c.ext.puente %}
+        <tr>
+            <td>{{ p.texto }}<span class="cq-det">{{ p.detalle }}</span></td>
+            <td class="cq-num {% if p.importe < 0 %}neg{% else %}pos{% endif %}">{% if p.importe > 0 %}+{% endif %}{{ p.importe|euro }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="cq-total"><td>Movimiento real de las cuentas importadas</td><td class="cq-num">{{ c.ext.caja|euro }}</td></tr>
+    </table>
+
+    {% if c.ext.neutros_categorias %}
+    <details class="cq-neutros">
+        <summary>Traspasos y neutros del mes, por categoría</summary>
+        <table class="cq-tabla">
+            {% for n in c.ext.neutros_categorias %}
+            <tr>
+                <td>{{ n.nombre }} <span class="cq-muted">· {{ n.num }}</span>
+                    <span class="cq-det">{% for m in n.ejemplos %}{{ m.fecha|date:"d/m" }} {{ m.concepto|truncatechars:48 }} ({{ m.importe|euro }}){% if not forloop.last %} · {% endif %}{% endfor %}</span>
+                </td>
+                <td class="cq-num {% if n.importe < 0 %}neg{% elif n.importe > 0 %}pos{% endif %}">{% if n.importe > 0 %}+{% endif %}{{ n.importe|euro }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </details>
+    {% endif %}
+
+    {% if c.evo.hay %}
+    <h4 class="cq-h">Cuenta a cuenta</h4>
+    <p class="cq-nota">Lo que se movió cada banco según sus apuntes, frente a lo que cambió el saldo de sus fondos en Evolución. Donde no coincide está la diferencia.</p>
+    <table class="cq-tabla cq-cuentas">
+        <thead><tr><th>Banco</th><th class="cq-num">Extractos</th><th class="cq-num">Evolución</th><th class="cq-num">Diferencia</th></tr></thead>
+        {% for b in c.cuentas %}
+        <tr class="{% if b.no_cuadra %}cq-mal{% endif %}">
+            <td>{{ b.banco }} <span class="cq-muted">· {{ b.num }} apuntes</span>
+                <span class="cq-det">
+                    {% if b.fondos %}{% for f in b.fondos %}{{ f.nombre }}{% if f.arrastrado %} (sin saldo, usa el de {{ f.arrastrado }}){% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}{% else %}Ningún fondo tiene «{{ b.banco }}» en su cuenta asociada{% endif %}
+                    {% if b.saldo_final is not None %} · el banco cierra en {{ b.saldo_final|euro }}{% if b.fondos %} y Evolución dice {{ b.saldo_fondos|euro }}{% endif %}{% endif %}
+                </span>
+            </td>
+            <td class="cq-num">{% if b.variacion > 0 %}+{% endif %}{{ b.variacion|euro }}</td>
+            <td class="cq-num">{% if b.fondos %}{% if b.delta_fondos > 0 %}+{% endif %}{{ b.delta_fondos|euro }}{% else %}<span class="cq-muted">—</span>{% endif %}</td>
+            <td class="cq-num {% if b.no_cuadra %}neg{% endif %}">{% if b.diferencia is not None %}{% if b.diferencia > 0 %}+{% endif %}{{ b.diferencia|euro }}{% else %}<span class="cq-muted">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% for f in c.sin_extracto %}
+        <tr>
+            <td>{{ f.nombre }} <span class="cq-muted">· sin extractos</span>
+                <span class="cq-det">{% if f.auto %}valor automático (interés del depósito, vencimientos){% elif f.arrastrado %}sin saldo este mes: usa el de {{ f.arrastrado }}{% else %}{{ f.antes|euro }} → {{ f.ahora|euro }}{% endif %}{% if not f.liquido %} · inversión, no cuenta en la liquidez{% endif %}</span>
+            </td>
+            <td class="cq-num"><span class="cq-muted">—</span></td>
+            <td class="cq-num">{% if f.delta > 0 %}+{% endif %}{{ f.delta|euro }}</td>
+            <td class="cq-num"></td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+
+    <ul class="cq-avisos">
+        {% if c.evo.hay %}
+        <li>El ahorro de Evolución y el balance de Extractos se separan <strong>{% if c.diferencia > 0 %}+{% endif %}{{ c.diferencia|euro }}</strong>; frente al movimiento real de las cuentas, <strong>{% if c.diferencia_caja > 0 %}+{% endif %}{{ c.diferencia_caja|euro }}</strong>.</li>
+        {% endif %}
+        {% if c.ingresos_distintos %}
+        <li>Evolución toma los ingresos de Distribución (<strong>{{ c.ingreso_evo|euro }}</strong>) y los extractos dicen <strong>{{ c.ingreso_ext|euro }}</strong>. El gasto real que calcula el análisis de ritmo es ingresos − ahorro, así que con estos ingresos sale mal: actualiza los ingresos del mes en Distribución.</li>
+        {% endif %}
+    </ul>
+</div>

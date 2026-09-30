@@ -133,6 +133,37 @@
 .celda-editable:hover { background: color-mix(in srgb, var(--primary-color) 10%, transparent) !important; }
 .cell-valor { color: var(--text-color); }
 .cell-vacio { color: var(--border-strong); font-style: italic; font-size: 0.75rem; }
+/* Cuadre con los extractos (el cuerpo viene de extractos/_cuadre.html). */
+.evo-cuadre { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 10px; }
+.evo-cuadre > summary { cursor: pointer; font-size: 0.8rem; font-weight: 600; color: var(--muted); list-style: none; }
+.evo-cuadre > summary::before { content: '▸ '; }
+.evo-cuadre[open] > summary::before { content: '▾ '; }
+.evo-cuadre-cuerpo { padding-top: 10px; }
+.cq { font-size: 0.8rem; }
+.cq-muted { color: var(--muted); }
+.cq-cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.cq-cifra { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.cq-lbl { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.cq-val { font-size: 1.1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cq-sub { font-size: 0.7rem; color: var(--muted); }
+.cq-h { font-size: 0.78rem; margin: 14px 0 6px; }
+.cq-nota { font-size: 0.72rem; color: var(--muted); margin: 0 0 6px; }
+.cq-tabla { width: 100%; border-collapse: collapse; }
+.cq-tabla td, .cq-tabla th { padding: 6px 4px; border-bottom: 1px solid var(--border); vertical-align: top; text-align: left; }
+.cq-tabla th { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+.cq-tabla .cq-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cq-tabla .pos { color: var(--success); }
+.cq-tabla .neg { color: var(--danger); }
+.cq-total td { font-weight: 700; }
+.cq-det { display: block; font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+.cq-mal td:first-child { box-shadow: inset 3px 0 0 var(--danger); padding-left: 8px; }
+.cq-neutros { margin-top: 8px; }
+.cq-neutros > summary { cursor: pointer; font-size: 0.74rem; color: var(--muted); }
+.cq-avisos { margin: 12px 0 0; padding-left: 18px; font-size: 0.74rem; display: grid; gap: 4px; }
+@media (max-width: 640px) { .cq-cuentas th:nth-child(3), .cq-cuentas td:nth-child(3) { display: none; } }
+/* Saldo que no se ha apuntado este mes: se arrastra el último conocido. */
+.cell-arrastrado { color: var(--muted); font-style: italic; display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
+.cell-arrastrado-de { font-size: 0.66rem; font-weight: 500; letter-spacing: .02em; }
 .cell-total { color: var(--info); font-weight: 700; }
 .cell-ahorro.pos { color: var(--success); }
 .cell-ahorro.neg { color: var(--danger); }
@@ -436,7 +467,9 @@
                             </span>
                         </span>
                         <span class="cell-display">
-                            {% if celda.saldo_valor is not None %}
+                            {% if celda.arrastrado %}
+                                <span class="cell-valor cell-arrastrado" title="Sin saldo apuntado este mes: se usa el de {{ celda.arrastrado_de }}. Pulsa para apuntar el de este mes.">€{{ celda.saldo_valor|floatformat:0 }}<span class="cell-arrastrado-de">de {{ celda.arrastrado_de }}</span></span>
+                            {% elif celda.saldo_valor is not None %}
                                 <span class="cell-valor" style="color: {{ celda.fondo.color }};">€{{ celda.saldo_valor|floatformat:0 }}</span>
                             {% else %}
                                 <span class="cell-vacio">—</span>
@@ -482,6 +515,13 @@
                         </span>
                     </div>
                 </div>
+
+                {% comment %}El ahorro de este mes frente al balance de sus extractos,
+                   cuenta a cuenta. Se pide al abrirlo: cuesta un panel de Extractos.{% endcomment %}
+                <details class="evo-cuadre" data-anio="{{ año_actual }}" data-mes="{{ fila.mes }}">
+                    <summary>¿Cuadra con los extractos?</summary>
+                    <div class="evo-cuadre-cuerpo"><span class="cq-muted">Calculando…</span></div>
+                </details>
             </div>
         </details>
         {% empty %}
@@ -652,10 +692,13 @@ const URLS_GUARDADO = {
     ingreso: "{% url 'finanzas:registrar_ingreso_mes' %}",
 };
 
-function formatearValor(valorRaw, color) {
-    if (!valorRaw) return '<span class="cell-vacio">—</span>';
+function formatearValor(valorRaw, color, arrastradoDe) {
+    if (valorRaw === '' || valorRaw === null || valorRaw === undefined) return '<span class="cell-vacio">—</span>';
     const num = Number(valorRaw);
     const texto = num.toLocaleString('es-ES', { maximumFractionDigits: 0 });
+    if (arrastradoDe) {
+        return `<span class="cell-valor cell-arrastrado" title="Sin saldo apuntado este mes: se usa el de ${arrastradoDe}. Pulsa para apuntar el de este mes.">€${texto}<span class="cell-arrastrado-de">de ${arrastradoDe}</span></span>`;
+    }
     return `<span class="cell-valor" style="color:${color};">€${texto}</span>`;
 }
 
@@ -759,6 +802,23 @@ document.querySelectorAll('.celda-editable').forEach((td) => {
     td.addEventListener('click', () => iniciarEdicion(td));
 });
 
+function cargarCuadre(det) {
+    if (det.dataset.cargado) return;
+    det.dataset.cargado = '1';
+    const cuerpo = det.querySelector('.evo-cuadre-cuerpo');
+    const url = "{% url 'extractos:cuadre' %}?anio=" + det.dataset.anio + '&mes=' + det.dataset.mes;
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+        .then(html => { cuerpo.innerHTML = html; })
+        .catch(() => {
+            delete det.dataset.cargado;
+            cuerpo.innerHTML = '<span class="cq-muted">No se pudo calcular el cuadre.</span>';
+        });
+}
+document.querySelectorAll('.evo-cuadre').forEach((det) => {
+    det.addEventListener('toggle', () => { if (det.open) cargarCuadre(det); });
+});
+
 /* ============================================================
    REFRESCO EN VIVO DE LOS CÁLCULOS DERIVADOS
    Tras guardar un saldo, el servidor devuelve el estado
@@ -835,6 +895,16 @@ function refrescarEstado(estado) {
         ponAhorro(card.querySelector('.js-mes-ahorro'), m.ahorro_neto);
         ponValorOVacio(card.querySelector('.js-mes-ingresos'), m.ingreso);
         ponValorOVacio(card.querySelector('.js-mes-ingresos-body'), m.ingreso);
+        Object.keys(m.saldos || {}).forEach((fondoId) => {
+            const td = card.querySelector('.celda-editable[data-fondo-id="' + fondoId + '"]');
+            if (!td || td.querySelector('.cell-input')) return;
+            const sd = m.saldos[fondoId];
+            const raw = sd.valor === null ? '' : String(sd.valor);
+            td.dataset.valor = raw;
+            td.querySelector('.cell-display').innerHTML = formatearValor(raw, td.dataset.color, sd.arrastrado_de);
+        });
+        const cuadre = card.querySelector('.evo-cuadre');
+        if (cuadre) { cuadre.removeAttribute('data-cargado'); if (cuadre.open) cargarCuadre(cuadre); }
     });
 
     const r = estado.resumen || {};
