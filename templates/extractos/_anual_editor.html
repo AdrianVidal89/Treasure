@@ -10,6 +10,31 @@
                     {% if f.admite_plazos %}<span class="an-apagado">Declarado {{ f.partida.importe|euro }} al año</span>
                     {% elif f.plurianual %}<span class="an-apagado">{{ f.periodicidad|lower }}: los siguientes se cuentan desde esta fecha</span>{% endif %}
                 </div>
+                {% comment %}Cada cuánto y cuánto cuesta: unos neumáticos dados de alta como
+                   «anual» se pasan aquí a «cada 3 años» para poder decir en qué año tocan.{% endcomment %}
+                <div class="an-ed-periodo" data-meses="{{ f.meses_periodo|unlocalize }}" data-importe="{{ f.partida.importe|unlocalize }}">
+                    <label class="an-ed-campo">
+                        <span>Cada cuánto</span>
+                        <select name="periodicidad" class="an-ed-periodicidad">
+                            {% if f.meses_periodo < 12 %}<option value="{{ f.partida.periodicidad }}" data-meses="{{ f.meses_periodo|unlocalize }}" selected>{{ f.periodicidad }}</option>{% endif %}
+                            {% for valor, nombre, meses in d.periodicidades %}
+                            <option value="{{ valor }}" data-meses="{{ meses }}"
+                                    {% if valor == f.partida.periodicidad %}selected{% endif %}>{{ nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="an-ed-campo an-ed-n" {% if f.partida.periodicidad != 'personalizada' %}hidden{% endif %}>
+                        <span>Meses</span>
+                        <input type="number" name="meses_personalizados" min="1" max="600" step="1"
+                               value="{% if f.partida.periodicidad == 'personalizada' %}{{ f.meses_periodo|unlocalize }}{% endif %}" placeholder="36">
+                    </label>
+                    <label class="an-ed-campo">
+                        <span>Cuesta cada pago</span>
+                        <input type="text" name="importe_total" inputmode="decimal" class="an-ed-importe"
+                               value="{{ f.partida.importe|floatformat:2 }}" aria-label="Lo que cuesta cada pago">
+                    </label>
+                    <span class="an-ed-cuota" aria-live="polite"></span>
+                </div>
                 <div class="an-ed-filas">
                     {% if f.fraccionado %}
                     {% for c in f.cuotas %}
@@ -28,10 +53,9 @@
                             <option value="">— sin mes —</option>
                             {% for num, nombre in d.meses %}<option value="{{ num }}" {% if num == f.partida.mes_pago %}selected{% endif %}>{{ nombre }}</option>{% endfor %}
                         </select>
-                        {% if f.plurianual %}
                         <input type="number" name="anio_pago" class="an-ed-anio" min="1990" max="2200" step="1"
-                               value="{% if f.proximo %}{{ f.proximo.anio|unlocalize }}{% endif %}" placeholder="año" aria-label="Año en que toca">
-                        {% endif %}
+                               value="{% if f.proximo %}{{ f.proximo.anio|unlocalize }}{% endif %}" placeholder="año" aria-label="Año en que toca"
+                               {% if not f.plurianual %}hidden disabled{% endif %}>
                         {% if f.admite_plazos %}
                         <input type="text" name="importe" inputmode="decimal" value="" placeholder="lo que falte" aria-label="Importe del plazo">
                         <button type="button" class="an-ed-quitar" title="Quitar este plazo" aria-label="Quitar este plazo"><svg class="icon"><use href="#i-close"/></svg></button>

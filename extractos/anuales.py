@@ -22,7 +22,10 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal
 
-from finanzas.models import MESES_CHOICES, PartidaGasto
+from finanzas.models import (
+    MESES_CHOICES, MESES_POR_PERIODICIDAD, PERIODICIDAD_GASTO_CHOICES, PartidaGasto,
+    normalizar_periodicidad,
+)
 
 from .models import MovimientoBancario
 
@@ -32,7 +35,7 @@ MESES = dict(MESES_CHOICES)
 TOLERANCIA = Decimal('0.01')
 
 
-def _cuotas(partida, anio):
+def _cuotas(partida, anio, hoy=None):
     """En qué meses del año se espera pagar, y cuánto cada vez.
 
     Vacío si no se ha dicho el mes de pago: sin él no hay «previsto en junio»
@@ -42,7 +45,7 @@ def _cuotas(partida, anio):
     entero: es el día que se vacía la bolsa.
     """
     if partida.es_plurianual:
-        return [(mes, partida.importe) for mes in partida.vencimientos_en(anio)]
+        return [(mes, partida.importe) for mes in partida.vencimientos_en(anio, hoy=hoy)]
     plazos = partida.plazos_de_pago
     if plazos:
         return plazos
@@ -58,7 +61,58 @@ def _euros(valor):
     return f'{valor:.2f} €'.replace('.', ',')
 
 
-def guardar_calendario(partida, meses, importes, anio_pago=None):
+# Lo que se puede elegir en «cada cuánto» desde Fijos anuales: lo que no es
+# mensual ni más corto que un año. Un semestral que ya lo era se respeta.
+PERIODICIDADES_ANUALES = [
+    (valor, nombre, MESES_POR_PERIODICIDAD.get(valor, ''))
+    for valor, nombre in PERIODICIDAD_GASTO_CHOICES
+    if valor == 'personalizada' or MESES_POR_PERIODICIDAD.get(valor, 0) >= 12
+]
+
+
+def _leer_importe(texto):
+    texto = (texto or '').strip().replace('€', '').replace(' ', '')
+    if ',' in texto:
+        texto = texto.replace('.', '').replace(',', '.')
+    return Decimal(texto) if texto else None
+
+
+def cambiar_periodicidad(partida, periodicidad, meses_personalizados=None, importe=None):
+    """Cada cuánto se paga y cuánto cuesta cada pago, desde Fijos anuales.
+
+    Unos neumáticos dados de alta como «anual» no se pueden planificar para
+    abril de 2029: para eso tienen que ser «cada 3 años», y hasta ahora había
+    que irse a Gastos a cambiarlo. No guarda: lo deja puesto en la partida para
+    que `guardar_calendario` lo guarde junto con la fecha, o nada si hay error.
+
+    Devuelve el error que enseñar, o None.
+    """
+    validas = {v for v, _ in PERIODICIDAD_GASTO_CHOICES}
+    if periodicidad:
+        if periodicidad not in validas:
+            return f'«{periodicidad}» no es una periodicidad.'
+        if periodicidad == 'personalizada':
+            try:
+                if int(meses_personalizados) < 1:
+                    raise ValueError
+            except (TypeError, ValueError):
+                return 'Di cada cuántos meses toca.'
+        partida.periodicidad, partida.meses_personalizados = normalizar_periodicidad(
+            periodicidad, meses_personalizados,
+        )
+    if importe not in (None, ''):
+        try:
+            valor = _leer_importe(importe)
+        except ArithmeticError:
+            return f'«{importe}» no es un importe.'
+        if valor is None or valor <= 0:
+            return 'Lo que cuesta tiene que ser más que cero.'
+        partida.importe = valor.quantize(Decimal('0.01'))
+    return None
+
+
+def guardar_calendario(partida, meses, importes, anio_pago=None, periodicidad=None,
+                       meses_personalizados=None, importe_total=None):
     """Cambia cuándo se paga una partida desde su fila de Fijos anuales.
 
     `meses` e `importes` son las filas del formulario, en paralelo. Un mes es
@@ -69,8 +123,15 @@ def guardar_calendario(partida, meses, importes, anio_pago=None):
     En un gasto de varios años, `anio_pago` es el año de ese mes: cuándo
     toca (o tocó) un pago, del que se cuentan los demás.
 
+    Con `periodicidad` (e `importe_total`) cambia también cada cuánto se paga y lo
+    que cuesta cada vez: ver `cambiar_periodicidad`.
+
     Devuelve el error que enseñar, o None si se guardó.
     """
+    error = cambiar_periodicidad(partida, periodicidad, meses_personalizados, importe_total)
+    if error:
+        return error
+    campos = ['mes_pago', 'plazos', 'anio_pago', 'periodicidad', 'meses_personalizados', 'importe']
     if partida.es_plurianual:
         try:
             anio_pago = int(anio_pago) if anio_pago not in (None, '') else None
@@ -88,11 +149,8 @@ def guardar_calendario(partida, meses, importes, anio_pago=None):
             continue  # fila vacía
         if not 1 <= mes <= 12:
             continue
-        texto = (importe or '').strip().replace('€', '').replace(' ', '')
-        if ',' in texto:
-            texto = texto.replace('.', '').replace(',', '.')
         try:
-            valor = Decimal(texto) if texto else None
+            valor = _leer_importe(importe)
         except ArithmeticError:
             return f'«{importe}» no es un importe.'
         if valor is not None and valor < 0:
@@ -106,7 +164,7 @@ def guardar_calendario(partida, meses, importes, anio_pago=None):
         partida.mes_pago = filas[0][0] if filas else None
         partida.plazos = []
         partida.anio_pago = anio_pago if partida.mes_pago else None
-        partida.save(update_fields=['mes_pago', 'plazos', 'anio_pago'])
+        partida.save(update_fields=campos)
         return None
 
     if partida.meses_periodo != 12:
@@ -131,7 +189,7 @@ def guardar_calendario(partida, meses, importes, anio_pago=None):
     partida.plazos = [{'mes': m, 'importe': str(v)} for m, v in filas]
     partida.mes_pago = filas[0][0]
     partida.anio_pago = None
-    partida.save(update_fields=['mes_pago', 'plazos', 'anio_pago'])
+    partida.save(update_fields=campos)
     return None
 
 
@@ -258,7 +316,7 @@ def analizar_anuales(hogar, anio, hoy=None):
         plurianual = p.es_plurianual
         cuotas = [
             {'mes': mes, 'nombre_mes': MESES[mes], 'importe': importe}
-            for mes, importe in _cuotas(p, anio)
+            for mes, importe in _cuotas(p, anio, hoy=hoy)
         ]
         pagos = []
         for m, deducido in asignados.get(p.id, []):
@@ -393,6 +451,7 @@ def analizar_anuales(hogar, anio, hoy=None):
         'total_sin_asignar': total_sin_asignar,
         'grafico': grafico,
         'meses': MESES_CHOICES,
+        'periodicidades': PERIODICIDADES_ANUALES,
         'ahorro': ahorro,
         'ahorro_anual': sum((f['provision_anual'] for f in ahorro), Decimal('0')),
     }

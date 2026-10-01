@@ -1181,7 +1181,21 @@ class PartidaGasto(ImputableAActivo):
             return None
         return self.anio_pago * 12 + self.mes_pago - 1
 
-    def vencimientos_en(self, anio):
+    def _desde(self, hoy=None):
+        """El primer mes absoluto en el que puede tocar un pago.
+
+        Una fecha que ya pasó es un pago que hubo: los anteriores se cuentan
+        hacia atrás, para que los años pasados digan lo que tocaba. Una fecha
+        FUTURA es «el próximo, en abril de 2029», y contar hacia atrás desde
+        ella inventaba un pago en abril de 2026 que salía como atrasado.
+        """
+        ancla = self._ancla()
+        if ancla is None:
+            return None
+        hoy = hoy or date.today()
+        return ancla if ancla > hoy.year * 12 + hoy.month - 1 else None
+
+    def vencimientos_en(self, anio, hoy=None):
         """Meses de `anio` en los que toca pagar un gasto de varios años."""
         ancla = self._ancla()
         if ancla is None:
@@ -1189,6 +1203,9 @@ class PartidaGasto(ImputableAActivo):
         n = self.meses_periodo
         inicio, fin = anio * 12, anio * 12 + 11
         t = ancla + -(-(inicio - ancla) // n) * n   # el primero desde enero
+        desde = self._desde(hoy)
+        if desde is not None:
+            t = max(t, desde)
         meses = []
         while t <= fin:
             meses.append(t % 12 + 1)
@@ -1203,6 +1220,7 @@ class PartidaGasto(ImputableAActivo):
             return None
         ahora = hoy.year * 12 + hoy.month - 1
         t = ancla + -(-(ahora - ancla) // self.meses_periodo) * self.meses_periodo
+        t = max(t, ancla) if ancla > ahora else t
         return t // 12, t % 12 + 1
 
     @property
