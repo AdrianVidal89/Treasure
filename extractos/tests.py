@@ -6376,6 +6376,90 @@ class FijosAnualesTests(TestCase):
              'anio_pago': anio_pago_},
         )
 
+    def test_un_anual_pasa_a_cada_3_años_con_su_fecha(self):
+        """Los neumáticos dados de alta como anuales se planifican para abril
+        de 2029 desde la misma fila, sin irse a Gastos."""
+        golf = self.partida('Neumáticos Golf', self.cat_mant, '200', 'anual', 4)
+        self.client.post(
+            reverse('extractos:anuales_calendario', args=[golf.id]),
+            {'mes': ['4'], 'anio': '2026', 'anio_pago': '2029',
+             'periodicidad': 'trienal', 'importe_total': '600,00'},
+        )
+        golf.refresh_from_db()
+        self.assertEqual(golf.periodicidad, 'trienal')
+        self.assertEqual(golf.importe, Decimal('600.00'))
+        self.assertEqual((golf.mes_pago, golf.anio_pago), (4, 2029))
+        datos, filas = self.analizar()
+        # En 2026 no toca: va a «ahorrando para más adelante», con su fecha.
+        self.assertNotIn('Neumáticos Golf', filas)
+        hucha = next(f for f in datos['ahorro'] if f['nombre'] == 'Neumáticos Golf')
+        self.assertEqual((hucha['proximo']['anio'], hucha['proximo']['mes']), (2029, 4))
+        self.assertEqual(hucha['provision_anual'], Decimal('200.00'))
+        _, filas_2029 = self.analizar(2029)
+        self.assertEqual(filas_2029['Neumáticos Golf']['esperado'], Decimal('600.00'))
+
+    def test_una_fecha_futura_no_inventa_pagos_antes(self):
+        """«Abril de 2029» en algo de cada 3 años es el próximo pago, no un
+        ciclo que también tocaba en abril de 2026."""
+        self.neumaticos.mes_pago, self.neumaticos.anio_pago = 4, 2029
+        self.neumaticos.save()
+        datos, filas = self.analizar()
+        self.assertNotIn('Neumáticos', filas)
+        self.assertIn('Neumáticos', [f['nombre'] for f in datos['ahorro']])
+        # Una fecha pasada sí cuenta hacia atrás y hacia delante.
+        self.neumaticos.anio_pago = 2023
+        self.neumaticos.save()
+        _, filas = self.analizar()
+        self.assertEqual(filas['Neumáticos']['estado'], 'atrasado')
+
+    def test_cada_n_meses_desde_la_fila(self):
+        golf = self.partida('Neumáticos Golf', self.cat_mant, '200', 'anual', 4)
+        self.client.post(
+            reverse('extractos:anuales_calendario', args=[golf.id]),
+            {'mes': ['4'], 'anio': '2026', 'anio_pago': '2029',
+             'periodicidad': 'personalizada', 'meses_personalizados': '40', 'importe_total': '600'},
+        )
+        golf.refresh_from_db()
+        self.assertEqual((golf.periodicidad, golf.meses_personalizados), ('personalizada', 40))
+        # Y escribir 36 a mano se guarda como «cada 3 años».
+        self.client.post(
+            reverse('extractos:anuales_calendario', args=[golf.id]),
+            {'mes': ['4'], 'anio': '2026', 'anio_pago': '2029',
+             'periodicidad': 'personalizada', 'meses_personalizados': '36', 'importe_total': '600'},
+        )
+        golf.refresh_from_db()
+        self.assertEqual((golf.periodicidad, golf.meses_personalizados), ('trienal', None))
+
+    def test_un_error_no_cambia_la_periodicidad(self):
+        golf = self.partida('Neumáticos Golf', self.cat_mant, '200', 'anual', 4)
+        self.client.post(
+            reverse('extractos:anuales_calendario', args=[golf.id]),
+            {'mes': ['4'], 'anio': '2026', 'anio_pago': 'pronto',
+             'periodicidad': 'trienal', 'importe_total': '600'},
+        )
+        golf.refresh_from_db()
+        self.assertEqual((golf.periodicidad, golf.importe), ('anual', Decimal('200')))
+        self.client.post(
+            reverse('extractos:anuales_calendario', args=[golf.id]),
+            {'mes': ['4'], 'anio': '2026', 'periodicidad': 'anual', 'importe_total': '0'},
+        )
+        golf.refresh_from_db()
+        self.assertEqual(golf.importe, Decimal('200'))
+
+    def test_si_solo_hay_gastos_para_mas_adelante_no_dice_que_no_hay_ninguno(self):
+        PartidaGasto.objects.exclude(pk=self.neumaticos.pk).delete()
+        self.neumaticos.mes_pago, self.neumaticos.anio_pago = 4, 2029
+        self.neumaticos.save()
+        html = self.client.get(reverse('extractos:anuales'), {'anio': 2026}).content.decode()
+        self.assertNotIn('No tienes gastos declarados', html)
+        self.assertIn('Ahorrando para más adelante', html)
+
+    def test_el_editor_ofrece_cada_cuanto(self):
+        html = self.client.get(reverse('extractos:anuales'), {'anio': 2026}).content.decode()
+        self.assertIn('name="periodicidad"', html)
+        self.assertIn('Cada 3 años', html)
+        self.assertIn('name="importe_total"', html)
+
     def test_cambia_el_mes_de_pago_desde_la_fila(self):
         respuesta = self.calendario(self.seguro, ['10'])
         self.assertRedirects(

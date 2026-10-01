@@ -3325,6 +3325,9 @@ def anuales_calendario(request, pk):
     error = guardar_calendario(
         partida, meses, request.POST.getlist('importe') or [''] * len(meses),
         anio_pago=request.POST.get('anio_pago'),
+        periodicidad=request.POST.get('periodicidad'),
+        meses_personalizados=request.POST.get('meses_personalizados'),
+        importe_total=request.POST.get('importe_total'),
     )
     if error:
         messages.error(request, f'{partida.nombre}: {error}')

@@ -27,7 +27,7 @@
         </select>
     </form>
 
-    {% if not d.filas %}
+    {% if not d.filas and not d.ahorro %}
     <div class="an-vacio">
         <svg class="icon"><use href="#i-info"/></svg>
         <div>
@@ -355,7 +355,17 @@
     grid-area:ed; display:flex; flex-direction:column; gap:8px; margin-top:4px; padding:12px 14px;
     border-radius:12px; background:var(--app-bg); border:1px solid var(--border);
 }
-.an-editor[hidden] { display:none; }
+.an-editor[hidden], .an-editor [hidden] { display:none !important; }
+.an-ed-periodo { display:flex; flex-wrap:wrap; gap:8px 10px; align-items:flex-end; padding-bottom:8px; border-bottom:1px dashed var(--border); }
+.an-ed-campo { display:flex; flex-direction:column; gap:3px; font-size:0.72rem; color:var(--muted); }
+.an-ed-campo select, .an-ed-campo input {
+    background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:8px;
+    padding:7px 10px; font-size:0.84rem; min-width:0;
+}
+.an-ed-campo select { min-width:150px; }
+.an-ed-n input { width:80px; }
+.an-ed-importe { width:120px; font-variant-numeric:tabular-nums; }
+.an-ed-cuota { font-size:0.75rem; color:var(--muted); padding-bottom:9px; }
 .an-ed-cab { display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; font-size:0.82rem; }
 .an-ed-filas { display:flex; flex-direction:column; gap:6px; }
 .an-ed-fila { display:flex; gap:6px; align-items:center; }
@@ -440,10 +450,70 @@
             if (si) { var s = form.querySelector('select'); if (s) s.focus(); }
         }
         boton.addEventListener('click', function () { abrir(form.hidden); });
+
+        /* Cada cuánto y cuánto cuesta. Pasar a más de un año pide el año en que
+           toca; quedarse en anual deja partirlo en plazos. */
+        var per = form.querySelector('.an-ed-periodo');
+        var selPer = per.querySelector('.an-ed-periodicidad');
+        var inN = per.querySelector('[name="meses_personalizados"]');
+        var cajaN = per.querySelector('.an-ed-n');
+        var inImp = per.querySelector('.an-ed-importe');
+        var cuota = per.querySelector('.an-ed-cuota');
+        var titulo = form.querySelector('.an-ed-cab strong');
+        var MESES_ORIG = parseInt(per.dataset.meses, 10) || 12;
+        var IMPORTE_ORIG = parseFloat(per.dataset.importe) || 0;
+        var orig = {per: selPer.value, n: inN.value, imp: inImp.value};
+        var importeTocado = false;
+        function numero(t) {
+            t = (t || '').replace('€', '').replace(/\s/g, '');
+            if (t.indexOf(',') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+            return parseFloat(t);
+        }
+        function mesesElegidos() {
+            if (selPer.value === 'personalizada') return parseInt(inN.value, 10) || 0;
+            return parseInt(selPer.selectedOptions[0].dataset.meses, 10) || 0;
+        }
+        function aplicarPeriodo() {
+            var m = mesesElegidos(), plur = m > 12;
+            var plazos = form.dataset.plazos === '1' && m === 12;
+            cajaN.hidden = selPer.value !== 'personalizada';
+            var anio = filas.querySelector('.an-ed-anio');
+            if (anio) { anio.hidden = !plur; anio.disabled = !plur; anio.required = plur; }
+            if (!plazos) {
+                filas.querySelectorAll('.an-ed-fila').forEach(function (f, i) { if (i > 0) f.remove(); });
+                marcar();
+            }
+            filas.querySelectorAll('[name="importe"], .an-ed-quitar').forEach(function (x) {
+                x.hidden = !plazos; x.disabled = !plazos;
+            });
+            form.querySelectorAll('.an-ed-mas, .an-ed-nota').forEach(function (x) { x.hidden = !plazos; });
+            if (!importeTocado && m > 0 && IMPORTE_ORIG) {
+                inImp.value = (IMPORTE_ORIG * m / MESES_ORIG).toFixed(2).replace('.', ',');
+            }
+            var imp = numero(inImp.value);
+            cuota.textContent = (m > 0 && imp > 0)
+                ? '≈ ' + (imp * 12 / m).toLocaleString('es-ES', {maximumFractionDigits: 0}) + ' € al año'
+                : '';
+            if (titulo) titulo.textContent = plur ? '¿Cuándo toca?' : (plazos ? '¿Cuándo se paga?' : 'Mes del primer pago');
+            /* La nota de la cabecera habla de la periodicidad guardada. */
+            var nota = form.querySelector('.an-ed-cab .an-apagado');
+            if (nota) nota.hidden = m !== MESES_ORIG;
+        }
+        selPer.addEventListener('change', function () {
+            if (selPer.value === 'personalizada' && !inN.value) inN.value = MESES_ORIG > 12 ? MESES_ORIG : 36;
+            aplicarPeriodo();
+        });
+        inN.addEventListener('input', aplicarPeriodo);
+        inImp.addEventListener('input', function () { importeTocado = true; aplicarPeriodo(); });
+        aplicarPeriodo();
+
         form.querySelector('.an-ed-cancelar').addEventListener('click', function () {
             /* Deshace también los plazos añadidos o quitados, no solo los valores. */
             filas.innerHTML = original;
             form.classList.toggle('varios', originalVarios);
+            selPer.value = orig.per; inN.value = orig.n; inImp.value = orig.imp;
+            importeTocado = false;
+            aplicarPeriodo();
             abrir(false);
         });
         var mas = form.querySelector('.an-ed-mas');
