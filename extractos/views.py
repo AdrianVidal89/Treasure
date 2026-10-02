@@ -3682,3 +3682,49 @@ def cuadre(request):
     return render(request, 'extractos/_cuadre.html', {
         'c': cuadre_del_mes(hogar, anio, mes, request),
     })
+
+
+@login_required
+def reserva(request):
+    """¿Llega la reserva para los fijos anuales? (ver `reserva.py`).
+
+    Con POST se apunta lo que hay hoy en la hucha, o se borra un apunte que
+    estaba mal: es el punto de partida de toda la previsión."""
+    from .models import SaldoReserva
+    from .reserva import prever_reserva
+
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        messages.error(request, "Necesitas pertenecer a un hogar.")
+        return redirect('dashboard')
+    anios = _entero_o_none(request.GET.get('anios') or request.POST.get('anios')) or 1
+    volver = reverse('extractos:reserva') + f'?anios={anios}'
+
+    if request.method == 'POST':
+        if request.POST.get('borrar'):
+            SaldoReserva.objects.filter(hogar=hogar, pk=_entero_o_none(request.POST.get('borrar'))).delete()
+            messages.success(request, 'Apunte de la reserva borrado.')
+            return redirect(volver)
+        texto = (request.POST.get('saldo') or '').strip().replace('€', '').replace(' ', '')
+        if ',' in texto:
+            texto = texto.replace('.', '').replace(',', '.')
+        try:
+            saldo = Decimal(texto).quantize(Decimal('0.01'))
+        except InvalidOperation:
+            messages.error(request, f'«{request.POST.get("saldo")}» no es un importe.')
+            return redirect(volver)
+        fecha = parse_date(request.POST.get('fecha') or '') or date.today()
+        if fecha > date.today():
+            messages.error(request, 'El saldo es lo que hay hoy o lo que hubo: no puede ser de una fecha futura.')
+            return redirect(volver)
+        SaldoReserva.objects.create(
+            hogar=hogar, fecha=fecha, saldo=saldo,
+            nota=(request.POST.get('nota') or '').strip()[:200],
+        )
+        messages.success(request, f'Reserva a {fecha.strftime("%d/%m/%Y")}: {saldo} €.')
+        return redirect(volver)
+
+    return render(request, 'extractos/reserva.html', {
+        'r': prever_reserva(hogar, anios),
+        'hoy': date.today(),
+    })

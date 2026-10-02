@@ -35,7 +35,7 @@ MESES = dict(MESES_CHOICES)
 TOLERANCIA = Decimal('0.01')
 
 
-def _cuotas(partida, anio, hoy=None):
+def cuotas_de(partida, anio, hoy=None):
     """En qué meses del año se espera pagar, y cuánto cada vez.
 
     Vacío si no se ha dicho el mes de pago: sin él no hay «previsto en junio»
@@ -197,7 +197,9 @@ def dar_por_pagado(partida, anio, si=True):
     """Marca (o desmarca) la partida como pagada del todo en `anio`.
 
     Para cuando el recibo vino por menos de lo declarado y no hay nada más
-    que pagar: la cuenta no puede saberlo y seguiría diciendo que falta.
+    que pagar, o cuando lo pagó otra persona y no hay ningún apunte que
+    emparejar: la cuenta no puede saberlo y seguiría diciendo que falta. La
+    previsión de la reserva tampoco lo espera ya.
     """
     anios = {int(a) for a in partida.anios_dados_por_pagados or []}
     if si:
@@ -224,6 +226,10 @@ def _estado(fila, anio, hoy):
     pagado, esperado = fila['pagado'], fila['esperado']
 
     if fila['dado_por_pagado']:
+        # Sin un euro tuyo: lo pagó otra persona (la ITV que pagó tu padre) o
+        # salió de una cuenta que no importas. Está pagado y no hay más.
+        if pagado <= 0:
+            return 'pagado', 'Pagado sin pasar por tus cuentas'
         if esperado > 0 and pagado < esperado * (1 - TOLERANCIA):
             return 'pagado', f"Dado por pagado · {_euros(esperado - pagado)} menos de lo declarado"
         return 'pagado', 'Dado por pagado'
@@ -283,13 +289,18 @@ def _estado(fila, anio, hoy):
     return 'pendiente', f"Pendiente · {cuando}"
 
 
-def analizar_anuales(hogar, anio, hoy=None):
-    hoy = hoy or date.today()
-    partidas = [
+def partidas_anuales(hogar):
+    """Las partidas del bloque de fijos anuales, activas."""
+    return [
         p for p in PartidaGasto.objects.filter(hogar=hogar, activo=True)
         .select_related('categoria').order_by('mes_pago', 'nombre')
         if p.tipo_bloque == 'anual'
     ]
+
+
+def asignar_pagos(hogar, anio, partidas):
+    """`(asignados, sin_asignar)`: los pagos del año de cada partida —con si
+    se dedujo por la categoría— y los que no se sabe de cuál son (ver arriba)."""
     ids = {p.id for p in partidas}
     por_categoria = defaultdict(list)
     for p in partidas:
@@ -307,6 +318,13 @@ def analizar_anuales(hogar, anio, hoy=None):
             asignados[por_categoria[m.categoria_id][0].id].append((m, True))
         elif m.categoria and m.categoria.tipo == 'anual':
             sin_asignar.append(m)
+    return asignados, sin_asignar
+
+
+def analizar_anuales(hogar, anio, hoy=None):
+    hoy = hoy or date.today()
+    partidas = partidas_anuales(hogar)
+    asignados, sin_asignar = asignar_pagos(hogar, anio, partidas)
 
     filas = []
     ahorro = []
@@ -316,7 +334,7 @@ def analizar_anuales(hogar, anio, hoy=None):
         plurianual = p.es_plurianual
         cuotas = [
             {'mes': mes, 'nombre_mes': MESES[mes], 'importe': importe}
-            for mes, importe in _cuotas(p, anio, hoy=hoy)
+            for mes, importe in cuotas_de(p, anio, hoy=hoy)
         ]
         pagos = []
         for m, deducido in asignados.get(p.id, []):

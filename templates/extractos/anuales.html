@@ -146,19 +146,25 @@
                 {% elif f.plurianual and f.pagado %}
                 <span class="an-reserva an-apagado">Si salió de lo que tenías apartado, emparéjalo en Movimientos con «de la reserva» y aquí verás cuánto cubrió.</span>
                 {% endif %}
-                {% if f.dado_por_pagado or f.estado == 'atrasado' or f.estado == 'parcial' and not f.fraccionado or f.recolocar %}
+                {% if f.dado_por_pagado or f.estado == 'atrasado' or f.estado == 'parcial' or f.estado == 'pendiente' or f.recolocar %}
                 <div class="an-acciones">
                     {% if f.dado_por_pagado %}
                     <form method="post" action="{% url 'extractos:anuales_dar_por_pagado' f.partida.id %}">
                         {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}"><input type="hidden" name="deshacer" value="1">
                         <button type="submit" class="an-accion">deshacer «dado por pagado»</button>
                     </form>
-                    {% elif f.estado == 'atrasado' or f.estado == 'parcial' and not f.fraccionado %}
+                    {% elif f.estado == 'atrasado' or f.estado == 'parcial' or f.estado == 'pendiente' %}
                     <form method="post" action="{% url 'extractos:anuales_dar_por_pagado' f.partida.id %}">
                         {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}">
-                        <button type="submit" class="an-accion fuerte" title="El recibo no cuadra con lo declarado, pero no hay nada más que pagar en {{ d.anio|unlocalize }}">
-                            <svg class="icon"><use href="#i-check"/></svg> Dar por pagado{% if f.pagado %} con {{ f.pagado|euro }}{% endif %}
+                        {% if f.pagado %}
+                        <button type="submit" class="an-accion{% if f.estado == 'atrasado' or not f.fraccionado %} fuerte{% endif %}" title="El recibo no cuadra con lo declarado, pero no hay nada más que pagar en {{ d.anio|unlocalize }}">
+                            <svg class="icon"><use href="#i-check"/></svg> Dar por pagado con {{ f.pagado|euro }}
                         </button>
+                        {% else %}
+                        <button type="submit" class="an-accion{% if f.estado == 'atrasado' %} fuerte{% endif %}" title="Lo pagó otra persona o salió de una cuenta que no importas: en {{ d.anio|unlocalize }} no hay nada que pagar, y la reserva no lo espera">
+                            <svg class="icon"><use href="#i-check"/></svg> Ya está pagado (lo pagó otra persona)
+                        </button>
+                        {% endif %}
                     </form>
                     {% endif %}
                     {% if f.recolocar %}

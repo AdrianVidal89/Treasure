@@ -6454,6 +6454,14 @@ class FijosAnualesTests(TestCase):
         self.assertNotIn('No tienes gastos declarados', html)
         self.assertIn('Ahorrando para más adelante', html)
 
+    def test_un_pendiente_se_puede_dar_por_pagado_sin_ningun_pago(self):
+        html = self.client.get(reverse('extractos:anuales'), {'anio': 2026}).content.decode()
+        self.assertIn('Ya está pagado (lo pagó otra persona)', html)
+        self.client.post(reverse('extractos:anuales_dar_por_pagado', args=[self.seguro.id]), {'anio': '2026'})
+        _, filas = self.analizar()
+        self.assertEqual(filas['Seguro coche']['estado'], 'pagado')
+        self.assertEqual(filas['Seguro coche']['frase'], 'Pagado sin pasar por tus cuentas')
+
     def test_el_editor_ofrece_cada_cuanto(self):
         html = self.client.get(reverse('extractos:anuales'), {'anio': 2026}).content.decode()
         self.assertIn('name="periodicidad"', html)
@@ -6725,3 +6733,103 @@ class CuadreConEvolucionTests(TestCase):
         self.assertEqual(respuesta.status_code, 200)
         self.assertContains(respuesta, 'Cuenta a cuenta')
         self.assertContains(respuesta, 'CaixaBank Adrian')
+
+
+class PrevisionReservaTests(TestCase):
+    """¿Llega la reserva para los recibos que tocan?"""
+
+    def setUp(self):
+        from .models import SaldoReserva
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        cat = lambda n: CategoriaGasto.objects.get(hogar=self.hogar, nombre=n)
+        self.cat_mant, self.cat_ibi = cat('Mantenimiento vehicular'), cat('IBI')
+        self.hoy = date(2026, 10, 2)
+        # 120 €/año de ITV en febrero y 600 € de IBI en noviembre: 60 €/mes.
+        self.itv = self.partida('ITV Golf', self.cat_mant, '120', 'anual', 2)
+        self.ibi = self.partida('IBI', self.cat_ibi, '600', 'anual', 11)
+        SaldoReserva.objects.create(hogar=self.hogar, fecha=self.hoy, saldo=Decimal('500'))
+
+    def partida(self, nombre, categoria, importe, periodicidad, mes, anio_pago=None):
+        return PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=categoria, nombre=nombre, importe=Decimal(importe),
+            periodicidad=periodicidad, mes_pago=mes, anio_pago=anio_pago,
+        )
+
+    def prever(self, anios=1):
+        from .reserva import prever_reserva
+        return prever_reserva(self.hogar, anios, hoy=self.hoy)
+
+    def pagos_de(self, r):
+        return {(x['anio'], x['mes']): [y['nombre'] for y in x['pagos']] for x in r['proximos']}
+
+    def test_el_aporte_sale_de_las_provisiones(self):
+        self.partida('Neumáticos', self.cat_mant, '600', 'trienal', 4, anio_pago=2029)
+        self.assertEqual(self.prever()['aporte'], Decimal('76.67'))
+
+    def test_lo_atrasado_sin_pagar_sale_ya_y_dado_por_pagado_desaparece(self):
+        r = self.prever()
+        self.assertEqual(self.pagos_de(r)[(2026, 10)], ['ITV Golf'])
+        self.assertTrue(r['hay_atrasados'])
+        # La pagó otra persona: se da por pagada y la reserva no la espera.
+        from .anuales import dar_por_pagado
+        dar_por_pagado(self.itv, 2026)
+        r = self.prever()
+        self.assertNotIn((2026, 10), self.pagos_de(r))
+        self.assertFalse(r['hay_atrasados'])
+
+    def test_lo_pagado_antes_del_saldo_ya_no_sale(self):
+        MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=date(2026, 2, 10), concepto='ITV', importe=Decimal('-120'),
+            categoria=self.cat_mant, partida_conciliada=self.itv,
+        )
+        self.assertNotIn((2026, 10), self.pagos_de(self.prever()))
+
+    def test_cubierto_o_cuanto_hay_que_aportar_hoy(self):
+        from .anuales import dar_por_pagado
+        dar_por_pagado(self.itv, 2026)
+        r = self.prever()
+        # 500 + 60 de noviembre − 600 = −40 en noviembre: hay que meter 40 hoy.
+        self.assertFalse(r['cubierto'])
+        self.assertEqual(r['peor']['mes'], 11)
+        self.assertEqual(r['falta_hoy'], Decimal('40.00'))
+        # O un aporte mayor: 40 € más en el único mes que hay antes del pago.
+        self.assertEqual(r['extra_mensual'], Decimal('40.00'))
+        from .models import SaldoReserva
+        SaldoReserva.objects.create(hogar=self.hogar, fecha=self.hoy, saldo=Decimal('600'))
+        r = self.prever()
+        self.assertTrue(r['cubierto'])
+        self.assertEqual(r['peor']['saldo'], Decimal('60'))
+
+    def test_varios_años_vista(self):
+        self.partida('Neumáticos', self.cat_mant, '600', 'trienal', 4, anio_pago=2028)
+        r = self.prever(3)
+        self.assertEqual(r['anio_fin'], 2028)
+        pagos = self.pagos_de(r)
+        self.assertEqual(pagos[(2027, 2)], ['ITV Golf'])
+        self.assertIn('Neumáticos', pagos[(2028, 4)])
+        self.assertNotIn((2025, 4), pagos)
+        self.assertEqual(r['puntos'][-1]['anio'], 2028)
+
+    def test_sin_fecha_se_avisa(self):
+        self.partida('Caldera', self.cat_mant, '900', 'quinquenal', None)
+        self.assertEqual([p.nombre for p in self.prever()['sin_fecha']], ['Caldera'])
+
+    def test_apuntar_y_borrar_el_saldo_desde_la_pagina(self):
+        from .models import SaldoReserva
+        respuesta = self.client.post(reverse('extractos:reserva'), {'saldo': '1.234,50', 'anios': '2'})
+        self.assertRedirects(respuesta, reverse('extractos:reserva') + '?anios=2',
+                             fetch_redirect_response=False)
+        ultimo = SaldoReserva.objects.filter(hogar=self.hogar).first()
+        self.assertEqual(ultimo.saldo, Decimal('1234.50'))
+        self.client.post(reverse('extractos:reserva'), {'borrar': ultimo.id})
+        self.assertFalse(SaldoReserva.objects.filter(pk=ultimo.pk).exists())
+        pagina = self.client.get(reverse('extractos:reserva'), {'anios': 3})
+        self.assertEqual(pagina.status_code, 200)
+        self.assertContains(pagina, '3 años vista')
+
