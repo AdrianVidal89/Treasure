@@ -1,0 +1,40 @@
+{% load l10n %}
+{% comment %}
+Cuánto mirar hacia delante, compartido por Fijos anuales y Reserva: 1 y 2 años
+vista de un clic, y «personalizado» para escribir hasta cuántos años.
+Espera `anios` (el actual), `hasta` (el último año que se ve) y, opcional,
+`anio` (el año de partida, que viaja en la URL de Fijos anuales).
+{% endcomment %}
+<form method="get" class="hz" aria-label="Cuánto mirar hacia delante">
+    {% if anio %}<input type="hidden" name="anio" value="{{ anio|unlocalize }}">{% endif %}
+    <a href="?{% if anio %}anio={{ anio|unlocalize }}&amp;{% endif %}anios=1" class="hz-op {% if anios == 1 %}activa{% endif %}" {% if anios == 1 %}aria-current="true"{% endif %}>1 año vista</a>
+    <a href="?{% if anio %}anio={{ anio|unlocalize }}&amp;{% endif %}anios=2" class="hz-op {% if anios == 2 %}activa{% endif %}" {% if anios == 2 %}aria-current="true"{% endif %}>2 años vista</a>
+    <details class="hz-perso" {% if anios > 2 %}open{% endif %}>
+        <summary class="hz-op {% if anios > 2 %}activa{% endif %}">{% if anios > 2 %}{{ anios }} años vista{% else %}Personalizado{% endif %}</summary>
+        <label class="hz-campo">
+            <span>Hasta</span>
+            <input type="number" name="anios" min="1" max="{{ max_horizonte }}" step="1" value="{{ anios }}" aria-label="Años vista">
+            <span>años</span>
+        </label>
+        <button type="submit" class="hz-op hz-ver">Ver</button>
+    </details>
+    <span class="hz-hasta">hasta diciembre de {{ hasta|unlocalize }}</span>
+</form>
+<style>
+.hz { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:4px 0 16px; }
+.hz-op {
+    padding:6px 12px; border-radius:999px; border:1px solid var(--border); font-size:0.8rem;
+    color:var(--text-color); text-decoration:none; background:var(--surface); cursor:pointer; list-style:none;
+}
+.hz-op::-webkit-details-marker { display:none; }
+.hz-op:hover { border-color:var(--border-strong); }
+.hz-op.activa { background:var(--primary-color); border-color:var(--primary-color); color:var(--surface); font-weight:600; }
+.hz-perso { display:inline-flex; align-items:center; gap:6px; }
+.hz-perso[open] { display:inline-flex; }
+.hz-perso[open] > summary { margin-right:2px; }
+.hz-perso:not([open]) > :not(summary) { display:none; }
+.hz-campo { display:inline-flex; align-items:center; gap:6px; font-size:0.78rem; color:var(--muted); }
+.hz-campo input { width:64px; background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:0.84rem; }
+.hz-ver { font:inherit; font-size:0.8rem; }
+.hz-hasta { font-size:0.75rem; color:var(--muted); margin-left:4px; }
+</style>

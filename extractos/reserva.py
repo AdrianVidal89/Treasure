@@ -34,11 +34,12 @@ from collections import defaultdict
 from datetime import date
 from decimal import Decimal, ROUND_UP
 
-from .anuales import MESES, asignar_pagos, cuotas_de, partidas_anuales
+from .anuales import (
+    MESES, asignar_pagos, chequeo_fechas, cuotas_de, leer_horizonte, partidas_anuales,
+)
 from .models import SaldoReserva
 
 CERO = Decimal('0')
-HORIZONTES = (1, 2, 3, 5)
 CORTOS = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 
 
@@ -65,7 +66,7 @@ def _pendientes_del_anio(partida, anio, mes_inicio, pagado_antes, hoy):
 
 def prever_reserva(hogar, anios=1, hoy=None):
     hoy = hoy or date.today()
-    anios = anios if anios in HORIZONTES else 1
+    anios = leer_horizonte(anios)
     ultimo = SaldoReserva.objects.filter(hogar=hogar).first()
     saldo_inicial = ultimo.saldo if ultimo else CERO
     inicio = ultimo.fecha if ultimo else hoy
@@ -78,7 +79,6 @@ def prever_reserva(hogar, anios=1, hoy=None):
 
     # Pagos por mes absoluto (año·12 + mes-1).
     pagos = defaultdict(list)
-    sin_fecha = []
     for anio in range(inicio.year, anio_fin + 1):
         asignados = asignar_pagos(hogar, anio, partidas)[0] if anio == inicio.year else {}
         for p in partidas:
@@ -97,11 +97,6 @@ def prever_reserva(hogar, anios=1, hoy=None):
                     'nombre': p.nombre, 'importe': importe, 'atrasado': atrasado,
                     'partida_id': p.id,
                 })
-    for p in partidas:
-        if (p.es_plurianual and not (p.mes_pago and p.anio_pago)) or (
-            not p.es_plurianual and not p.mes_pago and not p.plazos_de_pago
-        ):
-            sin_fecha.append(p)
 
     desde = inicio.year * 12 + inicio.month - 1
     hasta = anio_fin * 12 + 11
@@ -151,7 +146,6 @@ def prever_reserva(hogar, anios=1, hoy=None):
         'saldo_inicial': saldo_inicial,
         'inicio': inicio,
         'anios': anios,
-        'horizontes': HORIZONTES,
         'anio_fin': anio_fin,
         'aporte': aporte,
         'aportes_partidas': sorted(
@@ -169,7 +163,7 @@ def prever_reserva(hogar, anios=1, hoy=None):
         'total_aportes': aporte * aportes_hechos,
         'proximos': proximos,
         'hay_atrasados': any(x['atrasado'] for p in proximos for x in p['pagos']),
-        'sin_fecha': sin_fecha,
+        'fechas': chequeo_fechas(partidas),
         'historial': list(SaldoReserva.objects.filter(hogar=hogar)[:6]),
         'grafico': {
             'puntos': [

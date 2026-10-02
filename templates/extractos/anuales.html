@@ -27,6 +27,8 @@
         </select>
     </form>
 
+    {% include 'extractos/_fechas_aviso.html' with fechas=d.fechas en_anuales=True %}
+
     {% if not d.filas and not d.ahorro %}
     <div class="an-vacio">
         <svg class="icon"><use href="#i-info"/></svg>
@@ -62,24 +64,19 @@
         </div>
     </section>
 
-    <!-- ══════════ EL AÑO, MES A MES ══════════ -->
+    <!-- ══════════ EL AÑO (O LOS AÑOS VISTA), MES A MES ══════════ -->
+    {% include 'extractos/_horizonte.html' with anio=d.anio %}
     <section class="an-grafico">
         <div class="an-grafico-head">
             <div>
-                <h3>{{ d.anio }}, mes a mes</h3>
-                <span class="an-grafico-nota">pasa el ratón por un mes para ver qué se esperaba pagar y qué se pagó</span>
+                <h3>{% if anios > 1 %}{{ d.anio|unlocalize }}–{{ hasta|unlocalize }}{% else %}{{ d.anio|unlocalize }}{% endif %}, mes a mes</h3>
+                <span class="an-grafico-nota">pasa el ratón por un mes para ver qué se esperaba pagar y qué se pagó{% if anios > 1 %} · la lista y las cifras de abajo son de {{ d.anio|unlocalize }}{% endif %}</span>
             </div>
             <div class="an-leyenda" aria-hidden="true">
                 <span><i class="previsto"></i> Previsto</span>
                 <span><i class="pagado"></i> Pagado</span>
             </div>
         </div>
-        {% if d.num_sin_mes %}
-        <p class="an-aviso-mes">
-            {{ d.num_sin_mes }} partida{{ d.num_sin_mes|pluralize:"s" }} sin mes de pago: no sale{{ d.num_sin_mes|pluralize:"n" }} en lo previsto.
-            Pónselo desde su fila para verla{{ d.num_sin_mes|pluralize:"s" }} aquí.
-        </p>
-        {% endif %}
         <div class="an-lienzo" id="an-lienzo" role="img"
              aria-label="Barras por mes de lo previsto y lo pagado en fijos anuales en {{ d.anio }}"></div>
         <div class="an-tip" id="an-tip" hidden></div>
@@ -283,7 +280,6 @@
     border:1.5px solid var(--muted);
     background:repeating-linear-gradient(135deg, color-mix(in srgb, var(--muted) 45%, transparent) 0 2px, transparent 2px 5px);
 }
-.an-aviso-mes { font-size:0.76rem; color:var(--muted); margin:0 0 6px; }
 .an-lienzo { width:100%; height:280px; }
 .an-lienzo svg { display:block; width:100%; height:100%; overflow:visible; }
 .an-lienzo text { font-size:11px; fill:var(--muted); font-family:inherit; }
@@ -550,7 +546,6 @@
     var lienzo = document.getElementById('an-lienzo');
     var tip = document.getElementById('an-tip');
     if (!lienzo || !datos.length) return;
-    var MES_HOY = {{ d.mes_hoy|default_if_none:"null" }};
     var CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
     var NS = 'http://www.w3.org/2000/svg';
 
@@ -600,11 +595,12 @@
             t.textContent = euro(v, 0);
         }
 
-        var col = aw / 12;
-        var bw = Math.max(Math.min(col * 0.3, 26), 4);
+        var col = aw / datos.length;
+        var bw = Math.max(Math.min(col * 0.3, 26), 2);
+        var variosAnios = datos.length > 12;
         datos.forEach(function (d, idx) {
             var x0 = m.l + col * idx;
-            var g = el('g', {'class': 'col' + (d.mes === MES_HOY ? ' mes-hoy' : '')}, svg);
+            var g = el('g', {'class': 'col' + (d.es_hoy ? ' mes-hoy' : '')}, svg);
             el('rect', {x: x0 + 1, y: m.t, width: col - 2, height: ah, rx: 6, 'class': 'col-fondo'}, g);
             var cx = x0 + col / 2;
             /* 2px de hueco entre las dos barras del mes. */
@@ -616,10 +612,19 @@
                 var hq = Math.max(ah * d.total_pagado / tope, 2);
                 el('path', {d: barra(cx + 1, y(0) - hq, bw, hq, 4), 'class': 'bar-pagado'}, g);
             }
-            var etq = el('text', {x: cx, y: H - 8, 'text-anchor': 'middle', 'class': 'mes'}, g);
-            /* Sin sitio para «ene», la inicial: amontonadas no se leía ninguna. */
-            etq.textContent = col < 30 ? CORTOS[idx].charAt(0).toUpperCase() : CORTOS[idx];
-            if (d.mes === MES_HOY) {
+            var corto = CORTOS[d.mes - 1];
+            if (variosAnios && d.mes === 1) {
+                /* Con varios años, cada enero abre su año: una raya y el año. */
+                if (idx) el('line', {x1: x0, x2: x0, y1: m.t, y2: y(0), 'class': 'rejilla'}, g);
+                var anioEtq = el('text', {x: x0 + 4, y: m.t + 10, 'class': 'etq'}, g);
+                anioEtq.textContent = d.anio;
+            }
+            if (col >= 14 || d.mes === 1) {
+                var etq = el('text', {x: cx, y: H - 8, 'text-anchor': 'middle', 'class': 'mes'}, g);
+                /* Sin sitio para «ene», la inicial: amontonadas no se leía ninguna. */
+                etq.textContent = col < 30 ? corto.charAt(0).toUpperCase() : corto;
+            }
+            if (d.es_hoy) {
                 el('line', {x1: cx, x2: cx, y1: m.t - 6, y2: y(0), 'class': 'hoy'}, g);
                 var h = el('text', {x: cx, y: m.t - 8, 'text-anchor': 'middle', 'class': 'etq'}, g);
                 h.textContent = 'hoy';
@@ -654,7 +659,7 @@
         var caja = lienzo.getBoundingClientRect(), padre = tip.parentElement.getBoundingClientRect();
         var izquierda = caja.left - padre.left + xDerecha + 8;
         if (izquierda + tip.offsetWidth > padre.width - 8) {
-            izquierda = Math.max(8, izquierda - tip.offsetWidth - (caja.width / 12) - 16);
+            izquierda = Math.max(8, izquierda - tip.offsetWidth - (caja.width / datos.length) - 16);
         }
         tip.style.left = izquierda + 'px';
         tip.style.top = (caja.top - padre.top + 10) + 'px';

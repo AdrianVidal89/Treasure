@@ -298,6 +298,41 @@ def partidas_anuales(hogar):
     ]
 
 
+def tiene_fecha(partida):
+    """¿Se sabe cuándo toca pagarla? Un anual necesita su mes (o sus plazos);
+    uno de varios años, el mes Y el año, porque «en abril» no dice de cuál."""
+    if partida.es_plurianual:
+        return bool(partida.mes_pago and partida.anio_pago)
+    return bool(partida.mes_pago or partida.plazos_de_pago)
+
+
+def chequeo_fechas(partidas):
+    """El estado de las fechas de pago de todas las partidas anuales, para el
+    aviso de arriba de Fijos anuales y de Reserva: sin fecha, una partida no
+    sale en ningún mes de lo previsto ni de la previsión, pero su provisión sí
+    se suma, y las cuentas salen mejor de lo que son."""
+    sin = [p for p in partidas if not tiene_fecha(p)]
+    return {
+        'total': len(partidas),
+        'sin_fecha': sin,
+        'todas': bool(partidas) and not sin,
+    }
+
+
+# Cuánto se puede mirar hacia delante. Pasados quince años un recibo declarado
+# hoy ya no dice nada, y el tope evita que un dedazo pida medio siglo.
+MAX_HORIZONTE = 15
+
+
+def leer_horizonte(valor, defecto=1):
+    """Años vista pedidos en la URL, dentro de 1..MAX_HORIZONTE."""
+    try:
+        anios = int(valor)
+    except (TypeError, ValueError):
+        return defecto
+    return max(1, min(anios, MAX_HORIZONTE))
+
+
 def asignar_pagos(hogar, anio, partidas):
     """`(asignados, sin_asignar)`: los pagos del año de cada partida —con si
     se dedujo por la categoría— y los que no se sabe de cuál son (ver arriba)."""
@@ -426,7 +461,8 @@ def analizar_anuales(hogar, anio, hoy=None):
 
     grafico = [
         {
-            'mes': n, 'nombre': MESES[n],
+            'mes': n, 'anio': anio, 'nombre': f'{MESES[n]} {anio}',
+            'es_hoy': anio == hoy.year and n == hoy.month,
             'previsto': previsto_mes.get(n, []),
             'pagado': pagado_mes.get(n, []),
             'total_previsto': sum(x['importe'] for x in previsto_mes.get(n, [])),
@@ -470,6 +506,18 @@ def analizar_anuales(hogar, anio, hoy=None):
         'grafico': grafico,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDADES_ANUALES,
+        'fechas': chequeo_fechas(partidas),
         'ahorro': ahorro,
         'ahorro_anual': sum((f['provision_anual'] for f in ahorro), Decimal('0')),
     }
+
+
+def grafico_varios_anios(hogar, anio, anios, hoy=None, primero=None):
+    """La gráfica de Fijos anuales para `anios` años desde `anio`: la misma de
+    un año, mes a mes, puesta una detrás de otra. `primero` es el análisis de
+    `anio` si ya está hecho, para no repetirlo."""
+    hoy = hoy or date.today()
+    salida = list((primero or analizar_anuales(hogar, anio, hoy=hoy))['grafico'])
+    for y in range(anio + 1, anio + anios):
+        salida.extend(analizar_anuales(hogar, y, hoy=hoy)['grafico'])
+    return salida

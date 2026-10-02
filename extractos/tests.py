@@ -6817,8 +6817,42 @@ class PrevisionReservaTests(TestCase):
         self.assertEqual(r['puntos'][-1]['anio'], 2028)
 
     def test_sin_fecha_se_avisa(self):
+        self.assertTrue(self.prever()['fechas']['todas'])
         self.partida('Caldera', self.cat_mant, '900', 'quinquenal', None)
-        self.assertEqual([p.nombre for p in self.prever()['sin_fecha']], ['Caldera'])
+        # Un plurianual con mes pero sin año tampoco tiene fecha.
+        self.partida('Neumáticos', self.cat_mant, '600', 'trienal', 4)
+        fechas = self.prever()['fechas']
+        self.assertFalse(fechas['todas'])
+        self.assertEqual(fechas['total'], 4)
+        self.assertEqual(sorted(p.nombre for p in fechas['sin_fecha']), ['Caldera', 'Neumáticos'])
+
+    def test_el_aviso_de_fechas_sale_en_las_dos_paginas(self):
+        for nombre in ('extractos:reserva', 'extractos:anuales'):
+            self.assertContains(self.client.get(reverse(nombre)), 'Todas las partidas anuales tienen fecha de pago')
+        caldera = self.partida('Caldera', self.cat_mant, '900', 'quinquenal', None)
+        for nombre in ('extractos:reserva', 'extractos:anuales'):
+            html = self.client.get(reverse(nombre)).content.decode()
+            self.assertIn('1 de 3 partidas sin fecha de pago', html)
+            self.assertIn(f'#partida-{caldera.id}', html)
+
+    def test_horizonte_personalizado(self):
+        r = self.prever(7)
+        self.assertEqual(r['anio_fin'], 2032)
+        self.assertEqual(r['puntos'][-1]['anio'], 2032)
+        # Con tope: medio siglo se queda en quince años.
+        self.assertEqual(self.prever(50)['anios'], 15)
+        pagina = self.client.get(reverse('extractos:reserva'), {'anios': 7})
+        self.assertContains(pagina, '7 años vista')
+
+    def test_la_grafica_de_fijos_anuales_cubre_los_años_vista(self):
+        pagina = self.client.get(reverse('extractos:anuales'), {'anio': 2026, 'anios': 3})
+        grafico = pagina.context['grafico_json']
+        self.assertEqual(len(grafico), 36)
+        self.assertEqual((grafico[-1]['anio'], grafico[-1]['mes']), (2028, 12))
+        febreros = [g['total_previsto'] for g in grafico if g['mes'] == 2]
+        self.assertEqual(febreros, [120.0, 120.0, 120.0])
+        # La lista sigue siendo del año elegido.
+        self.assertEqual(pagina.context['d']['anio'], 2026)
 
     def test_apuntar_y_borrar_el_saldo_desde_la_pagina(self):
         from .models import SaldoReserva
@@ -6829,7 +6863,7 @@ class PrevisionReservaTests(TestCase):
         self.assertEqual(ultimo.saldo, Decimal('1234.50'))
         self.client.post(reverse('extractos:reserva'), {'borrar': ultimo.id})
         self.assertFalse(SaldoReserva.objects.filter(pk=ultimo.pk).exists())
-        pagina = self.client.get(reverse('extractos:reserva'), {'anios': 3})
+        pagina = self.client.get(reverse('extractos:reserva'), {'anios': 2})
         self.assertEqual(pagina.status_code, 200)
-        self.assertContains(pagina, '3 años vista')
+        self.assertContains(pagina, '2 años vista')
 

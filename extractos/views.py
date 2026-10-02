@@ -20,7 +20,10 @@ from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_G
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
 from . import reparto
-from .anuales import analizar_anuales, dar_por_pagado, guardar_calendario
+from .anuales import (
+    MAX_HORIZONTE, analizar_anuales, dar_por_pagado, grafico_varios_anios, guardar_calendario,
+    leer_horizonte,
+)
 from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
 from .categorizacion import categorizar, categorizar_lote
 from .models import (
@@ -3302,10 +3305,15 @@ def anuales(request):
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return redirect('dashboard')
     anio = _entero_o_none(request.GET.get('anio')) or date.today().year
+    anios = leer_horizonte(request.GET.get('anios'))
     datos = analizar_anuales(hogar, anio)
+    # La lista y las cifras son del año elegido; la gráfica, de los años vista.
     return render(request, 'extractos/anuales.html', {
         'd': datos,
-        'grafico_json': datos['grafico'],
+        'grafico_json': grafico_varios_anios(hogar, anio, anios, primero=datos),
+        'anios': anios,
+        'hasta': anio + anios - 1,
+        'max_horizonte': MAX_HORIZONTE,
     })
 
 
@@ -3697,7 +3705,7 @@ def reserva(request):
     if not hogar:
         messages.error(request, "Necesitas pertenecer a un hogar.")
         return redirect('dashboard')
-    anios = _entero_o_none(request.GET.get('anios') or request.POST.get('anios')) or 1
+    anios = leer_horizonte(request.GET.get('anios') or request.POST.get('anios'))
     volver = reverse('extractos:reserva') + f'?anios={anios}'
 
     if request.method == 'POST':
@@ -3727,4 +3735,5 @@ def reserva(request):
     return render(request, 'extractos/reserva.html', {
         'r': prever_reserva(hogar, anios),
         'hoy': date.today(),
+        'max_horizonte': MAX_HORIZONTE,
     })
