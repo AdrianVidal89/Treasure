@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% load extractos_nav %}
+{% load l10n %}
+
+{% block title %}Reserva · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-evolution"/></svg> Reserva de los fijos anuales</h1>
+            <div class="page-sub">
+                Lo que hay hoy en la hucha, lo que le vas apartando cada mes y los recibos que tocan: ¿llega para todos
+                o hay algún mes en que se queda corta?
+            </div>
+        </div>
+    </div>
+
+    {% extractos_nav 'reserva' %}
+
+    <nav class="rs-horizonte" aria-label="Cuánto mirar hacia delante">
+        {% for h in r.horizontes %}
+        <a href="?anios={{ h }}" class="rs-horizonte-op {% if h == r.anios %}activa{% endif %}"
+           {% if h == r.anios %}aria-current="true"{% endif %}>
+            {% if h == 1 %}Este año{% else %}{{ h }} años vista{% endif %}
+        </a>
+        {% endfor %}
+        <span class="rs-horizonte-hasta">hasta diciembre de {{ r.anio_fin|unlocalize }}</span>
+    </nav>
+
+    <!-- ══════════ EL VEREDICTO ══════════ -->
+    {% if not r.saldo %}
+    <section class="rs-veredicto rs-sin-saldo">
+        <span class="rs-icono"><svg class="icon"><use href="#i-info"/></svg></span>
+        <div class="rs-veredicto-txt">
+            <span class="rs-veredicto-lbl">Falta el punto de partida</span>
+            <strong>¿Cuánto hay hoy en la reserva?</strong>
+            <span>Apúntalo abajo y la previsión parte de ahí. Mientras tanto se calcula como si estuviera vacía.</span>
+        </div>
+    </section>
+    {% endif %}
+    <section class="rs-veredicto {% if r.cubierto %}ok{% else %}mal{% endif %}">
+        <span class="rs-icono">
+            {% if r.cubierto %}<svg class="icon"><use href="#i-check"/></svg>{% else %}<svg class="icon"><use href="#i-alert"/></svg>{% endif %}
+        </span>
+        <div class="rs-veredicto-txt">
+            {% if r.cubierto %}
+            <span class="rs-veredicto-lbl">Gastos cubiertos</span>
+            <strong>Llegas a todos los pagos hasta diciembre de {{ r.anio_fin|unlocalize }}</strong>
+            <span>El momento más justo es {{ r.peor.nombre|lower }}, cuando quedan <strong>{{ r.peor.saldo|euro:0 }}</strong>{% if r.peor.total_pagos %} tras pagar {{ r.peor.total_pagos|euro:0 }}{% endif %}.</span>
+            {% else %}
+            <span class="rs-veredicto-lbl">No llega</span>
+            <strong>Aporta {{ r.falta_hoy|euro }} hoy a la reserva</strong>
+            <span>
+                Sin eso se queda en <strong>{{ r.peor.saldo|euro:0 }}</strong> en {{ r.peor.nombre|lower }}.
+                {% if r.extra_mensual %}O sube el aporte mensual en <strong>{{ r.extra_mensual|euro }}</strong> (de {{ r.aporte|euro }} a {{ r.aporte|add:r.extra_mensual|euro }}).{% endif %}
+            </span>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- ══════════ LAS CIFRAS ══════════ -->
+    <section class="rs-kpis">
+        <div class="rs-kpi">
+            <span class="rs-kpi-lbl">Hay en la reserva</span>
+            <span class="rs-kpi-val">{{ r.saldo_inicial|euro:0 }}</span>
+            <span class="rs-kpi-sub">{% if r.saldo %}a {{ r.inicio|date:"j \d\e F" }}{% else %}sin apuntar{% endif %}</span>
+        </div>
+        <div class="rs-kpi">
+            <span class="rs-kpi-lbl">Aportas cada mes</span>
+            <span class="rs-kpi-val">{{ r.aporte|euro:0 }}</span>
+            <span class="rs-kpi-sub">la provisión de {{ r.aportes_partidas|length }} partida{{ r.aportes_partidas|length|pluralize:"s" }}</span>
+        </div>
+        <div class="rs-kpi">
+            <span class="rs-kpi-lbl">Recibos que tocan</span>
+            <span class="rs-kpi-val">{{ r.total_pagos|euro:0 }}</span>
+            <span class="rs-kpi-sub">frente a {{ r.total_aportes|euro:0 }} que apartarás</span>
+        </div>
+        <div class="rs-kpi">
+            <span class="rs-kpi-lbl">Quedará en dic {{ r.anio_fin|unlocalize }}</span>
+            <span class="rs-kpi-val {% if r.saldo_final < 0 %}rs-neg{% endif %}">{{ r.saldo_final|euro:0 }}</span>
+            <span class="rs-kpi-sub">si todo va como está declarado</span>
+        </div>
+    </section>
+
+    {% if r.hay_atrasados or r.sin_fecha %}
+    <ul class="rs-avisos">
+        {% if r.hay_atrasados %}
+        <li><svg class="icon"><use href="#i-alert"/></svg>
+            <span>Hay recibos que tocaban antes y no constan pagados: salen ya, en el primer mes. Si los pagó otra persona
+            o están pagados, márcalos en <a href="{% url 'extractos:anuales' %}">Fijos anuales</a> y dejarán de contar.</span></li>
+        {% endif %}
+        {% if r.sin_fecha %}
+        <li><svg class="icon"><use href="#i-info"/></svg>
+            <span>Sin fecha, no entran en ningún mes: {% for p in r.sin_fecha %}<strong>{{ p.nombre }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.
+            Su aporte sí está sumado, así que la previsión sale mejor de lo que es. Ponles cuándo tocan en <a href="{% url 'extractos:anuales' %}">Fijos anuales</a>.</span></li>
+        {% endif %}
+    </ul>
+    {% endif %}
+
+    <!-- ══════════ LA LÍNEA ══════════ -->
+    <section class="rs-grafico">
+        <div class="rs-grafico-cab">
+            <h3>Saldo de la reserva, mes a mes</h3>
+            <span class="rs-apagado">al cierre de cada mes: + aporte − recibos</span>
+        </div>
+        <div class="rs-lienzo" id="rs-lienzo" role="img"
+             aria-label="Línea del saldo de la reserva por mes hasta diciembre de {{ r.anio_fin|unlocalize }}; la tabla de abajo tiene las mismas cifras"></div>
+        <div class="rs-tip" id="rs-tip" hidden></div>
+    </section>
+    {{ r.grafico|json_script:"rs-datos" }}
+
+    <div class="rs-dos">
+        <!-- ══════════ LOS RECIBOS ══════════ -->
+        <section class="rs-tabla-wrap">
+            <h3>Los recibos que tocan</h3>
+            {% if r.proximos %}
+            <table class="rs-tabla">
+                <thead><tr><th>Mes</th><th>Recibos</th><th class="rs-num">Pagas</th><th class="rs-num">Queda</th></tr></thead>
+                <tbody>
+                {% for x in r.proximos %}
+                <tr class="{% if x.saldo < 0 %}rs-fila-mal{% endif %}">
+                    <td class="rs-mes">{{ x.nombre }}</td>
+                    <td>{% for y in x.pagos %}<span class="rs-recibo">{{ y.nombre }} <span class="rs-apagado">{{ y.importe|euro:0 }}{% if y.atrasado %} · atrasado{% endif %}</span></span>{% endfor %}</td>
+                    <td class="rs-num">{{ x.total_pagos|euro:0 }}</td>
+                    <td class="rs-num {% if x.saldo < 0 %}rs-neg{% endif %}">{{ x.saldo|euro:0 }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="rs-apagado">No toca ningún recibo en este periodo.</p>
+            {% endif %}
+        </section>
+
+        <div class="rs-lateral">
+            <!-- ══════════ LO QUE HAY HOY ══════════ -->
+            <section class="rs-caja">
+                <h3>{% if r.saldo %}Reajustar lo que hay{% else %}¿Cuánto hay hoy?{% endif %}</h3>
+                <p class="rs-apagado">Míralo en la cuenta de la hucha y apúntalo. Si un recibo vino más caro o metiste algo extra, reajústalo: la previsión parte siempre del último.</p>
+                <form method="post" class="rs-form">
+                    {% csrf_token %}
+                    <input type="hidden" name="anios" value="{{ r.anios }}">
+                    <label class="rs-campo"><span>Saldo</span>
+                        <input type="text" name="saldo" inputmode="decimal" required placeholder="1.250,00"
+                               value="{% if r.saldo %}{{ r.saldo.saldo|floatformat:2 }}{% endif %}"></label>
+                    <label class="rs-campo"><span>A fecha de</span>
+                        <input type="date" name="fecha" value="{{ hoy|date:'Y-m-d' }}" max="{{ hoy|date:'Y-m-d' }}"></label>
+                    <label class="rs-campo rs-campo-ancho"><span>Nota <em>(opcional)</em></span>
+                        <input type="text" name="nota" maxlength="200" placeholder="El seguro vino 40 € más caro"></label>
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                </form>
+                {% if r.historial %}
+                <ul class="rs-historial">
+                    {% for h in r.historial %}
+                    <li>
+                        <span>{{ h.fecha|date:"d/m/Y" }} · <strong>{{ h.saldo|euro }}</strong>{% if h.nota %} <span class="rs-apagado">· {{ h.nota }}</span>{% endif %}</span>
+                        <form method="post">{% csrf_token %}<input type="hidden" name="anios" value="{{ r.anios }}"><input type="hidden" name="borrar" value="{{ h.id }}">
+                            <button type="submit" class="rs-borrar" title="Borrar este apunte" aria-label="Borrar el apunte del {{ h.fecha|date:'d/m/Y' }}"><svg class="icon"><use href="#i-trash"/></svg></button>
+                        </form>
+                    </li>
+                    {% endfor %}
+                </ul>
+                {% endif %}
+            </section>
+
+            <!-- ══════════ DE DÓNDE SALE EL APORTE ══════════ -->
+            <details class="rs-caja rs-aportes">
+                <summary>De dónde salen los {{ r.aporte|euro }} al mes</summary>
+                <p class="rs-apagado">La provisión de cada partida de fijos anuales: lo que cuesta entre los meses que dura. Se cambia en Gastos o en <a href="{% url 'extractos:anuales' %}">Fijos anuales</a>.</p>
+                <table class="rs-tabla">
+                    {% for a in r.aportes_partidas %}
+                    <tr><td>{{ a.nombre }} <span class="rs-apagado">· {{ a.periodicidad|lower }}</span></td><td class="rs-num">{{ a.mensual|euro }}</td></tr>
+                    {% endfor %}
+                </table>
+            </details>
+        </div>
+    </div>
+</div>
+
+<style>
+.rs-horizonte { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:4px 0 16px; }
+.rs-horizonte-op {
+    padding:6px 12px; border-radius:999px; border:1px solid var(--border); font-size:0.8rem;
+    color:var(--text-color); text-decoration:none; background:var(--surface);
+}
+.rs-horizonte-op:hover { border-color:var(--border-strong); }
+.rs-horizonte-op.activa { background:var(--primary-color); border-color:var(--primary-color); color:var(--surface); font-weight:600; }
+.rs-horizonte-hasta { font-size:0.75rem; color:var(--muted); margin-left:4px; }
+
+.rs-veredicto {
+    display:flex; gap:14px; align-items:flex-start; padding:16px 18px; border-radius:14px; margin-bottom:14px;
+    border:1px solid var(--border); background:var(--surface);
+}
+.rs-veredicto.ok { border-color:color-mix(in srgb, var(--success) 45%, var(--border)); background:color-mix(in srgb, var(--success) 6%, var(--surface)); }
+.rs-veredicto.mal { border-color:color-mix(in srgb, var(--danger) 45%, var(--border)); background:color-mix(in srgb, var(--danger) 6%, var(--surface)); }
+.rs-sin-saldo { border-style:dashed; }
+.rs-icono { display:grid; place-items:center; width:38px; height:38px; flex:0 0 auto; border-radius:10px; background:var(--app-bg); color:var(--muted); }
+.ok .rs-icono { color:var(--success); }
+.mal .rs-icono { color:var(--danger); }
+.rs-icono .icon { width:20px; height:20px; }
+.rs-veredicto-txt { display:flex; flex-direction:column; gap:3px; font-size:0.84rem; color:var(--muted); }
+.rs-veredicto-txt > strong { font-size:1.25rem; color:var(--text-color); line-height:1.25; }
+.rs-veredicto-lbl { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.07em; }
+.ok .rs-veredicto-lbl { color:var(--success); }
+.mal .rs-veredicto-lbl { color:var(--danger); }
+
+.rs-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:14px; }
+.rs-kpi { display:flex; flex-direction:column; gap:2px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--surface); }
+.rs-kpi-lbl { font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.rs-kpi-val { font-size:1.35rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.rs-kpi-sub { font-size:0.72rem; color:var(--muted); }
+.rs-neg { color:var(--danger); }
+.rs-apagado { color:var(--muted); }
+
+.rs-avisos { list-style:none; margin:0 0 14px; padding:0; display:grid; gap:6px; }
+.rs-avisos li { display:flex; gap:8px; align-items:flex-start; font-size:0.8rem; padding:9px 12px; border-radius:10px; background:var(--surface); border:1px dashed var(--border-strong); }
+.rs-avisos .icon { width:15px; height:15px; flex:0 0 auto; margin-top:2px; color:var(--muted); }
+
+.rs-grafico { padding:14px 16px 10px; border-radius:14px; border:1px solid var(--border); background:var(--surface); margin-bottom:14px; position:relative; }
+.rs-grafico-cab { display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.rs-grafico-cab h3 { margin:0; font-size:0.92rem; }
+.rs-grafico-cab span { font-size:0.74rem; }
+.rs-lienzo { height:300px; margin-top:8px; }
+.rs-lienzo svg { width:100%; height:100%; display:block; overflow:visible; }
+.rs-tip {
+    position:absolute; pointer-events:none; z-index:5; min-width:180px; max-width:260px;
+    padding:9px 11px; border-radius:10px; background:var(--surface); border:1px solid var(--border-strong);
+    box-shadow:0 6px 20px rgba(0,0,0,.12); font-size:0.76rem; color:var(--muted);
+}
+.rs-tip-val { font-size:1rem; font-weight:700; color:var(--text-color); font-variant-numeric:tabular-nums; }
+.rs-tip-fila { display:flex; justify-content:space-between; gap:10px; }
+.rs-tip-fila b { color:var(--text-color); font-weight:600; font-variant-numeric:tabular-nums; }
+
+.rs-dos { display:grid; grid-template-columns:minmax(0, 1.6fr) minmax(0, 1fr); gap:14px; align-items:start; }
+@media (max-width:900px) { .rs-dos { grid-template-columns:1fr; } }
+.rs-tabla-wrap, .rs-caja { padding:14px 16px; border-radius:14px; border:1px solid var(--border); background:var(--surface); }
+.rs-tabla-wrap h3, .rs-caja h3 { margin:0 0 8px; font-size:0.92rem; }
+.rs-lateral { display:flex; flex-direction:column; gap:14px; }
+.rs-tabla { width:100%; border-collapse:collapse; font-size:0.8rem; }
+.rs-tabla th { text-align:left; font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; padding:6px 4px; border-bottom:1px solid var(--border); }
+.rs-tabla td { padding:7px 4px; border-bottom:1px solid var(--border); vertical-align:top; }
+.rs-tabla .rs-num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.rs-mes { white-space:nowrap; font-weight:600; }
+.rs-recibo { display:block; }
+.rs-fila-mal td:first-child { box-shadow:inset 3px 0 0 var(--danger); padding-left:8px; }
+.rs-caja > p { font-size:0.76rem; margin:0 0 10px; line-height:1.45; }
+.rs-form { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; }
+.rs-campo { display:flex; flex-direction:column; gap:3px; font-size:0.72rem; color:var(--muted); flex:1 1 120px; }
+.rs-campo-ancho { flex-basis:100%; }
+.rs-campo input { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:0.84rem; min-width:0; }
+.rs-historial { list-style:none; margin:12px 0 0; padding:0; font-size:0.76rem; }
+.rs-historial li { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:5px 0; border-top:1px solid var(--border); }
+.rs-borrar { background:none; border:0; color:var(--muted); cursor:pointer; padding:4px; display:grid; place-items:center; }
+.rs-borrar:hover { color:var(--danger); }
+.rs-borrar .icon { width:13px; height:13px; }
+.rs-aportes > summary { cursor:pointer; font-size:0.84rem; font-weight:600; }
+.rs-aportes[open] > summary { margin-bottom:8px; }
+</style>
+
+<script>
+/* Línea del saldo mes a mes, dibujada a mano en SVG (como el resto de la app).
+   Una sola serie: el saldo al cierre de cada mes. El cero es la referencia; lo
+   que cae por debajo se tiñe de rojo. Al pasar por encima, el mes, el saldo y
+   lo que entró y salió. */
+(function () {
+    var datos = JSON.parse(document.getElementById('rs-datos').textContent);
+    var lienzo = document.getElementById('rs-lienzo');
+    var tip = document.getElementById('rs-tip');
+    var puntos = datos.puntos || [];
+    if (!lienzo || !puntos.length) return;
+    var NS = 'http://www.w3.org/2000/svg';
+
+    function euro(v) { return Math.round(v).toLocaleString('es-ES') + ' €'; }
+    function el(nombre, attrs, padre) {
+        var n = document.createElementNS(NS, nombre);
+        Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+        if (padre) padre.appendChild(n);
+        return n;
+    }
+    function paso(rango) {
+        var bruto = rango / 4, p = Math.pow(10, Math.floor(Math.log10(bruto || 1)));
+        var pasos = [1, 2, 2.5, 5, 10];
+        for (var i = 0; i < pasos.length; i++) if (pasos[i] * p >= bruto) return pasos[i] * p;
+        return 10 * p;
+    }
+
+    function pintar() {
+        lienzo.innerHTML = '';
+        var W = lienzo.clientWidth, H = lienzo.clientHeight;
+        var m = {t: 14, r: 12, b: 26, l: 58};
+        var aw = W - m.l - m.r, ah = H - m.t - m.b;
+        var valores = puntos.map(function (p) { return p.saldo; }).concat([0, datos.inicial]);
+        var min = Math.min.apply(null, valores), max = Math.max.apply(null, valores);
+        var s = paso(max - min || 100);
+        min = Math.floor(min / s) * s; max = Math.ceil(max / s) * s;
+        if (max === min) max = min + s;
+        var n = puntos.length;
+        function x(i) { return m.l + (n === 1 ? aw / 2 : i / (n - 1) * aw); }
+        function y(v) { return m.t + (max - v) / (max - min) * ah; }
+
+        var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + H}, lienzo);
+        var defs = el('defs', {}, svg);
+        var y0 = y(0);
+        // Recortes arriba y abajo del cero, para teñir el área de dos colores.
+        var cArriba = el('clipPath', {id: 'rs-arriba'}, defs);
+        el('rect', {x: 0, y: 0, width: W, height: Math.max(y0, 0)}, cArriba);
+        var cAbajo = el('clipPath', {id: 'rs-abajo'}, defs);
+        el('rect', {x: 0, y: y0, width: W, height: Math.max(H - y0, 0)}, cAbajo);
+
+        // Rejilla y eje: recesivos.
+        for (var v = min; v <= max + s / 2; v += s) {
+            var ly = y(v);
+            var linea = el('line', {x1: m.l, x2: W - m.r, y1: ly, y2: ly, 'stroke-width': v === 0 ? 1.5 : 1}, svg);
+            linea.style.stroke = v === 0 ? 'var(--border-strong)' : 'var(--border)';
+            var t = el('text', {x: m.l - 8, y: ly + 4, 'text-anchor': 'end', 'font-size': 11}, svg);
+            t.style.fill = 'var(--muted)';
+            t.textContent = euro(v);
+        }
+        var cada = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(aw / 56))));
+        puntos.forEach(function (p, i) {
+            if (i % cada && i !== n - 1) return;
+            var t = el('text', {x: x(i), y: H - 6, 'text-anchor': 'middle', 'font-size': 11}, svg);
+            t.style.fill = 'var(--muted)';
+            t.textContent = p.etiqueta;
+        });
+
+        var camino = puntos.map(function (p, i) { return (i ? 'L' : 'M') + x(i) + ',' + y(p.saldo); }).join('');
+        var area = camino + 'L' + x(n - 1) + ',' + y0 + 'L' + x(0) + ',' + y0 + 'Z';
+        var aArriba = el('path', {d: area, 'clip-path': 'url(#rs-arriba)'}, svg);
+        aArriba.style.fill = 'color-mix(in srgb, var(--success) 14%, transparent)';
+        var aAbajo = el('path', {d: area, 'clip-path': 'url(#rs-abajo)'}, svg);
+        aAbajo.style.fill = 'color-mix(in srgb, var(--danger) 22%, transparent)';
+        var lArriba = el('path', {d: camino, fill: 'none', 'stroke-width': 2, 'stroke-linejoin': 'round', 'clip-path': 'url(#rs-arriba)'}, svg);
+        lArriba.style.stroke = 'var(--success)';
+        var lAbajo = el('path', {d: camino, fill: 'none', 'stroke-width': 2, 'stroke-linejoin': 'round', 'clip-path': 'url(#rs-abajo)'}, svg);
+        lAbajo.style.stroke = 'var(--danger)';
+
+        // Un punto en los meses con recibos: es donde baja la línea.
+        puntos.forEach(function (p, i) {
+            if (!p.pagos.length) return;
+            var c = el('circle', {cx: x(i), cy: y(p.saldo), r: 4.5, 'stroke-width': 2}, svg);
+            c.style.fill = p.saldo < 0 ? 'var(--danger)' : 'var(--success)';
+            c.style.stroke = 'var(--surface)';
+        });
+
+        // Capa de hover: la línea vertical busca el mes más cercano.
+        var guia = el('line', {y1: m.t, y2: m.t + ah, 'stroke-width': 1, visibility: 'hidden'}, svg);
+        guia.style.stroke = 'var(--border-strong)';
+        var foco = el('circle', {r: 5, 'stroke-width': 2, visibility: 'hidden'}, svg);
+        foco.style.stroke = 'var(--surface)';
+        var capa = el('rect', {x: m.l, y: m.t, width: aw, height: ah, fill: 'transparent', tabindex: 0}, svg);
+        capa.setAttribute('aria-label', 'Recorre los meses con el ratón o con las flechas');
+        var actual = -1;
+
+        function mostrar(i) {
+            actual = i;
+            var p = puntos[i], px = x(i), py = y(p.saldo);
+            guia.setAttribute('x1', px); guia.setAttribute('x2', px); guia.setAttribute('visibility', 'visible');
+            foco.setAttribute('cx', px); foco.setAttribute('cy', py); foco.setAttribute('visibility', 'visible');
+            foco.style.fill = p.saldo < 0 ? 'var(--danger)' : 'var(--success)';
+            tip.textContent = '';
+            var cab = document.createElement('div'); cab.textContent = p.nombre; tip.appendChild(cab);
+            var val = document.createElement('div'); val.className = 'rs-tip-val'; val.textContent = euro(p.saldo); tip.appendChild(val);
+            function fila(etq, importe) {
+                var f = document.createElement('div'); f.className = 'rs-tip-fila';
+                var a = document.createElement('span'); a.textContent = etq;
+                var b = document.createElement('b'); b.textContent = importe;
+                f.appendChild(a); f.appendChild(b); tip.appendChild(f);
+            }
+            if (p.aporte) fila('Aporte', '+' + euro(p.aporte));
+            p.pagos.forEach(function (q) { fila(q.nombre + (q.atrasado ? ' (atrasado)' : ''), '−' + euro(q.importe)); });
+            if (!p.aporte && !p.pagos.length) fila('Sin movimientos', '');
+            tip.hidden = false;
+            var caja = lienzo.getBoundingClientRect(), padre = tip.parentElement.getBoundingClientRect();
+            var izq = caja.left - padre.left + px + 14;
+            if (izq + tip.offsetWidth > padre.width - 8) izq = caja.left - padre.left + px - tip.offsetWidth - 14;
+            tip.style.left = Math.max(8, izq) + 'px';
+            tip.style.top = (caja.top - padre.top + Math.max(0, py - 30)) + 'px';
+        }
+        function ocultar() {
+            actual = -1; tip.hidden = true;
+            guia.setAttribute('visibility', 'hidden'); foco.setAttribute('visibility', 'hidden');
+        }
+        function cercano(ev) {
+            var r = svg.getBoundingClientRect();
+            var px = (ev.clientX - r.left) * (W / r.width);
+            return n === 1 ? 0 : Math.max(0, Math.min(n - 1, Math.round((px - m.l) / aw * (n - 1))));
+        }
+        capa.addEventListener('pointermove', function (ev) { mostrar(cercano(ev)); });
+        capa.addEventListener('pointerleave', ocultar);
+        capa.addEventListener('blur', ocultar);
+        capa.addEventListener('keydown', function (ev) {
+            if (ev.key === 'ArrowRight') { mostrar(Math.min(n - 1, actual + 1)); ev.preventDefault(); }
+            if (ev.key === 'ArrowLeft') { mostrar(Math.max(0, actual < 0 ? 0 : actual - 1)); ev.preventDefault(); }
+            if (ev.key === 'Escape') ocultar();
+        });
+        capa.addEventListener('focus', function () { if (actual < 0) mostrar(0); });
+    }
+
+    pintar();
+    var espera;
+    window.addEventListener('resize', function () { clearTimeout(espera); espera = setTimeout(pintar, 120); });
+})();
+</script>
+{% endblock %}

@@ -721,3 +721,29 @@ class MovimientoBancario(ImputableAActivo):
         if update_fields is not None:
             kwargs['update_fields'] = set(update_fields) | {'comercio', 'hash_dedupe'}
         super().save(*args, **kwargs)
+
+
+class SaldoReserva(models.Model):
+    """Lo que hay HOY en la reserva de los fijos anuales, dicho por el usuario.
+
+    Es el punto de partida de la previsión: desde aquí se suma lo que se aparta
+    cada mes y se resta lo que toca pagar. No se deduce de los movimientos —la
+    hucha puede estar en una cuenta que no se importa, o mezclada con otras
+    cosas—: se pregunta, y se reajusta cuando haga falta (un recibo que vino más
+    caro, una aportación extra). Se guardan todos para ver cómo ha ido; manda el
+    último.
+    """
+
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='saldos_reserva')
+    fecha = models.DateField()
+    saldo = models.DecimalField(max_digits=12, decimal_places=2)
+    nota = models.CharField(max_length=200, blank=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-fecha', '-creado_en']
+        verbose_name = 'Saldo de la reserva'
+        verbose_name_plural = 'Saldos de la reserva'
+
+    def __str__(self):
+        return f'{self.fecha} · {self.saldo} €'
