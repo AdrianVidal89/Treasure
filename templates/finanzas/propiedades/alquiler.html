@@ -1,0 +1,339 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% load l10n %}
+
+{% block title %}{{ a.propiedad.nombre }} · alquiler · Treasure{% endblock %}
+
+{% block content %}
+{% with p=a.propiedad %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-properties"/></svg> {{ p.nombre }} · alquiler</h1>
+            <div class="page-sub">
+                Lo que entra de alquiler frente a lo que cuesta el piso, mes a mes, y el IRPF que supone para
+                {% if p.propietario %}<strong>{{ p.titular_nombre }}</strong>, su titular{% else %}sus titulares, <strong>a partes iguales</strong>{% endif %}.
+                <a href="{% url 'finanzas:editar_propiedad' p.pk %}">Cambiar los datos del alquiler</a> ·
+                <a href="{% url 'finanzas:listar_propiedades' %}?anio={{ a.anio|unlocalize }}">Volver a propiedades</a>
+            </div>
+        </div>
+        <form method="get" class="al-anio">
+            <label for="al-anio">Año</label>
+            <select id="al-anio" name="anio" onchange="this.form.submit()">
+                {% for y in anios %}<option value="{{ y|unlocalize }}" {% if y == a.anio %}selected{% endif %}>{{ y|unlocalize }}</option>{% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% if not p.alquilada %}
+    <div class="al-aviso"><svg class="icon"><use href="#i-info"/></svg>
+        <span>Esta propiedad no está marcada como alquilada. <a href="{% url 'finanzas:editar_propiedad' p.pk %}">Márcala</a> para verla entre las alquiladas.</span></div>
+    {% endif %}
+    {% if not a.hay_ingresos %}
+    <div class="al-aviso"><svg class="icon"><use href="#i-info"/></svg>
+        <span><strong>Aún no hay ningún cobro de alquiler asignado a {{ p.nombre }} en {{ a.anio|unlocalize }}.</strong>
+        En <a href="{% url 'extractos:listar' %}">Movimientos</a>, en la fila del ingreso del inquilino, pulsa
+        <strong>«— activo —»</strong> y elige la propiedad; con «todos los de este comercio» se quedan asignados también los de los demás meses
+        y los que vengan en los siguientes extractos.</span></div>
+    {% endif %}
+
+    <!-- ══════════ LAS CIFRAS DEL AÑO ══════════ -->
+    <section class="al-kpis">
+        <div class="al-kpi">
+            <span class="al-kpi-lbl">Alquiler cobrado · {{ a.anio|unlocalize }}</span>
+            <span class="al-kpi-val al-pos">{{ a.ingreso_real|euro:0 }}</span>
+            <span class="al-kpi-sub">{{ a.num_ingresos }} cobro{{ a.num_ingresos|pluralize }}{% if a.media_ingreso %} · {{ a.media_ingreso|euro:0 }}/mes{% endif %}</span>
+        </div>
+        <div class="al-kpi">
+            <span class="al-kpi-lbl">Lo que cuesta el piso</span>
+            <span class="al-kpi-val">{{ a.coste_real|euro:0 }}</span>
+            <span class="al-kpi-sub">gastos imputados a la propiedad</span>
+        </div>
+        <div class="al-kpi">
+            <span class="al-kpi-lbl">Neto · lo que va de año</span>
+            <span class="al-kpi-val {% if a.neto_real < 0 %}al-neg{% else %}al-pos{% endif %}">{% if a.neto_real > 0 %}+{% endif %}{{ a.neto_real|euro:0 }}</span>
+            <span class="al-kpi-sub">antes de impuestos</span>
+        </div>
+        <div class="al-kpi">
+            <span class="al-kpi-lbl">Aporta al mes</span>
+            <span class="al-kpi-val {% if a.media_neto < 0 %}al-neg{% else %}al-pos{% endif %}">{% if a.meses_cerrados %}{% if a.media_neto > 0 %}+{% endif %}{{ a.media_neto|euro:0 }}{% else %}—{% endif %}</span>
+            <span class="al-kpi-sub">{% if a.meses_cerrados %}media de {{ a.meses_cerrados }} mes{{ a.meses_cerrados|pluralize:"es" }} cerrado{{ a.meses_cerrados|pluralize }}{% else %}sin meses cerrados aún{% endif %}</span>
+        </div>
+    </section>
+
+    <!-- ══════════ MES A MES ══════════ -->
+    <section class="al-grafico">
+        <div class="al-grafico-cab">
+            <h3>{{ a.anio|unlocalize }}, mes a mes</h3>
+            <div class="al-leyenda">
+                <span><i class="ing"></i> Alquiler</span>
+                <span><i class="cos"></i> Coste</span>
+                <span><i class="net"></i> Neto</span>
+            </div>
+        </div>
+        <div class="al-lienzo" id="al-lienzo" role="img"
+             aria-label="Alquiler cobrado, coste y neto de cada mes de {{ a.anio|unlocalize }}; la tabla de debajo tiene las mismas cifras"></div>
+        <div class="al-tip" id="al-tip" hidden></div>
+        <details class="al-tabla-det">
+            <summary>Ver en tabla</summary>
+            <table class="al-tabla">
+                <thead><tr><th>Mes</th><th class="al-num">Alquiler</th><th class="al-num">Coste</th><th class="al-num">Neto</th></tr></thead>
+                {% for m in a.meses %}{% if not m.futuro %}
+                <tr><td>{{ m.nombre }}</td><td class="al-num">{{ m.ingreso|euro:0 }}</td><td class="al-num">{{ m.coste|euro:0 }}</td>
+                    <td class="al-num {% if m.neto < 0 %}al-neg{% endif %}">{{ m.neto|euro:0 }}</td></tr>
+                {% endif %}{% endfor %}
+            </table>
+        </details>
+    </section>
+    {{ a.grafico|json_script:"al-datos" }}
+
+    <!-- ══════════ EL IRPF ══════════ -->
+    <section class="al-irpf">
+        <div class="al-irpf-cab">
+            <div>
+                <h3>IRPF del alquiler · declaración de {{ a.anio|unlocalize }}</h3>
+                <p>Un alquiler es <strong>rendimiento del capital inmobiliario</strong>: va a la base general y tributa al tipo de su titular, sumado a su nómina.
+                {% if a.proyectado %}El año aún no ha terminado: {% if a.meses_pendientes %}los {{ a.meses_pendientes }} mes{{ a.meses_pendientes|pluralize:"es" }} sin cobrar se cuentan a la media de lo cobrado{% endif %}{% if a.meses_pendientes and a.gastos_previstos %} y {% endif %}{% if a.gastos_previstos %}los gastos que faltan, a la provisión de las partidas del piso{% endif %}.{% endif %}</p>
+            </div>
+            <div class="al-irpf-total">
+                <span class="al-kpi-lbl">IRPF estimado</span>
+                <span class="al-irpf-cifra">{{ a.impuesto_total|euro:0 }}</span>
+                <span class="al-kpi-sub">≈ {{ a.impuesto_mensual|euro:0 }} al mes para apartar · se paga en junio de {{ a.anio|add:1|unlocalize }}</span>
+            </div>
+        </div>
+
+        <div class="al-dos">
+            <table class="al-tabla al-puente">
+                <tr><td>Ingresos del alquiler{% if a.meses_pendientes %} <span class="al-apagado">(estimados)</span>{% endif %}</td><td class="al-num">{{ a.ingresos_anio|euro }}</td></tr>
+                <tr><td>Gastos deducibles<span class="al-det">IBI, comunidad, seguro, reparaciones…: {{ a.gastos_reales|euro:0 }} pagados{% if a.gastos_previstos %} + {{ a.gastos_previstos|euro:0 }} previstos{% endif %}</span></td><td class="al-num al-neg">−{{ a.gastos_anio|euro }}</td></tr>
+                <tr><td>Intereses de la hipoteca{% if not a.intereses %}<span class="al-det">sin indicar</span>{% endif %}</td><td class="al-num al-neg">−{{ a.intereses|euro }}</td></tr>
+                <tr><td>Amortización<span class="al-det">{% if a.falta_construccion %}falta el % de construcción{% else %}3 % de la parte de construcción del coste de compra{% endif %}</span></td><td class="al-num al-neg">−{{ a.amortizacion|euro }}</td></tr>
+                <tr class="al-total"><td>Rendimiento neto</td><td class="al-num">{{ a.rendimiento|euro }}</td></tr>
+                <tr><td>Reducción del {{ a.pct_reduccion|floatformat:0 }} %<span class="al-det">{{ p.get_reduccion_alquiler_pct_display }}</span></td><td class="al-num al-neg">−{{ a.reduccion|euro }}</td></tr>
+                <tr class="al-total"><td>Rendimiento que tributa</td><td class="al-num">{{ a.reducido|euro }}</td></tr>
+            </table>
+
+            <div class="al-titulares">
+                {% for t in a.titulares %}
+                <div class="al-titular">
+                    <div class="al-titular-cab">
+                        <strong>{{ t.nombre }}</strong>
+                        <span class="al-apagado">{% if a.titulares|length > 1 %}{{ t.pct }} % · {% endif %}tributa {{ t.rendimiento|euro:0 }}</span>
+                    </div>
+                    <div class="al-titular-cifra">{{ t.impuesto|euro }}</div>
+                    <div class="al-apagado">
+                        {% if t.sin_ingresos %}Sin fuentes de ingreso declaradas: se calcula como si no tuviera más renta, y probablemente sale por debajo.
+                        {% else %}Con {{ t.bruto_trabajo|euro:0 }} brutos de sus otras fuentes, el alquiler le sale al {{ t.tipo|floatformat:1 }} %.{% endif %}
+                        {% if t.en_neto %}Declaradas en neto: {{ t.en_neto|join:", " }} (se toman como bruto).{% endif %}
+                    </div>
+                </div>
+                {% empty %}
+                <p class="al-apagado">No hay titular: indica de quién es el piso al editarlo.</p>
+                {% endfor %}
+
+                {% if a.impuesto_total > 0 %}
+                <form method="post" action="{% url 'finanzas:alquiler_a_gasto' p.pk %}" class="al-gasto">
+                    {% csrf_token %}<input type="hidden" name="anio" value="{{ a.anio|unlocalize }}">
+                    <button type="submit" class="btn btn-primary">
+                        <svg class="icon"><use href="#i-plus"/></svg>
+                        {% if a.partida_irpf %}Actualizar el gasto anual a {{ a.impuesto_total|euro:0 }}{% else %}Añadir como gasto anual{% endif %}
+                    </button>
+                    <span class="al-apagado">
+                        {% if a.partida_irpf %}Ya existe «{{ a.partida_irpf.nombre }}» por {{ a.partida_irpf.importe|euro:0 }} en junio.
+                        {% else %}Un fijo anual de {{ a.impuesto_total|euro:0 }} en junio, imputado al piso{% if p.propietario %} y a {{ p.titular_nombre }}{% endif %}: su provisión entra en la reserva.{% endif %}
+                    </span>
+                </form>
+                {% endif %}
+                <div class="al-neto-final">
+                    <span>Neto del año tras el IRPF</span>
+                    <strong class="{% if a.neto_tras_impuesto < 0 %}al-neg{% else %}al-pos{% endif %}">{{ a.neto_tras_impuesto|euro:0 }}</strong>
+                    <span class="al-apagado">≈ {{ a.neto_tras_impuesto_mes|euro:0 }} al mes, con la hipoteca entera</span>
+                </div>
+            </div>
+        </div>
+
+        <ul class="al-avisos">
+            {% if a.falta_construccion %}<li>Sin el <strong>% de construcción</strong> no se cuenta la amortización (3 % al año de lo que es construcción): el impuesto sale más alto de lo que será. Lo dice el recibo del IBI.</li>{% endif %}
+            {% if a.excluidos_hipoteca and not a.intereses %}<li>Hay {{ a.excluidos_hipoteca|euro:0 }} de cuotas de hipoteca imputadas al piso que no se deducen enteras: indica los <strong>intereses del año</strong> para que cuenten.</li>{% endif %}
+            {% if a.sin_tramos %}<li>No hay tablas de IRPF cargadas para {{ a.anio|unlocalize }}: el impuesto sale a cero. Cárgalas desde el Panel Admin.</li>{% endif %}
+            <li>Es una estimación para planificar: no conoce las deducciones de tu comunidad, ni que intereses y reparaciones no pueden pasar de los ingresos (el exceso se arrastra cuatro años), ni otras rentas que no estén en tus fuentes de ingreso.</li>
+        </ul>
+    </section>
+</div>
+{% endwith %}
+
+<style>
+.al-anio { display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted); }
+.al-anio select { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:0.84rem; }
+.al-aviso { display:flex; gap:9px; align-items:flex-start; padding:10px 13px; border-radius:11px; margin-bottom:14px; font-size:0.8rem; line-height:1.45; border:1px dashed var(--border-strong); background:var(--surface); }
+.al-aviso .icon { width:16px; height:16px; flex:0 0 auto; margin-top:1px; color:var(--muted); }
+.al-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:14px; }
+.al-kpi { display:flex; flex-direction:column; gap:2px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--surface); }
+.al-kpi-lbl { font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.al-kpi-val { font-size:1.35rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.al-kpi-sub { font-size:0.72rem; color:var(--muted); }
+.al-pos { color:var(--success); }
+.al-neg { color:var(--danger); }
+.al-apagado { color:var(--muted); }
+
+.al-grafico, .al-irpf { padding:14px 16px; border-radius:14px; border:1px solid var(--border); background:var(--surface); margin-bottom:14px; position:relative; }
+.al-grafico-cab { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+.al-grafico-cab h3, .al-irpf h3 { margin:0; font-size:0.92rem; }
+.al-leyenda { display:flex; gap:14px; font-size:0.76rem; color:var(--muted); }
+.al-leyenda i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+.al-leyenda i.ing { background:var(--success); }
+.al-leyenda i.cos { background:var(--danger-2); }
+.al-leyenda i.net { height:2px; width:14px; vertical-align:3px; background:var(--text-color); }
+.al-lienzo { height:280px; margin-top:8px; }
+.al-lienzo svg { width:100%; height:100%; display:block; overflow:visible; }
+.al-tip { position:absolute; pointer-events:none; z-index:5; min-width:190px; max-width:280px; padding:9px 11px; border-radius:10px;
+    background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 6px 20px rgba(0,0,0,.12); font-size:0.76rem; color:var(--muted); }
+.al-tip-val { font-size:1rem; font-weight:700; color:var(--text-color); font-variant-numeric:tabular-nums; }
+.al-tip-fila { display:flex; justify-content:space-between; gap:10px; }
+.al-tip-fila b { color:var(--text-color); font-weight:600; font-variant-numeric:tabular-nums; }
+.al-tip-mov { font-size:0.7rem; margin-top:4px; border-top:1px solid var(--border); padding-top:4px; }
+.al-tabla-det { margin-top:6px; }
+.al-tabla-det > summary { cursor:pointer; font-size:0.76rem; color:var(--muted); }
+.al-tabla { width:100%; border-collapse:collapse; font-size:0.8rem; }
+.al-tabla th { text-align:left; font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; padding:6px 4px; border-bottom:1px solid var(--border); }
+.al-tabla td { padding:7px 4px; border-bottom:1px solid var(--border); vertical-align:top; }
+.al-num { text-align:right !important; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.al-total td { font-weight:700; }
+.al-det { display:block; font-size:0.7rem; color:var(--muted); margin-top:2px; }
+
+.al-irpf-cab { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:12px; }
+.al-irpf-cab > div:first-child { flex:1 1 380px; }
+.al-irpf-cab p { margin:4px 0 0; font-size:0.78rem; color:var(--muted); max-width:620px; line-height:1.5; }
+.al-irpf-total { display:flex; flex-direction:column; gap:2px; text-align:right; flex:0 0 auto; }
+.al-irpf-cifra { font-size:1.6rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.al-dos { display:grid; grid-template-columns:minmax(0, 1.2fr) minmax(0, 1fr); gap:16px; align-items:start; }
+@media (max-width:820px) { .al-dos { grid-template-columns:1fr; } .al-irpf-total { text-align:left; } }
+.al-titulares { display:flex; flex-direction:column; gap:10px; }
+.al-titular { padding:10px 12px; border-radius:10px; border:1px solid var(--border); font-size:0.76rem; display:flex; flex-direction:column; gap:3px; }
+.al-titular-cab { display:flex; justify-content:space-between; gap:8px; font-size:0.82rem; }
+.al-titular-cifra { font-size:1.15rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.al-gasto { display:flex; flex-direction:column; gap:6px; font-size:0.74rem; }
+.al-gasto .btn { align-self:flex-start; display:inline-flex; align-items:center; gap:6px; }
+.al-gasto .icon { width:14px; height:14px; }
+.al-neto-final { display:flex; flex-direction:column; gap:2px; padding-top:8px; border-top:1px dashed var(--border); font-size:0.78rem; }
+.al-neto-final strong { font-size:1.1rem; font-variant-numeric:tabular-nums; }
+.al-avisos { margin:14px 0 0; padding-left:18px; font-size:0.74rem; color:var(--muted); display:grid; gap:4px; line-height:1.45; }
+</style>
+
+<script>
+/* Alquiler y coste de cada mes (barras, una al lado de otra) y el neto (línea),
+   en la misma escala de euros. Al pasar por un mes, sus cifras y apuntes. */
+(function () {
+    var datos = JSON.parse(document.getElementById('al-datos').textContent).meses;
+    var lienzo = document.getElementById('al-lienzo');
+    var tip = document.getElementById('al-tip');
+    if (!lienzo || !datos.length) return;
+    var NS = 'http://www.w3.org/2000/svg';
+    function euro(v) { return Math.round(v).toLocaleString('es-ES') + ' €'; }
+    function el(n, at, padre) {
+        var e = document.createElementNS(NS, n);
+        Object.keys(at || {}).forEach(function (k) { e.setAttribute(k, at[k]); });
+        if (padre) padre.appendChild(e);
+        return e;
+    }
+    function paso(rango) {
+        var bruto = rango / 4, p = Math.pow(10, Math.floor(Math.log10(bruto || 1)));
+        var ps = [1, 2, 2.5, 5, 10];
+        for (var i = 0; i < ps.length; i++) if (ps[i] * p >= bruto) return ps[i] * p;
+        return 10 * p;
+    }
+    /* Barra con las puntas redondeadas (4px) del lado del dato y plana contra el eje. */
+    function barra(x, y0, y1, w) {
+        var arriba = y1 < y0, h = Math.abs(y1 - y0), r = Math.min(4, w / 2, h);
+        if (h < 0.5) return '';
+        if (arriba) return 'M' + x + ',' + y0 + 'V' + (y1 + r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 +
+            'H' + (x + w - r) + 'Q' + (x + w) + ',' + y1 + ' ' + (x + w) + ',' + (y1 + r) + 'V' + y0 + 'Z';
+        return 'M' + x + ',' + y0 + 'V' + (y1 - r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 +
+            'H' + (x + w - r) + 'Q' + (x + w) + ',' + y1 + ' ' + (x + w) + ',' + (y1 - r) + 'V' + y0 + 'Z';
+    }
+
+    function pintar() {
+        lienzo.innerHTML = '';
+        var W = lienzo.clientWidth, H = lienzo.clientHeight;
+        var m = {t: 12, r: 8, b: 24, l: 58};
+        var aw = W - m.l - m.r, ah = H - m.t - m.b;
+        var vals = [0];
+        datos.forEach(function (d) { if (!d.futuro) vals.push(d.ingreso, d.coste, d.neto); });
+        var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+        var s = paso(max - min || 100);
+        min = Math.floor(min / s) * s; max = Math.ceil(max / s) * s;
+        if (max === min) max = min + s;
+        function y(v) { return m.t + (max - v) / (max - min) * ah; }
+        var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + H}, lienzo);
+        for (var v = min; v <= max + s / 2; v += s) {
+            var l = el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), 'stroke-width': v === 0 ? 1.5 : 1}, svg);
+            l.style.stroke = v === 0 ? 'var(--border-strong)' : 'var(--border)';
+            var t = el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11}, svg);
+            t.style.fill = 'var(--muted)'; t.textContent = euro(v);
+        }
+        var col = aw / 12, bw = Math.max(Math.min(col * 0.28, 22), 3), y0 = y(0);
+        var puntos = [];
+        datos.forEach(function (d, i) {
+            var cx = m.l + col * i + col / 2;
+            var et = el('text', {x: cx, y: H - 6, 'text-anchor': 'middle', 'font-size': 11}, svg);
+            et.style.fill = 'var(--muted)'; et.textContent = d.etiqueta;
+            if (d.futuro) return;
+            /* 2px de hueco entre las dos barras del mes. */
+            var bi = el('path', {d: barra(cx - bw - 1, y0, y(d.ingreso), bw)}, svg); bi.style.fill = 'var(--success)';
+            var bc = el('path', {d: barra(cx + 1, y0, y(d.coste), bw)}, svg); bc.style.fill = 'var(--danger-2)';
+            puntos.push([cx, y(d.neto), d.neto]);
+        });
+        if (puntos.length) {
+            var ln = el('path', {d: puntos.map(function (p, i) { return (i ? 'L' : 'M') + p[0] + ',' + p[1]; }).join(''),
+                fill: 'none', 'stroke-width': 2, 'stroke-linejoin': 'round'}, svg);
+            ln.style.stroke = 'var(--text-color)';
+            puntos.forEach(function (p) {
+                var c = el('circle', {cx: p[0], cy: p[1], r: 4, 'stroke-width': 2}, svg);
+                c.style.fill = 'var(--text-color)'; c.style.stroke = 'var(--surface)';
+            });
+        }
+        /* Hit target: la columna entera del mes. */
+        datos.forEach(function (d, i) {
+            if (d.futuro) return;
+            var x0 = m.l + col * i;
+            var r = el('rect', {x: x0, y: m.t, width: col, height: ah, fill: 'transparent', tabindex: 0}, svg);
+            r.addEventListener('pointerenter', function () { mostrar(d, x0 + col); r.style.fill = 'color-mix(in srgb, var(--muted) 8%, transparent)'; });
+            r.addEventListener('pointerleave', function () { tip.hidden = true; r.style.fill = 'transparent'; });
+            r.addEventListener('focus', function () { mostrar(d, x0 + col); });
+            r.addEventListener('blur', function () { tip.hidden = true; });
+        });
+    }
+    function mostrar(d, xDer) {
+        tip.textContent = '';
+        function div(cls, txt) { var e = document.createElement('div'); if (cls) e.className = cls; e.textContent = txt; tip.appendChild(e); return e; }
+        function fila(a, b) {
+            var f = document.createElement('div'); f.className = 'al-tip-fila';
+            var x = document.createElement('span'); x.textContent = a;
+            var z = document.createElement('b'); z.textContent = b;
+            f.appendChild(x); f.appendChild(z); tip.appendChild(f);
+        }
+        div('', d.nombre);
+        div('al-tip-val', (d.neto > 0 ? '+' : '') + euro(d.neto) + ' neto');
+        fila('Alquiler', euro(d.ingreso));
+        fila('Coste', euro(d.coste));
+        if (d.movimientos.length) {
+            var lista = div('al-tip-mov', '');
+            d.movimientos.slice(0, 6).forEach(function (mv) {
+                var e = document.createElement('div');
+                e.textContent = mv.fecha + ' · ' + mv.concepto + ' · ' + (mv.tipo === 'ingreso' ? '+' : '−') + euro(mv.importe);
+                lista.appendChild(e);
+            });
+        }
+        tip.hidden = false;
+        var caja = lienzo.getBoundingClientRect(), padre = tip.parentElement.getBoundingClientRect();
+        var izq = caja.left - padre.left + xDer + 6;
+        if (izq + tip.offsetWidth > padre.width - 8) izq = izq - tip.offsetWidth - caja.width / 12 - 12;
+        tip.style.left = Math.max(8, izq) + 'px';
+        tip.style.top = (caja.top - padre.top + 8) + 'px';
+    }
+    pintar();
+    var espera;
+    window.addEventListener('resize', function () { clearTimeout(espera); espera = setTimeout(pintar, 120); });
+})();
+</script>
+{% endblock %}

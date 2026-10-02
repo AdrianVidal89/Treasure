@@ -44,7 +44,7 @@ def cuotas_de(partida, anio, hoy=None):
     neumáticos cada tres— solo tienen cuota el año que tocan, y es el importe
     entero: es el día que se vacía la bolsa.
     """
-    if partida.es_plurianual:
+    if partida.es_plurianual or partida.es_puntual:
         return [(mes, partida.importe) for mes in partida.vencimientos_en(anio, hoy=hoy)]
     plazos = partida.plazos_de_pago
     if plazos:
@@ -132,7 +132,7 @@ def guardar_calendario(partida, meses, importes, anio_pago=None, periodicidad=No
     if error:
         return error
     campos = ['mes_pago', 'plazos', 'anio_pago', 'periodicidad', 'meses_personalizados', 'importe']
-    if partida.es_plurianual:
+    if partida.es_plurianual or partida.es_puntual:
         try:
             anio_pago = int(anio_pago) if anio_pago not in (None, '') else None
         except (TypeError, ValueError):
@@ -294,8 +294,43 @@ def partidas_anuales(hogar):
     return [
         p for p in PartidaGasto.objects.filter(hogar=hogar, activo=True)
         .select_related('categoria').order_by('mes_pago', 'nombre')
-        if p.tipo_bloque == 'anual'
+        if p.tipo_bloque == 'anual' or p.es_puntual
     ]
+
+
+def tiene_fecha(partida):
+    """¿Se sabe cuándo toca pagarla? Un anual necesita su mes (o sus plazos);
+    uno de varios años, el mes Y el año, porque «en abril» no dice de cuál."""
+    if partida.es_plurianual or partida.es_puntual:
+        return bool(partida.mes_pago and partida.anio_pago)
+    return bool(partida.mes_pago or partida.plazos_de_pago)
+
+
+def chequeo_fechas(partidas):
+    """El estado de las fechas de pago de todas las partidas anuales, para el
+    aviso de arriba de Fijos anuales y de Reserva: sin fecha, una partida no
+    sale en ningún mes de lo previsto ni de la previsión, pero su provisión sí
+    se suma, y las cuentas salen mejor de lo que son."""
+    sin = [p for p in partidas if not tiene_fecha(p)]
+    return {
+        'total': len(partidas),
+        'sin_fecha': sin,
+        'todas': bool(partidas) and not sin,
+    }
+
+
+# Cuánto se puede mirar hacia delante. Pasados quince años un recibo declarado
+# hoy ya no dice nada, y el tope evita que un dedazo pida medio siglo.
+MAX_HORIZONTE = 15
+
+
+def leer_horizonte(valor, defecto=1):
+    """Años vista pedidos en la URL, dentro de 1..MAX_HORIZONTE."""
+    try:
+        anios = int(valor)
+    except (TypeError, ValueError):
+        return defecto
+    return max(1, min(anios, MAX_HORIZONTE))
 
 
 def asignar_pagos(hogar, anio, partidas):
@@ -331,7 +366,12 @@ def analizar_anuales(hogar, anio, hoy=None):
     previsto_mes = defaultdict(list)
     pagado_mes = defaultdict(list)
     for p in partidas:
-        plurianual = p.es_plurianual
+        puntual = p.es_puntual
+        if puntual and p.anio_pago and anio > p.anio_pago:
+            continue  # ya pasó: es historia de su año, no de este
+        # Un puntual se lleva como uno de varios años: solo toca el año de su
+        # pago, y los anteriores se va apartando para él.
+        plurianual = p.es_plurianual or puntual
         cuotas = [
             {'mes': mes, 'nombre_mes': MESES[mes], 'importe': importe}
             for mes, importe in cuotas_de(p, anio, hoy=hoy)
@@ -359,6 +399,9 @@ def analizar_anuales(hogar, anio, hoy=None):
             'periodicidad': p.get_periodicidad_display(),
             'meses_periodo': p.meses_periodo,
             'plurianual': plurianual,
+            'puntual': puntual,
+            'aporte_mensual': p.importe_mensual,
+            'ahorro_desde': p.ahorro_desde,
             'cuotas': cuotas,
             'fraccionado': len(p.plazos_de_pago) > 1,
             # Solo un anual se puede partir en plazos: un semestral ya son
@@ -396,7 +439,7 @@ def analizar_anuales(hogar, anio, hoy=None):
             fila['pct'] = 100 if fila['dado_por_pagado'] or plurianual else fila['pct']
         # Pagado un año que no tocaba: se ofrece contar desde ahí los siguientes.
         fila['recolocar'] = (
-            pagos[-1] if plurianual and pagos and not cuotas else None
+            pagos[-1] if plurianual and not puntual and pagos and not cuotas else None
         )
         if fila['estado'] == 'no_toca':
             # Años sin nada que pagar: se está llenando la bolsa, no falta nada.
@@ -426,7 +469,8 @@ def analizar_anuales(hogar, anio, hoy=None):
 
     grafico = [
         {
-            'mes': n, 'nombre': MESES[n],
+            'mes': n, 'anio': anio, 'nombre': f'{MESES[n]} {anio}',
+            'es_hoy': anio == hoy.year and n == hoy.month,
             'previsto': previsto_mes.get(n, []),
             'pagado': pagado_mes.get(n, []),
             'total_previsto': sum(x['importe'] for x in previsto_mes.get(n, [])),
@@ -461,6 +505,8 @@ def analizar_anuales(hogar, anio, hoy=None):
         'num_atrasadas': sum(1 for f in filas if f['estado'] == 'atrasado'),
         'num_sin_mes': sum(1 for f in filas if f['sin_mes'] and not f['plurianual']),
         'num_sin_fecha': sum(1 for f in ahorro if not f['anclado']),
+        'categorias_puntual': _categorias_para_puntual(hogar),
+        'hoy': hoy,
         'previsto': previsto,
         'pagado': pagado_partidas,
         'falta': falta,
@@ -470,6 +516,57 @@ def analizar_anuales(hogar, anio, hoy=None):
         'grafico': grafico,
         'meses': MESES_CHOICES,
         'periodicidades': PERIODICIDADES_ANUALES,
+        'fechas': chequeo_fechas(partidas),
         'ahorro': ahorro,
         'ahorro_anual': sum((f['provision_anual'] for f in ahorro), Decimal('0')),
     }
+
+
+def grafico_varios_anios(hogar, anio, anios, hoy=None, primero=None):
+    """La gráfica de Fijos anuales para `anios` años desde `anio`: la misma de
+    un año, mes a mes, puesta una detrás de otra. `primero` es el análisis de
+    `anio` si ya está hecho, para no repetirlo."""
+    hoy = hoy or date.today()
+    salida = list((primero or analizar_anuales(hogar, anio, hoy=hoy))['grafico'])
+    for y in range(anio + 1, anio + anios):
+        salida.extend(analizar_anuales(hogar, y, hoy=hoy)['grafico'])
+    return salida
+
+
+def _categorias_para_puntual(hogar):
+    from finanzas.models import CategoriaGasto
+    return list(CategoriaGasto.objects.filter(hogar=hogar, activo=True).order_by('tipo', 'nombre'))
+
+
+def crear_puntual(hogar, nombre, importe, mes_pago, anio_pago, desde=None, categoria=None, hoy=None):
+    """Da de alta un gasto puntual planificado: la boda de abril, el calentador.
+
+    Se aparta para él desde `desde` (por defecto, este mes) hasta el mes del
+    pago, ambos incluidos. Devuelve `(partida, error)`.
+    """
+    hoy = hoy or date.today()
+    nombre = (nombre or '').strip()[:150]
+    if not nombre:
+        return None, 'Ponle un nombre.'
+    try:
+        valor = _leer_importe(importe)
+    except ArithmeticError:
+        return None, f'«{importe}» no es un importe.'
+    if valor is None or valor <= 0:
+        return None, 'Lo que cuesta tiene que ser más que cero.'
+    try:
+        mes_pago, anio_pago = int(mes_pago), int(anio_pago)
+    except (TypeError, ValueError):
+        return None, 'Di en qué mes y año hay que pagarlo.'
+    if not 1 <= mes_pago <= 12 or not 1990 <= anio_pago <= 2200:
+        return None, 'Ese mes de pago no existe.'
+    desde = desde or date(hoy.year, hoy.month, 1)
+    desde = date(desde.year, desde.month, 1)
+    if (anio_pago, mes_pago) < (desde.year, desde.month):
+        return None, 'El pago no puede ser antes de empezar a apartar.'
+    partida = PartidaGasto.objects.create(
+        hogar=hogar, nombre=nombre, importe=valor.quantize(Decimal('0.01')),
+        periodicidad='puntual', mes_pago=mes_pago, anio_pago=anio_pago, ahorro_desde=desde,
+        categoria=categoria, bloque='' if categoria else 'anual',
+    )
+    return partida, None

@@ -19,15 +19,9 @@
 
     {% extractos_nav 'reserva' %}
 
-    <nav class="rs-horizonte" aria-label="Cuánto mirar hacia delante">
-        {% for h in r.horizontes %}
-        <a href="?anios={{ h }}" class="rs-horizonte-op {% if h == r.anios %}activa{% endif %}"
-           {% if h == r.anios %}aria-current="true"{% endif %}>
-            {% if h == 1 %}Este año{% else %}{{ h }} años vista{% endif %}
-        </a>
-        {% endfor %}
-        <span class="rs-horizonte-hasta">hasta diciembre de {{ r.anio_fin|unlocalize }}</span>
-    </nav>
+    {% include 'extractos/_horizonte.html' with anios=r.anios hasta=r.anio_fin %}
+
+    {% include 'extractos/_fechas_aviso.html' with fechas=r.fechas en_anuales=False %}
 
     <!-- ══════════ EL VEREDICTO ══════════ -->
     {% if not r.saldo %}
@@ -54,7 +48,7 @@
             <strong>Aporta {{ r.falta_hoy|euro }} hoy a la reserva</strong>
             <span>
                 Sin eso se queda en <strong>{{ r.peor.saldo|euro:0 }}</strong> en {{ r.peor.nombre|lower }}.
-                {% if r.extra_mensual %}O sube el aporte mensual en <strong>{{ r.extra_mensual|euro }}</strong> (de {{ r.aporte|euro }} a {{ r.aporte|add:r.extra_mensual|euro }}).{% endif %}
+                {% if r.extra_mensual %}O sube el aporte mensual en <strong>{{ r.extra_mensual|euro }}</strong> (de {{ r.aporte_hoy|euro }} a {{ r.aporte_hoy|add:r.extra_mensual|euro }}).{% endif %}
             </span>
             {% endif %}
         </div>
@@ -69,8 +63,8 @@
         </div>
         <div class="rs-kpi">
             <span class="rs-kpi-lbl">Aportas cada mes</span>
-            <span class="rs-kpi-val">{{ r.aporte|euro:0 }}</span>
-            <span class="rs-kpi-sub">la provisión de {{ r.aportes_partidas|length }} partida{{ r.aportes_partidas|length|pluralize:"s" }}</span>
+            <span class="rs-kpi-val">{{ r.aporte_hoy|euro:0 }}</span>
+            <span class="rs-kpi-sub">la provisión de {{ r.aportes_partidas|length }} partida{{ r.aportes_partidas|length|pluralize:"s" }}{% if r.aporte_hoy != r.aporte %}, {{ r.aporte|euro:0 }} fijos y el resto para gastos puntuales{% endif %}</span>
         </div>
         <div class="rs-kpi">
             <span class="rs-kpi-lbl">Recibos que tocan</span>
@@ -84,18 +78,11 @@
         </div>
     </section>
 
-    {% if r.hay_atrasados or r.sin_fecha %}
+    {% if r.hay_atrasados %}
     <ul class="rs-avisos">
-        {% if r.hay_atrasados %}
         <li><svg class="icon"><use href="#i-alert"/></svg>
             <span>Hay recibos que tocaban antes y no constan pagados: salen ya, en el primer mes. Si los pagó otra persona
             o están pagados, márcalos en <a href="{% url 'extractos:anuales' %}">Fijos anuales</a> y dejarán de contar.</span></li>
-        {% endif %}
-        {% if r.sin_fecha %}
-        <li><svg class="icon"><use href="#i-info"/></svg>
-            <span>Sin fecha, no entran en ningún mes: {% for p in r.sin_fecha %}<strong>{{ p.nombre }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}.
-            Su aporte sí está sumado, así que la previsión sale mejor de lo que es. Ponles cuándo tocan en <a href="{% url 'extractos:anuales' %}">Fijos anuales</a>.</span></li>
-        {% endif %}
     </ul>
     {% endif %}
 
@@ -167,7 +154,7 @@
 
             <!-- ══════════ DE DÓNDE SALE EL APORTE ══════════ -->
             <details class="rs-caja rs-aportes">
-                <summary>De dónde salen los {{ r.aporte|euro }} al mes</summary>
+                <summary>De dónde salen los {{ r.aporte_hoy|euro }} al mes</summary>
                 <p class="rs-apagado">La provisión de cada partida de fijos anuales: lo que cuesta entre los meses que dura. Se cambia en Gastos o en <a href="{% url 'extractos:anuales' %}">Fijos anuales</a>.</p>
                 <table class="rs-tabla">
                     {% for a in r.aportes_partidas %}
@@ -180,15 +167,6 @@
 </div>
 
 <style>
-.rs-horizonte { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:4px 0 16px; }
-.rs-horizonte-op {
-    padding:6px 12px; border-radius:999px; border:1px solid var(--border); font-size:0.8rem;
-    color:var(--text-color); text-decoration:none; background:var(--surface);
-}
-.rs-horizonte-op:hover { border-color:var(--border-strong); }
-.rs-horizonte-op.activa { background:var(--primary-color); border-color:var(--primary-color); color:var(--surface); font-weight:600; }
-.rs-horizonte-hasta { font-size:0.75rem; color:var(--muted); margin-left:4px; }
-
 .rs-veredicto {
     display:flex; gap:14px; align-items:flex-start; padding:16px 18px; border-radius:14px; margin-bottom:14px;
     border:1px solid var(--border); background:var(--surface);
@@ -320,7 +298,8 @@
         }
         var cada = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(aw / 56))));
         puntos.forEach(function (p, i) {
-            if (i % cada && i !== n - 1) return;
+            /* El último mes se rotula solo si no pisa al anterior rotulado. */
+            if (i % cada && !(i === n - 1 && i % cada >= cada * 0.7)) return;
             var t = el('text', {x: x(i), y: H - 6, 'text-anchor': 'middle', 'font-size': 11}, svg);
             t.style.fill = 'var(--muted)';
             t.textContent = p.etiqueta;

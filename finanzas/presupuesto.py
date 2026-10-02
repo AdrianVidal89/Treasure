@@ -25,7 +25,12 @@ def _partidas(hogar, solo_mensuales=False):
     """
     from .models import PartidaGasto
 
-    qs = PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria')
+    # Un gasto puntual (la boda de abril) no es presupuesto de gasto: se aparta
+    # en la reserva de los anuales y nada más. Ver `PartidaGasto.es_puntual`.
+    qs = (
+        PartidaGasto.objects.filter(hogar=hogar, activo=True)
+        .exclude(periodicidad='puntual').select_related('categoria')
+    )
     if solo_mensuales:
         qs = qs.filter(periodicidad='mensual')
     return qs

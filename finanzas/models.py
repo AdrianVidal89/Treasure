@@ -983,6 +983,11 @@ PERIODICIDAD_GASTO_CHOICES = [
     # viene en años redondos: unos neumáticos duran 36 meses en un coche y 50
     # en otro que hace menos kilómetros. Con esta opción se escribe el número.
     ('personalizada', 'Cada N meses…'),
+    # Un gasto que pasa UNA vez y se sabe con antelación —la boda de abril, el
+    # calentador que hay que cambiar—. No es presupuesto de gasto: es dinero
+    # que se aparta desde ahora hasta el mes del pago, en la reserva de los
+    # fijos anuales. Ver `PartidaGasto.es_puntual`.
+    ('puntual', 'Puntual (una sola vez)'),
 ]
 
 # Tope de la periodicidad personalizada: cincuenta años. No es una limitación
@@ -1129,6 +1134,11 @@ class PartidaGasto(ImputableAActivo):
     # nada más que pagar.
     anios_dados_por_pagados = models.JSONField(default=list, blank=True,
         help_text="Años en que esta partida se dio por pagada aunque no cuadre el importe.")
+    # Solo los puntuales: el mes desde el que se empieza a apartar. La cuota
+    # sale de repartir el importe entre los meses que van de aquí al del pago,
+    # ambos incluidos; se fija al crearlo para que no cambie cada mes que pasa.
+    ahorro_desde = models.DateField(null=True, blank=True,
+        help_text="Gastos puntuales: mes desde el que se aparta dinero para él.")
     activo = models.BooleanField(default=True)
     fecha_creacion = models.DateTimeField(auto_now_add=True)
     fondo_asignado = models.ForeignKey(
@@ -1172,8 +1182,31 @@ class PartidaGasto(ImputableAActivo):
         return salida
 
     @property
+    def es_puntual(self):
+        """Un gasto de una sola vez, planificado con antelación.
+
+        No entra en el presupuesto de gastos (no es algo que se gaste cada
+        año), pero sí en lo que se aparta para los fijos anuales: de
+        `ahorro_desde` al mes del pago, `importe_mensual` cada mes. Su pago,
+        emparejado como «pago anual», se saca del mes como cualquier anual.
+        """
+        return self.periodicidad == 'puntual'
+
+    def ahorra_en(self, anio, mes):
+        """¿Se aparta dinero para este puntual en ese mes?"""
+        if not self.es_puntual or not (self.mes_pago and self.anio_pago):
+            return False
+        inicio = self._inicio_ahorro()
+        t = anio * 12 + mes - 1
+        return inicio <= t <= self.anio_pago * 12 + self.mes_pago - 1
+
+    def _inicio_ahorro(self):
+        desde = self.ahorro_desde or (self.fecha_creacion.date() if self.fecha_creacion else date.today())
+        return desde.year * 12 + desde.month - 1
+
+    @property
     def es_plurianual(self):
-        return self.meses_periodo > 12
+        return not self.es_puntual and self.meses_periodo > 12
 
     def _ancla(self):
         """El mes absoluto (año·12 + mes-1) de un pago conocido, o None."""
@@ -1197,6 +1230,8 @@ class PartidaGasto(ImputableAActivo):
 
     def vencimientos_en(self, anio, hoy=None):
         """Meses de `anio` en los que toca pagar un gasto de varios años."""
+        if self.es_puntual:
+            return [self.mes_pago] if self.mes_pago and self.anio_pago == anio else []
         ancla = self._ancla()
         if ancla is None:
             return []
@@ -1216,6 +1251,8 @@ class PartidaGasto(ImputableAActivo):
         """`(año, mes)` del siguiente pago de un gasto de varios años, desde el
         mes de `hoy` incluido; None si no se sabe cuándo toca."""
         ancla = self._ancla()
+        if self.es_puntual:
+            return (self.anio_pago, self.mes_pago) if self.mes_pago and self.anio_pago else None
         if ancla is None:
             return None
         ahora = hoy.year * 12 + hoy.month - 1
@@ -1226,7 +1263,7 @@ class PartidaGasto(ImputableAActivo):
     @property
     def meses_pago_display(self):
         """«Junio»; fraccionado, «Junio y noviembre»; de varios años, «Octubre de 2028»."""
-        if self.es_plurianual and self.mes_pago:
+        if (self.es_plurianual or self.es_puntual) and self.mes_pago:
             proximo = self.proximo_pago(date.today())
             if proximo:
                 return f"{dict(MESES_CHOICES)[proximo[1]]} de {proximo[0]}"
@@ -1261,6 +1298,11 @@ class PartidaGasto(ImputableAActivo):
         nadie tenga que acordarse de que «trienal» son treinta y seis."""
         if self.periodicidad == 'personalizada':
             return max(int(self.meses_personalizados or 1), 1)
+        if self.es_puntual:
+            # Los meses que se aparta: del primero al del pago, ambos incluidos.
+            if not (self.mes_pago and self.anio_pago):
+                return 1
+            return max(self.anio_pago * 12 + self.mes_pago - 1 - self._inicio_ahorro() + 1, 1)
         return MESES_POR_PERIODICIDAD.get(self.periodicidad, 1)
 
     def get_periodicidad_display(self):
@@ -1271,6 +1313,8 @@ class PartidaGasto(ImputableAActivo):
         llaman, en vez de que cada una tenga que acordarse del caso raro."""
         if self.periodicidad == 'personalizada':
             return f'Cada {self.meses_periodo} meses'
+        if self.es_puntual:
+            return 'Puntual'
         return dict(PERIODICIDAD_GASTO_CHOICES).get(self.periodicidad, self.periodicidad)
 
     @property
@@ -1729,6 +1773,51 @@ class Propiedad(models.Model):
         help_text='Puede influir en exenciones fiscales al vender'
     )
 
+    # ── Alquiler ──────────────────────────────────────────────────────────
+    # Un piso alquilado no solo cuesta: deja. Y lo que deja tributa en el IRPF
+    # de quien es su dueño, no del hogar: si el piso es de Irene, el alquiler
+    # es renta de Irene y la cuota sale de su declaración.
+    alquilada = models.BooleanField(default=False, help_text='Está alquilada y da un ingreso.')
+    propietario = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='propiedades_propias',
+        help_text='Titular a efectos del IRPF. Vacío: a partes iguales entre los miembros del hogar.',
+    )
+    # Reducción del rendimiento neto positivo cuando se alquila como vivienda
+    # habitual del inquilino (art. 23.2 LIRPF). Desde la Ley 12/2023, el 50 %
+    # general, 60/70/90 % en casos concretos; los contratos de antes del 26 de
+    # mayo de 2023 conservan el 60 %. Un local, un garaje o un alquiler de
+    # temporada no tienen reducción: 0.
+    REDUCCION_CHOICES = [
+        (0, 'Sin reducción (local, garaje, temporada, turístico)'),
+        (50, '50 % · vivienda habitual del inquilino (general)'),
+        (60, '60 % · contrato anterior a mayo de 2023 o vivienda rehabilitada'),
+        (70, '70 % · primer alquiler a joven de 18-35 años en zona tensionada'),
+        (90, '90 % · bajada de renta de al menos un 5 % en zona tensionada'),
+    ]
+    reduccion_alquiler_pct = models.PositiveSmallIntegerField(
+        default=50, choices=REDUCCION_CHOICES,
+        help_text='Reducción del rendimiento neto del alquiler en el IRPF.',
+    )
+    # Para la amortización (3 % al año de lo que es construcción, no suelo):
+    # el recibo del IBI separa el valor catastral del suelo y el de la
+    # construcción. Sin el dato no se amortiza y el impuesto sale por arriba.
+    pct_construccion = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='% del valor catastral que es construcción (lo dice el recibo del IBI).',
+    )
+    # La cuota de la hipoteca es capital + intereses, y solo los intereses se
+    # deducen. Los extractos no los separan: se dicen aquí, al año.
+    intereses_hipoteca_anuales = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Intereses de la hipoteca pagados en el año (los da el banco).',
+    )
+    # El gasto anual creado desde la ficha con el IRPF del alquiler: para
+    # actualizarlo en vez de crear otro, y para que su pago no se cuente como
+    # gasto deducible del propio alquiler.
+    partida_irpf = models.ForeignKey(
+        'PartidaGasto', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
     color = models.CharField(max_length=7, default='#e67e22')
     activo = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
@@ -1738,6 +1827,12 @@ class Propiedad(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.get_tipo_display()})"
+
+    @property
+    def titular_nombre(self):
+        if not self.propietario_id:
+            return 'A partes iguales'
+        return self.propietario.first_name or self.propietario.username
 
     @property
     def clave_activo(self):

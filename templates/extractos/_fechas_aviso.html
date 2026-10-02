@@ -1,0 +1,33 @@
+{% comment %}
+¿Tienen todas las partidas anuales cuándo se pagan? Arriba de Fijos anuales y
+de Reserva. Espera `fechas` (ver anuales.chequeo_fechas) y `en_anuales`: allí
+cada nombre salta a su fila; desde Reserva, a la fila en Fijos anuales.
+{% endcomment %}
+{% if fechas.total %}
+{% if fechas.todas %}
+<div class="fa-aviso ok" role="status">
+    <svg class="icon"><use href="#i-check"/></svg>
+    <span><strong>Todas las partidas anuales tienen fecha de pago</strong> ({{ fechas.total }}): salen en su mes en lo previsto y en la reserva.</span>
+</div>
+{% else %}
+<div class="fa-aviso mal" role="status">
+    <svg class="icon"><use href="#i-alert"/></svg>
+    <span>
+        <strong>{{ fechas.sin_fecha|length }} de {{ fechas.total }} partida{{ fechas.total|pluralize:"s" }} sin fecha de pago:</strong>
+        {% for p in fechas.sin_fecha %}<a href="{% if not en_anuales %}{% url 'extractos:anuales' %}{% endif %}#partida-{{ p.id }}">{{ p.nombre }}</a>{% if p.es_plurianual %} <span class="fa-apagado">(falta el año)</span>{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}.
+        No salen en ningún mes, pero su provisión sí se suma, así que las cuentas salen mejor de lo que son.
+        Pónsela con «poner mes de pago» o «poner cuándo toca» en su fila.
+    </span>
+</div>
+{% endif %}
+<style>
+.fa-aviso { display:flex; gap:9px; align-items:flex-start; padding:10px 13px; border-radius:11px; margin-bottom:14px; font-size:0.8rem; line-height:1.45; border:1px solid var(--border); background:var(--surface); }
+.fa-aviso .icon { width:16px; height:16px; flex:0 0 auto; margin-top:1px; }
+.fa-aviso.ok { border-color:color-mix(in srgb, var(--success) 40%, var(--border)); }
+.fa-aviso.ok .icon { color:var(--success); }
+.fa-aviso.mal { border-color:color-mix(in srgb, var(--warning, #b7791f) 55%, var(--border)); background:color-mix(in srgb, var(--warning, #b7791f) 7%, var(--surface)); }
+.fa-aviso.mal .icon { color:var(--warning, #b7791f); }
+.fa-aviso a { color:var(--text-color); font-weight:600; }
+.fa-apagado { color:var(--muted); }
+</style>
+{% endif %}
