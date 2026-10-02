@@ -105,6 +105,50 @@
                 <small style="margin-top: 6px;">Puede aplicar exenciones fiscales en la plusvalía</small>
             </div>
 
+            <div class="section-title">Alquiler</div>
+            <div class="fg">
+                <div class="checkbox-row">
+                    <input type="checkbox" name="alquilada" id="alquilada" {% if propiedad.alquilada %}checked{% endif %}>
+                    <label for="alquilada">Está alquilada</label>
+                </div>
+                <small style="margin-top: 6px;">Su ficha enseñará el alquiler cobrado frente a lo que cuesta, mes a mes, y el IRPF que supone.</small>
+            </div>
+            <div id="campos-alquiler" {% if not propiedad.alquilada %}hidden{% endif %}>
+                <div class="fg-row">
+                    <div class="fg">
+                        <label>¿De quién es? (titular en Hacienda)</label>
+                        <select name="propietario">
+                            <option value="">A partes iguales</option>
+                            {% for u in miembros %}<option value="{{ u.pk }}" {% if propiedad.propietario_id == u.pk %}selected{% endif %}>{{ u.first_name|default:u.username }}</option>{% endfor %}
+                        </select>
+                        <small>Quien cobra el alquiler y lo declara: tributa a su tipo, sumado a su nómina.</small>
+                    </div>
+                    <div class="fg">
+                        <label>Reducción en el IRPF</label>
+                        <select name="reduccion_alquiler_pct">
+                            {% for v, t in reducciones %}<option value="{{ v }}" {% if propiedad.reduccion_alquiler_pct == v or not propiedad and v == 50 %}selected{% endif %}>{{ t }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="fg-row">
+                    <div class="fg">
+                        <label>Construcción (% del valor catastral)</label>
+                        <input type="text" inputmode="decimal" name="pct_construccion" value="{{ propiedad.pct_construccion|unlocalize|default:'' }}" placeholder="Ej: 62">
+                        <small>Lo dice el recibo del IBI (valor de la construcción ÷ total). Sin él no se cuenta la amortización (3 %/año).</small>
+                    </div>
+                    <div class="fg">
+                        <label>Intereses de la hipoteca al año (€)</label>
+                        <input type="text" inputmode="decimal" name="intereses_hipoteca_anuales" value="{{ propiedad.intereses_hipoteca_anuales|unlocalize|default:'' }}" placeholder="Ej: 1800">
+                        <small>Solo los intereses se deducen, no la cuota entera. Te los da el banco.</small>
+                    </div>
+                </div>
+            </div>
+            <script>
+            document.getElementById('alquilada').addEventListener('change', function () {
+                document.getElementById('campos-alquiler').hidden = !this.checked;
+            });
+            </script>
+
             <div class="btn-row">
                 <a href="{% url 'finanzas:listar_propiedades' %}" class="btn btn-secondary">Cancelar</a>
                 <button type="submit" class="btn btn-primary">Guardar</button>

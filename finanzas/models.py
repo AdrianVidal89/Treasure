@@ -1729,6 +1729,51 @@ class Propiedad(models.Model):
         help_text='Puede influir en exenciones fiscales al vender'
     )
 
+    # ── Alquiler ──────────────────────────────────────────────────────────
+    # Un piso alquilado no solo cuesta: deja. Y lo que deja tributa en el IRPF
+    # de quien es su dueño, no del hogar: si el piso es de Irene, el alquiler
+    # es renta de Irene y la cuota sale de su declaración.
+    alquilada = models.BooleanField(default=False, help_text='Está alquilada y da un ingreso.')
+    propietario = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name='propiedades_propias',
+        help_text='Titular a efectos del IRPF. Vacío: a partes iguales entre los miembros del hogar.',
+    )
+    # Reducción del rendimiento neto positivo cuando se alquila como vivienda
+    # habitual del inquilino (art. 23.2 LIRPF). Desde la Ley 12/2023, el 50 %
+    # general, 60/70/90 % en casos concretos; los contratos de antes del 26 de
+    # mayo de 2023 conservan el 60 %. Un local, un garaje o un alquiler de
+    # temporada no tienen reducción: 0.
+    REDUCCION_CHOICES = [
+        (0, 'Sin reducción (local, garaje, temporada, turístico)'),
+        (50, '50 % · vivienda habitual del inquilino (general)'),
+        (60, '60 % · contrato anterior a mayo de 2023 o vivienda rehabilitada'),
+        (70, '70 % · primer alquiler a joven de 18-35 años en zona tensionada'),
+        (90, '90 % · bajada de renta de al menos un 5 % en zona tensionada'),
+    ]
+    reduccion_alquiler_pct = models.PositiveSmallIntegerField(
+        default=50, choices=REDUCCION_CHOICES,
+        help_text='Reducción del rendimiento neto del alquiler en el IRPF.',
+    )
+    # Para la amortización (3 % al año de lo que es construcción, no suelo):
+    # el recibo del IBI separa el valor catastral del suelo y el de la
+    # construcción. Sin el dato no se amortiza y el impuesto sale por arriba.
+    pct_construccion = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='% del valor catastral que es construcción (lo dice el recibo del IBI).',
+    )
+    # La cuota de la hipoteca es capital + intereses, y solo los intereses se
+    # deducen. Los extractos no los separan: se dicen aquí, al año.
+    intereses_hipoteca_anuales = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Intereses de la hipoteca pagados en el año (los da el banco).',
+    )
+    # El gasto anual creado desde la ficha con el IRPF del alquiler: para
+    # actualizarlo en vez de crear otro, y para que su pago no se cuente como
+    # gasto deducible del propio alquiler.
+    partida_irpf = models.ForeignKey(
+        'PartidaGasto', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+
     color = models.CharField(max_length=7, default='#e67e22')
     activo = models.BooleanField(default=True)
     creado_en = models.DateTimeField(auto_now_add=True)
@@ -1738,6 +1783,12 @@ class Propiedad(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.get_tipo_display()})"
+
+    @property
+    def titular_nombre(self):
+        if not self.propietario_id:
+            return 'A partes iguales'
+        return self.propietario.first_name or self.propietario.username
 
     @property
     def clave_activo(self):

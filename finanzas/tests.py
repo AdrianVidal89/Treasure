@@ -4509,3 +4509,133 @@ class SaldoSinApuntarTests(TestCase):
         resumen = _calcular_resumen(self.hogar, self.year, _flujos_por_mes(self.hogar, self.year))
         # Septiembre (último mes con saldos): 2100 + 3100 + 50000; enero: 1000 + 3000 + 50000.
         self.assertEqual(resumen['crecimiento_liquidez_ytd'], Decimal('1200'))
+
+
+class AlquilerDePropiedadTests(TestCase):
+    """Un piso alquilado: lo que deja mes a mes y el IRPF de su titular."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from extractos.models import MovimientoBancario
+        from .models import CategoriaGasto, FuenteIngreso, Propiedad, TablaIRPF
+        from .views_gastos import _crear_categorias_predefinidas
+        self.adrian = User.objects.create_user('adrian', password='x', first_name='Adrian')
+        self.irene = User.objects.create_user('irene', password='x', first_name='Irene')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.adrian)
+        for u in (self.adrian, self.irene):
+            perfil, _ = UserProfile.objects.get_or_create(user=u)
+            perfil.hogar = self.hogar
+            perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.adrian)
+        self.anio = datetime.date.today().year - 1
+        for desde, hasta, pct in (('0', '12450', '19'), ('12450', '20200', '24'), ('20200', '35200', '30'),
+                                  ('35200', '60000', '37'), ('60000', '300000', '45'), ('300000', None, '47')):
+            TablaIRPF.objects.create(pais='ES', año=self.anio, tramo_desde=Decimal(desde),
+                                     tramo_hasta=Decimal(hasta) if hasta else None, porcentaje=Decimal(pct))
+        FuenteIngreso.objects.create(usuario=self.irene, hogar=self.hogar, nombre='Nómina Irene',
+                                     importe_declarado=Decimal('30000'), es_bruto=True)
+        FuenteIngreso.objects.create(usuario=self.adrian, hogar=self.hogar, nombre='Nómina Adrian',
+                                     importe_declarado=Decimal('70000'), es_bruto=True)
+        self.piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso Bilbao', fecha_compra=datetime.date(2019, 1, 1),
+            precio_compra=Decimal('100000'), valor_actual=Decimal('150000'),
+            alquilada=True, propietario=self.irene, reduccion_alquiler_pct=50,
+        )
+        otros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        hipoteca, _ = CategoriaGasto.objects.get_or_create(hogar=self.hogar, nombre='Hipoteca', defaults={'tipo': 'fijo'})
+        for mes in range(1, 13):
+            MovimientoBancario.objects.create(hogar=self.hogar, fecha=datetime.date(self.anio, mes, 3),
+                                              concepto='Inquilino', importe=Decimal('1000'), categoria=otros,
+                                              propiedad=self.piso)
+            MovimientoBancario.objects.create(hogar=self.hogar, fecha=datetime.date(self.anio, mes, 5),
+                                              concepto='Cuota hipoteca', importe=Decimal('-400'),
+                                              categoria=hipoteca, propiedad=self.piso)
+        MovimientoBancario.objects.create(hogar=self.hogar, fecha=datetime.date(self.anio, 6, 20), concepto='IBI',
+                                          importe=Decimal('-2000'), propiedad=self.piso)
+
+    def analizar(self):
+        from .alquiler import analizar_alquiler
+        self.piso.refresh_from_db()
+        return analizar_alquiler(self.piso, self.anio)
+
+    def test_mes_a_mes_ingreso_coste_y_neto(self):
+        a = self.analizar()
+        junio = a['meses'][5]
+        self.assertEqual((junio['ingreso'], junio['coste'], junio['neto']),
+                         (Decimal('1000'), Decimal('2400'), Decimal('-1400')))
+        self.assertEqual(a['ingreso_real'], Decimal('12000'))
+        self.assertEqual(a['neto_real'], Decimal('12000') - Decimal('4800') - Decimal('2000'))
+
+    def test_el_rendimiento_no_deduce_la_cuota_de_la_hipoteca(self):
+        a = self.analizar()
+        # 12.000 − 2.000 de IBI; la cuota no se deduce y no hay intereses dichos.
+        self.assertEqual(a['rendimiento'], Decimal('10000'))
+        self.assertEqual(a['excluidos_hipoteca'], Decimal('4800'))
+        self.assertEqual(a['reducido'], Decimal('5000'))
+        self.piso.intereses_hipoteca_anuales = Decimal('1000')
+        self.piso.pct_construccion = Decimal('50')
+        self.piso.save()
+        a = self.analizar()
+        # − 1.000 de intereses − 3 % de la mitad de 100.000 = 1.500.
+        self.assertEqual(a['amortizacion'], Decimal('1500.00'))
+        self.assertEqual(a['rendimiento'], Decimal('7500.00'))
+
+    def test_el_impuesto_es_del_titular_y_a_su_tipo(self):
+        from .alquiler import _cuota
+        from .fiscal import _obtener_tramos, calcular_ss
+        a = self.analizar()
+        self.assertEqual([t['nombre'] for t in a['titulares']], ['Irene'])
+        tramos = _obtener_tramos('ES', self.anio)
+        base = Decimal('30000') - calcular_ss(Decimal('30000'), 'ES', self.anio) - Decimal('2000')
+        esperado = (_cuota(base + Decimal('5000'), tramos) - _cuota(base, tramos)).quantize(Decimal('0.01'))
+        self.assertEqual(a['impuesto_total'], esperado)
+        # El mismo alquiler en manos de Adrian, que gana más, paga más.
+        self.piso.propietario = self.adrian
+        self.piso.save()
+        self.assertGreater(self.analizar()['impuesto_total'], esperado)
+
+    def test_a_partes_iguales_se_reparte_entre_los_dos(self):
+        self.piso.propietario = None
+        self.piso.save()
+        a = self.analizar()
+        self.assertEqual(sorted(t['nombre'] for t in a['titulares']), ['Adrian', 'Irene'])
+        self.assertEqual(sum(t['rendimiento'] for t in a['titulares']), Decimal('5000'))
+
+    def test_añadir_y_actualizar_el_gasto_anual(self):
+        from .models import PartidaGasto
+        url = reverse('finanzas:alquiler_a_gasto', args=[self.piso.pk])
+        self.client.post(url, {'anio': self.anio})
+        self.piso.refresh_from_db()
+        partida = self.piso.partida_irpf
+        self.assertEqual((partida.mes_pago, partida.periodicidad, partida.tipo_bloque), (6, 'anual', 'anual'))
+        self.assertEqual(partida.responsable, self.irene)
+        self.assertEqual(partida.propiedad, self.piso)
+        self.assertEqual(partida.importe, self.analizar()['impuesto_total'])
+        # Su pago no es un gasto deducible del propio alquiler.
+        from extractos.models import MovimientoBancario
+        MovimientoBancario.objects.create(hogar=self.hogar, fecha=datetime.date(self.anio, 6, 28),
+                                          concepto='Pago IRPF', importe=Decimal('-900'),
+                                          partida_conciliada=partida, propiedad=self.piso)
+        self.assertEqual(self.analizar()['rendimiento'], Decimal('10000'))
+        # Otra vez: actualiza, no duplica.
+        self.client.post(url, {'anio': self.anio})
+        self.assertEqual(PartidaGasto.objects.filter(nombre__startswith='IRPF alquiler').count(), 1)
+
+    def test_formulario_y_ficha(self):
+        respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {
+            'nombre': 'Piso Bilbao', 'tipo': 'vivienda', 'fecha_compra': '2019-01-01',
+            'precio_compra': '100000', 'valor_actual': '150000', 'alquilada': 'on',
+            'propietario': str(self.adrian.pk), 'reduccion_alquiler_pct': '60',
+            'pct_construccion': '62,5', 'intereses_hipoteca_anuales': '1.200',
+        })
+        self.assertEqual(respuesta.status_code, 302)
+        self.piso.refresh_from_db()
+        self.assertEqual(self.piso.propietario, self.adrian)
+        self.assertEqual(self.piso.reduccion_alquiler_pct, 60)
+        self.assertEqual(self.piso.pct_construccion, Decimal('62.5'))
+        self.assertEqual(self.piso.intereses_hipoteca_anuales, Decimal('1200'))
+        pagina = self.client.get(reverse('finanzas:alquiler_propiedad', args=[self.piso.pk]), {'anio': self.anio})
+        self.assertContains(pagina, 'IRPF del alquiler')
+        self.assertContains(pagina, 'Adrian')
+        self.assertContains(self.client.get(reverse('finanzas:listar_propiedades')), 'Alquiler e IRPF')

@@ -137,5 +137,7 @@ urlpatterns = [
     path('propiedades/crear/', views_propiedades.crear_propiedad, name='crear_propiedad'),
     path('propiedades/<int:pk>/editar/', views_propiedades.editar_propiedad, name='editar_propiedad'),
     path('propiedades/<int:pk>/eliminar/', views_propiedades.eliminar_propiedad, name='eliminar_propiedad'),
+    path('propiedades/<int:pk>/alquiler/', views_propiedades.alquiler_propiedad, name='alquiler_propiedad'),
+    path('propiedades/<int:pk>/alquiler/a-gasto/', views_propiedades.alquiler_a_gasto, name='alquiler_a_gasto'),
     path('propiedades/historial/', views_propiedades.registrar_historial, name='registrar_historial_propiedad'),
 ]

@@ -172,9 +172,10 @@ dato de los que había.
                 <div class="prop-dot" style="background: {{ p.color }};"></div>
                 <div>
                     <div class="prop-name">{{ p.nombre }}</div>
-                    <div class="prop-tipo">{{ p.get_tipo_display }}{% if p.es_residencia_habitual %} · Residencia habitual{% endif %}</div>
+                    <div class="prop-tipo">{{ p.get_tipo_display }}{% if p.es_residencia_habitual %} · Residencia habitual{% endif %}{% if p.alquilada %} · Alquilada · titular {{ p.titular_nombre }}{% endif %}</div>
                 </div>
                 <div class="prop-header-acciones">
+                    {% if p.alquilada %}<a href="{% url 'finanzas:alquiler_propiedad' p.pk %}?anio={{ anio }}" class="btn btn-edit">Alquiler e IRPF</a>{% endif %}
                     <a href="{% url 'finanzas:editar_propiedad' p.pk %}" class="btn btn-edit">Editar</a>
                     <form method="post" action="{% url 'finanzas:eliminar_propiedad' p.pk %}" style="display:inline;" onsubmit="return confirm('¿Archivar {{ p.nombre }}?')">
                         {% csrf_token %}
