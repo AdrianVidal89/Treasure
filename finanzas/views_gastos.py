@@ -157,7 +157,7 @@ def listar_gastos(request):
     del_bloque = defaultdict(list)
     for p in PartidaGasto.objects.filter(
         hogar=hogar, activo=True, categoria__isnull=True,
-    ).select_related('responsable'):
+    ).exclude(periodicidad='puntual').select_related('responsable'):
         if p.bloque:
             del_bloque[p.bloque].append(p)
 
@@ -176,7 +176,9 @@ def listar_gastos(request):
     for cat in categorias:
         # Se evalúa UNA vez: antes, el exists() y el count() sobre el mismo
         # queryset eran dos consultas más por categoría.
-        partidas = list(cat.partidas.filter(activo=True).select_related('responsable'))
+        partidas = list(
+            cat.partidas.filter(activo=True).exclude(periodicidad='puntual').select_related('responsable')
+        )
         if not partidas:
             continue
         entradas.append((cat.tipo, {
@@ -273,7 +275,7 @@ def _agrupar_por_miembro(hogar, categorias):
     # declaran para el bloque entero, que no cuelgan de ninguna.
     todas = PartidaGasto.objects.filter(
         hogar=hogar, activo=True,
-    ).select_related('responsable', 'categoria')
+    ).exclude(periodicidad='puntual').select_related('responsable', 'categoria')
     for p in todas:
         clave = p.responsable_id
         if clave is not None and clave not in grupos:

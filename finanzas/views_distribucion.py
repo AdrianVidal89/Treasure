@@ -64,7 +64,7 @@ def vista_distribucion(request):
 
     gastos_hogar = PartidaGasto.objects.filter(
         hogar=hogar, activo=True, responsable__isnull=True
-    ).select_related('categoria', 'fondo_asignado')
+    ).exclude(periodicidad='puntual').select_related('categoria', 'fondo_asignado')
 
     anios = [anio - 1, anio, anio + 1]
 

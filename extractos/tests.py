@@ -6867,3 +6867,127 @@ class PrevisionReservaTests(TestCase):
         self.assertEqual(pagina.status_code, 200)
         self.assertContains(pagina, '2 años vista')
 
+
+
+class GastoPuntualTests(TestCase):
+    """La boda de abril: 400 € que se apartan de octubre a abril, sin tocar el
+    presupuesto de gastos."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.hoy = date(2026, 10, 2)
+        self.ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Restaurantes')
+        self.ibi = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='IBI'),
+            nombre='IBI', importe=Decimal('600'), periodicidad='anual', mes_pago=11,
+        )
+        from .anuales import crear_puntual
+        self.boda, error = crear_puntual(self.hogar, 'Boda de Laura', '400', 4, 2027,
+                                         desde=date(2026, 10, 1), categoria=self.ocio, hoy=self.hoy)
+        self.assertIsNone(error)
+
+    def test_se_reparte_entre_los_meses_que_faltan(self):
+        self.assertEqual(self.boda.meses_periodo, 7)  # octubre … abril, los dos incluidos
+        self.assertEqual(self.boda.importe_mensual, Decimal('57.14'))
+        self.assertTrue(self.boda.ahorra_en(2026, 10))
+        self.assertTrue(self.boda.ahorra_en(2027, 4))
+        self.assertFalse(self.boda.ahorra_en(2027, 5))
+        self.assertFalse(self.boda.ahorra_en(2026, 9))
+
+    def test_no_entra_en_el_presupuesto_de_gastos(self):
+        from finanzas import presupuesto
+        self.assertEqual(presupuesto.por_bloque(self.hogar).get('anual'), Decimal('50.00'))
+        self.assertNotIn(self.ocio.id, presupuesto.por_categoria(self.hogar))
+
+    def test_su_pago_no_descuadra_el_mes_ni_se_prorratea(self):
+        pago = MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=date(2027, 4, 20), concepto='Regalo boda', importe=Decimal('-400'),
+            categoria=self.ocio, partida_conciliada=self.boda,
+        )
+        self.assertTrue(pago.se_saca_del_mes)
+        todos = list(MovimientoBancario.objects.filter(hogar=self.hogar))
+        request = RequestFactory().get('/', {'anio': '2027', 'mes': '4'})
+        request.user = self.user
+        panel = _panel_context(self.hogar, todos, request)
+        self.assertEqual(panel['kpi_gastos'], Decimal('0'))
+        request = RequestFactory().get('/', {'anio': '2027', 'mes': '7'})
+        request.user = self.user
+        self.assertEqual(_panel_context(self.hogar, todos, request)['presupuesto']['prorrateado'], Decimal('0'))
+
+    def test_fijos_anuales_lo_aparta_y_lo_espera_en_su_año(self):
+        from .anuales import analizar_anuales
+        d = analizar_anuales(self.hogar, 2026, hoy=self.hoy)
+        self.assertNotIn('Boda de Laura', [f['nombre'] for f in d['filas']])
+        hucha = next(f for f in d['ahorro'] if f['nombre'] == 'Boda de Laura')
+        self.assertEqual((hucha['proximo']['anio'], hucha['proximo']['mes']), (2027, 4))
+        d = analizar_anuales(self.hogar, 2027, hoy=self.hoy)
+        fila = next(f for f in d['filas'] if f['nombre'] == 'Boda de Laura')
+        self.assertEqual(fila['esperado'], Decimal('400'))
+        self.assertEqual([c['mes'] for c in fila['cuotas']], [4])
+        d = analizar_anuales(self.hogar, 2028, hoy=self.hoy)
+        self.assertNotIn('Boda de Laura', [f['nombre'] for f in d['filas'] + d['ahorro']])
+        self.assertTrue(d['fechas']['todas'])
+
+    def test_la_reserva_suma_su_cuota_hasta_el_pago(self):
+        from .models import SaldoReserva
+        from .reserva import prever_reserva
+        from datetime import timedelta
+        SaldoReserva.objects.create(hogar=self.hogar, fecha=self.hoy, saldo=Decimal('0'))
+        # Apuntado DESPUÉS de planificar la boda: su cuota de octubre ya está dentro.
+        r = prever_reserva(self.hogar, 2, hoy=self.hoy)
+        self.assertEqual(r['puntos'][0]['aporte'], Decimal('0'))
+        # Apuntado ANTES: la cuota de octubre de la boda falta y se suma.
+        SaldoReserva.objects.update(creado_en=self.boda.fecha_creacion - timedelta(minutes=1))
+        r = prever_reserva(self.hogar, 2, hoy=self.hoy)
+        por_mes = {(x['anio'], x['mes']): x for x in r['puntos']}
+        self.assertEqual(por_mes[(2026, 10)]['aporte'], Decimal('57.14'))
+        self.assertEqual(por_mes[(2026, 11)]['aporte'], Decimal('107.14'))
+        self.assertEqual(por_mes[(2027, 5)]['aporte'], Decimal('50.00'))
+        self.assertIn('Boda de Laura', [y['nombre'] for y in por_mes[(2027, 4)]['pagos']])
+        self.assertEqual(r['aporte_hoy'], Decimal('107.14'))
+
+    def test_distribucion_sube_el_aporte_a_los_anuales_esos_meses(self):
+        from finanzas.distribucion import calcular_flujos
+        from finanzas.models import FondoFamiliar, SubsobreFondo
+        comun = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Común', tipo_fondo='comun')
+        provision = FondoFamiliar.objects.create(hogar=self.hogar, nombre='Provisión', tipo_fondo='ahorro')
+        SubsobreFondo.objects.create(fondo=comun, nombre='Aporte gastos anuales', bloque='anual',
+                                     fondo_destino=provision)
+
+        def aporte(anio, mes):
+            flujo = calcular_flujos(self.hogar, mes=mes, anio=anio)
+            fa = next(f for f in flujo['fondos_aportaciones'] if f['fondo'] == comun)
+            return flujo, fa['subsobres'][0]['importe']
+
+        flujo, importe = aporte(2026, 11)
+        self.assertEqual(importe, Decimal('107.14'))
+        self.assertEqual(flujo['aporte_puntuales'], Decimal('57.14'))
+        self.assertTrue(flujo['puntuales_en_aporte'])
+        # No es gasto del mes.
+        self.assertEqual(flujo['total_gastos_all'], Decimal('50.00'))
+        self.assertEqual(aporte(2027, 5)[1], Decimal('50.00'))
+
+    def test_planificar_y_quitar_desde_la_pagina(self):
+        respuesta = self.client.post(reverse('extractos:anuales_puntual'), {
+            'nombre': 'Calentador', 'importe': '1.200,00', 'mes_pago': '3', 'anio_pago': '2027',
+            'desde': '2026-10', 'anio': '2026',
+        })
+        self.assertEqual(respuesta.status_code, 302)
+        calentador = PartidaGasto.objects.get(nombre='Calentador')
+        self.assertEqual((calentador.importe, calentador.es_puntual, calentador.bloque),
+                         (Decimal('1200.00'), True, 'anual'))
+        self.assertContains(self.client.get(reverse('extractos:anuales')), 'Planificar un gasto puntual')
+        # Un pago antes de empezar a apartar no tiene sentido.
+        self.client.post(reverse('extractos:anuales_puntual'), {
+            'nombre': 'Raro', 'importe': '10', 'mes_pago': '1', 'anio_pago': '2020', 'desde': '2026-10',
+        })
+        self.assertFalse(PartidaGasto.objects.filter(nombre='Raro').exists())
+        self.client.post(reverse('extractos:anuales_puntual_borrar', args=[calentador.pk]))
+        calentador.refresh_from_db()
+        self.assertFalse(calentador.activo)

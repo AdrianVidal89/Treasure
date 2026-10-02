@@ -82,6 +82,31 @@
         <div class="an-tip" id="an-tip" hidden></div>
     </section>
 
+    <!-- ══════════ UN GASTO PUNTUAL, PLANIFICADO ══════════ -->
+    <details class="an-puntual-nuevo" {% if request.GET.puntual %}open{% endif %}>
+        <summary><svg class="icon"><use href="#i-plus"/></svg> Planificar un gasto puntual</summary>
+        <p>Algo que pasa <strong>una vez</strong> y sabes con antelación: una boda en abril, cambiar el calentador.
+            No entra en el presupuesto de gastos; se reparte entre los meses que faltan y esa cuota se suma a lo que apartas
+            para los fijos anuales, hasta el mes del pago. Su pago, marcado en Movimientos como «pago anual», no descuadra el mes.</p>
+        <form method="post" action="{% url 'extractos:anuales_puntual' %}" class="an-puntual-form" id="an-puntual-form">
+            {% csrf_token %}<input type="hidden" name="anio" value="{{ d.anio|unlocalize }}">
+            <label class="an-ed-campo an-ed-ancho"><span>Qué es</span><input type="text" name="nombre" maxlength="150" required placeholder="Boda de Laura"></label>
+            <label class="an-ed-campo"><span>Cuánto</span><input type="text" name="importe" inputmode="decimal" required placeholder="400"></label>
+            <label class="an-ed-campo"><span>Se paga en</span>
+                <span class="an-puntual-fecha">
+                    <select name="mes_pago" required>{% for num, nombre in d.meses %}<option value="{{ num }}">{{ nombre }}</option>{% endfor %}</select>
+                    <input type="number" name="anio_pago" min="1990" max="2200" required value="{{ d.hoy.year|add:1|unlocalize }}" aria-label="Año del pago">
+                </span>
+            </label>
+            <label class="an-ed-campo"><span>Empiezo a apartar</span><input type="month" name="desde" value="{{ d.hoy|date:'Y-m' }}" min="{{ d.hoy|date:'Y-m' }}"></label>
+            <label class="an-ed-campo"><span>Categoría <em>(opcional)</em></span>
+                <select name="categoria"><option value="">—</option>{% for c in d.categorias_puntual %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select>
+            </label>
+            <span class="an-puntual-cuota" aria-live="polite"></span>
+            <button type="submit" class="btn btn-primary">Planificar</button>
+        </form>
+    </details>
+
     <!-- ══════════ PARTIDA A PARTIDA ══════════ -->
     <section class="an-lista">
         {% for f in d.filas %}
@@ -111,7 +136,8 @@
                 <div class="an-cifra">
                     <span class="an-cifra-lbl">Declarado</span>
                     <span class="an-cifra-val">{{ f.esperado|euro }}</span>
-                    {% if f.plurianual %}<span class="an-cifra-sub">para {{ f.meses_periodo }} meses · {{ f.provision_anual|euro:0 }}/año</span>{% endif %}
+                    {% if f.puntual %}<span class="an-cifra-sub">una vez · apartando {{ f.aporte_mensual|euro }}/mes{% if f.ahorro_desde %} desde {{ f.ahorro_desde|date:"F"|lower }}{% endif %}</span>
+                    {% elif f.plurianual %}<span class="an-cifra-sub">para {{ f.meses_periodo }} meses · {{ f.provision_anual|euro:0 }}/año</span>{% endif %}
                 </div>
                 <div class="an-cifra">
                     <span class="an-cifra-lbl">Pagado</span>
@@ -187,7 +213,7 @@
     <section class="an-ahorro">
         <h3>Ahorrando para más adelante · {{ d.ahorro_anual|euro:0 }}/año</h3>
         <p>
-            Gastos de más de un año —unos neumáticos, una caldera— que en {{ d.anio|unlocalize }} no toca pagar: se van apartando
+            Gastos de más de un año —unos neumáticos, una caldera— y gastos puntuales planificados —una boda— que en {{ d.anio|unlocalize }} no toca pagar: se van apartando
             y no cuentan en lo de arriba. El año que toquen saldrán en la lista con su importe entero; si los pagas
             antes, también.
             {% if d.num_sin_fecha %}<strong>Dile a {{ d.num_sin_fecha }} cuándo toca{{ d.num_sin_fecha|pluralize:"n" }}</strong> para que salgan solos ese año.{% endif %}
@@ -211,7 +237,7 @@
                 </div>
                 <div class="an-cifra">
                     <span class="an-cifra-lbl">Apartas</span>
-                    <span class="an-cifra-val an-apagado">{{ f.provision_anual|euro:0 }}/año</span>
+                    <span class="an-cifra-val an-apagado">{% if f.puntual %}{{ f.aporte_mensual|euro }}/mes{% else %}{{ f.provision_anual|euro:0 }}/año{% endif %}</span>
                 </div>
             </div>
             {% include 'extractos/_anual_editor.html' %}
@@ -393,6 +419,9 @@
 .an-ed-mas .icon { width:14px; height:14px; }
 .an-ed-nota { margin:0; font-size:0.74rem; color:var(--muted); }
 .an-ed-botones { display:flex; gap:8px; }
+.an-ed-borrar { margin-left:auto; color:var(--danger) !important; }
+.an-ed-puntual { display:flex; flex-wrap:wrap; gap:8px 10px; align-items:flex-end; font-size:0.74rem; padding-bottom:8px; border-bottom:1px dashed var(--border); }
+.an-ed-puntual > .an-apagado { padding-bottom:9px; }
 @media (max-width:640px){
     .an-fila { grid-template-columns:34px 1fr; grid-template-areas:"est que" "cif cif" "pie pie" "ed ed"; }
     .an-cifras { justify-content:space-between; }
@@ -412,6 +441,17 @@
 .an-accion.fuerte:hover { background:color-mix(in srgb, var(--success) 10%, transparent); }
 .an-accion .icon { width:13px; height:13px; }
 
+.an-puntual-nuevo { padding:12px 16px; border-radius:14px; border:1px dashed var(--border-strong); margin-bottom:16px; background:var(--surface); }
+.an-puntual-nuevo > summary { cursor:pointer; font-size:0.86rem; font-weight:600; display:flex; align-items:center; gap:6px; color:var(--primary-color); list-style:none; }
+.an-puntual-nuevo > summary::-webkit-details-marker { display:none; }
+.an-puntual-nuevo .icon { width:14px; height:14px; }
+.an-puntual-nuevo > p { font-size:0.78rem; color:var(--muted); margin:8px 0 10px; line-height:1.5; }
+.an-puntual-form { display:flex; flex-wrap:wrap; gap:8px 10px; align-items:flex-end; }
+.an-puntual-form .an-ed-ancho { flex:1 1 220px; }
+.an-puntual-form .an-ed-campo input, .an-puntual-form .an-ed-campo select { min-width:0; }
+.an-puntual-fecha { display:flex; gap:6px; }
+.an-puntual-fecha input { width:90px; }
+.an-puntual-cuota { font-size:0.76rem; color:var(--muted); padding-bottom:9px; }
 .an-ahorro { padding:16px 18px; border-radius:14px; border:1px dashed var(--border-strong); margin-bottom:18px; }
 .an-ahorro h3 { margin:0 0 4px; font-size:0.95rem; }
 .an-ahorro > p { margin:0 0 10px; font-size:0.8rem; color:var(--muted); line-height:1.5; }
@@ -456,6 +496,13 @@
         /* Cada cuánto y cuánto cuesta. Pasar a más de un año pide el año en que
            toca; quedarse en anual deja partirlo en plazos. */
         var per = form.querySelector('.an-ed-periodo');
+        if (!per) {
+            /* Un puntual: sin «cada cuánto», solo fecha e importe. */
+            form.querySelector('.an-ed-cancelar').addEventListener('click', function () {
+                filas.innerHTML = original; abrir(false);
+            });
+            return;
+        }
         var selPer = per.querySelector('.an-ed-periodicidad');
         var inN = per.querySelector('[name="meses_personalizados"]');
         var cajaN = per.querySelector('.an-ed-n');
@@ -534,6 +581,24 @@
             marcar();
         });
     });
+    /* Lo que tocará apartar al mes para el puntual que se está planificando. */
+    var fp = document.getElementById('an-puntual-form');
+    if (fp) {
+        var cuotaP = fp.querySelector('.an-puntual-cuota');
+        var calcular = function () {
+            var t = (fp.importe.value || '').replace('€', '').replace(/\s/g, '');
+            if (t.indexOf(',') >= 0) t = t.replace(/\./g, '').replace(',', '.');
+            var imp = parseFloat(t), d = (fp.desde.value || '').split('-');
+            var anio = parseInt(fp.anio_pago.value, 10), mes = parseInt(fp.mes_pago.value, 10);
+            if (!(imp > 0) || d.length < 2 || !anio) { cuotaP.textContent = ''; return; }
+            var n = (anio * 12 + mes) - (parseInt(d[0], 10) * 12 + parseInt(d[1], 10)) + 1;
+            cuotaP.textContent = n > 0
+                ? '≈ ' + (imp / n).toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' € al mes durante ' + n + ' mes' + (n === 1 ? '' : 'es')
+                : 'el pago es antes de empezar a apartar';
+        };
+        ['input', 'change'].forEach(function (ev) { fp.addEventListener(ev, calcular); });
+        calcular();
+    }
     /* Tras guardar se vuelve a la fila: que se vea el cambio sin buscarla. */
     if (location.hash.indexOf('#partida-') === 0) {
         var fila = document.querySelector(location.hash);

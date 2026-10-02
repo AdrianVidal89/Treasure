@@ -54,6 +54,7 @@ def listar_fondos(request):
     # Gastos del hogar (los individuales los paga su responsable, no un fondo).
     gastos_hogar = list(
         PartidaGasto.objects.filter(hogar=hogar, activo=True, responsable__isnull=True)
+        .exclude(periodicidad='puntual')
         .select_related('categoria', 'fondo_asignado')
         .order_by('categoria__nombre', 'nombre')
     )

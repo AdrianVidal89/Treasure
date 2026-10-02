@@ -10,6 +10,16 @@
                     {% if f.admite_plazos %}<span class="an-apagado">Declarado {{ f.partida.importe|euro }} al año</span>
                     {% elif f.plurianual %}<span class="an-apagado">{{ f.periodicidad|lower }}: los siguientes se cuentan desde esta fecha</span>{% endif %}
                 </div>
+                {% if f.puntual %}
+                <div class="an-ed-puntual">
+                    <label class="an-ed-campo">
+                        <span>Cuesta</span>
+                        <input type="text" name="importe_total" inputmode="decimal" class="an-ed-importe"
+                               value="{{ f.partida.importe|floatformat:2 }}" aria-label="Lo que cuesta">
+                    </label>
+                    <span class="an-apagado">se sigue apartando desde {{ f.ahorro_desde|date:"F Y"|lower }}; la cuota se recalcula con la nueva fecha</span>
+                </div>
+                {% else %}
                 {% comment %}Cada cuánto y cuánto cuesta: unos neumáticos dados de alta como
                    «anual» se pasan aquí a «cada 3 años» para poder decir en qué año tocan.{% endcomment %}
                 <div class="an-ed-periodo" data-meses="{{ f.meses_periodo|unlocalize }}" data-importe="{{ f.partida.importe|unlocalize }}">
@@ -35,6 +45,7 @@
                     </label>
                     <span class="an-ed-cuota" aria-live="polite"></span>
                 </div>
+                {% endif %}
                 <div class="an-ed-filas">
                     {% if f.fraccionado %}
                     {% for c in f.cuotas %}
@@ -70,5 +81,9 @@
                 <div class="an-ed-botones">
                     <button type="submit" class="btn btn-primary">Guardar</button>
                     <button type="button" class="btn btn-ghost an-ed-cancelar">Cancelar</button>
+                    {% if f.puntual %}
+                    <button type="submit" class="btn btn-ghost an-ed-borrar" formaction="{% url 'extractos:anuales_puntual_borrar' f.partida.id %}"
+                            formnovalidate onclick="return confirm('¿Quitar «{{ f.partida.nombre|escapejs }}»? Se deja de apartar para él.')">Quitar</button>
+                    {% endif %}
                 </div>
             </form>

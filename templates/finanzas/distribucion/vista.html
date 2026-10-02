@@ -51,6 +51,22 @@
 </div>
 {% endif %}
 
+{% if d.puntuales %}
+<!-- Gastos puntuales planificados (la boda, el calentador): no son gasto del
+     mes, son dinero que se aparta en la reserva de los anuales hasta el pago. -->
+<div class="aviso-fuera-reparto">
+    <svg class="icon"><use href="#i-calendar"/></svg>
+    <span>
+        Este mes se apartan <strong>€{{ d.aporte_puntuales|floatformat:2 }}</strong> más para gastos puntuales:
+        {% for p in d.puntuales %}{{ p.nombre }} (€{{ p.mensual|floatformat:2 }}/mes hasta {{ p.cuando|lower }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        {% if d.puntuales_en_aporte %}Ya van dentro del movimiento que sigue a los fijos anuales.
+        {% else %}Ningún movimiento entre fondos sigue al bloque de fijos anuales: créalo para que este dinero vaya a la reserva.{% endif %}
+        No son gasto: no cuentan en el presupuesto.
+    </span>
+    <a href="{% url 'extractos:anuales' %}" class="btn btn-secondary">Fijos anuales</a>
+</div>
+{% endif %}
+
 <!-- ===== RESUMEN GENERAL (KPIs + barra) ===== -->
 <div class="resumen-general glass-panel">
     <div class="kpi-bar">

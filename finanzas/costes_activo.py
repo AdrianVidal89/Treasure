@@ -111,6 +111,7 @@ def _partidas(activo):
     campo = 'vehiculo' if clave(activo).startswith('vehiculo') else 'propiedad'
     return (
         PartidaGasto.objects.filter(activo=True, **{campo: activo})
+        .exclude(periodicidad='puntual')
         .select_related('categoria')
     )
 
@@ -195,6 +196,7 @@ def costes(activo, anio):
         {
             m.partida_conciliada for m in provisiones
             if m.partida_conciliada_id and m.partida_conciliada_id not in imputadas
+            and not m.partida_conciliada.es_puntual
         },
         key=lambda p: p.nombre,
     )

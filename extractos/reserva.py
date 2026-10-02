@@ -75,7 +75,23 @@ def prever_reserva(hogar, anios=1, hoy=None):
         anio_fin = inicio.year
 
     partidas = partidas_anuales(hogar)
-    aporte = sum((p.importe_mensual for p in partidas), CERO)
+    # Lo fijo de cada mes, y aparte los puntuales, que solo aportan los meses
+    # que se aparta para ellos (de `ahorro_desde` al mes del pago).
+    aporte = sum((p.importe_mensual for p in partidas if not p.es_puntual), CERO)
+    puntuales = [p for p in partidas if p.es_puntual]
+
+    def aporte_puntuales(anio, mes, es_inicio):
+        total = CERO
+        for p in puntuales:
+            if not p.ahorra_en(anio, mes):
+                continue
+            # En el mes del saldo no se suma lo fijo —ya está, o no, dentro de
+            # lo que has dicho que hay—; un puntual creado DESPUÉS de apuntar
+            # el saldo no puede estar dentro, así que su cuota de ese mes sí.
+            if es_inicio and ultimo and p.fecha_creacion and ultimo.creado_en >= p.fecha_creacion:
+                continue
+            total += p.importe_mensual
+        return total
 
     # Pagos por mes absoluto (año·12 + mes-1).
     pagos = defaultdict(list)
@@ -103,16 +119,18 @@ def prever_reserva(hogar, anios=1, hoy=None):
     puntos = []
     saldo = saldo_inicial
     aportes_hechos = 0
+    total_aportes = CERO
     total_pagos = CERO
     for t in range(desde, hasta + 1):
-        aporte_mes = aporte if t > desde else CERO
+        anio, mes = t // 12, t % 12 + 1
+        aporte_mes = (aporte if t > desde else CERO) + aporte_puntuales(anio, mes, t == desde)
         if t > desde:
             aportes_hechos += 1
+        total_aportes += aporte_mes
         del_mes = sorted(pagos.get(t, []), key=lambda x: -x['importe'])
         salida = sum((x['importe'] for x in del_mes), CERO)
         total_pagos += salida
         saldo = saldo + aporte_mes - salida
-        anio, mes = t // 12, t % 12 + 1
         puntos.append({
             'anio': anio, 'mes': mes,
             'etiqueta': f'{CORTOS[mes]} {str(anio)[2:]}',
@@ -148,9 +166,17 @@ def prever_reserva(hogar, anios=1, hoy=None):
         'anios': anios,
         'anio_fin': anio_fin,
         'aporte': aporte,
+        'aporte_hoy': aporte + sum((p.importe_mensual for p in puntuales if p.ahorra_en(hoy.year, hoy.month)), CERO),
+        'puntuales': [
+            {'nombre': p.nombre, 'importe': p.importe, 'mensual': p.importe_mensual,
+             'cuando': p.meses_pago_display, 'activo': p.ahorra_en(hoy.year, hoy.month)}
+            for p in puntuales if p.anio_pago and (p.anio_pago, p.mes_pago) >= (hoy.year, hoy.month)
+        ],
         'aportes_partidas': sorted(
             ({'nombre': p.nombre, 'mensual': p.importe_mensual,
-              'periodicidad': p.get_periodicidad_display()} for p in partidas),
+              'periodicidad': (f'puntual, hasta {p.meses_pago_display.lower()}' if p.es_puntual
+                               else p.get_periodicidad_display())}
+             for p in partidas if not p.es_puntual or p.ahorra_en(hoy.year, hoy.month)),
             key=lambda x: -x['mensual'],
         ),
         'puntos': puntos,
@@ -160,7 +186,7 @@ def prever_reserva(hogar, anios=1, hoy=None):
         'extra_mensual': extra_mensual,
         'saldo_final': puntos[-1]['saldo'],
         'total_pagos': total_pagos,
-        'total_aportes': aporte * aportes_hechos,
+        'total_aportes': total_aportes,
         'proximos': proximos,
         'hay_atrasados': any(x['atrasado'] for p in proximos for x in p['pagos']),
         'fechas': chequeo_fechas(partidas),

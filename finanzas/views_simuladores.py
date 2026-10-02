@@ -79,7 +79,7 @@ def _datos_financieros(hogar):
     gastos_fijos = Decimal('0')
     gastos_variables = Decimal('0')
     gastos_anuales = Decimal('0')
-    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
+    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).exclude(periodicidad='puntual').select_related('categoria'):
         tipo_cat = getattr(p.categoria, 'tipo', 'fijo')
         if tipo_cat in ('variable', 'discrecional'):
             # El gasto discrecional no es un compromiso fijo: para el simulador
@@ -134,7 +134,7 @@ def _datos_financieros(hogar):
                          'financiación', 'financiacion')
     alquiler_actual = Decimal('0')
     otras_cuotas = Decimal('0')
-    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).select_related('categoria'):
+    for p in PartidaGasto.objects.filter(hogar=hogar, activo=True).exclude(periodicidad='puntual').select_related('categoria'):
         nombre = p.nombre.lower()
         categoria = (p.categoria.nombre if p.categoria else '').lower()
         if 'alquiler' in nombre:

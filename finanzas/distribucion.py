@@ -98,9 +98,11 @@ def calcular_flujos(hogar, mes=None, anio=None):
     anio = anio or hoy.year
 
     miembros = hogar.miembros.select_related('user').all()
+    # Los puntuales no son gasto del mes: suman al aporte a la reserva de los
+    # anuales en los meses que se aparta para ellos (PASO 4).
     partidas = PartidaGasto.objects.filter(
         hogar=hogar, activo=True
-    ).select_related('categoria', 'responsable', 'fondo_asignado')
+    ).exclude(periodicidad='puntual').select_related('categoria', 'responsable', 'fondo_asignado')
     reglas_qs = ReglaReparto.objects.filter(
         hogar=hogar, activo=True
     ).select_related('fondo', 'usuario').order_by('orden')
@@ -116,6 +118,18 @@ def calcular_flujos(hogar, mes=None, anio=None):
     # los que siguen a un bloque preguntan por aquí en vez de consultar cada uno.
     from . import presupuesto
     limites_bloque = presupuesto.por_bloque(hogar) if subsobres else {}
+
+    # Los gastos puntuales planificados (la boda de abril): no son gasto, pero
+    # mientras se aparta para ellos el aporte a la reserva de los anuales sube
+    # su cuota. El movimiento que sigue al bloque de anuales la recoge sola.
+    puntuales = [
+        p for p in PartidaGasto.objects.filter(hogar=hogar, activo=True, periodicidad='puntual')
+        if p.ahorra_en(anio, mes)
+    ]
+    aporte_puntuales = sum((p.importe_mensual for p in puntuales), Decimal('0'))
+    if aporte_puntuales and subsobres:
+        limites_bloque = dict(limites_bloque)
+        limites_bloque['anual'] = (limites_bloque.get('anual') or Decimal('0')) + aporte_puntuales
 
     # =========================================================
     # PASO 1: Ingresos
@@ -446,6 +460,13 @@ def calcular_flujos(hogar, mes=None, anio=None):
         'gastos_hogar_total': gastos_hogar_total,
         'total_gastos_individuales': total_gastos_ind,
         'total_gastos_all': total_gastos_all,
+        'puntuales': [
+            {'nombre': p.nombre, 'importe': p.importe, 'mensual': p.importe_mensual,
+             'cuando': p.meses_pago_display}
+            for p in puntuales
+        ],
+        'aporte_puntuales': aporte_puntuales,
+        'puntuales_en_aporte': any(ss.bloque == 'anual' for ss in subsobres),
         'total_gastos_cubiertos': total_gastos_cubiertos,
 
         'total_ahorro': total_ahorro,
@@ -502,7 +523,7 @@ def ahorro_esperado(hogar, anio=None):
             anual_ingresos += del_anio
             extras += del_anio - base * 12
 
-    partidas = PartidaGasto.objects.filter(hogar=hogar, activo=True)
+    partidas = PartidaGasto.objects.filter(hogar=hogar, activo=True).exclude(periodicidad='puntual')
     mensual_gastos = sum((p.importe_mensual for p in partidas), Decimal('0'))
     anual_gastos = sum((p.importe_anual for p in partidas), Decimal('0'))
 

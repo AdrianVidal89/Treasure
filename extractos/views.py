@@ -21,8 +21,8 @@ from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefin
 
 from . import reparto
 from .anuales import (
-    MAX_HORIZONTE, analizar_anuales, dar_por_pagado, grafico_varios_anios, guardar_calendario,
-    leer_horizonte,
+    MAX_HORIZONTE, analizar_anuales, crear_puntual, dar_por_pagado, grafico_varios_anios,
+    guardar_calendario, leer_horizonte,
 )
 from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
 from .categorizacion import categorizar, categorizar_lote
@@ -870,6 +870,11 @@ def _anuales_prorrateados(todos, f):
         # Solo lo que se SACÓ de su mes. Un pago que dijiste que salió del
         # bolsillo —«sin reserva»— ya cuenta entero donde cayó.
         if not m.se_saca_del_mes or m.es_neutro:
+            continue
+        # Un gasto puntual (la boda) no tiene provisión en el presupuesto de
+        # ningún mes: se apartó en la reserva, y repartirlo aquí se comería
+        # el límite de doce meses que nunca lo incluyó.
+        if m.partida_conciliada_id and m.partida_conciliada.es_puntual:
             continue
         if not _pasa_filtro(m, del_anio):
             continue
@@ -3737,3 +3742,51 @@ def reserva(request):
         'hoy': date.today(),
         'max_horizonte': MAX_HORIZONTE,
     })
+
+
+@login_required
+def anuales_puntual(request):
+    """Planifica un gasto puntual: la boda de abril, el calentador (ver
+    `PartidaGasto.es_puntual`)."""
+    from finanzas.models import CategoriaGasto
+
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return redirect('dashboard')
+    anio = _entero_o_none(request.POST.get('anio'))
+    destino = reverse('extractos:anuales') + (f'?anio={anio}' if anio else '')
+    if request.method != 'POST':
+        return redirect(destino)
+    desde = parse_date((request.POST.get('desde') or '') + '-01') if request.POST.get('desde') else None
+    categoria = CategoriaGasto.objects.filter(
+        hogar=hogar, pk=_entero_o_none(request.POST.get('categoria')) or 0,
+    ).first()
+    partida, error = crear_puntual(
+        hogar, request.POST.get('nombre'), request.POST.get('importe'),
+        request.POST.get('mes_pago'), request.POST.get('anio_pago'),
+        desde=desde, categoria=categoria,
+    )
+    if error:
+        messages.error(request, error)
+        return redirect(destino + ('&' if '?' in destino else '?') + 'puntual=1')
+    messages.success(
+        request,
+        f'{partida.nombre}: {partida.importe} € en {partida.meses_pago_display.lower()}. '
+        f'Apartas {partida.importe_mensual} € al mes durante {partida.meses_periodo} meses.',
+    )
+    return redirect(destino + f'#partida-{partida.pk}')
+
+
+@login_required
+def anuales_puntual_borrar(request, pk):
+    """Quita un gasto puntual planificado: se deja de apartar para él."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return redirect('dashboard')
+    partida = get_object_or_404(PartidaGasto, pk=pk, hogar=hogar, periodicidad='puntual')
+    if request.method == 'POST':
+        partida.activo = False
+        partida.save(update_fields=['activo'])
+        messages.success(request, f'«{partida.nombre}» quitado: ya no se aparta para él.')
+    anio = _entero_o_none(request.POST.get('anio'))
+    return redirect(reverse('extractos:anuales') + (f'?anio={anio}' if anio else ''))

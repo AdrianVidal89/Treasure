@@ -48,7 +48,7 @@
             <strong>Aporta {{ r.falta_hoy|euro }} hoy a la reserva</strong>
             <span>
                 Sin eso se queda en <strong>{{ r.peor.saldo|euro:0 }}</strong> en {{ r.peor.nombre|lower }}.
-                {% if r.extra_mensual %}O sube el aporte mensual en <strong>{{ r.extra_mensual|euro }}</strong> (de {{ r.aporte|euro }} a {{ r.aporte|add:r.extra_mensual|euro }}).{% endif %}
+                {% if r.extra_mensual %}O sube el aporte mensual en <strong>{{ r.extra_mensual|euro }}</strong> (de {{ r.aporte_hoy|euro }} a {{ r.aporte_hoy|add:r.extra_mensual|euro }}).{% endif %}
             </span>
             {% endif %}
         </div>
@@ -63,8 +63,8 @@
         </div>
         <div class="rs-kpi">
             <span class="rs-kpi-lbl">Aportas cada mes</span>
-            <span class="rs-kpi-val">{{ r.aporte|euro:0 }}</span>
-            <span class="rs-kpi-sub">la provisión de {{ r.aportes_partidas|length }} partida{{ r.aportes_partidas|length|pluralize:"s" }}</span>
+            <span class="rs-kpi-val">{{ r.aporte_hoy|euro:0 }}</span>
+            <span class="rs-kpi-sub">la provisión de {{ r.aportes_partidas|length }} partida{{ r.aportes_partidas|length|pluralize:"s" }}{% if r.aporte_hoy != r.aporte %}, {{ r.aporte|euro:0 }} fijos y el resto para gastos puntuales{% endif %}</span>
         </div>
         <div class="rs-kpi">
             <span class="rs-kpi-lbl">Recibos que tocan</span>
@@ -154,7 +154,7 @@
 
             <!-- ══════════ DE DÓNDE SALE EL APORTE ══════════ -->
             <details class="rs-caja rs-aportes">
-                <summary>De dónde salen los {{ r.aporte|euro }} al mes</summary>
+                <summary>De dónde salen los {{ r.aporte_hoy|euro }} al mes</summary>
                 <p class="rs-apagado">La provisión de cada partida de fijos anuales: lo que cuesta entre los meses que dura. Se cambia en Gastos o en <a href="{% url 'extractos:anuales' %}">Fijos anuales</a>.</p>
                 <table class="rs-tabla">
                     {% for a in r.aportes_partidas %}
