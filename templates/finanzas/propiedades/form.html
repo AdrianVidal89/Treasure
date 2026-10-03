@@ -133,12 +133,12 @@
                 <div class="fg-row">
                     <div class="fg">
                         <label>Construcción (% del valor catastral)</label>
-                        <input type="text" inputmode="decimal" name="pct_construccion" value="{{ propiedad.pct_construccion|unlocalize|default:'' }}" placeholder="Ej: 62">
+                        <input type="text" inputmode="decimal" name="pct_construccion" value="{% if propiedad.pct_construccion is not None %}{{ propiedad.pct_construccion|unlocalize }}{% endif %}" placeholder="Ej: 62">
                         <small>Lo dice el recibo del IBI (valor de la construcción ÷ total). Sin él no se cuenta la amortización (3 %/año).</small>
                     </div>
                     <div class="fg">
                         <label>Intereses de la hipoteca al año (€)</label>
-                        <input type="text" inputmode="decimal" name="intereses_hipoteca_anuales" value="{{ propiedad.intereses_hipoteca_anuales|unlocalize|default:'' }}" placeholder="Ej: 1800">
+                        <input type="text" inputmode="decimal" name="intereses_hipoteca_anuales" value="{% if propiedad.intereses_hipoteca_anuales is not None %}{{ propiedad.intereses_hipoteca_anuales|unlocalize }}{% endif %}" placeholder="Ej: 1800">
                         <small>Solo los intereses se deducen, no la cuota entera. Te los da el banco.</small>
                     </div>
                 </div>
