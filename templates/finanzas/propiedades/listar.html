@@ -98,19 +98,22 @@ dato de los que había.
 
 .coste-title { font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin-bottom:8px; }
 .coste-grafico { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
-.prop-renta { display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:16px 22px; border-bottom:1px solid var(--surface-2);
-    background:color-mix(in srgb, var(--success) 7%, var(--surface)); }
-.prop-renta.neg { background:color-mix(in srgb, var(--danger) 7%, var(--surface)); }
-.prop-renta-cifra { display:flex; flex-direction:column; gap:2px; min-width:200px; }
-.prop-renta-cifra .k { font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
-.prop-renta-cifra .v { font-size:2rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
-.prop-renta.pos .prop-renta-cifra .v { color:var(--success); }
-.prop-renta.neg .prop-renta-cifra .v { color:var(--danger); }
-.prop-renta-cifra .v small { font-size:0.8rem; font-weight:600; color:var(--muted); }
-.prop-renta-cuenta { display:flex; flex-direction:column; gap:2px; font-size:0.84rem; flex:1 1 240px; }
-.prop-renta-cuenta b { font-variant-numeric:tabular-nums; }
-.prop-renta-cuenta .sub { font-size:0.72rem; color:var(--muted); margin-top:2px; }
-.prop-renta .btn { margin-left:auto; }
+.prop-renta { display:flex; flex-direction:column; gap:12px; padding:16px 22px; border-bottom:1px solid var(--surface-2);
+    background:color-mix(in srgb, var(--success) 6%, var(--surface)); }
+.prop-renta.neg { background:color-mix(in srgb, var(--danger) 6%, var(--surface)); }
+.prop-renta .k { display:block; font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+.prop-renta .sub { display:block; font-size:0.72rem; color:var(--muted); margin-top:2px; }
+.prop-renta-fila { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.prop-renta-col { display:flex; flex-direction:column; gap:2px; }
+.prop-renta-col .v { font-size:1.35rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.15; }
+.prop-renta-op { font-size:1.3rem; color:var(--muted); font-weight:600; padding-bottom:2px; }
+.prop-renta-col.resultado { text-align:left; padding:8px 14px; border-radius:12px; border:1px solid var(--border); background:var(--surface); }
+.prop-renta-col.resultado .v { font-size:2rem; }
+.prop-renta.pos .resultado .v { color:var(--success); }
+.prop-renta.neg .resultado .v { color:var(--danger); }
+.prop-renta-col.resultado .v small { font-size:0.78rem; font-weight:600; color:var(--muted); }
+.prop-renta-pie { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+@media (max-width:640px) { .prop-renta-col.resultado { margin-left:0; text-align:left; width:100%; } }
 .coste-detalle { margin-top:14px; }
 .coste-detalle > summary { cursor:pointer; font-size:0.78rem; color:var(--muted); }
 .coste-detalle > summary:hover { color:var(--primary-color); }
@@ -232,19 +235,30 @@ dato de los que había.
             mismos meses cerrados.
             {% endcomment %}
             <div class="prop-renta {% if item.neto_mensual < 0 %}neg{% else %}pos{% endif %}">
-                <div class="prop-renta-cifra">
-                    <span class="k">{% if item.neto_mensual < 0 %}Te cuesta, con el alquiler{% else %}Te deja el alquiler{% endif %} · {{ anio }}</span>
-                    <span class="v">{% if item.neto_mensual > 0 %}+{% endif %}{{ item.neto_mensual|euro:0 }}<small>/mes</small></span>
+                <div class="prop-renta-cab">
+                    <span class="k">Balance mensual ponderado · {{ anio }}</span>
+                    <span class="sub">media al mes del año: alquiler de los {{ al.meses_cerrados }} mes{{ al.meses_cerrados|pluralize:"es" }} cerrado{{ al.meses_cerrados|pluralize }} ({{ al.meses_con_cobro }} con cobro) · gasto corriente de esos meses y periódicos del año entre 12</span>
                 </div>
-                <div class="prop-renta-cuenta">
-                    <span><b class="text-positive">{{ al.media_ingreso_cerrados|euro:0 }}</b> de alquiler al mes</span>
-                    <span>− <b>{{ f.ritmo_mensual|euro:0 }}</b> de coste al mes</span>
-                    <span class="sub">
-                        {% if al.meses_cerrados %}media de {{ al.meses_cerrados }} mes{{ al.meses_cerrados|pluralize:"es" }} cerrado{{ al.meses_cerrados|pluralize }}, {{ al.meses_con_cobro }} con cobro{% else %}sin meses cerrados aún{% endif %}
-                        · en el año {{ al.ingreso_real|euro:0 }} cobrados, neto {{ f.neto_real_anual|euro:0 }}
-                    </span>
+                <div class="prop-renta-fila">
+                    <div class="prop-renta-col">
+                        <span class="k">Alquiler percibido al mes</span>
+                        <span class="v text-positive">+{{ al.media_ingreso_cerrados|euro:0 }}</span>
+                    </div>
+                    <div class="prop-renta-op">−</div>
+                    <div class="prop-renta-col">
+                        <span class="k">Gasto mensual cargado</span>
+                        <span class="v text-negative">{{ f.ritmo_mensual|euro:0 }}</span>
+                    </div>
+                    <div class="prop-renta-op">=</div>
+                    <div class="prop-renta-col resultado">
+                        <span class="k">{% if item.neto_mensual < 0 %}Esta propiedad te cuesta{% else %}Esta propiedad genera{% endif %}</span>
+                        <span class="v">{% if item.neto_mensual < 0 %}{{ item.neto_mensual|euro:0|cut:"-" }}{% else %}+{{ item.neto_mensual|euro:0 }}{% endif %}<small> netos al mes</small></span>
+                    </div>
                 </div>
-                <a class="btn btn-edit" href="{% url 'finanzas:alquiler_propiedad' p.pk %}?anio={{ anio }}">Alquiler e IRPF →</a>
+                <div class="prop-renta-pie">
+                    <span class="sub">En lo que va de {{ anio }}: {{ al.ingreso_real|euro:0 }} cobrados · neto {{ f.neto_real_anual|euro:0 }} (lo que pasó por el banco)</span>
+                    <a class="btn btn-edit" href="{% url 'finanzas:alquiler_propiedad' p.pk %}?anio={{ anio }}">Alquiler e IRPF →</a>
+                </div>
             </div>
             {% endif %}
 

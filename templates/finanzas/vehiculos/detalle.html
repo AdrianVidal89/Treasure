@@ -94,6 +94,29 @@
             </span>
         </div>
         {% include "finanzas/_linea_mensual.html" with g=f.grafico_mensual gid=f.clave|slugify %}
+        {% if f.desglose_provisiones %}
+        {% comment %}La línea es lo que salió del banco: los neumáticos de
+           septiembre salen enteros. Aquí, pago a pago, lo que de verdad cuenta
+           este año, para que la media se pueda comprobar a mano.{% endcomment %}
+        <div class="veh-desglose">
+            <h4>Pagos periódicos de {{ f.anio }}: lo que pagaste y lo que cuenta este año</h4>
+            <table>
+                <thead><tr><th>Pago</th><th class="num">Pagado</th><th class="num">Cuenta en {{ f.anio }}</th><th class="num">Al mes</th></tr></thead>
+                {% for d in f.desglose_provisiones %}
+                <tr>
+                    <td>{{ d.fecha|date:"d/m" }} · {{ d.partida|default:d.concepto }}{% if d.periodicidad %} <span class="veh-apagado">({{ d.periodicidad }})</span>{% endif %}</td>
+                    <td class="num">{{ d.pagado|euro }}</td>
+                    <td class="num"><strong>{{ d.imputado|euro }}</strong></td>
+                    <td class="num">{{ d.al_mes|euro }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="total"><td>Total</td><td class="num">{{ f.provisiones_anual|euro }}</td>
+                    <td class="num">{{ f.provisiones_devengadas|euro }}</td><td class="num">{{ f.ritmo_provisiones|euro }}</td></tr>
+            </table>
+            <p class="veh-apagado">Un gasto de varios años cuenta su parte: lo pagado × 12 ÷ los meses que dura. Lo de un año o menos cuenta entero.
+            Al mes, el total entre 12, más el gasto corriente entre los meses cerrados ({{ f.ritmo_corriente|euro }}): <strong>{{ f.ritmo_mensual|euro }}/mes</strong>.</p>
+        </div>
+        {% endif %}
     </section>
     {% endif %}
 
@@ -282,6 +305,15 @@
 .veh-mini.peligro:hover { border-color:var(--danger); color:var(--danger); }
 .msg-toast { background:var(--surface); border-left:3px solid var(--primary-color); padding:12px 16px; border-radius:8px; margin-bottom:16px; }
 .veh-provision { color:var(--info, #5f8fb0); font-size:0.74rem; }
+.veh-desglose { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.veh-desglose h4 { margin:0 0 6px; font-size:0.82rem; }
+.veh-desglose table { width:100%; border-collapse:collapse; font-size:0.8rem; }
+.veh-desglose th { text-align:left; font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; padding:5px 4px; border-bottom:1px solid var(--border); }
+.veh-desglose td { padding:6px 4px; border-bottom:1px solid var(--border); }
+.veh-desglose .num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.veh-desglose tr.total td { font-weight:700; border-bottom:none; }
+.veh-desglose p { font-size:0.74rem; margin:8px 0 0; line-height:1.45; }
+.veh-apagado { color:var(--muted); }
 </style>
 {% include "finanzas/_linea_mensual_recursos.html" %}
 {% endblock %}
