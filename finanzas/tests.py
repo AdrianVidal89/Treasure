@@ -3385,6 +3385,18 @@ class CosteAnualDeUnActivoTests(TestCase):
         self.assertEqual(f['devengado_anual'], Decimal('181'))    # 543 × 12/36
         self.assertEqual(f['ritmo_mensual'], Decimal('15.08'))
 
+    def test_el_desglose_enseña_lo_que_cuenta_cada_pago(self):
+        """Los 543 € de neumáticos cada tres años cuentan 181 € en el año, y
+        el desglose lo escribe pago a pago para comprobarlo a mano."""
+        self.pagar('-543', 9, self.mant, self.neumaticos)
+        self.pagar('-385', 1, self.mant, self.revision)
+        f = self.ficha(hoy=(2026, 10, 3))
+        filas = {d['partida']: d for d in f['desglose_provisiones']}
+        self.assertEqual(filas['Polo Neumaticos']['pagado'], Decimal('543'))
+        self.assertEqual(filas['Polo Neumaticos']['imputado'], Decimal('181.00'))
+        self.assertEqual(filas['Polo Revision']['imputado'], Decimal('385.00'))
+        self.assertEqual(f['ritmo_provisiones'], Decimal('47.17'))  # (181 + 385) / 12
+
     def test_un_recibo_de_menos_de_un_año_imputa_entero(self):
         """Un trimestral cubre tres meses que caen todos dentro del año, y los
         cuatro del año suman lo declarado. Anualizarlo lo multiplicaría por
@@ -4675,7 +4687,7 @@ class AlquilerDePropiedadTests(TestCase):
         a, f = item['alquiler'], item['costes']
         self.assertEqual(a['media_ingreso_cerrados'], Decimal('1000.00'))
         self.assertEqual(item['neto_mensual'], Decimal('1000.00') - f['ritmo_mensual'])
-        self.assertContains(respuesta, 'Te deja el alquiler')
+        self.assertContains(respuesta, 'Esta propiedad genera')
         self.assertContains(respuesta, 'al-datos-propiedad1')
         # Una propiedad sin alquiler sigue enseñando solo lo que cuesta.
         self.piso.alquilada = False
@@ -4684,7 +4696,7 @@ class AlquilerDePropiedadTests(TestCase):
         MovimientoBancario.objects.filter(importe__gt=0).update(propiedad=None)
         respuesta = self.client.get(reverse('finanzas:listar_propiedades'), {'anio': self.anio})
         self.assertIsNone(respuesta.context['propiedades_con_venta'][0]['alquiler'])
-        self.assertNotContains(respuesta, 'Te deja el alquiler')
+        self.assertNotContains(respuesta, 'Balance mensual ponderado')
 
     def test_formulario_y_ficha(self):
         respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {

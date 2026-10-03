@@ -289,6 +289,21 @@ def costes(activo, anio):
         'provisiones_anual': provisiones_anual,
         'num_provisiones': len(provisiones),
         'movimientos_provision': sorted(provisiones, key=lambda m: m.fecha, reverse=True),
+        # Pago a pago: lo que salió del banco y lo que le toca a este año. Es
+        # la prueba a mano de que unos neumáticos de 543 € cada tres años
+        # pesan 181 € en el año, no 543.
+        'desglose_provisiones': [
+            {
+                'fecha': m.fecha, 'concepto': m.concepto,
+                'partida': m.partida_conciliada.nombre if m.partida_conciliada_id else '',
+                'periodicidad': (m.partida_conciliada.get_periodicidad_display().lower()
+                                 if m.partida_conciliada_id else ''),
+                'pagado': -m.importe_neto,
+                'imputado': round(_cuota_anual(m), 2) if m.partida_conciliada_id else Decimal('0'),
+                'al_mes': round(_cuota_anual(m) / 12, 2) if m.partida_conciliada_id else Decimal('0'),
+            }
+            for m in sorted(provisiones, key=lambda m: m.fecha)
+        ],
         'partidas_sueltas': partidas_sueltas,
         'meses_con_datos': len(meses_con_datos),
         'devengado_anual': devengado_anual,
