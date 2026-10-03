@@ -3356,15 +3356,25 @@ class CosteAnualDeUnActivoTests(TestCase):
     def test_con_el_año_a_medias_la_media_va_sobre_los_meses_cerrados(self):
         """En septiembre hay ocho meses cerrados: los 320,46 € de gasto
         corriente son 40,06 €/mes, no 26,70 (que es lo que salía dividiendo
-        entre doce). Los pagos de septiembre entran cuando el mes se cierre."""
+        entre doce). Los periódicos son coste del AÑO y van entre doce:
+        566 € de neumáticos y revisión son 47,17 €/mes, no 70,75."""
         self.pagar_el_año_del_usuario()
         f = self.ficha()
 
         self.assertEqual(f['meses_cerrados'], 8)
-        self.assertEqual(f['devengado_cerrado'], Decimal('320.46'))
-        self.assertEqual(f['ritmo_mensual'], Decimal('40.06'))
+        self.assertEqual(f['ritmo_corriente'], Decimal('40.06'))
+        self.assertEqual(f['ritmo_provisiones'], Decimal('47.17'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('87.23'))
         # Lo imputado al año no se toca: lo que cambia es el divisor.
         self.assertEqual(f['devengado_anual'], Decimal('886.46'))
+
+    def test_el_seguro_de_enero_no_infla_la_media_de_octubre(self):
+        """Un pago anual hecho a principio de año es coste de los doce meses:
+        en octubre, 385 € de revisión son 32,08 €/mes, no 42,78 (entre nueve)."""
+        self.pagar('-385', 1, self.mant, self.revision)
+        f = self.ficha(hoy=(2026, 10, 3))
+        self.assertEqual(f['meses_cerrados'], 9)
+        self.assertEqual(f['ritmo_mensual'], Decimal('32.08'))
 
     def test_un_gasto_plurianual_imputa_al_año_solo_su_parte(self):
         """543 € de neumáticos que duran tres años son 181 € al año."""

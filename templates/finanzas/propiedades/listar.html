@@ -317,12 +317,12 @@ dato de los que había.
                     {% endcomment %}
                     <p class="coste-vacio" style="font-style:normal;">
                         {% if f.hay_ritmo %}
-                        {{ f.devengado_cerrado|euro:0 }} imputados a los {{ f.meses_cerrados }}
-                        mes{{ f.meses_cerrados|pluralize:"es" }} ya cerrado{{ f.meses_cerrados|pluralize:"s" }}
-                        de {{ f.anio }}, entre esos {{ f.meses_cerrados }}
+                        {{ f.corriente_cerrado|euro:0 }} de gasto corriente entre los {{ f.meses_cerrados }}
+                        mes{{ f.meses_cerrados|pluralize:"es" }} cerrado{{ f.meses_cerrados|pluralize:"s" }} ({{ f.ritmo_corriente|euro:0 }}/mes)
                         {% else %}
-                        Todavía no hay ningún mes cerrado de {{ f.anio }} sobre el que promediar
+                        Todavía no hay ningún mes cerrado de {{ f.anio }} para el gasto corriente
                         {% endif %}
+                        {% if f.provisiones_devengadas %}+ {{ f.provisiones_devengadas|euro:0 }} de gastos periódicos del año entre 12 ({{ f.ritmo_provisiones|euro:0 }}/mes){% endif %}
                         · {{ f.devengado_anual|euro:0 }} imputados al año
                         · {{ f.num_movimientos }} movimiento{{ f.num_movimientos|pluralize:"s" }}
                     </p>
