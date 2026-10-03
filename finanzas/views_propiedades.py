@@ -36,14 +36,20 @@ def listar_propiedades(request):
     # Una propiedad no solo vale dinero: cuesta dinero. El coste de tenerla
     # (IBI, comunidad, seguro, derramas) es tan parte de la foto como su valor.
     anio = _anio_elegido(request)
-    propiedades_con_venta = [
-        {
-            'propiedad': p,
-            'neto_venta': p.calcular_neto_venta(),
-            'costes': costes_activo.costes(p, anio),
-        }
-        for p in propiedades
-    ]
+    from .alquiler import analizar_alquiler
+
+    propiedades_con_venta = []
+    for p in propiedades:
+        costes = costes_activo.costes(p, anio)
+        item = {'propiedad': p, 'neto_venta': p.calcular_neto_venta(), 'costes': costes, 'alquiler': None}
+        # Una alquilada no es solo lo que cuesta: lo que importa es lo que
+        # deja. Se resta del coste mensual —la misma cifra de la tarjeta— lo
+        # cobrado al mes, sobre los mismos meses cerrados.
+        if p.alquilada or costes['renta']:
+            a = analizar_alquiler(p, anio)
+            item['alquiler'] = a
+            item['neto_mensual'] = a['media_ingreso_cerrados'] - costes['ritmo_mensual']
+        propiedades_con_venta.append(item)
     total_coste_anual = sum(
         (d['costes']['real_anual'] for d in propiedades_con_venta), Decimal('0'),
     )

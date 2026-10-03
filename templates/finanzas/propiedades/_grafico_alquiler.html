@@ -1,0 +1,173 @@
+{% load custom_filters %}{% load l10n %}
+{% comment %}
+Alquiler y coste de cada mes de una propiedad (barras) y el neto (línea), en
+la misma escala. Lo usan la ficha «Alquiler e IRPF» y la tarjeta de la
+propiedad en la lista. Espera `a` (de alquiler.analizar_alquiler), `gid` (único
+en la página) y `titulo`.
+{% endcomment %}
+<div class="al-raiz" id="al-{{ gid }}">
+        <div class="al-grafico-cab">
+            <h3>{{ titulo|unlocalize }}, mes a mes</h3>
+            <div class="al-leyenda">
+                <span><i class="ing"></i> Alquiler</span>
+                <span><i class="cos"></i> Coste</span>
+                <span><i class="net"></i> Neto</span>
+            </div>
+        </div>
+        <div class="al-lienzo" role="img"
+             aria-label="Alquiler cobrado, coste y neto de cada mes de {{ a.anio|unlocalize }}; la tabla de debajo tiene las mismas cifras"></div>
+        <div class="al-tip" hidden></div>
+        <details class="al-tabla-det">
+            <summary>Ver en tabla</summary>
+            <table class="al-tabla">
+                <thead><tr><th>Mes</th><th class="al-num">Alquiler</th><th class="al-num">Coste</th><th class="al-num">Neto</th></tr></thead>
+                {% for m in a.meses %}{% if not m.futuro %}
+                <tr><td>{{ m.nombre }}</td><td class="al-num">{{ m.ingreso|euro:0 }}</td><td class="al-num">{{ m.coste|euro:0 }}</td>
+                    <td class="al-num {% if m.neto < 0 %}al-neg{% endif %}">{{ m.neto|euro:0 }}</td></tr>
+                {% endif %}{% endfor %}
+            </table>
+        </details>
+    {% with json_id="al-datos-"|add:gid %}{{ a.grafico|json_script:json_id }}{% endwith %}
+</div>
+<style>
+.al-grafico-cab { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+.al-grafico-cab h3, .al-irpf h3 { margin:0; font-size:0.92rem; }
+.al-leyenda { display:flex; gap:14px; font-size:0.76rem; color:var(--muted); }
+.al-leyenda i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:-1px; }
+.al-leyenda i.ing { background:var(--success); }
+.al-leyenda i.cos { background:var(--danger-2); }
+.al-leyenda i.net { height:2px; width:14px; vertical-align:3px; background:var(--text-color); }
+.al-lienzo { height:280px; margin-top:8px; }
+.al-lienzo svg { width:100%; height:100%; display:block; overflow:visible; }
+.al-tip { position:absolute; pointer-events:none; z-index:5; min-width:190px; max-width:280px; padding:9px 11px; border-radius:10px;
+    background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 6px 20px rgba(0,0,0,.12); font-size:0.76rem; color:var(--muted); }
+.al-tip-val { font-size:1rem; font-weight:700; color:var(--text-color); font-variant-numeric:tabular-nums; }
+.al-tip-fila { display:flex; justify-content:space-between; gap:10px; }
+.al-tip-fila b { color:var(--text-color); font-weight:600; font-variant-numeric:tabular-nums; }
+.al-tip-mov { font-size:0.7rem; margin-top:4px; border-top:1px solid var(--border); padding-top:4px; }
+.al-tabla-det { margin-top:6px; }
+.al-tabla-det > summary { cursor:pointer; font-size:0.76rem; color:var(--muted); }
+.al-raiz { position:relative; }
+.al-tabla { width:100%; border-collapse:collapse; font-size:0.8rem; }
+.al-tabla th { text-align:left; font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:600; padding:6px 4px; border-bottom:1px solid var(--border); }
+.al-tabla td { padding:7px 4px; border-bottom:1px solid var(--border); vertical-align:top; }
+.al-num { text-align:right !important; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.al-neg { color:var(--danger); }
+</style>
+<script>
+/* Alquiler y coste de cada mes (barras, una al lado de otra) y el neto (línea),
+   en la misma escala de euros. Al pasar por un mes, sus cifras y apuntes. */
+window.alqGrafico = window.alqGrafico || function (raiz) {
+    var datos = JSON.parse(document.getElementById('al-datos-' + raiz.id.slice(3)).textContent).meses;
+    var lienzo = raiz.querySelector('.al-lienzo');
+    var tip = raiz.querySelector('.al-tip');
+    if (!lienzo || !datos.length) return;
+    var NS = 'http://www.w3.org/2000/svg';
+    function euro(v) { return Math.round(v).toLocaleString('es-ES') + ' €'; }
+    function el(n, at, padre) {
+        var e = document.createElementNS(NS, n);
+        Object.keys(at || {}).forEach(function (k) { e.setAttribute(k, at[k]); });
+        if (padre) padre.appendChild(e);
+        return e;
+    }
+    function paso(rango) {
+        var bruto = rango / 4, p = Math.pow(10, Math.floor(Math.log10(bruto || 1)));
+        var ps = [1, 2, 2.5, 5, 10];
+        for (var i = 0; i < ps.length; i++) if (ps[i] * p >= bruto) return ps[i] * p;
+        return 10 * p;
+    }
+    /* Barra con las puntas redondeadas (4px) del lado del dato y plana contra el eje. */
+    function barra(x, y0, y1, w) {
+        var arriba = y1 < y0, h = Math.abs(y1 - y0), r = Math.min(4, w / 2, h);
+        if (h < 0.5) return '';
+        if (arriba) return 'M' + x + ',' + y0 + 'V' + (y1 + r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 +
+            'H' + (x + w - r) + 'Q' + (x + w) + ',' + y1 + ' ' + (x + w) + ',' + (y1 + r) + 'V' + y0 + 'Z';
+        return 'M' + x + ',' + y0 + 'V' + (y1 - r) + 'Q' + x + ',' + y1 + ' ' + (x + r) + ',' + y1 +
+            'H' + (x + w - r) + 'Q' + (x + w) + ',' + y1 + ' ' + (x + w) + ',' + (y1 - r) + 'V' + y0 + 'Z';
+    }
+
+    function pintar() {
+        lienzo.innerHTML = '';
+        var W = lienzo.clientWidth, H = lienzo.clientHeight;
+        var m = {t: 12, r: 8, b: 24, l: 58};
+        var aw = W - m.l - m.r, ah = H - m.t - m.b;
+        var vals = [0];
+        datos.forEach(function (d) { if (!d.futuro) vals.push(d.ingreso, d.coste, d.neto); });
+        var min = Math.min.apply(null, vals), max = Math.max.apply(null, vals);
+        var s = paso(max - min || 100);
+        min = Math.floor(min / s) * s; max = Math.ceil(max / s) * s;
+        if (max === min) max = min + s;
+        function y(v) { return m.t + (max - v) / (max - min) * ah; }
+        var svg = el('svg', {viewBox: '0 0 ' + W + ' ' + H}, lienzo);
+        for (var v = min; v <= max + s / 2; v += s) {
+            var l = el('line', {x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), 'stroke-width': v === 0 ? 1.5 : 1}, svg);
+            l.style.stroke = v === 0 ? 'var(--border-strong)' : 'var(--border)';
+            var t = el('text', {x: m.l - 8, y: y(v) + 4, 'text-anchor': 'end', 'font-size': 11}, svg);
+            t.style.fill = 'var(--muted)'; t.textContent = euro(v);
+        }
+        var col = aw / 12, bw = Math.max(Math.min(col * 0.28, 22), 3), y0 = y(0);
+        var puntos = [];
+        datos.forEach(function (d, i) {
+            var cx = m.l + col * i + col / 2;
+            var et = el('text', {x: cx, y: H - 6, 'text-anchor': 'middle', 'font-size': 11}, svg);
+            et.style.fill = 'var(--muted)'; et.textContent = d.etiqueta;
+            if (d.futuro) return;
+            /* 2px de hueco entre las dos barras del mes. */
+            var bi = el('path', {d: barra(cx - bw - 1, y0, y(d.ingreso), bw)}, svg); bi.style.fill = 'var(--success)';
+            var bc = el('path', {d: barra(cx + 1, y0, y(d.coste), bw)}, svg); bc.style.fill = 'var(--danger-2)';
+            puntos.push([cx, y(d.neto), d.neto]);
+        });
+        if (puntos.length) {
+            var ln = el('path', {d: puntos.map(function (p, i) { return (i ? 'L' : 'M') + p[0] + ',' + p[1]; }).join(''),
+                fill: 'none', 'stroke-width': 2, 'stroke-linejoin': 'round'}, svg);
+            ln.style.stroke = 'var(--text-color)';
+            puntos.forEach(function (p) {
+                var c = el('circle', {cx: p[0], cy: p[1], r: 4, 'stroke-width': 2}, svg);
+                c.style.fill = 'var(--text-color)'; c.style.stroke = 'var(--surface)';
+            });
+        }
+        /* Hit target: la columna entera del mes. */
+        datos.forEach(function (d, i) {
+            if (d.futuro) return;
+            var x0 = m.l + col * i;
+            var r = el('rect', {x: x0, y: m.t, width: col, height: ah, fill: 'transparent', tabindex: 0}, svg);
+            r.addEventListener('pointerenter', function () { mostrar(d, x0 + col); r.style.fill = 'color-mix(in srgb, var(--muted) 8%, transparent)'; });
+            r.addEventListener('pointerleave', function () { tip.hidden = true; r.style.fill = 'transparent'; });
+            r.addEventListener('focus', function () { mostrar(d, x0 + col); });
+            r.addEventListener('blur', function () { tip.hidden = true; });
+        });
+    }
+    function mostrar(d, xDer) {
+        tip.textContent = '';
+        function div(cls, txt) { var e = document.createElement('div'); if (cls) e.className = cls; e.textContent = txt; tip.appendChild(e); return e; }
+        function fila(a, b) {
+            var f = document.createElement('div'); f.className = 'al-tip-fila';
+            var x = document.createElement('span'); x.textContent = a;
+            var z = document.createElement('b'); z.textContent = b;
+            f.appendChild(x); f.appendChild(z); tip.appendChild(f);
+        }
+        div('', d.nombre);
+        div('al-tip-val', (d.neto > 0 ? '+' : '') + euro(d.neto) + ' neto');
+        fila('Alquiler', euro(d.ingreso));
+        fila('Coste', euro(d.coste));
+        if (d.movimientos.length) {
+            var lista = div('al-tip-mov', '');
+            d.movimientos.slice(0, 6).forEach(function (mv) {
+                var e = document.createElement('div');
+                e.textContent = mv.fecha + ' · ' + mv.concepto + ' · ' + (mv.tipo === 'ingreso' ? '+' : '−') + euro(mv.importe);
+                lista.appendChild(e);
+            });
+        }
+        tip.hidden = false;
+        var caja = lienzo.getBoundingClientRect(), padre = tip.parentElement.getBoundingClientRect();
+        var izq = caja.left - padre.left + xDer + 6;
+        if (izq + tip.offsetWidth > padre.width - 8) izq = izq - tip.offsetWidth - caja.width / 12 - 12;
+        tip.style.left = Math.max(8, izq) + 'px';
+        tip.style.top = (caja.top - padre.top + 8) + 'px';
+    }
+    pintar();
+    var espera;
+    window.addEventListener('resize', function () { clearTimeout(espera); espera = setTimeout(pintar, 120); });
+};
+</script>
+<script>window.alqGrafico(document.getElementById('al-{{ gid }}'));</script>

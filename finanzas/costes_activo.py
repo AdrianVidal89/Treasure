@@ -239,10 +239,17 @@ def costes(activo, anio):
     # Enero del año en curso no tiene ningún mes cerrado detrás: ahí no hay
     # media que dar todavía, y devolver el gasto entero como «al mes» sería
     # peor que no decir nada.
+    #
+    # Los gastos PERIÓDICOS (seguro, IVTM, la parte del año de unos
+    # neumáticos) no siguen esa regla: son el coste del AÑO, y repartidos
+    # entre los meses que van inflaban el mes —en octubre, el seguro de
+    # enero pesaba como si fuera de nueve meses—. Van siempre entre doce,
+    # con lo imputado al año hasta hoy. El corriente (gasolina, parking) sí
+    # es un ritmo y se mide sobre los meses cerrados.
     divisor = Decimal(meses_cerrados or 1)
     ritmo_corriente = round(corriente_cerrado / divisor, 2)
-    ritmo_provisiones = round(provisiones_cerradas / divisor, 2)
-    ritmo_mensual = round((corriente_cerrado + provisiones_cerradas) / divisor, 2)
+    ritmo_provisiones = round(provisiones_devengadas / 12, 2)
+    ritmo_mensual = round(ritmo_corriente + ritmo_provisiones, 2)
 
     return {
         'activo': activo,
@@ -275,6 +282,7 @@ def costes(activo, anio):
         # lado: «73,87 €/mes» sin decir de cuántos meses no se puede juzgar.
         'meses_cerrados': meses_cerrados,
         'devengado_cerrado': round(corriente_cerrado + provisiones_cerradas, 2),
+        'corriente_cerrado': round(corriente_cerrado, 2),
         'hay_ritmo': meses_cerrados > 0,
         'diferencia_mensual': ritmo_mensual - teorico_mensual,
         'corriente_anual': corriente_anual,

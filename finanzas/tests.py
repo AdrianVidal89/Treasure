@@ -3356,15 +3356,25 @@ class CosteAnualDeUnActivoTests(TestCase):
     def test_con_el_año_a_medias_la_media_va_sobre_los_meses_cerrados(self):
         """En septiembre hay ocho meses cerrados: los 320,46 € de gasto
         corriente son 40,06 €/mes, no 26,70 (que es lo que salía dividiendo
-        entre doce). Los pagos de septiembre entran cuando el mes se cierre."""
+        entre doce). Los periódicos son coste del AÑO y van entre doce:
+        566 € de neumáticos y revisión son 47,17 €/mes, no 70,75."""
         self.pagar_el_año_del_usuario()
         f = self.ficha()
 
         self.assertEqual(f['meses_cerrados'], 8)
-        self.assertEqual(f['devengado_cerrado'], Decimal('320.46'))
-        self.assertEqual(f['ritmo_mensual'], Decimal('40.06'))
+        self.assertEqual(f['ritmo_corriente'], Decimal('40.06'))
+        self.assertEqual(f['ritmo_provisiones'], Decimal('47.17'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('87.23'))
         # Lo imputado al año no se toca: lo que cambia es el divisor.
         self.assertEqual(f['devengado_anual'], Decimal('886.46'))
+
+    def test_el_seguro_de_enero_no_infla_la_media_de_octubre(self):
+        """Un pago anual hecho a principio de año es coste de los doce meses:
+        en octubre, 385 € de revisión son 32,08 €/mes, no 42,78 (entre nueve)."""
+        self.pagar('-385', 1, self.mant, self.revision)
+        f = self.ficha(hoy=(2026, 10, 3))
+        self.assertEqual(f['meses_cerrados'], 9)
+        self.assertEqual(f['ritmo_mensual'], Decimal('32.08'))
 
     def test_un_gasto_plurianual_imputa_al_año_solo_su_parte(self):
         """543 € de neumáticos que duran tres años son 181 € al año."""
@@ -4656,6 +4666,25 @@ class AlquilerDePropiedadTests(TestCase):
         self.assertEqual(a['meses'][hoy.month - 1]['ingreso'], Decimal('750'))
         # Aunque aún no esté marcada como alquilada, la tarjeta lleva a la ficha.
         self.assertContains(self.client.get(reverse('finanzas:listar_propiedades')), 'Alquiler e IRPF')
+
+    def test_la_tarjeta_dice_lo_que_deja_el_alquiler(self):
+        """En la propia lista: el neto al mes en grande y la gráfica de alquiler
+        y coste, no solo la del coste."""
+        respuesta = self.client.get(reverse('finanzas:listar_propiedades'), {'anio': self.anio})
+        item = respuesta.context['propiedades_con_venta'][0]
+        a, f = item['alquiler'], item['costes']
+        self.assertEqual(a['media_ingreso_cerrados'], Decimal('1000.00'))
+        self.assertEqual(item['neto_mensual'], Decimal('1000.00') - f['ritmo_mensual'])
+        self.assertContains(respuesta, 'Te deja el alquiler')
+        self.assertContains(respuesta, 'al-datos-propiedad1')
+        # Una propiedad sin alquiler sigue enseñando solo lo que cuesta.
+        self.piso.alquilada = False
+        self.piso.save()
+        from extractos.models import MovimientoBancario
+        MovimientoBancario.objects.filter(importe__gt=0).update(propiedad=None)
+        respuesta = self.client.get(reverse('finanzas:listar_propiedades'), {'anio': self.anio})
+        self.assertIsNone(respuesta.context['propiedades_con_venta'][0]['alquiler'])
+        self.assertNotContains(respuesta, 'Te deja el alquiler')
 
     def test_formulario_y_ficha(self):
         respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {
