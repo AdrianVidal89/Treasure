@@ -109,6 +109,11 @@ a saltar de una a otra.
         {% if panel.reembolsado %}
         <span class="ext-hero-sub c-compartido">gastos ya sin los {{ panel.reembolsado|euro }} que te devolvieron</span>
         {% endif %}
+        {% if panel.diferencia_meses %}
+        <span class="ext-hero-sub" title="Cada mes descuenta lo que puso la reserva y saca los pagos anuales sin emparejar, para compararse con su presupuesto. En el periodo entero esos pagos cuentan enteros: el ahorro de la reserva entró antes como traspaso, que no suma.">
+            mes a mes suman {{ panel.diferencia_meses|euro }} más: lo que puso la reserva y los anuales sacados de su mes, que aquí cuentan enteros
+        </span>
+        {% endif %}
         <span class="ext-hero-sub">{{ panel.kpi_num }} movimiento{{ panel.kpi_num|pluralize:"s" }}</span>
     </div>
 

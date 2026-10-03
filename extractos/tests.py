@@ -6991,3 +6991,44 @@ class GastoPuntualTests(TestCase):
         self.client.post(reverse('extractos:anuales_puntual_borrar', args=[calentador.pk]))
         calentador.refresh_from_db()
         self.assertFalse(calentador.activo)
+
+
+class CabeceraDelMesCoherenteTests(TestCase):
+    """Septiembre dice lo mismo en el listado del año que filtrado a septiembre."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        cat = lambda n: CategoriaGasto.objects.get(hogar=self.hogar, nombre=n)
+        revision = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat('Mantenimiento vehicular'), nombre='Revisión',
+            importe=Decimal('1200'), periodicidad='anual', mes_pago=9,
+        )
+        mov = lambda imp, mes, dia, c, **kw: MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=date(2026, mes, dia), concepto=c, importe=Decimal(imp), **kw)
+        mov('3000', 8, 1, 'Nómina agosto', categoria=cat('Otros ingresos'))
+        mov('3000', 9, 1, 'Nómina', categoria=cat('Otros ingresos'))
+        pago = mov('-1200', 9, 15, 'Taller', categoria=cat('Mantenimiento vehicular'), partida_conciliada=revision)
+        mov('928', 9, 15, 'De la reserva', categoria=cat(CATEGORIA_TRASPASO), cubre=pago)
+        mov('-100', 9, 20, 'Mercadona', categoria=cat('Alimentacion'))
+
+    def panel(self, **params):
+        todos = list(MovimientoBancario.objects.filter(hogar=self.hogar))
+        request = RequestFactory().get('/', params)
+        request.user = self.user
+        return _panel_context(self.hogar, todos, request)
+
+    def test_el_mismo_mes_con_la_misma_cifra(self):
+        mes = self.panel(anio='2026', mes='9')
+        anio = self.panel(anio='2026', mes='all')
+        septiembre = next(g for g in anio['grupos'] if g['mes'] == 9)
+        self.assertEqual(mes['kpi_neto'], Decimal('2628'))  # 3000 − 272 − 100
+        self.assertEqual(septiembre['neto'], mes['kpi_neto'])
+        # El año cuenta el pago entero, y dice por qué no es la suma de los meses.
+        self.assertEqual(anio['kpi_neto'], Decimal('4700'))
+        self.assertEqual(anio['diferencia_meses'], Decimal('928'))
+        self.assertEqual(mes['diferencia_meses'], Decimal('0'))

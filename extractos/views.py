@@ -1403,14 +1403,21 @@ def _panel_context(hogar, todos, request, filtros=None):
         # cobro repartido sumaba su total además del de sus partes. La fila
         # decía «repartido en 4 · no cuenta» y aparecía tachada, y aun así el
         # mes cargaba 924,81 € donde la suma real eran 740,08.
-        if m.pk in fuera:
+        #
+        # Cada cabecera es SU mes, y se cuenta como se contaría filtrando ese
+        # mes, se mire el año entero o no: lo que puso la reserva se descuenta
+        # y el pago anual sin emparejar se saca. Contándolo entero cuando se
+        # miraba el año, septiembre decía 8.232 € en el listado del año y
+        # 9.160 € al filtrarlo: el mismo mes con dos cifras. El total del AÑO
+        # sí los cuenta enteros (arriba), y la diferencia se explica.
+        if m.se_saca_del_mes and not m.es_neutro:
             g['provisiones'] -= -m.importe_neto
         elif m.es_neutro:
             g['neutro'] += m.importe
         elif m.cuenta_como_ingreso:
             g['ingresos'] += m.importe
         elif m.cuenta_como_gasto:
-            g['gastos'] -= peso_de(m)
+            g['gastos'] -= m.impacto_real
 
     # Con el histórico entero a la vista, pintar los apuntes de los treinta y
     # seis meses eran veinte megas de HTML y cuatro segundos de render para ver
@@ -1536,6 +1543,13 @@ def _panel_context(hogar, todos, request, filtros=None):
         # tres cosas distintas cuando son dos, y una repetida.
         'kpi_gasto_abs': -gastos,
         'kpi_neto': ingresos + gastos,
+        # Con varios meses a la vista, cuánto más dan las cabeceras de los
+        # meses sumadas que el total: lo que la reserva puso y los anuales que
+        # cada mes se saca. En el periodo entero cuentan enteros.
+        'diferencia_meses': (
+            sum((g['neto'] for g in grupos), Decimal('0')) - (ingresos + gastos)
+            if not vista_de_mes and len(grupos) > 1 else Decimal('0')
+        ),
         'kpi_num': len(movimientos),
         'kpi_sin_categorizar': sin_categorizar,
         'anios_disponibles': anios_disponibles,
