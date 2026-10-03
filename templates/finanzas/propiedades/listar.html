@@ -112,6 +112,7 @@ dato de los que había.
 .prop-renta.pos .resultado .v { color:var(--success); }
 .prop-renta.neg .resultado .v { color:var(--danger); }
 .prop-renta-col.resultado .v small { font-size:0.78rem; font-weight:600; color:var(--muted); }
+.prop-renta-botones { display:flex; gap:8px; flex-wrap:wrap; }
 .prop-renta-pie { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 @media (max-width:640px) { .prop-renta-col.resultado { margin-left:0; text-align:left; width:100%; } }
 .coste-detalle { margin-top:14px; }
@@ -183,7 +184,7 @@ dato de los que había.
     <div class="prop-lista">
         {% for item in propiedades_con_venta %}
         {% with p=item.propiedad v=item.neto_venta f=item.costes al=item.alquiler %}
-        <div class="prop-card">
+        <div class="prop-card" id="propiedad-{{ p.pk }}">
             <div class="prop-card-header">
                 <div class="prop-dot" style="background: {{ p.color }};"></div>
                 <div>
@@ -237,7 +238,7 @@ dato de los que había.
             <div class="prop-renta {% if item.neto_mensual < 0 %}neg{% else %}pos{% endif %}">
                 <div class="prop-renta-cab">
                     <span class="k">Balance mensual ponderado · {{ anio }}</span>
-                    <span class="sub">media al mes del año: alquiler de los {{ al.meses_cerrados }} mes{{ al.meses_cerrados|pluralize:"es" }} cerrado{{ al.meses_cerrados|pluralize }} ({{ al.meses_con_cobro }} con cobro) · gasto corriente de esos meses y periódicos del año entre 12</span>
+                    <span class="sub">{% if al.meses_alquilado %}alquiler: media desde {{ al.primer_cobro }}, el primer cobro ({{ al.meses_alquilado }} mes{{ al.meses_alquilado|pluralize:"es" }} cerrado{{ al.meses_alquilado|pluralize }}){% else %}sin cobros de alquiler asignados en meses cerrados{% endif %} · gasto: corriente de los meses cerrados y periódicos del año entre 12</span>
                 </div>
                 <div class="prop-renta-fila">
                     <div class="prop-renta-col">
@@ -257,7 +258,10 @@ dato de los que había.
                 </div>
                 <div class="prop-renta-pie">
                     <span class="sub">En lo que va de {{ anio }}: {{ al.ingreso_real|euro:0 }} cobrados · neto {{ f.neto_real_anual|euro:0 }} (lo que pasó por el banco)</span>
-                    <a class="btn btn-edit" href="{% url 'finanzas:alquiler_propiedad' p.pk %}?anio={{ anio }}">Alquiler e IRPF →</a>
+                    <span class="prop-renta-botones">
+                        <a class="btn btn-edit" href="{% url 'finanzas:alquiler_cobros' p.pk %}">Elegir los cobros del alquiler</a>
+                        <a class="btn btn-edit" href="{% url 'finanzas:alquiler_propiedad' p.pk %}?anio={{ anio }}">Alquiler e IRPF →</a>
+                    </span>
                 </div>
             </div>
             {% endif %}

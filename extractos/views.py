@@ -340,6 +340,7 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
         # extracto para no contar las partes como movimientos importados: no
         # vienen del banco, salen de un criterio que puso el usuario.
         total_divididos += _aplicar_divisiones(hogar, extracto)
+        _imputar_como_antes(hogar, extracto)
 
     return {
         'total_creados': total_creados,
@@ -351,6 +352,37 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
         'total_divididos': total_divididos,
         'extractos_ok': extractos_ok,
     }
+
+
+def _imputar_como_antes(hogar, extracto):
+    """Los cobros de un pagador que ya es de una propiedad, a esa propiedad.
+
+    El alquiler llega cada mes del mismo inquilino: elegido una vez («estos
+    son los cobros del piso»), los de los extractos siguientes se imputan
+    solos. Solo si TODOS los ingresos anteriores de ese pagador están en la
+    misma propiedad: un Bizum o una transferencia genérica, con cobros sueltos
+    sin asignar, no se arrastra a ningún sitio.
+    """
+    nuevos = [
+        m for m in extracto.movimientos.filter(importe__gt=0, propiedad__isnull=True, vehiculo__isnull=True)
+        if m.comercio
+    ]
+    if not nuevos:
+        return 0
+    previos = defaultdict(set)
+    for comercio, propiedad_id in (
+        MovimientoBancario.objects.filter(hogar=hogar, importe__gt=0, comercio__in={m.comercio for m in nuevos})
+        .exclude(extracto=extracto).values_list('comercio', 'propiedad_id')
+    ):
+        previos[comercio].add(propiedad_id)
+    asignados = 0
+    for m in nuevos:
+        destino = previos.get(m.comercio) or set()
+        if len(destino) == 1 and None not in destino:
+            m.propiedad_id = next(iter(destino))
+            m.save(update_fields=['propiedad'])
+            asignados += 1
+    return asignados
 
 
 def _aplicar_divisiones(hogar, extracto):

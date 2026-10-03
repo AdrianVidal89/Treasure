@@ -4711,6 +4711,52 @@ class AlquilerDePropiedadTests(TestCase):
         self.assertIsNone(respuesta.context['propiedades_con_venta'][0]['alquiler'])
         self.assertNotContains(respuesta, 'Balance mensual ponderado')
 
+    def test_el_alquiler_al_mes_cuenta_desde_el_primer_cobro(self):
+        """Alquilado en agosto a 1.200 €: son 1.200 al mes, no 2.400 € entre
+        los nueve meses del año (267 €). Un mes vacío después sí cuenta."""
+        from extractos.models import MovimientoBancario
+        from .alquiler import analizar_alquiler
+        MovimientoBancario.objects.filter(importe__gt=0).delete()
+        from .models import CategoriaGasto
+        ingresos = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        for mes in (8, 9):
+            MovimientoBancario.objects.create(hogar=self.hogar, fecha=datetime.date(2026, mes, 3),
+                                              concepto='Inquilino', importe=Decimal('1200'),
+                                              categoria=ingresos, propiedad=self.piso)
+        a = analizar_alquiler(self.piso, 2026, hoy=datetime.date(2026, 10, 3))
+        self.assertEqual(a['media_ingreso_cerrados'], Decimal('1200.00'))
+        self.assertEqual(a['meses_alquilado'], 2)
+        self.assertEqual(a['primer_cobro'], 'agosto')
+        a = analizar_alquiler(self.piso, 2026, hoy=datetime.date(2026, 11, 3))
+        self.assertEqual(a['media_ingreso_cerrados'], Decimal('800.00'))  # octubre sin cobro
+
+    def test_elegir_los_cobros_del_alquiler(self):
+        from extractos.models import MovimientoBancario
+        from .models import CategoriaGasto
+        hoy = datetime.date.today()
+        traspaso = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Traspaso entre cuentas')
+        otros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        bueno = MovimientoBancario.objects.create(hogar=self.hogar, fecha=hoy.replace(day=1),
+                                                  concepto='Transferencia de ANA RUIZ', importe=Decimal('1200'),
+                                                  categoria=traspaso)
+        nomina = MovimientoBancario.objects.create(hogar=self.hogar, fecha=hoy.replace(day=1),
+                                                   concepto='Nomina', importe=Decimal('2500'), categoria=otros)
+        viejo = MovimientoBancario.objects.filter(propiedad=self.piso, importe__gt=0).order_by('-fecha').first()
+        url = reverse('finanzas:alquiler_cobros', args=[self.piso.pk])
+        pagina = self.client.get(url)
+        self.assertContains(pagina, 'Transferencia de ANA RUIZ')
+        self.assertContains(pagina, 'cuenta como traspaso')
+        self.client.post(url, {'mov': [bueno.pk]})
+        bueno.refresh_from_db(); nomina.refresh_from_db()
+        self.assertEqual(bueno.propiedad, self.piso)
+        self.assertTrue(bueno.cuenta_como_ingreso)
+        self.assertEqual(bueno.categoria.nombre, 'Alquileres')
+        self.assertIsNone(nomina.propiedad)
+        # Lo que estaba asignado y se desmarca, queda suelto (si está en la ventana).
+        if viejo and viejo.fecha >= hoy.replace(day=1) - datetime.timedelta(days=550):
+            viejo.refresh_from_db()
+            self.assertIsNone(viejo.propiedad)
+
     def test_formulario_y_ficha(self):
         respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {
             'nombre': 'Piso Bilbao', 'tipo': 'vivienda', 'fecha_compra': '2019-01-01',

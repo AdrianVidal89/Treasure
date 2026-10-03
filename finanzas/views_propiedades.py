@@ -343,3 +343,84 @@ def alquiler_a_gasto(request, pk):
         f'Gasto anual «{partida.nombre}»: {importe} € en junio. Su provisión entra en la reserva de los fijos anuales.',
     )
     return redirect(destino)
+
+
+@login_required
+def alquiler_cobros(request, pk):
+    """Elegir, de los ingresos de los extractos, cuáles son el alquiler de esta
+    propiedad.
+
+    Es lo mismo que el chip «activo» de cada fila en Movimientos, pero desde la
+    pregunta que uno se hace en la propiedad —«¿cuáles son los cobros del
+    inquilino?»—, con todos los ingresos a la vista y marcando varios de una
+    vez. Al guardar, los marcados quedan imputados a la propiedad y los que
+    estaban imputados y se desmarcan, sueltos. Un cobro que contaba como
+    traspaso (una transferencia que se tomó por propia) pasa a «Alquileres»,
+    o no sumaría como ingreso.
+    """
+    from datetime import timedelta
+    from extractos.models import MovimientoBancario
+    from .models import COMPUTO_SUMA
+
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return redirect('dashboard')
+    propiedad = get_object_or_404(Propiedad, pk=pk, hogar=hogar)
+    desde = date.today().replace(day=1) - timedelta(days=550)
+    candidatos = [
+        m for m in MovimientoBancario.objects.filter(
+            hogar=hogar, importe__gt=0, fecha__gte=desde, dividido_de__isnull=True,
+        ).select_related('categoria', 'propiedad', 'vehiculo').prefetch_related('partes').order_by('-fecha', '-id')
+        if not m.es_cobertura and not m.es_reembolso and not m.esta_dividido
+    ]
+
+    if request.method == 'POST':
+        marcados = {int(x) for x in request.POST.getlist('mov') if x.isdigit()}
+        cat_alquiler = None
+        puestos = quitados = recategorizados = 0
+        for m in candidatos:
+            if m.pk in marcados:
+                cambios = []
+                if m.propiedad_id != propiedad.pk or m.vehiculo_id:
+                    m.propiedad, m.vehiculo = propiedad, None
+                    cambios += ['propiedad', 'vehiculo']
+                    puestos += 1
+                if not m.cuenta_como_ingreso:
+                    if cat_alquiler is None:
+                        cat_alquiler, _ = CategoriaGasto.objects.get_or_create(
+                            hogar=hogar, nombre='Alquileres',
+                            defaults={'tipo': 'ingreso', 'computo': COMPUTO_SUMA},
+                        )
+                    m.categoria, m.es_traspaso, m.estado_categorizacion = cat_alquiler, False, 'manual'
+                    cambios += ['categoria', 'es_traspaso', 'estado_categorizacion']
+                    recategorizados += 1
+                if cambios:
+                    m.save(update_fields=cambios)
+            elif m.propiedad_id == propiedad.pk:
+                m.propiedad = None
+                m.save(update_fields=['propiedad'])
+                quitados += 1
+        texto = f'{propiedad.nombre}: {len(marcados)} cobro{"s" if len(marcados) != 1 else ""} de alquiler.'
+        if recategorizados:
+            texto += f' {recategorizados} contaban como traspaso y ahora cuentan como ingreso («Alquileres»).'
+        messages.success(request, texto + ' Los que lleguen del mismo pagador en próximos extractos se asignarán solos.')
+        return redirect(reverse('finanzas:listar_propiedades') + f'#propiedad-{propiedad.pk}')
+
+    # Los que vienen del mismo pagador que los ya marcados, arriba y sugeridos:
+    # el alquiler es el cobro que se repite cada mes.
+    comercios = {m.comercio for m in candidatos if m.propiedad_id == propiedad.pk and m.comercio}
+    filas = [
+        {
+            'mov': m,
+            'marcado': m.propiedad_id == propiedad.pk,
+            'sugerido': m.propiedad_id != propiedad.pk and m.comercio in comercios,
+            'otro': m.propiedad if m.propiedad_id and m.propiedad_id != propiedad.pk else (m.vehiculo or None),
+            'no_suma': not m.cuenta_como_ingreso,
+        }
+        for m in candidatos
+    ]
+    return render(request, 'finanzas/propiedades/cobros.html', {
+        'propiedad': propiedad,
+        'filas': filas,
+        'num_marcados': sum(1 for f in filas if f['marcado']),
+    })
