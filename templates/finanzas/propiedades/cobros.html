@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+
+{% block title %}Cobros del alquiler · {{ propiedad.nombre }} · Treasure{% endblock %}
+
+{% block content %}
+<div class="panel">
+    <div class="page-header">
+        <div>
+            <h1><svg class="icon icon-lg page-title-icon"><use href="#i-properties"/></svg> Cobros del alquiler · {{ propiedad.nombre }}</h1>
+            <div class="page-sub">
+                Marca, de tus ingresos de los extractos, los que son el alquiler de esta propiedad. Son los que salen en su gráfica
+                y en «alquiler percibido al mes». Los que lleguen del mismo pagador en los próximos extractos se asignarán solos.
+                <a href="{% url 'finanzas:listar_propiedades' %}#propiedad-{{ propiedad.pk }}">Volver a propiedades</a>
+            </div>
+        </div>
+    </div>
+
+    <form method="post" class="cb">
+        {% csrf_token %}
+        <div class="cb-barra">
+            <input type="search" id="cb-buscar" placeholder="Buscar pagador o concepto…" aria-label="Buscar">
+            <label class="cb-solo"><input type="checkbox" id="cb-solo-marcados"> Ver solo los marcados</label>
+            <span class="cb-cuenta"><strong id="cb-n">{{ num_marcados }}</strong> marcado{{ num_marcados|pluralize }} · <span id="cb-total"></span></span>
+            <button type="submit" class="btn btn-primary">Guardar</button>
+        </div>
+
+        <ul class="cb-lista" id="cb-lista">
+            {% for f in filas %}
+            <li class="cb-fila{% if f.marcado %} marcado{% endif %}{% if f.sugerido %} sugerido{% endif %}"
+                data-texto="{{ f.mov.concepto|lower }} {{ f.mov.comercio }}" data-importe="{{ f.mov.importe|stringformat:'s' }}">
+                <label>
+                    <input type="checkbox" name="mov" value="{{ f.mov.pk }}" {% if f.marcado %}checked{% endif %}>
+                    <span class="cb-fecha">{{ f.mov.fecha|date:"d/m/Y" }}</span>
+                    <span class="cb-concepto">
+                        {{ f.mov.concepto }}
+                        <span class="cb-meta">
+                            {% if f.mov.categoria %}{{ f.mov.categoria.nombre }}{% else %}sin categoría{% endif %}
+                            {% if f.sugerido %} · <span class="cb-sug">mismo pagador que los marcados</span>{% endif %}
+                            {% if f.otro %} · asignado a {{ f.otro.nombre }}{% endif %}
+                            {% if f.no_suma %} · cuenta como traspaso: al marcarlo pasa a «Alquileres»{% endif %}
+                        </span>
+                    </span>
+                    <span class="cb-importe">+{{ f.mov.importe|euro }}</span>
+                </label>
+            </li>
+            {% empty %}
+            <li class="cb-vacio">No hay ingresos en los extractos de los últimos meses.</li>
+            {% endfor %}
+        </ul>
+    </form>
+</div>
+
+<style>
+.cb-barra { display:flex; flex-wrap:wrap; gap:10px; align-items:center; position:sticky; top:0; z-index:2; padding:10px 0; background:var(--app-bg); }
+.cb-barra input[type=search] { flex:1 1 240px; background:var(--surface); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:8px 11px; font-size:0.86rem; }
+.cb-solo { display:flex; align-items:center; gap:6px; font-size:0.8rem; color:var(--muted); }
+.cb-cuenta { font-size:0.8rem; color:var(--muted); }
+.cb-lista { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.cb-fila label { display:grid; grid-template-columns:auto 92px 1fr auto; gap:12px; align-items:center; padding:10px 14px; border-radius:10px;
+    border:1px solid var(--border); background:var(--surface); cursor:pointer; }
+.cb-fila input { width:18px; height:18px; }
+.cb-fila.marcado label { border-color:var(--success); background:color-mix(in srgb, var(--success) 8%, var(--surface)); }
+.cb-fila.sugerido label { border-style:dashed; border-color:var(--success); }
+.cb-fecha { font-size:0.78rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+.cb-concepto { font-size:0.86rem; min-width:0; }
+.cb-meta { display:block; font-size:0.72rem; color:var(--muted); margin-top:2px; }
+.cb-sug { color:var(--success); font-weight:600; }
+.cb-importe { font-weight:700; color:var(--success); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.cb-vacio { color:var(--muted); font-size:0.85rem; padding:16px; }
+@media (max-width:600px) { .cb-fila label { grid-template-columns:auto 1fr auto; } .cb-fecha { display:none; } }
+</style>
+
+<script>
+(function () {
+    var lista = document.getElementById('cb-lista');
+    var buscar = document.getElementById('cb-buscar');
+    var solo = document.getElementById('cb-solo-marcados');
+    function recuento() {
+        var n = 0, total = 0;
+        lista.querySelectorAll('.cb-fila').forEach(function (li) {
+            var ch = li.querySelector('input');
+            li.classList.toggle('marcado', ch.checked);
+            if (ch.checked) { n++; total += parseFloat(li.dataset.importe) || 0; }
+        });
+        document.getElementById('cb-n').textContent = n;
+        document.getElementById('cb-total').textContent = total.toLocaleString('es-ES', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' €';
+    }
+    function filtrar() {
+        var q = (buscar.value || '').toLowerCase().trim();
+        lista.querySelectorAll('.cb-fila').forEach(function (li) {
+            var ok = (!q || li.dataset.texto.indexOf(q) >= 0) && (!solo.checked || li.querySelector('input').checked);
+            li.hidden = !ok;
+        });
+    }
+    lista.addEventListener('change', recuento);
+    buscar.addEventListener('input', filtrar);
+    solo.addEventListener('change', filtrar);
+    recuento();
+})();
+</script>
+{% endblock %}

@@ -140,11 +140,16 @@ def analizar_alquiler(propiedad, anio, hoy=None):
     media_neto = (
         sum((x['neto'] for x in cerrados), CERO) / len(cerrados) if cerrados else CERO
     )
-    # Lo cobrado en los meses cerrados entre esos meses, aunque alguno no
-    # cobrara: es lo que de verdad ha dejado al mes, y es la cifra que se
-    # resta del coste mensual en la tarjeta de la propiedad.
-    ingreso_cerrado = sum((x['ingreso'] for x in cerrados), CERO)
-    media_ingreso_cerrados = (ingreso_cerrado / len(cerrados)).quantize(Decimal('0.01')) if cerrados else CERO
+    # El alquiler al mes, desde que se alquila: del primer mes con cobro al
+    # último cerrado. Un piso alquilado en agosto a 1.200 € cobra 1.200 al
+    # mes, no 2.400 € entre nueve meses (267 €). Un mes sin cobro DESPUÉS de
+    # alquilarlo sí cuenta como cero: eso es un mes vacío de verdad.
+    primer_cobro = next((x['mes'] for x in cerrados if x['ingreso'] > 0), None)
+    alquilados = [x for x in cerrados if primer_cobro and x['mes'] >= primer_cobro]
+    ingreso_alquilado = sum((x['ingreso'] for x in alquilados), CERO)
+    media_ingreso_cerrados = (
+        (ingreso_alquilado / len(alquilados)).quantize(Decimal('0.01')) if alquilados else CERO
+    )
 
     # --- El año entero, para la declaración ---
     # Un año pasado es lo que fue. El año en curso se completa: los meses que
@@ -220,6 +225,8 @@ def analizar_alquiler(propiedad, anio, hoy=None):
         'media_neto': media_neto,
         'media_ingreso_cerrados': media_ingreso_cerrados,
         'meses_con_cobro': len(meses_con_ingreso),
+        'meses_alquilado': len(alquilados),
+        'primer_cobro': MESES_LARGOS[primer_cobro].lower() if primer_cobro else '',
         'meses_cerrados': len(cerrados),
         'hay_ingresos': bool(ingresos),
         'num_ingresos': len(ingresos),

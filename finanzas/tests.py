@@ -2207,7 +2207,8 @@ class CostesDeActivoTests(TestCase):
 
         self.assertEqual(f['meses_cerrados'], cerrados)
         self.assertEqual(f['devengado_cerrado'], Decimal('100'))
-        self.assertEqual(f['ritmo_mensual'], round(Decimal('100') / cerrados, 2))
+        # En un coche, lo del año entre doce: también el taller de este mes.
+        self.assertEqual(f['ritmo_mensual'], Decimal('83.33'))   # (100 + 900) / 12
         # Y lo pagado del año sigue contándose entero: lo que cambia es el
         # divisor de la media, no lo que ha salido del banco.
         self.assertEqual(f['real_anual'], Decimal('1000'))
@@ -3154,10 +3155,11 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
 
         self.assertEqual(f['meses_transcurridos'], 9)
         self.assertEqual(f['meses_cerrados'], 8)
-        self.assertEqual(f['ritmo_mensual'], Decimal('112.50'))    # 900 / 8
+        # Lo que el coche ha costado en el año, repartido entre doce.
+        self.assertEqual(f['ritmo_mensual'], Decimal('75.00'))    # 900 / 12
         # Y el teórico con el que se compara sigue siendo mensual.
         self.assertEqual(f['teorico_mensual'], Decimal('160'))
-        self.assertEqual(f['diferencia_mensual'], Decimal('-47.50'))
+        self.assertEqual(f['diferencia_mensual'], Decimal('-85.00'))
 
     def test_un_gasto_de_tres_años_se_reparte_entre_treinta_y_seis_meses(self):
         """Unos neumáticos de 470 € que duran tres años cuestan 13 €/mes, no 470
@@ -3209,23 +3211,22 @@ class CosteDeActivoConPagosAnualesTests(TestCase):
         self.assertEqual(neumaticos.importe_mensual, Decimal('12'))
         self.assertEqual(self.ficha_a(2027, 1, 1)['ritmo_provisiones'], Decimal('12'))
 
-    def test_el_gasto_corriente_se_reparte_entre_los_meses_cerrados(self):
-        """Lo del día a día se imputa entero al año —ya ha pasado— y la media
-        se hace sobre los meses que de verdad han terminado."""
+    def test_el_gasto_corriente_de_un_coche_va_entre_doce(self):
+        """Lo del día a día se imputa entero al año —ya ha pasado— y en un
+        coche se reparte entre doce: unas rótulas no son un ritmo mensual."""
         f = self.ficha_a(2026, 9, 15, gasto=('-900', 1))
 
         self.assertEqual(f['corriente_anual'], Decimal('900'))
-        self.assertEqual(f['ritmo_corriente'], Decimal('112.50'))   # 900 / 8
+        self.assertEqual(f['ritmo_corriente'], Decimal('75.00'))   # 900 / 12
         self.assertEqual(f['ritmo_provisiones'], Decimal('0'))
 
-    def test_el_mes_en_curso_todavia_no_pesa_en_la_media(self):
-        """Unos días de gasto contra un mes entero de divisor hunden la media:
-        el mes en curso entra cuando se cierra."""
+    def test_el_gasto_del_mes_en_curso_tambien_es_del_año(self):
+        """Lo pagado este mes ya es coste del año: entra en la media entre doce."""
         f = self.ficha_a(2026, 9, 15, gasto=('-900', 9))
 
         self.assertEqual(f['corriente_anual'], Decimal('900'))
         self.assertEqual(f['devengado_cerrado'], Decimal('0'))
-        self.assertEqual(f['ritmo_mensual'], Decimal('0'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('75.00'))
 
     def test_un_año_cerrado_se_divide_entre_doce(self):
         from unittest import mock
@@ -3353,18 +3354,17 @@ class CosteAnualDeUnActivoTests(TestCase):
         # Y la caja, aparte: es lo que salió del banco.
         self.assertEqual(f['real_anual'], Decimal('1248.46'))
 
-    def test_con_el_año_a_medias_la_media_va_sobre_los_meses_cerrados(self):
-        """En septiembre hay ocho meses cerrados: los 320,46 € de gasto
-        corriente son 40,06 €/mes, no 26,70 (que es lo que salía dividiendo
-        entre doce). Los periódicos son coste del AÑO y van entre doce:
-        566 € de neumáticos y revisión son 47,17 €/mes, no 70,75."""
+    def test_con_el_año_a_medias_el_coche_va_entre_doce(self):
+        """En septiembre, lo imputado al año (886,46 €) entre doce: 73,87 €/mes,
+        lo mismo que dará el año cerrado si no hay más gasto. Los 320,46 € de
+        corriente son 26,70 €/mes y los 566 € periódicos, 47,17 €/mes."""
         self.pagar_el_año_del_usuario()
         f = self.ficha()
 
         self.assertEqual(f['meses_cerrados'], 8)
-        self.assertEqual(f['ritmo_corriente'], Decimal('40.06'))
+        self.assertEqual(f['ritmo_corriente'], Decimal('26.70'))
         self.assertEqual(f['ritmo_provisiones'], Decimal('47.17'))
-        self.assertEqual(f['ritmo_mensual'], Decimal('87.23'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('73.87'))
         # Lo imputado al año no se toca: lo que cambia es el divisor.
         self.assertEqual(f['devengado_anual'], Decimal('886.46'))
 
@@ -3384,6 +3384,19 @@ class CosteAnualDeUnActivoTests(TestCase):
         self.assertEqual(f['real_anual'], Decimal('543'))         # caja
         self.assertEqual(f['devengado_anual'], Decimal('181'))    # 543 × 12/36
         self.assertEqual(f['ritmo_mensual'], Decimal('15.08'))
+
+    def test_las_cifras_del_polo_de_octubre(self):
+        """La cuenta del usuario: 482,60 + 385,63 + 543/3 de periódicos y
+        238 + 54,25 + 28,46 de imprevistos = 1.369,94 € al año, entre 12."""
+        self.pagar('-482.60', 1, self.seguro)
+        self.pagar('-385.63', 9, self.mant, self.revision)
+        self.pagar('-543', 9, self.mant, self.neumaticos)
+        self.pagar('-238', 9, self.imprevistos)
+        self.pagar('-54.25', 9, self.imprevistos)
+        self.pagar('-28.46', 9, self.imprevistos)
+        f = self.ficha(hoy=(2026, 10, 3))
+        self.assertEqual(f['devengado_anual'], Decimal('1369.94'))
+        self.assertEqual(f['ritmo_mensual'], Decimal('114.16'))
 
     def test_el_desglose_enseña_lo_que_cuenta_cada_pago(self):
         """Los 543 € de neumáticos cada tres años cuentan 181 € en el año, y
@@ -3462,9 +3475,9 @@ class CosteAnualDeUnActivoTests(TestCase):
                 url('finanzas:detalle_vehiculo', args=[self.coche.id]), {'anio': 2026},
             )
 
-        # 40,06 €/mes es la media sobre los ocho meses ya cerrados; 886,46 €
-        # sigue siendo lo imputado al año entero.
-        for cifra in ('40,06', '886,46', '320,46', '566,00', '592,56', '468,00', '1.248,46'):
+        # 73,87 €/mes es lo imputado al año entre doce; 886,46 € sigue siendo
+        # lo imputado al año entero.
+        for cifra in ('73,87', '886,46', '320,46', '566,00', '592,56', '468,00', '1.248,46'):
             self.assertContains(respuesta, cifra)
 
 
@@ -4697,6 +4710,52 @@ class AlquilerDePropiedadTests(TestCase):
         respuesta = self.client.get(reverse('finanzas:listar_propiedades'), {'anio': self.anio})
         self.assertIsNone(respuesta.context['propiedades_con_venta'][0]['alquiler'])
         self.assertNotContains(respuesta, 'Balance mensual ponderado')
+
+    def test_el_alquiler_al_mes_cuenta_desde_el_primer_cobro(self):
+        """Alquilado en agosto a 1.200 €: son 1.200 al mes, no 2.400 € entre
+        los nueve meses del año (267 €). Un mes vacío después sí cuenta."""
+        from extractos.models import MovimientoBancario
+        from .alquiler import analizar_alquiler
+        MovimientoBancario.objects.filter(importe__gt=0).delete()
+        from .models import CategoriaGasto
+        ingresos = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        for mes in (8, 9):
+            MovimientoBancario.objects.create(hogar=self.hogar, fecha=datetime.date(2026, mes, 3),
+                                              concepto='Inquilino', importe=Decimal('1200'),
+                                              categoria=ingresos, propiedad=self.piso)
+        a = analizar_alquiler(self.piso, 2026, hoy=datetime.date(2026, 10, 3))
+        self.assertEqual(a['media_ingreso_cerrados'], Decimal('1200.00'))
+        self.assertEqual(a['meses_alquilado'], 2)
+        self.assertEqual(a['primer_cobro'], 'agosto')
+        a = analizar_alquiler(self.piso, 2026, hoy=datetime.date(2026, 11, 3))
+        self.assertEqual(a['media_ingreso_cerrados'], Decimal('800.00'))  # octubre sin cobro
+
+    def test_elegir_los_cobros_del_alquiler(self):
+        from extractos.models import MovimientoBancario
+        from .models import CategoriaGasto
+        hoy = datetime.date.today()
+        traspaso = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Traspaso entre cuentas')
+        otros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        bueno = MovimientoBancario.objects.create(hogar=self.hogar, fecha=hoy.replace(day=1),
+                                                  concepto='Transferencia de ANA RUIZ', importe=Decimal('1200'),
+                                                  categoria=traspaso)
+        nomina = MovimientoBancario.objects.create(hogar=self.hogar, fecha=hoy.replace(day=1),
+                                                   concepto='Nomina', importe=Decimal('2500'), categoria=otros)
+        viejo = MovimientoBancario.objects.filter(propiedad=self.piso, importe__gt=0).order_by('-fecha').first()
+        url = reverse('finanzas:alquiler_cobros', args=[self.piso.pk])
+        pagina = self.client.get(url)
+        self.assertContains(pagina, 'Transferencia de ANA RUIZ')
+        self.assertContains(pagina, 'cuenta como traspaso')
+        self.client.post(url, {'mov': [bueno.pk]})
+        bueno.refresh_from_db(); nomina.refresh_from_db()
+        self.assertEqual(bueno.propiedad, self.piso)
+        self.assertTrue(bueno.cuenta_como_ingreso)
+        self.assertEqual(bueno.categoria.nombre, 'Alquileres')
+        self.assertIsNone(nomina.propiedad)
+        # Lo que estaba asignado y se desmarca, queda suelto (si está en la ventana).
+        if viejo and viejo.fecha >= hoy.replace(day=1) - datetime.timedelta(days=550):
+            viejo.refresh_from_db()
+            self.assertIsNone(viejo.propiedad)
 
     def test_formulario_y_ficha(self):
         respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {

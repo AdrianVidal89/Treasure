@@ -7032,3 +7032,37 @@ class CabeceraDelMesCoherenteTests(TestCase):
         self.assertEqual(anio['kpi_neto'], Decimal('4700'))
         self.assertEqual(anio['diferencia_meses'], Decimal('928'))
         self.assertEqual(mes['diferencia_meses'], Decimal('0'))
+
+
+class AlquilerQueLlegaSoloTests(TestCase):
+    """Elegido una vez, el cobro del inquilino se asigna solo en los extractos siguientes."""
+
+    def setUp(self):
+        from finanzas.models import Propiedad
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='x')
+        self.piso = Propiedad.objects.create(hogar=self.hogar, nombre='Piso', fecha_compra=date(2019, 1, 1),
+                                             precio_compra=Decimal('1'), valor_actual=Decimal('1'))
+
+    def importar(self, concepto, importe, mes):
+        from .views import _imputar_como_antes
+        ext = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        m = MovimientoBancario.objects.create(extracto=ext, hogar=self.hogar, fecha=date(2026, mes, 3),
+                                              concepto=concepto, importe=Decimal(importe))
+        _imputar_como_antes(self.hogar, ext)
+        m.refresh_from_db()
+        return m
+
+    def test_el_mismo_pagador_va_a_la_misma_propiedad(self):
+        primero = self.importar('Transferencia de ANA RUIZ', '1200', 8)
+        self.assertIsNone(primero.propiedad)
+        primero.propiedad = self.piso
+        primero.save()
+        self.assertEqual(self.importar('Transferencia de ANA RUIZ', '1200', 9).propiedad, self.piso)
+
+    def test_un_pagador_con_cobros_sueltos_no_se_arrastra(self):
+        a = self.importar('Dinero añadido a través de BIZUM', '20', 7)
+        self.importar('Dinero añadido a través de BIZUM', '35', 8)
+        a.propiedad = self.piso
+        a.save()
+        self.assertIsNone(self.importar('Dinero añadido a través de BIZUM', '50', 9).propiedad)

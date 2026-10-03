@@ -246,10 +246,25 @@ def costes(activo, anio):
     # enero pesaba como si fuera de nueve meses—. Van siempre entre doce,
     # con lo imputado al año hasta hoy. El corriente (gasolina, parking) sí
     # es un ritmo y se mide sobre los meses cerrados.
+    #
+    # En un VEHÍCULO, el corriente también es del año: un cambio de batería o
+    # unas rótulas no son un ritmo mensual que vaya a repetirse cada mes, son
+    # lo que el coche ha costado en el año, y van entre doce como lo demás.
+    # En una casa no: la cuota de la hipoteca o la comunidad SÍ son un ritmo
+    # mensual, y entre doce en octubre faltarían tres meses de cuota.
     divisor = Decimal(meses_cerrados or 1)
-    ritmo_corriente = round(corriente_cerrado / divisor, 2)
+    corriente_entre_12 = clave(activo).startswith('vehiculo')
+    if corriente_entre_12:
+        ritmo_corriente = round(corriente_anual / 12, 2)
+    else:
+        ritmo_corriente = round(corriente_cerrado / divisor, 2)
     ritmo_provisiones = round(provisiones_devengadas / 12, 2)
-    ritmo_mensual = round(ritmo_corriente + ritmo_provisiones, 2)
+    # El total, de una vez y no sumando las partes redondeadas: así es justo
+    # la cuenta a mano (en un coche, lo imputado al año entre doce).
+    if corriente_entre_12:
+        ritmo_mensual = round((corriente_anual + provisiones_devengadas) / 12, 2)
+    else:
+        ritmo_mensual = round(corriente_cerrado / divisor + provisiones_devengadas / 12, 2)
 
     return {
         'activo': activo,
@@ -283,6 +298,7 @@ def costes(activo, anio):
         'meses_cerrados': meses_cerrados,
         'devengado_cerrado': round(corriente_cerrado + provisiones_cerradas, 2),
         'corriente_cerrado': round(corriente_cerrado, 2),
+        'corriente_entre_12': corriente_entre_12,
         'hay_ritmo': meses_cerrados > 0,
         'diferencia_mensual': ritmo_mensual - teorico_mensual,
         'corriente_anual': corriente_anual,
