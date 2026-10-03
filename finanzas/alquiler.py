@@ -140,6 +140,11 @@ def analizar_alquiler(propiedad, anio, hoy=None):
     media_neto = (
         sum((x['neto'] for x in cerrados), CERO) / len(cerrados) if cerrados else CERO
     )
+    # Lo cobrado en los meses cerrados entre esos meses, aunque alguno no
+    # cobrara: es lo que de verdad ha dejado al mes, y es la cifra que se
+    # resta del coste mensual en la tarjeta de la propiedad.
+    ingreso_cerrado = sum((x['ingreso'] for x in cerrados), CERO)
+    media_ingreso_cerrados = (ingreso_cerrado / len(cerrados)).quantize(Decimal('0.01')) if cerrados else CERO
 
     # --- El año entero, para la declaración ---
     # Un año pasado es lo que fue. El año en curso se completa: los meses que
@@ -213,6 +218,8 @@ def analizar_alquiler(propiedad, anio, hoy=None):
         'neto_real': ingreso_real - coste_real,
         'media_ingreso': media_ingreso,
         'media_neto': media_neto,
+        'media_ingreso_cerrados': media_ingreso_cerrados,
+        'meses_con_cobro': len(meses_con_ingreso),
         'meses_cerrados': len(cerrados),
         'hay_ingresos': bool(ingresos),
         'num_ingresos': len(ingresos),

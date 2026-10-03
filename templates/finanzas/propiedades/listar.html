@@ -98,6 +98,19 @@ dato de los que había.
 
 .coste-title { font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; margin-bottom:8px; }
 .coste-grafico { margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
+.prop-renta { display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:16px 22px; border-bottom:1px solid var(--surface-2);
+    background:color-mix(in srgb, var(--success) 7%, var(--surface)); }
+.prop-renta.neg { background:color-mix(in srgb, var(--danger) 7%, var(--surface)); }
+.prop-renta-cifra { display:flex; flex-direction:column; gap:2px; min-width:200px; }
+.prop-renta-cifra .k { font-size:0.68rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+.prop-renta-cifra .v { font-size:2rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
+.prop-renta.pos .prop-renta-cifra .v { color:var(--success); }
+.prop-renta.neg .prop-renta-cifra .v { color:var(--danger); }
+.prop-renta-cifra .v small { font-size:0.8rem; font-weight:600; color:var(--muted); }
+.prop-renta-cuenta { display:flex; flex-direction:column; gap:2px; font-size:0.84rem; flex:1 1 240px; }
+.prop-renta-cuenta b { font-variant-numeric:tabular-nums; }
+.prop-renta-cuenta .sub { font-size:0.72rem; color:var(--muted); margin-top:2px; }
+.prop-renta .btn { margin-left:auto; }
 .coste-detalle { margin-top:14px; }
 .coste-detalle > summary { cursor:pointer; font-size:0.78rem; color:var(--muted); }
 .coste-detalle > summary:hover { color:var(--primary-color); }
@@ -166,7 +179,7 @@ dato de los que había.
 
     <div class="prop-lista">
         {% for item in propiedades_con_venta %}
-        {% with p=item.propiedad v=item.neto_venta f=item.costes %}
+        {% with p=item.propiedad v=item.neto_venta f=item.costes al=item.alquiler %}
         <div class="prop-card">
             <div class="prop-card-header">
                 <div class="prop-dot" style="background: {{ p.color }};"></div>
@@ -175,7 +188,7 @@ dato de los que había.
                     <div class="prop-tipo">{{ p.get_tipo_display }}{% if p.es_residencia_habitual %} · Residencia habitual{% endif %}{% if p.alquilada %} · Alquilada · titular {{ p.titular_nombre }}{% endif %}</div>
                 </div>
                 <div class="prop-header-acciones">
-                    {% if p.alquilada or f.renta %}<a href="{% url 'finanzas:alquiler_propiedad' p.pk %}?anio={{ anio }}" class="btn btn-edit">Alquiler e IRPF</a>{% endif %}
+                    
                     <a href="{% url 'finanzas:editar_propiedad' p.pk %}" class="btn btn-edit">Editar</a>
                     <form method="post" action="{% url 'finanzas:eliminar_propiedad' p.pk %}" style="display:inline;" onsubmit="return confirm('¿Archivar {{ p.nombre }}?')">
                         {% csrf_token %}
@@ -211,6 +224,29 @@ dato de los que había.
                     <span class="sub">presupuestado {{ f.teorico_mensual|euro:0 }}/mes</span>
                 </div>
             </div>
+
+            {% if al %}
+            {% comment %}
+            Alquilada: la cifra que manda no es lo que cuesta sino lo que deja.
+            Se resta del coste mensual de arriba lo cobrado al mes, sobre los
+            mismos meses cerrados.
+            {% endcomment %}
+            <div class="prop-renta {% if item.neto_mensual < 0 %}neg{% else %}pos{% endif %}">
+                <div class="prop-renta-cifra">
+                    <span class="k">{% if item.neto_mensual < 0 %}Te cuesta, con el alquiler{% else %}Te deja el alquiler{% endif %} · {{ anio }}</span>
+                    <span class="v">{% if item.neto_mensual > 0 %}+{% endif %}{{ item.neto_mensual|euro:0 }}<small>/mes</small></span>
+                </div>
+                <div class="prop-renta-cuenta">
+                    <span><b class="text-positive">{{ al.media_ingreso_cerrados|euro:0 }}</b> de alquiler al mes</span>
+                    <span>− <b>{{ f.ritmo_mensual|euro:0 }}</b> de coste al mes</span>
+                    <span class="sub">
+                        {% if al.meses_cerrados %}media de {{ al.meses_cerrados }} mes{{ al.meses_cerrados|pluralize:"es" }} cerrado{{ al.meses_cerrados|pluralize }}, {{ al.meses_con_cobro }} con cobro{% else %}sin meses cerrados aún{% endif %}
+                        · en el año {{ al.ingreso_real|euro:0 }} cobrados, neto {{ f.neto_real_anual|euro:0 }}
+                    </span>
+                </div>
+                <a class="btn btn-edit" href="{% url 'finanzas:alquiler_propiedad' p.pk %}?anio={{ anio }}">Alquiler e IRPF →</a>
+            </div>
+            {% endif %}
 
             <!-- ── La compra ────────────────────────────────────────────── -->
             <details class="prop-seccion">
@@ -258,8 +294,9 @@ dato de los que había.
             {% endcomment %}
             <details class="prop-seccion" open>
                 <summary>
-                    <span class="chev">›</span> Lo que cuesta mantenerla · {{ anio }}
-                    <span class="prop-seccion-resumen {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}/mes</span>
+                    <span class="chev">›</span> {% if al %}Alquiler y coste{% else %}Lo que cuesta mantenerla{% endif %} · {{ anio }}
+                    {% if al %}<span class="prop-seccion-resumen {% if item.neto_mensual < 0 %}text-negative{% else %}text-positive{% endif %}">{% if item.neto_mensual > 0 %}+{% endif %}{{ item.neto_mensual|euro }}/mes neto</span>
+                    {% else %}<span class="prop-seccion-resumen {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro }}/mes</span>{% endif %}
                 </summary>
                 <div class="prop-seccion-cuerpo">
                     <div class="prop-filas">
@@ -297,7 +334,11 @@ dato de los que había.
                     el dinero de esta casa, y qué fue. La pregunta es la misma,
                     así que la respuesta se enseña igual.
                     {% endcomment %}
-                    {% if f.num_movimientos %}
+                    {% if al %}
+                    <div class="coste-grafico">
+                        {% include "finanzas/propiedades/_grafico_alquiler.html" with a=al gid=f.clave|slugify titulo=anio %}
+                    </div>
+                    {% elif f.num_movimientos %}
                     <div class="coste-grafico">
                         <div class="coste-title">Mes a mes · lo que pasó por el banco</div>
                         {% include "finanzas/_linea_mensual.html" with g=f.grafico_mensual gid=f.clave|slugify %}

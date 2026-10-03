@@ -4657,6 +4657,25 @@ class AlquilerDePropiedadTests(TestCase):
         # Aunque aún no esté marcada como alquilada, la tarjeta lleva a la ficha.
         self.assertContains(self.client.get(reverse('finanzas:listar_propiedades')), 'Alquiler e IRPF')
 
+    def test_la_tarjeta_dice_lo_que_deja_el_alquiler(self):
+        """En la propia lista: el neto al mes en grande y la gráfica de alquiler
+        y coste, no solo la del coste."""
+        respuesta = self.client.get(reverse('finanzas:listar_propiedades'), {'anio': self.anio})
+        item = respuesta.context['propiedades_con_venta'][0]
+        a, f = item['alquiler'], item['costes']
+        self.assertEqual(a['media_ingreso_cerrados'], Decimal('1000.00'))
+        self.assertEqual(item['neto_mensual'], Decimal('1000.00') - f['ritmo_mensual'])
+        self.assertContains(respuesta, 'Te deja el alquiler')
+        self.assertContains(respuesta, 'al-datos-propiedad1')
+        # Una propiedad sin alquiler sigue enseñando solo lo que cuesta.
+        self.piso.alquilada = False
+        self.piso.save()
+        from extractos.models import MovimientoBancario
+        MovimientoBancario.objects.filter(importe__gt=0).update(propiedad=None)
+        respuesta = self.client.get(reverse('finanzas:listar_propiedades'), {'anio': self.anio})
+        self.assertIsNone(respuesta.context['propiedades_con_venta'][0]['alquiler'])
+        self.assertNotContains(respuesta, 'Te deja el alquiler')
+
     def test_formulario_y_ficha(self):
         respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {
             'nombre': 'Piso Bilbao', 'tipo': 'vivienda', 'fecha_compra': '2019-01-01',
