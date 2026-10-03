@@ -4622,6 +4622,41 @@ class AlquilerDePropiedadTests(TestCase):
         self.client.post(url, {'anio': self.anio})
         self.assertEqual(PartidaGasto.objects.filter(nombre__startswith='IRPF alquiler').count(), 1)
 
+    def test_editar_sin_construccion_ni_intereses_se_puede_guardar(self):
+        """El formulario pintaba «None» en los campos vacíos y al guardar no se
+        podía leer: «Error al guardar: [<class 'decimal.ConversionSyntax'>]»."""
+        html = self.client.get(reverse('finanzas:editar_propiedad', args=[self.piso.pk])).content.decode()
+        self.assertNotIn('value="None"', html)
+        respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {
+            'nombre': 'Piso Bilbao', 'tipo': 'vivienda', 'fecha_compra': '2019-01-01',
+            'precio_compra': '100000', 'valor_actual': '150000', 'alquilada': 'on',
+            'propietario': '', 'reduccion_alquiler_pct': '50',
+            'pct_construccion': 'None', 'intereses_hipoteca_anuales': '',
+        })
+        self.assertEqual(respuesta.status_code, 302)
+        self.piso.refresh_from_db()
+        self.assertIsNone(self.piso.pct_construccion)
+        self.assertIsNone(self.piso.propietario)
+
+    def test_un_ingreso_imputado_desde_movimientos_sale_en_la_ficha(self):
+        from extractos.models import MovimientoBancario
+        from .models import CategoriaGasto
+        self.piso.alquilada = False
+        self.piso.save()
+        hoy = datetime.date.today()
+        cobro = MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=hoy.replace(day=1), concepto='Transferencia inquilino',
+            importe=Decimal('750'), categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos'),
+        )
+        respuesta = self.client.post(reverse('extractos:imputar_movimiento', args=[cobro.pk]),
+                                     {'activo': f'propiedad:{self.piso.pk}'})
+        self.assertEqual(respuesta.status_code, 200)
+        from .alquiler import analizar_alquiler
+        a = analizar_alquiler(self.piso, hoy.year)
+        self.assertEqual(a['meses'][hoy.month - 1]['ingreso'], Decimal('750'))
+        # Aunque aún no esté marcada como alquilada, la tarjeta lleva a la ficha.
+        self.assertContains(self.client.get(reverse('finanzas:listar_propiedades')), 'Alquiler e IRPF')
+
     def test_formulario_y_ficha(self):
         respuesta = self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {
             'nombre': 'Piso Bilbao', 'tipo': 'vivienda', 'fecha_compra': '2019-01-01',

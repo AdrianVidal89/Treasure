@@ -79,15 +79,19 @@ def _anio_elegido(request):
         return date.today().year
 
 
-def _decimal_o_none(texto):
+def _decimal_o_none(texto, campo=''):
     texto = (texto or '').strip().replace('%', '').replace('€', '').replace(' ', '')
-    if not texto:
+    # «None» era lo que pintaba el formulario en un campo vacío: es vacío.
+    if not texto or texto.lower() == 'none':
         return None
     if ',' in texto:
         texto = texto.replace('.', '').replace(',', '.')
     elif re.fullmatch(r'\d{1,3}(\.\d{3})+', texto):
         texto = texto.replace('.', '')  # «1.200» son mil doscientos, no uno coma dos
-    return Decimal(texto).quantize(Decimal('0.01'))
+    try:
+        return Decimal(texto).quantize(Decimal('0.01'))
+    except InvalidOperation:
+        raise ValueError(f'«{texto}» no es un número{" en " + campo if campo else ""}.')
 
 
 def _miembros(hogar):
@@ -104,8 +108,10 @@ def _leer_alquiler(propiedad, post, hogar):
         propiedad.reduccion_alquiler_pct = int(post.get('reduccion_alquiler_pct') or 0)
     except ValueError:
         propiedad.reduccion_alquiler_pct = 0
-    propiedad.pct_construccion = _decimal_o_none(post.get('pct_construccion'))
-    propiedad.intereses_hipoteca_anuales = _decimal_o_none(post.get('intereses_hipoteca_anuales'))
+    propiedad.pct_construccion = _decimal_o_none(post.get('pct_construccion'), 'el % de construcción')
+    propiedad.intereses_hipoteca_anuales = _decimal_o_none(
+        post.get('intereses_hipoteca_anuales'), 'los intereses de la hipoteca',
+    )
 
 
 def _contexto_form(hogar, accion, propiedad):
