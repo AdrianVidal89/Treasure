@@ -113,6 +113,12 @@ dato de los que había.
 .prop-renta.neg .resultado .v { color:var(--danger); }
 .prop-renta-col.resultado .v small { font-size:0.78rem; font-weight:600; color:var(--muted); }
 .prop-renta-botones { display:flex; gap:8px; flex-wrap:wrap; }
+.prop-desde { display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--surface); }
+.prop-desde-cifra { text-align:right; }
+.prop-desde-cifra .v { display:block; font-size:1.6rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
+.prop-desde.pos .prop-desde-cifra .v { color:var(--success); }
+.prop-desde.neg .prop-desde-cifra .v { color:var(--danger); }
+@media (max-width:640px) { .prop-desde-cifra { text-align:left; } }
 .prop-renta-pie { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 @media (max-width:640px) { .prop-renta-col.resultado { margin-left:0; text-align:left; width:100%; } }
 .coste-detalle { margin-top:14px; }
@@ -256,6 +262,18 @@ dato de los que había.
                         <span class="v">{% if item.neto_mensual < 0 %}{{ item.neto_mensual|euro:0|cut:"-" }}{% else %}+{{ item.neto_mensual|euro:0 }}{% endif %}<small> netos al mes</small></span>
                     </div>
                 </div>
+                {% with b=al.desde_alquiler %}{% if b %}
+                <div class="prop-desde {% if b.neto < 0 %}neg{% else %}pos{% endif %}">
+                    <div>
+                        <span class="k">Desde que la alquilas · {{ b.inicio|date:"F Y"|lower }}{% if not b.inicio_dicho %} (primer cobro){% endif %}</span>
+                        <span class="sub">{{ b.meses }} mes{{ b.meses|pluralize:"es" }} · {{ b.cobrado|euro:0 }} cobrados − {{ b.pagado|euro:0 }} pagados{% if b.hipoteca %} (de ellos {{ b.hipoteca|euro:0 }} de hipoteca: una parte es capital, patrimonio tuyo){% endif %}</span>
+                    </div>
+                    <div class="prop-desde-cifra">
+                        <span class="v">{% if b.neto > 0 %}+{% endif %}{{ b.neto|euro:0 }}</span>
+                        <span class="sub">{% if b.neto < 0 %}de pérdida{% else %}de ganancia{% endif %} neta · {% if b.al_mes > 0 %}+{% endif %}{{ b.al_mes|euro:0 }}/mes</span>
+                    </div>
+                </div>
+                {% endif %}{% endwith %}
                 <div class="prop-renta-pie">
                     <span class="sub">En lo que va de {{ anio }}: {{ al.ingreso_real|euro:0 }} cobrados · neto {{ f.neto_real_anual|euro:0 }} (lo que pasó por el banco)</span>
                     <span class="prop-renta-botones">

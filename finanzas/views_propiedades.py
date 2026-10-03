@@ -114,6 +114,8 @@ def _leer_alquiler(propiedad, post, hogar):
         propiedad.reduccion_alquiler_pct = int(post.get('reduccion_alquiler_pct') or 0)
     except ValueError:
         propiedad.reduccion_alquiler_pct = 0
+    from django.utils.dateparse import parse_date
+    propiedad.alquilada_desde = parse_date(post.get('alquilada_desde') or '') or None
     propiedad.pct_construccion = _decimal_o_none(post.get('pct_construccion'), 'el % de construcción')
     propiedad.intereses_hipoteca_anuales = _decimal_o_none(
         post.get('intereses_hipoteca_anuales'), 'los intereses de la hipoteca',

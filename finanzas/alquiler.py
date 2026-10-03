@@ -90,6 +90,48 @@ def _base_trabajo(usuario, anio):
     return max(bruto - ss - ES_GASTOS_DEDUCIBLES, CERO), bruto, en_neto
 
 
+def balance_desde_el_alquiler(propiedad, hoy=None, movimientos=None):
+    """Lo que ha dejado (o costado) la propiedad desde que se alquila.
+
+    Desde `alquilada_desde` o, si no se dijo, desde el día 1 del mes del primer
+    cobro imputado, hasta hoy y cruzando años: todo lo cobrado menos todo lo
+    pagado de la propiedad en ese tiempo, tal como pasó por el banco. Lo de
+    antes de alquilarla no cuenta: era una casa vacía, no un alquiler.
+
+    La cuota de la hipoteca entra entera —es dinero que sale— y se dice
+    aparte, porque una parte devuelve capital: eso es patrimonio, no pérdida.
+    """
+    hoy = hoy or date.today()
+    todos = movimientos if movimientos is not None else list(costes_activo._movimientos(propiedad))
+    ingresos = [m for m in todos if m.cuenta_como_ingreso]
+    if propiedad.alquilada_desde:
+        inicio = propiedad.alquilada_desde
+    elif ingresos:
+        primero = min(m.fecha for m in ingresos)
+        inicio = primero.replace(day=1)
+    else:
+        return None
+    en_periodo = [m for m in todos if inicio <= m.fecha <= hoy]
+    cobrado = sum((m.importe for m in en_periodo if m.cuenta_como_ingreso), CERO)
+    gastos = [m for m in en_periodo if m.cuenta_como_gasto]
+    pagado = sum((-m.importe_neto for m in gastos), CERO)
+    hipoteca = sum((-m.importe_neto for m in gastos if _es_hipoteca(m)), CERO)
+    meses = (hoy.year - inicio.year) * 12 + hoy.month - inicio.month + 1
+    neto = cobrado - pagado
+    return {
+        'inicio': inicio,
+        'inicio_dicho': bool(propiedad.alquilada_desde),
+        'meses': meses,
+        'cobrado': cobrado,
+        'pagado': pagado,
+        'hipoteca': hipoteca,
+        'neto': neto,
+        'neto_sin_hipoteca': neto + hipoteca,
+        'al_mes': (neto / meses).quantize(Decimal('0.01')) if meses > 0 else CERO,
+        'num_cobros': sum(1 for m in en_periodo if m.cuenta_como_ingreso),
+    }
+
+
 def analizar_alquiler(propiedad, anio, hoy=None):
     hoy = hoy or date.today()
     excluir = {propiedad.partida_irpf_id} - {None}
@@ -226,6 +268,7 @@ def analizar_alquiler(propiedad, anio, hoy=None):
         'media_ingreso_cerrados': media_ingreso_cerrados,
         'meses_con_cobro': len(meses_con_ingreso),
         'meses_alquilado': len(alquilados),
+        'desde_alquiler': balance_desde_el_alquiler(propiedad, hoy=hoy, movimientos=todos),
         'primer_cobro': MESES_LARGOS[primer_cobro].lower() if primer_cobro else '',
         'meses_cerrados': len(cerrados),
         'hay_ingresos': bool(ingresos),

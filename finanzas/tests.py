@@ -4730,6 +4730,41 @@ class AlquilerDePropiedadTests(TestCase):
         a = analizar_alquiler(self.piso, 2026, hoy=datetime.date(2026, 11, 3))
         self.assertEqual(a['media_ingreso_cerrados'], Decimal('800.00'))  # octubre sin cobro
 
+    def test_balance_desde_que_se_alquila(self):
+        """Solo desde el primer cobro: los meses de antes, con su hipoteca, no
+        son del alquiler. Y cruza años."""
+        from extractos.models import MovimientoBancario
+        from .alquiler import balance_desde_el_alquiler
+        from .models import CategoriaGasto
+        MovimientoBancario.objects.all().delete()
+        ingresos = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        hipoteca = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Hipoteca')
+        mov = lambda imp, f, cat: MovimientoBancario.objects.create(
+            hogar=self.hogar, fecha=f, concepto='x', importe=Decimal(imp), categoria=cat, propiedad=self.piso)
+        for mes in range(1, 13):
+            mov('-500', datetime.date(2025, mes, 5), hipoteca)
+        for mes in (1, 2):
+            mov('-500', datetime.date(2026, mes, 5), hipoteca)
+        mov('1200', datetime.date(2025, 11, 3), ingresos)
+        mov('1200', datetime.date(2025, 12, 3), ingresos)
+        mov('1200', datetime.date(2026, 1, 3), ingresos)
+        mov('1200', datetime.date(2026, 2, 3), ingresos)
+        self.piso.refresh_from_db()
+        b = balance_desde_el_alquiler(self.piso, hoy=datetime.date(2026, 2, 20))
+        self.assertEqual(b['inicio'], datetime.date(2025, 11, 1))
+        self.assertEqual(b['meses'], 4)
+        self.assertEqual(b['cobrado'], Decimal('4800'))
+        self.assertEqual(b['pagado'], Decimal('2000'))      # nov, dic, ene, feb
+        self.assertEqual(b['neto'], Decimal('2800'))
+        self.assertEqual(b['hipoteca'], Decimal('2000'))
+        self.assertEqual(b['al_mes'], Decimal('700.00'))
+        # Con la fecha del contrato dicha, manda ella.
+        self.piso.alquilada_desde = datetime.date(2025, 12, 15)
+        self.piso.save()
+        b = balance_desde_el_alquiler(self.piso, hoy=datetime.date(2026, 2, 20))
+        self.assertEqual(b['cobrado'], Decimal('2400'))  # ene y feb (el de diciembre fue el 3)
+        self.assertTrue(b['inicio_dicho'])
+
     def test_elegir_los_cobros_del_alquiler(self):
         from extractos.models import MovimientoBancario
         from .models import CategoriaGasto
