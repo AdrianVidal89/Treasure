@@ -49,15 +49,13 @@
             <span class="veh-hero-sub">
                 {% comment %}
                 Debajo de la cifra va la cuenta que la produce, sumando: el gasto
-                corriente entre los meses ya cerrados, más lo que imputan al año
-                los pagos periódicos entre doce (son coste del año, no del mes). Antes iba el total pagado del año —«82,85
+                corriente del año más lo que imputan al año los pagos periódicos,
+                todo entre doce: es lo que el coche cuesta al año, repartido. Antes iba el total pagado del año —«82,85
                 €/mes» y justo debajo «1.249,34 € en 9 meses»— y no había forma
                 de cuadrarlo a mano ni de saber qué era cada cosa.
                 {% endcomment %}
                 {% if f.num_movimientos %}
-                {% if f.hay_ritmo %}<strong>{{ f.corriente_cerrado|euro }}</strong> de gasto corriente entre
-                {{ f.meses_cerrados }} mes{{ f.meses_cerrados|pluralize:"es" }} cerrado{{ f.meses_cerrados|pluralize:"s" }}
-                ({{ f.ritmo_corriente|euro }}/mes){% else %}todavía no hay ningún mes cerrado de {{ f.anio }} para el gasto corriente{% endif %}
+                <strong>{{ f.corriente_anual|euro }}</strong> de gasto corriente del año entre 12 ({{ f.ritmo_corriente|euro }}/mes)
                 {% if f.provisiones_devengadas %}+ <strong>{{ f.provisiones_devengadas|euro }}</strong> de gastos periódicos del año entre 12
                 ({{ f.ritmo_provisiones|euro }}/mes){% endif %}
                 <br>{{ f.devengado_anual|euro }} imputados al año ·
@@ -114,7 +112,7 @@
                     <td class="num">{{ f.provisiones_devengadas|euro }}</td><td class="num">{{ f.ritmo_provisiones|euro }}</td></tr>
             </table>
             <p class="veh-apagado">Un gasto de varios años cuenta su parte: lo pagado × 12 ÷ los meses que dura. Lo de un año o menos cuenta entero.
-            Al mes, el total entre 12, más el gasto corriente entre los meses cerrados ({{ f.ritmo_corriente|euro }}): <strong>{{ f.ritmo_mensual|euro }}/mes</strong>.</p>
+            Al mes, el total entre 12, más el gasto corriente del año entre 12 ({{ f.ritmo_corriente|euro }}): <strong>{{ f.ritmo_mensual|euro }}/mes</strong>.</p>
         </div>
         {% endif %}
     </section>
