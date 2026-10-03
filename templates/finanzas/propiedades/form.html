@@ -114,6 +114,11 @@
                 <small style="margin-top: 6px;">Su ficha enseñará el alquiler cobrado frente a lo que cuesta, mes a mes, y el IRPF que supone.</small>
             </div>
             <div id="campos-alquiler" {% if not propiedad.alquilada %}hidden{% endif %}>
+                <div class="fg">
+                    <label>Alquilada desde</label>
+                    <input type="date" name="alquilada_desde" value="{{ propiedad.alquilada_desde|date:'Y-m-d' }}">
+                    <small>Inicio del balance «desde que la alquilas». Vacío: desde el mes del primer cobro.</small>
+                </div>
                 <div class="fg-row">
                     <div class="fg">
                         <label>¿De quién es? (titular en Hacienda)</label>

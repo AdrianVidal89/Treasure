@@ -37,6 +37,19 @@
         y los que vengan en los siguientes extractos.</span></div>
     {% endif %}
 
+    {% with b=a.desde_alquiler %}{% if b %}
+    <section class="al-desde {% if b.neto < 0 %}neg{% else %}pos{% endif %}">
+        <div>
+            <span class="al-kpi-lbl">Desde que la alquilas · {{ b.inicio|date:"j \d\e F \d\e Y" }}{% if not b.inicio_dicho %} (primer cobro){% endif %}</span>
+            <span class="al-kpi-sub">{{ b.meses }} mes{{ b.meses|pluralize:"es" }} · {{ b.num_cobros }} cobro{{ b.num_cobros|pluralize }} · {{ b.cobrado|euro:0 }} cobrados − {{ b.pagado|euro:0 }} pagados de la propiedad, tal como pasó por el banco{% if b.hipoteca %}. Incluye {{ b.hipoteca|euro:0 }} de cuotas de hipoteca: sin ellas, {% if b.neto_sin_hipoteca > 0 %}+{% endif %}{{ b.neto_sin_hipoteca|euro:0 }}{% endif %}.</span>
+        </div>
+        <div class="al-desde-cifra">
+            <span class="al-desde-v">{% if b.neto > 0 %}+{% endif %}{{ b.neto|euro:0 }}</span>
+            <span class="al-kpi-sub">{% if b.neto < 0 %}de pérdida{% else %}de ganancia{% endif %} neta · {% if b.al_mes > 0 %}+{% endif %}{{ b.al_mes|euro:0 }}/mes</span>
+        </div>
+    </section>
+    {% endif %}{% endwith %}
+
     <!-- ══════════ LAS CIFRAS DEL AÑO ══════════ -->
     <section class="al-kpis">
         <div class="al-kpi">
@@ -146,6 +159,12 @@
 .al-anio select { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:0.84rem; }
 .al-aviso { display:flex; gap:9px; align-items:flex-start; padding:10px 13px; border-radius:11px; margin-bottom:14px; font-size:0.8rem; line-height:1.45; border:1px dashed var(--border-strong); background:var(--surface); }
 .al-aviso .icon { width:16px; height:16px; flex:0 0 auto; margin-top:1px; color:var(--muted); }
+.al-desde { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; padding:14px 16px; border-radius:14px; border:1px solid var(--border); background:var(--surface); margin-bottom:14px; }
+.al-desde > div:first-child { flex:1 1 360px; display:flex; flex-direction:column; gap:3px; }
+.al-desde-cifra { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+.al-desde-v { font-size:1.9rem; font-weight:800; font-variant-numeric:tabular-nums; line-height:1.1; }
+.al-desde.pos .al-desde-v { color:var(--success); }
+.al-desde.neg .al-desde-v { color:var(--danger); }
 .al-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px; margin-bottom:14px; }
 .al-kpi { display:flex; flex-direction:column; gap:2px; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--surface); }
 .al-kpi-lbl { font-size:0.68rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }

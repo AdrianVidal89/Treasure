@@ -1814,6 +1814,13 @@ class Propiedad(models.Model):
     # El gasto anual creado desde la ficha con el IRPF del alquiler: para
     # actualizarlo en vez de crear otro, y para que su pago no se cuente como
     # gasto deducible del propio alquiler.
+    # Desde cuándo está alquilada. Vacío: desde el primer cobro imputado. Es el
+    # inicio del balance «desde que la alquilas»: lo de antes no es del
+    # alquiler.
+    alquilada_desde = models.DateField(
+        null=True, blank=True,
+        help_text='Inicio del alquiler. Vacío: el mes del primer cobro imputado.',
+    )
     partida_irpf = models.ForeignKey(
         'PartidaGasto', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
