@@ -135,6 +135,22 @@
     "tipos": [
      1.5
     ],
+    "historia": {
+     "n": 14,
+     "intereses": 2026.66,
+     "primera": {
+      "n": 179,
+      "fecha": "2024-12-01",
+      "tipo": 1.5,
+      "cuota": 472.93,
+      "intereses": 147.42,
+      "capital": 325.51,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 117609.85,
+      "estimada": true
+     }
+    },
     "siguientes": {
      "desde": "2026-01-01",
      "intereses": 1672.67,
@@ -404,6 +420,117 @@
    }
   },
   {
+   "nombre": "Alameda: variable con ancla, cobro el día 2 y vencimiento 02/06/2038",
+   "prestamo": {
+    "capital": 183352.78,
+    "inicio": "2017-03-15",
+    "plazo_meses": 255,
+    "dia_cobro": 2,
+    "modalidad": "variable",
+    "tipo_inicial": 3.015,
+    "revision_meses": 12,
+    "revisiones": [
+     {
+      "fecha": "2026-04-02",
+      "tipo": 3.015
+     },
+     {
+      "fecha": "2025-04-02",
+      "tipo": 3.4
+     }
+    ],
+    "amortizaciones": [
+     {
+      "fecha": "2026-01-20",
+      "importe": 2000,
+      "modo": "plazo",
+      "comision": null
+     }
+    ],
+    "ancla": {
+     "fecha": "2026-10-02",
+     "saldo": 79523.93,
+     "cuota": 674.48
+    }
+   },
+   "esperado": {
+    "cuotas": 140,
+    "primera_cuota": 674.48,
+    "intereses": 14903.37,
+    "pagado": 94427.3,
+    "extra": 0.0,
+    "comision": 0.0,
+    "fin": "2038-06-02",
+    "ultima_cuota": 674.58,
+    "anual": [
+     {
+      "anio": 2026,
+      "cuotas": 2,
+      "intereses": 398.41,
+      "capital": 950.55,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 78573.38
+     },
+     {
+      "anio": 2027,
+      "cuotas": 12,
+      "intereses": 2289.21,
+      "capital": 5804.55,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 72768.83
+     },
+     {
+      "anio": 2028,
+      "cuotas": 12,
+      "intereses": 2111.76,
+      "capital": 5982.0,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 66786.83
+     },
+     {
+      "anio": 2029,
+      "cuotas": 12,
+      "intereses": 1928.89,
+      "capital": 6164.87,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 60621.96
+     }
+    ],
+    "tipos": [
+     3.015
+    ],
+    "historia": {
+     "n": 14,
+     "intereses": 3162.9,
+     "primera": {
+      "n": 102,
+      "fecha": "2025-09-02",
+      "tipo": 3.4,
+      "cuota": 674.48,
+      "intereses": 248.78,
+      "capital": 425.7,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 87378.05,
+      "estimada": true
+     }
+    },
+    "siguientes": {
+     "desde": "2026-10-05",
+     "intereses": 2318.27,
+     "capital": 5775.49
+    },
+    "saldo": {
+     "dia": "2026-10-05",
+     "valor": 79523.93
+    }
+   }
+  },
+  {
    "nombre": "Sin intereses",
    "prestamo": {
     "capital": 12000,
@@ -530,6 +657,22 @@
      1.0,
      3.15
     ],
+    "historia": {
+     "n": 14,
+     "intereses": 1461.92,
+     "primera": {
+      "n": 113,
+      "fecha": "2024-11-05",
+      "tipo": 1.0,
+      "cuota": 744.24,
+      "intereses": 107.88,
+      "capital": 636.36,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 128821.58,
+      "estimada": true
+     }
+    },
     "siguientes": {
      "desde": "2026-01-01",
      "intereses": 3481.47,

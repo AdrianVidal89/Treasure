@@ -2061,8 +2061,6 @@ class Hipoteca(models.Model):
             errores['plazo_meses'] = 'El plazo tiene que ser de al menos un mes.'
         if self.dia_cobro is not None and not 1 <= self.dia_cobro <= 31:
             errores['dia_cobro'] = 'Un día del mes, de 1 a 31.'
-        if self.modalidad in ('variable', 'mixto') and self.diferencial_pct is None:
-            errores['diferencial_pct'] = 'Un variable necesita el diferencial sobre el índice.'
         if self.modalidad == 'mixto' and not self.meses_tramo_fijo:
             errores['meses_tramo_fijo'] = 'Un mixto necesita la duración del tramo fijo.'
         if (self.saldo_conocido is None) != (self.saldo_conocido_fecha is None):

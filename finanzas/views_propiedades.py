@@ -164,9 +164,14 @@ def _leer_alquiler(propiedad, post, hogar):
     from django.utils.dateparse import parse_date
     propiedad.alquilada_desde = parse_date(post.get('alquilada_desde') or '') or None
     propiedad.pct_construccion = _decimal_o_none(post.get('pct_construccion'), 'el % de construcción')
-    propiedad.intereses_hipoteca_anuales = _decimal_o_none(
-        post.get('intereses_hipoteca_anuales'), 'los intereses de la hipoteca',
-    )
+    if 'intereses_hipoteca_anuales' in post:
+        propiedad.intereses_hipoteca_anuales = _decimal_o_none(
+            post.get('intereses_hipoteca_anuales'), 'los intereses de la hipoteca',
+        )
+    if 'valor_construccion' in post:
+        propiedad.valor_construccion = _decimal_o_none(post.get('valor_construccion'), 'el valor de la construcción')
+    if 'tipo_marginal_pct' in post:
+        propiedad.tipo_marginal_pct = _decimal_o_none(post.get('tipo_marginal_pct'), 'el tipo marginal')
     if 'tipo_referencia_pct' in post:
         propiedad.tipo_referencia_pct = _decimal_o_none(
             post.get('tipo_referencia_pct'), 'el tipo de referencia',

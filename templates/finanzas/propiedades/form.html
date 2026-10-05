@@ -153,14 +153,31 @@
                 </div>
                 <div class="fg-row">
                     <div class="fg">
+                        <label>Valor de la construcción (€)</label>
+                        <input type="text" inputmode="decimal" name="valor_construccion" value="{% if propiedad.valor_construccion is not None %}{{ propiedad.valor_construccion|unlocalize }}{% endif %}" placeholder="Ej: 95000">
+                        <small>Lo que es construcción, sin suelo: la base del 3 % de amortización. Si no lo sabes, usa el % de abajo.</small>
+                    </div>
+                    <div class="fg">
                         <label>Construcción (% del valor catastral)</label>
                         <input type="text" inputmode="decimal" name="pct_construccion" value="{% if propiedad.pct_construccion is not None %}{{ propiedad.pct_construccion|unlocalize }}{% endif %}" placeholder="Ej: 62">
-                        <small>Lo dice el recibo del IBI (valor de la construcción ÷ total). Sin él no se cuenta la amortización (3 %/año).</small>
+                        <small>Lo dice el recibo del IBI (valor de la construcción ÷ total). Se aplica al coste de compra.</small>
+                    </div>
+                </div>
+                <div class="fg-row">
+                    <div class="fg">
+                        <label>Tipo marginal de IRPF (%)</label>
+                        <input type="text" inputmode="decimal" name="tipo_marginal_pct" value="{% if propiedad.tipo_marginal_pct is not None %}{{ propiedad.tipo_marginal_pct|unlocalize }}{% endif %}" placeholder="Se calcula con la nómina">
+                        <small>Vacío: se calcula con los tramos sobre la nómina del titular (Ingresos).</small>
                     </div>
                     <div class="fg">
                         <label>Intereses de la hipoteca al año (€)</label>
+                        {% if propiedad.tiene_hipoteca_declarada %}
+                        <input type="text" value="Del cuadro de la hipoteca" readonly>
+                        <small>Salen de la hipoteca declarada.</small>
+                        {% else %}
                         <input type="text" inputmode="decimal" name="intereses_hipoteca_anuales" value="{% if propiedad.intereses_hipoteca_anuales is not None %}{{ propiedad.intereses_hipoteca_anuales|unlocalize }}{% endif %}" placeholder="Ej: 1800">
-                        <small>Solo los intereses se deducen, no la cuota entera. Te los da el banco.</small>
+                        <small>Mejor <a href="{% if propiedad %}{% url 'finanzas:nueva_hipoteca' propiedad.pk %}{% endif %}">declara la hipoteca</a>: los intereses saldrán de su cuadro.</small>
+                        {% endif %}
                     </div>
                 </div>
             </div>

@@ -302,7 +302,7 @@ dato de los que había.
                         <strong class="{% if r.neta is not None and r.neta < 0 %}text-negative{% else %}text-positive{% endif %}">{% if r.neta is not None %}{{ r.neta|floatformat:2 }} %{% else %}—{% endif %} neta</strong>
                         <span>{% if r.bruta is not None %}{{ r.bruta|floatformat:2 }} %{% else %}—{% endif %} bruta</span>
                         <span>{% if r.neta_irpf is not None %}{{ r.neta_irpf|floatformat:2 }} %{% else %}—{% endif %} tras IRPF</span>
-                        {% if r.sobre_tu_dinero is not None %}<span>{{ r.sobre_tu_dinero|floatformat:2 }} % sobre tu dinero</span>{% endif %}
+                        {% if r.sobre_capital is not None %}<span>{{ r.sobre_capital|floatformat:2 }} % sobre tu capital</span>{% if r.mantener_vs_vender is not None %}<span>{% if r.mantener_vs_vender > 0 %}+{% endif %}{{ r.mantener_vs_vender|euro:0 }}/año frente a vender</span>{% endif %}{% elif r.sobre_tu_dinero is not None %}<span>{{ r.sobre_tu_dinero|floatformat:2 }} % sobre tu dinero</span>{% endif %}
                         <span class="prop-rent-ver">Ver detalle →</span>
                     </span>
                 </a>
@@ -340,10 +340,14 @@ dato de los que había.
                             <input type="text" inputmode="decimal" name="gastos_fijos_anuales" value="{{ v.gastos_fijos_anuales }}">
                             <small>IBI, comunidad, seguro… {% if sim.ya.origen == 'movimientos' %}Propuesto: lo que pagaste en los últimos 12 meses ({{ sim.ya.gastos_fijos_anuales|euro:0 }}).{% elif sim.ya.origen == 'partidas' %}Propuesto: lo presupuestado en sus partidas ({{ sim.ya.gastos_fijos_anuales|euro:0 }}).{% else %}No hay gastos imputados a la propiedad: ponlos a mano.{% endif %}</small>
                         </label>
+                        {% if item.hipotecas %}
+                        <input type="hidden" name="cuota_hipoteca_anual" value="{{ v.cuota_hipoteca_anual }}">
+                        {% else %}
                         <label>Cuota de hipoteca al año (€)
                             <input type="text" inputmode="decimal" name="cuota_hipoteca_anual" value="{{ v.cuota_hipoteca_anual }}">
-                            <small>{% if sim.ya.cuota_hipoteca_anual %}Propuesto: {{ sim.ya.cuota_hipoteca_anual|euro:0 }} de los últimos 12 meses.{% else %}0 si no tiene hipoteca.{% endif %}</small>
+                            <small>{% if sim.ya.cuota_hipoteca_anual %}Propuesto: {{ sim.ya.cuota_hipoteca_anual|euro:0 }} de los últimos 12 meses.{% else %}0 si no tiene hipoteca.{% endif %} Mejor declara la hipoteca: saldrá de su cuadro, separada en intereses y capital.</small>
                         </label>
+                        {% endif %}
                         <label>Mantenimiento (% de la renta)
                             <input type="text" inputmode="decimal" name="mantenimiento_pct" value="{{ v.mantenimiento_pct }}">
                             <small>Reparaciones y desgaste que trae un inquilino. 5 % es prudente.</small>

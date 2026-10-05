@@ -186,6 +186,11 @@ class HipotecaForm(forms.ModelForm):
         help_text='Una por línea: concepto; rebaja del tipo (puntos); coste al año (€).',
     )
 
+    vencimiento = forms.DateField(
+        label='o fecha de vencimiento', required=False, widget=_fecha(),
+        help_text='La de la última cuota. Si la pones, el plazo sale de ella.',
+    )
+
     class Meta:
         model = Hipoteca
         fields = [
@@ -232,6 +237,13 @@ class HipotecaForm(forms.ModelForm):
             if hogar else PartidaGasto.objects.none()
         )
         self.fields['partida'].required = False
+        self.fields['plazo_meses'].required = False
+        if self.instance and self.instance.pk:
+            from . import amortizacion
+            self.fields['vencimiento'].initial = amortizacion.fecha_pago(
+                {'inicio': self.instance.fecha_firma.isoformat(), 'dia_cobro': self.instance.dia_cobro},
+                self.instance.plazo_meses,
+            )
         self.fields['partida'].help_text = (
             'Opcional. Para conciliar: los pagos conciliados con ella cuentan como cuota.'
         )
@@ -254,6 +266,26 @@ class HipotecaForm(forms.ModelForm):
                 raise forms.ValidationError(f'Línea {n}: «{linea}» no es «concepto; rebaja; coste».')
             bonificaciones.append({'concepto': partes[0], 'rebaja_pct': rebaja, 'coste_anual': coste})
         return bonificaciones
+
+    def clean(self):
+        datos = super().clean()
+        vencimiento, firma = datos.get('vencimiento'), datos.get('fecha_firma')
+        plazo = datos.get('plazo_meses')
+        if vencimiento and firma:
+            from . import amortizacion
+            if vencimiento <= firma:
+                self.add_error('vencimiento', 'El vencimiento tiene que ser posterior a la firma.')
+                return datos
+            p = {'inicio': firma.isoformat(), 'dia_cobro': datos.get('dia_cobro')}
+            k = 1
+            while amortizacion.fecha_pago(p, k) < vencimiento and k < amortizacion.MAX_MESES:
+                k += 1
+            if not plazo or 'vencimiento' in self.changed_data:
+                datos['plazo_meses'] = k
+                self.instance.plazo_meses = k
+        elif not plazo:
+            self.add_error('plazo_meses', 'Indica el plazo o la fecha de vencimiento.')
+        return datos
 
     def save(self, commit=True):
         self.instance.bonificaciones = self.cleaned_data.get('bonificaciones_texto') or []

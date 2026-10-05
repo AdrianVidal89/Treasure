@@ -42,9 +42,63 @@ def olvidar(propiedad):
     propiedad.__dict__.pop('_hipotecas_activas', None)
 
 
-def filas(propiedad):
-    """Las filas de todos los cuadros de la propiedad, juntas."""
-    return [f for h in activas(propiedad) for f in h.cuadro()]
+HISTORIA_MESES = 24
+
+
+def cuadro_con_historia(hipoteca):
+    """El cuadro y, si empieza en un punto de partida conocido, las cuotas de
+    los dos años anteriores estimadas hacia atrás (`estimada: True`): las
+    necesitan la declaración del año y la rentabilidad de los últimos doce
+    meses."""
+    cache = hipoteca.__dict__.setdefault('_cuadros', {})
+    if 'historia' not in cache:
+        filas = hipoteca.cuadro()
+        cache['historia'] = amortizacion.historia_previa(
+            hipoteca.como_prestamo(), filas, HISTORIA_MESES) + filas
+    return cache['historia']
+
+
+def filas(propiedad, con_historia=False):
+    """Las filas de todos los cuadros de la propiedad, juntas. Sin historia
+    estimada salvo que se pida: para conciliar con el banco solo vale el
+    cuadro de verdad."""
+    return [f for h in activas(propiedad)
+            for f in (cuadro_con_historia(h) if con_historia else h.cuadro())]
+
+
+def _sumar(filas_):
+    total = {'cuotas': 0, 'pagado': CERO, 'intereses': CERO, 'capital': CERO,
+             'extra': CERO, 'comision': CERO, 'estimadas': 0}
+    meses = set()
+    for f in filas_:
+        meses.add((f['fecha'].year, f['fecha'].month))
+        total['pagado'] += _d(f['cuota'])
+        total['intereses'] += _d(f['intereses'])
+        total['capital'] += _d(f['capital'])
+        total['extra'] += _d(f['extra'])
+        total['comision'] += _d(f['comision'])
+        total['estimadas'] += 1 if f.get('estimada') else 0
+    total['cuotas'] = len(meses)
+    return total
+
+
+def entre(propiedad, desde, hasta):
+    """Intereses, capital, cuotas… de las cuotas cobradas entre dos fechas
+    (incluidas), sumando sus hipotecas e incluida la historia estimada.
+    None sin hipoteca declarada."""
+    if not activas(propiedad):
+        return None
+    return _sumar([f for f in filas(propiedad, True) if desde <= f['fecha'] <= hasta])
+
+
+def proximos_12(propiedad, hoy=None):
+    """Las doce cuotas siguientes a hoy: el AÑO TIPO de la hipoteca para la
+    rentabilidad. Es lo que va a pasar, no lo que pasó con tipos de antes."""
+    hs = activas(propiedad)
+    if not hs:
+        return None
+    hoy = hoy or datetime.date.today()
+    return _sumar([f for h in hs for f in [x for x in h.cuadro() if x['fecha'] > hoy][:12]])
 
 
 def deuda(propiedad, dia=None):
@@ -72,18 +126,9 @@ def capital_prestado(propiedad):
 
 
 def del_anio(propiedad, anio):
-    """Intereses, capital, cuotas… del año natural, sumando sus hipotecas."""
-    hs = activas(propiedad)
-    if not hs:
-        return None
-    total = {'cuotas': 0, 'pagado': CERO, 'intereses': CERO, 'capital': CERO,
-             'extra': CERO, 'comision': CERO}
-    for h in hs:
-        a = h.del_anio(anio)
-        total['cuotas'] = max(total['cuotas'], a['cuotas'])
-        for k in ('pagado', 'intereses', 'capital', 'extra', 'comision'):
-            total[k] += _d(a[k])
-    return total
+    """Intereses, capital, cuotas… del año natural, sumando sus hipotecas
+    (con la historia estimada si el cuadro empieza a mitad de año)."""
+    return entre(propiedad, datetime.date(anio, 1, 1), datetime.date(anio, 12, 31))
 
 
 def _de_los_meses(propiedad, anio, hasta_mes):
@@ -91,7 +136,7 @@ def _de_los_meses(propiedad, anio, hasta_mes):
     cuántos meses hubo cuota."""
     intereses = capital = 0.0
     meses = set()
-    for f in filas(propiedad):
+    for f in filas(propiedad, con_historia=True):
         if f['fecha'].year == anio and f['fecha'].month <= hasta_mes:
             intereses += f['intereses']
             capital += f['capital']

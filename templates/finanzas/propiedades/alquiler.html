@@ -41,7 +41,7 @@
     <section class="al-desde {% if b.neto < 0 %}neg{% else %}pos{% endif %}">
         <div>
             <span class="al-kpi-lbl">Desde que la alquilas · {{ b.inicio|date:"j \d\e F \d\e Y" }}{% if not b.inicio_dicho %} (primer cobro){% endif %}</span>
-            <span class="al-kpi-sub">{{ b.meses }} mes{{ b.meses|pluralize:"es" }} · {{ b.num_cobros }} cobro{{ b.num_cobros|pluralize }} · {{ b.cobrado|euro:0 }} cobrados − {{ b.pagado|euro:0 }} pagados de la propiedad, tal como pasó por el banco{% if b.hipoteca %}. Incluye {{ b.hipoteca|euro:0 }} de cuotas de hipoteca: sin ellas, {% if b.neto_sin_hipoteca > 0 %}+{% endif %}{{ b.neto_sin_hipoteca|euro:0 }}{% endif %}.</span>
+            <span class="al-kpi-sub">{{ b.meses }} mes{{ b.meses|pluralize:"es" }} · {{ b.num_cobros }} cobro{{ b.num_cobros|pluralize }} · {{ b.cobrado|euro:0 }} cobrados − {{ b.pagado|euro:0 }} pagados de la propiedad, tal como pasó por el banco{% if b.hipoteca %}. Incluye {{ b.hipoteca|euro:0 }} de cuotas de hipoteca{% if b.capital %}, de ellas {{ b.capital|euro:0 }} de capital (ahorro, se queda en el piso){% endif %}: sin ellas, {% if b.neto_sin_hipoteca > 0 %}+{% endif %}{{ b.neto_sin_hipoteca|euro:0 }}{% endif %}.</span>
         </div>
         <div class="al-desde-cifra">
             <span class="al-desde-v">{% if b.neto > 0 %}+{% endif %}{{ b.neto|euro:0 }}</span>
@@ -108,9 +108,9 @@
         <div class="al-dos">
             <table class="al-tabla al-puente">
                 <tr><td>Ingresos del alquiler{% if a.meses_pendientes %} <span class="al-apagado">(estimados)</span>{% endif %}</td><td class="al-num">{{ a.ingresos_anio|euro }}</td></tr>
-                <tr><td>Gastos deducibles<span class="al-det">IBI, comunidad, seguro, reparaciones…: {{ a.gastos_reales|euro:0 }} pagados{% if a.gastos_previstos %} + {{ a.gastos_previstos|euro:0 }} previstos{% endif %}</span></td><td class="al-num al-neg">−{{ a.gastos_anio|euro }}</td></tr>
-                <tr><td>Intereses de la hipoteca{% if not a.intereses %}<span class="al-det">sin indicar</span>{% endif %}</td><td class="al-num al-neg">−{{ a.intereses|euro }}</td></tr>
-                <tr><td>Amortización<span class="al-det">{% if a.falta_construccion %}falta el % de construcción{% else %}3 % de la parte de construcción del coste de compra{% endif %}</span></td><td class="al-num al-neg">−{{ a.amortizacion|euro }}</td></tr>
+                <tr><td>Gastos deducibles<span class="al-det">IBI, comunidad, seguro…: {{ a.gastos_reales|euro:0 }} pagados{% if a.gastos_previstos %} + {{ a.gastos_previstos|euro:0 }} previstos{% endif %}{% if a.reparaciones %}, de ellos {{ a.reparaciones|euro:0 }} de reparaciones (van abajo, con los intereses){% endif %}</span></td><td class="al-num al-neg">−{{ a.gastos_sin_reparaciones|euro }}</td></tr>
+                <tr><td>Intereses de la hipoteca{% if a.reparaciones %} + reparaciones{% endif %}<span class="al-det">{% if a.intereses_origen == 'cuadro' %}{{ a.intereses|euro:0 }} de intereses según el cuadro de la hipoteca{% if a.intereses_estimados %} ({{ a.intereses_estimados }} cuota{{ a.intereses_estimados|pluralize }} estimada{{ a.intereses_estimados|pluralize }} hacia atrás){% endif %}{% elif a.intereses_origen == 'mano' %}{{ a.intereses|euro:0 }} de intereses puestos a mano{% else %}sin intereses: <a href="{% url 'finanzas:nueva_hipoteca' p.pk %}">declara la hipoteca</a> si la tiene{% endif %}{% if a.exceso_arrastrable %} · no pueden pasar de los ingresos: {{ a.exceso_arrastrable|euro:0 }} se arrastran a los 4 años siguientes{% endif %}</span></td><td class="al-num al-neg">−{{ a.deducido_financieros|euro }}</td></tr>
+                <tr><td>Amortización<span class="al-det">{% if a.falta_construccion %}falta el valor de la construcción{% else %}3 % de {{ a.base_amortizacion|euro:0 }} de construcción{% endif %}</span></td><td class="al-num al-neg">−{{ a.amortizacion|euro }}</td></tr>
                 <tr class="al-total"><td>Rendimiento neto</td><td class="al-num">{{ a.rendimiento|euro }}</td></tr>
                 <tr><td>Reducción del {{ a.pct_reduccion|floatformat:0 }} %<span class="al-det">{{ p.get_reduccion_alquiler_pct_display }}</span></td><td class="al-num al-neg">−{{ a.reduccion|euro }}</td></tr>
                 <tr class="al-total"><td>Rendimiento que tributa</td><td class="al-num">{{ a.reducido|euro }}</td></tr>
@@ -125,8 +125,9 @@
                     </div>
                     <div class="al-titular-cifra">{{ t.impuesto|euro }}</div>
                     <div class="al-apagado">
-                        {% if t.sin_ingresos %}Sin fuentes de ingreso declaradas: se calcula como si no tuviera más renta, y probablemente sale por debajo.
-                        {% else %}Con {{ t.bruto_trabajo|euro:0 }} brutos de sus otras fuentes, el alquiler le sale al {{ t.tipo|floatformat:1 }} %.{% endif %}
+                        {% if t.marginal_a_mano %}Al tipo marginal del {{ p.tipo_marginal_pct|floatformat:"-2" }} % puesto en la propiedad.
+                        {% elif t.sin_ingresos %}Sin fuentes de ingreso declaradas: se calcula como si no tuviera más renta, y probablemente sale por debajo.
+                        {% else %}Con {{ t.bruto_trabajo|euro:0 }} brutos de sus otras fuentes, el alquiler le sale al {{ t.tipo|floatformat:1 }} %. <a href="{% url 'finanzas:editar_propiedad' p.pk %}">Fijar el tipo marginal</a>.{% endif %}
                         {% if t.en_neto %}Declaradas en neto: {{ t.en_neto|join:", " }} (se toman como bruto).{% endif %}
                     </div>
                 </div>
@@ -152,14 +153,21 @@
                     <strong class="{% if a.neto_tras_impuesto < 0 %}al-neg{% else %}al-pos{% endif %}">{{ a.neto_tras_impuesto|euro:0 }}</strong>
                     <span class="al-apagado">≈ {{ a.neto_tras_impuesto_mes|euro:0 }} al mes, con la hipoteca entera</span>
                 </div>
+                {% if a.ganancia_real is not None %}
+                <div class="al-neto-final">
+                    <span>Ganancia real del año</span>
+                    <strong class="{% if a.ganancia_real < 0 %}al-neg{% else %}al-pos{% endif %}">{{ a.ganancia_real|euro:0 }}</strong>
+                    <span class="al-apagado">el neto más {{ a.capital_anio|euro:0 }} de capital amortizado: no se pierde, se queda en el piso</span>
+                </div>
+                {% endif %}
             </div>
         </div>
 
         <ul class="al-avisos">
-            {% if a.falta_construccion %}<li>Sin el <strong>% de construcción</strong> no se cuenta la amortización (3 % al año de lo que es construcción): el impuesto sale más alto de lo que será. Lo dice el recibo del IBI.</li>{% endif %}
-            {% if a.excluidos_hipoteca and not a.intereses %}<li>Hay {{ a.excluidos_hipoteca|euro:0 }} de cuotas de hipoteca imputadas al piso que no se deducen enteras: indica los <strong>intereses del año</strong> para que cuenten.</li>{% endif %}
+            {% if a.falta_construccion %}<li>Sin el <strong>valor de la construcción</strong> no se cuenta la amortización (3 % al año de lo que es construcción): el impuesto sale más alto de lo que será. Lo dice el recibo del IBI. <a href="{% url 'finanzas:editar_propiedad' p.pk %}">Añadirlo</a>.</li>{% endif %}
+            {% if a.excluidos_hipoteca and not a.intereses %}<li>Hay {{ a.excluidos_hipoteca|euro:0 }} de cuotas de hipoteca imputadas al piso que no se deducen enteras: <a href="{% url 'finanzas:nueva_hipoteca' p.pk %}">declara la hipoteca</a> para que sus intereses salgan del cuadro.</li>{% endif %}
             {% if a.sin_tramos %}<li>No hay tablas de IRPF cargadas para {{ a.anio|unlocalize }}: el impuesto sale a cero. Cárgalas desde el Panel Admin.</li>{% endif %}
-            <li>Es una estimación para planificar: no conoce las deducciones de tu comunidad, ni que intereses y reparaciones no pueden pasar de los ingresos (el exceso se arrastra cuatro años), ni otras rentas que no estén en tus fuentes de ingreso.</li>
+            <li>Es una estimación para planificar: no conoce las deducciones de tu comunidad, ni el exceso de intereses y reparaciones arrastrado de años anteriores, ni otras rentas que no estén en tus fuentes de ingreso.</li>
         </ul>
     </section>
 </div>
