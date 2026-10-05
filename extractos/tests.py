@@ -3229,6 +3229,47 @@ class PagosAnualesEnElPanelTests(TestCase):
         self.assertEqual(bloques['anual']['limite'], Decimal('1968.00'))
         self.assertTrue(bloques['anual']['dentro'])
 
+    def test_el_exceso_anual_de_un_mes_anterior_no_vuelve_a_salir_en_octubre(self):
+        """Te pasaste del presupuesto del año en septiembre. En octubre, sin
+        ningún movimiento, «Fuera de lo previsto» decía +32 € de exceso: era el
+        de septiembre, repetido en cada mes que quedara del año."""
+        self.mov('-2000', 8, self.mantenimiento)
+
+        septiembre = self.panel(anio=2026, mes=9)['fuera_presupuesto']
+        self.assertEqual([f['nombre'] for f in septiembre['categorias']], ['Mantenimiento vehicular'])
+        self.assertEqual(septiembre['exceso_categorias'], Decimal('32.00'))
+
+        octubre = self.panel(anio=2026, mes=10)
+        fuera = octubre['fuera_presupuesto']
+        self.assertEqual(fuera['categorias'], [])
+        self.assertEqual(fuera['bloques'], [])
+        self.assertEqual(fuera['no_previsto'], Decimal('0'))
+        # El bloque sigue diciendo que el AÑO va por encima: eso es verdad.
+        bloques = {b['tipo']: b for b in octubre['bloques']}
+        self.assertFalse(bloques['anual']['dentro'])
+        self.assertEqual(bloques['anual']['medido'], Decimal('2000'))
+
+    def test_en_el_mes_solo_cuenta_el_exceso_que_pone_ese_mes(self):
+        """1.500 € pagados antes, 600 € en octubre contra 1.968 € del año: el
+        exceso de octubre son 132 €, no los 600 € ni nada de lo anterior."""
+        self.mov('-1500', 8, self.mantenimiento)
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 10, 3),
+            concepto='Norauto oct', importe=Decimal('-600'), categoria=self.mantenimiento,
+        )
+        fuera = self.panel(anio=2026, mes=10)['fuera_presupuesto']
+        self.assertEqual(fuera['exceso_categorias'], Decimal('132.00'))
+        self.assertEqual(fuera['exceso_total'], Decimal('132.00'))
+
+    def test_con_el_año_ya_pasado_el_exceso_del_mes_es_lo_que_paga_ese_mes(self):
+        self.mov('-2000', 8, self.mantenimiento)
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 10, 3),
+            concepto='Norauto oct', importe=Decimal('-100'), categoria=self.mantenimiento,
+        )
+        fuera = self.panel(anio=2026, mes=10)['fuera_presupuesto']
+        self.assertEqual(fuera['exceso_categorias'], Decimal('100'))
+
 class RepartoAprendidoTests(TestCase):
     """Repartir a mano el recibo del taller cada vez que llega es el trabajo que
     hace que la pantalla se abandone a medias.
