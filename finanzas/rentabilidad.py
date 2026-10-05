@@ -11,10 +11,19 @@ No hay una sola rentabilidad: cada cifra contesta una pregunta distinta.
   cómo se compraron.
 * NETA TRAS IRPF = lo anterior menos el impuesto del alquiler, con el mismo
   cálculo que la declaración (`alquiler.impuesto_del_alquiler`).
-* SOBRE TU DINERO (cash-on-cash) = lo que queda tras pagarlo todo, hipoteca
-  entera incluida, / lo que pusiste de tu bolsillo (coste − préstamo). Con
-  hipoteca es la que de verdad dice cuánto te rinde tu dinero. Aparte va la
-  parte de la cuota que devuelve capital: no se pierde, es patrimonio.
+* LA HIPOTECA se lee de su cuadro si está declarada (las doce cuotas
+  siguientes) y se parte en INTERESES —un gasto, que deduce en el IRPF— y
+  CAPITAL —ahorro: sale del bolsillo pero se queda en el piso—.
+  TE QUEDA (caja) = alquiler − gastos − IRPF − cuota entera.
+  GANANCIA REAL = caja + capital = alquiler − gastos − IRPF − intereses.
+* SOBRE TU CAPITAL = ganancia real / capital liberable (lo que sacarías si
+  vendieras hoy: valor − deuda − gastos de venta − plusvalía). Es lo que de
+  verdad te rinde el dinero que tienes metido en el piso.
+* MANTENER FRENTE A VENDER = ganancia real − capital liberable × tipo de
+  referencia, en €/año: lo que ganas (o pierdes) por no vender y poner ese
+  dinero a rendir fuera.
+  Sin la hipoteca declarada se mantiene la cuenta de antes (SOBRE TU DINERO
+  = caja / lo que pusiste al comprar) y se avisa.
 * SOBRE EL VALOR ACTUAL = neto / lo que vale hoy. No dice si la compra fue
   buena, sino si hoy compensa tener ese dinero en el piso.
 
@@ -31,9 +40,11 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from . import costes_activo
-from .alquiler import AMORTIZACION, CERO, _es_hipoteca, impuesto_del_alquiler
+from .alquiler import (CERO, _es_hipoteca, _es_reparacion, amortizacion_anual, impuesto_del_alquiler,
+                       rendimiento_neto)
 
 CIEN = Decimal('100')
+TIPO_REFERENCIA = Decimal('3')
 
 # Lo que se propone en el simulador cuando no se ha guardado nada.
 SIMULACION_POR_DEFECTO = {
@@ -65,11 +76,13 @@ def _ultimo_mes_cerrado(hoy):
 
 
 def _gastos_por_tipo(propiedad, movimientos):
-    """(corrientes, recibos anuales, hipoteca) de unos movimientos de gasto.
+    """(corrientes, recibos anuales, hipoteca, reparaciones) de unos
+    movimientos de gasto. Las reparaciones van también dentro de corrientes
+    o recibos: se dicen aparte porque tienen tope en el IRPF.
 
     El IRPF del alquiler pagado como gasto del piso no entra: el impuesto se
     calcula aparte y contarlo además sería restarlo dos veces."""
-    corrientes = provisiones = hipoteca = CERO
+    corrientes = provisiones = hipoteca = reparaciones = CERO
     for m in movimientos:
         if not m.cuenta_como_gasto:
             continue
@@ -78,69 +91,129 @@ def _gastos_por_tipo(propiedad, movimientos):
         importe = -m.importe_neto
         if _es_hipoteca(m):
             hipoteca += importe
-        elif m.es_pago_provision:
+            continue
+        if _es_reparacion(m):
+            reparaciones += importe
+        if m.es_pago_provision:
             provisiones += importe
         else:
             corrientes += importe
-    return corrientes, provisiones, hipoteca
+    return corrientes, provisiones, hipoteca, reparaciones
 
 
-def _metricas(propiedad, renta, gastos, hipoteca, pct_reduccion, anio, hoy):
-    """Todas las cifras a partir del año tipo: alquiler, gastos del piso y
-    cuota de hipoteca anuales. Lo comparten la real y la simulada."""
+def tipo_referencia(propiedad):
+    return propiedad.tipo_referencia_pct if propiedad.tipo_referencia_pct is not None else TIPO_REFERENCIA
+
+
+def _cascada(pasos):
+    """Cada paso es un tramo [bajo, alto] sobre la misma escala; puede bajar
+    de cero. `pasos`: [(clave, nombre, importe, encadenado)]: los
+    encadenados suben o bajan desde donde quedó el anterior; los demás
+    (el resultado) van de cero a su importe."""
+    tramos, nivel = [], CERO
+    for clave, nombre, importe, encadenado in pasos:
+        if encadenado:
+            antes, nivel = nivel, nivel + importe
+            tramos.append((clave, nombre, importe, min(antes, nivel), max(antes, nivel)))
+        else:
+            tramos.append((clave, nombre, importe, min(CERO, importe), max(CERO, importe)))
+    minimo = min(t[3] for t in tramos)
+    maximo = max(max(t[4] for t in tramos), Decimal('1'))
+    escala = maximo - minimo
+    return [{
+        'clave': clave, 'nombre': nombre, 'importe': importe,
+        'izq': round(float((bajo - minimo) / escala * CIEN), 2),
+        'ancho': max(round(float((alto - bajo) / escala * CIEN), 2), 0.4),
+    } for clave, nombre, importe, bajo, alto in tramos
+        if importe or clave in ('renta', 'flujo', 'ganancia')]
+
+
+def _metricas(propiedad, renta, gastos, hipoteca, pct_reduccion, anio, hoy, reparaciones=CERO):
+    """Todas las cifras a partir del año tipo: alquiler, gastos del piso (con
+    las reparaciones dentro) y cuota de hipoteca anuales. Lo comparten la
+    real y la simulada.
+
+    Con la hipoteca DECLARADA, la cuota sale de su cuadro (las doce cuotas
+    siguientes) y se parte en intereses —gasto, deducen en el IRPF— y
+    capital —ahorro, se queda en el piso—. Sin hipoteca ninguna, igual con
+    ceros. Con una hipoteca sin declarar (hay cuota en los movimientos o
+    deuda puesta a mano) se mantiene la cuenta de antes y se avisa."""
+    from . import hipoteca_propiedad
+
     coste = propiedad.coste_base
-    intereses = propiedad.intereses_hipoteca_anuales or CERO
-    amortizacion = (
-        (coste * propiedad.pct_construccion / CIEN * AMORTIZACION).quantize(Decimal('0.01'))
-        if propiedad.pct_construccion else CERO
-    )
-    rendimiento = renta - gastos - intereses - amortizacion
+    cuadro = hipoteca_propiedad.proximos_12(propiedad, hoy)
+    hipoteca_banco = hipoteca
+    if cuadro is not None:
+        modo = 'cuadro'
+        intereses, capital = cuadro['intereses'], cuadro['capital']
+        hipoteca = intereses + capital
+    elif not hipoteca and not propiedad.deuda_hipotecaria:
+        modo = 'sin_hipoteca'
+        intereses = capital = CERO
+    else:
+        modo = 'sin_declarar'
+        intereses = propiedad.intereses_hipoteca_anuales or CERO
+        capital = max(hipoteca - intereses, CERO) if hipoteca and intereses else None
+
+    amortizacion, base_amortizacion = amortizacion_anual(propiedad)
+    rn = rendimiento_neto(renta, gastos, reparaciones, intereses, amortizacion)
+    rendimiento = rn['rendimiento']
     reduccion = (rendimiento * pct_reduccion / CIEN).quantize(Decimal('0.01')) if rendimiento > 0 else CERO
     _, titulares, impuesto = impuesto_del_alquiler(propiedad, rendimiento - reduccion, anio)
 
     neto = renta - gastos
     neto_irpf = neto - impuesto
-    flujo = neto_irpf - hipoteca
-    # La parte de la cuota que devuelve préstamo: sale del bolsillo pero se
-    # queda en el piso. Solo se sabe si se dijeron los intereses del año.
-    capital_amortizado = max(hipoteca - intereses, CERO) if hipoteca and intereses else None
+    flujo = neto_irpf - hipoteca            # la caja: lo que queda tras pagar la cuota entera
+    ganancia = flujo + capital if capital is not None else None   # caja + lo que amortizas
 
+    # Lo que sacarías si vendieras hoy: contra eso se mide lo que te rinde.
+    venta = propiedad.calcular_neto_venta()
+    liberable = Decimal(str(venta['liberable']))
+    referencia = tipo_referencia(propiedad)
+    sobre_capital = _pct(ganancia, liberable) if modo != 'sin_declarar' and ganancia is not None else None
+    mantener = (
+        (ganancia - liberable * referencia / CIEN).quantize(Decimal('1'))
+        if sobre_capital is not None else None
+    )
+
+    # Lo de antes, solo sin declarar la hipoteca: sobre lo que pusiste al
+    # comprar, con la cuota entera restada.
     prestamo = propiedad.hipoteca_inicial
     falta_prestamo = prestamo is None and (propiedad.deuda_hipotecaria > 0 or hipoteca > 0)
     capital_propio = None if falta_prestamo else coste - (prestamo or CERO)
     if capital_propio is not None and capital_propio <= 0:
         capital_propio = None
-
-    sobre_tu_dinero = _pct(flujo, capital_propio) if capital_propio else None
+    sobre_tu_dinero = _pct(flujo, capital_propio) if capital_propio and modo == 'sin_declarar' else None
     sobre_tu_dinero_con_capital = (
-        _pct(flujo + capital_amortizado, capital_propio)
-        if capital_propio and capital_amortizado is not None else None
+        _pct(flujo + capital, capital_propio)
+        if sobre_tu_dinero is not None and capital is not None else None
     )
 
-    # Cascada para la gráfica: de lo que entra a lo que queda. Cada paso es
-    # un tramo [bajo, alto] sobre la misma escala; puede bajar de cero.
-    pasos, nivel = [], CERO
-    for clave, nombre, importe in (('renta', 'Alquiler', renta), ('gastos', 'Gastos del piso', -gastos),
-                                   ('irpf', 'IRPF', -impuesto), ('hipoteca', 'Hipoteca', -hipoteca)):
-        antes, nivel = nivel, nivel + importe
-        pasos.append((clave, nombre, importe, min(antes, nivel), max(antes, nivel)))
-    pasos.append(('flujo', 'Te queda', flujo, min(CERO, flujo), max(CERO, flujo)))
-    minimo = min(p[3] for p in pasos)
-    maximo = max(max(p[4] for p in pasos), Decimal('1'))
-    escala = maximo - minimo
-    cascada = [{
-        'clave': clave, 'nombre': nombre, 'importe': importe,
-        'izq': round(float((bajo - minimo) / escala * CIEN), 2),
-        'ancho': max(round(float((alto - bajo) / escala * CIEN), 2), 0.4),
-    } for clave, nombre, importe, bajo, alto in pasos if importe or clave in ('renta', 'flujo')]
+    pasos = [('renta', 'Alquiler', renta, True), ('gastos', 'Gastos del piso', -gastos, True),
+             ('irpf', 'IRPF', -impuesto, True)]
+    if modo == 'sin_declarar':
+        pasos.append(('hipoteca', 'Hipoteca', -hipoteca, True))
+    else:
+        pasos += [('intereses', 'Intereses', -intereses, True),
+                  ('capital', 'Capital (ahorro)', -capital, True)]
+    pasos.append(('flujo', 'Te queda (caja)', flujo, False))
+    if ganancia is not None and capital:
+        pasos.append(('ganancia', 'Ganancia real', ganancia, False))
 
     return {
+        'modo': modo,
         'renta': renta,
         'gastos': gastos,
+        'reparaciones': reparaciones,
         'hipoteca': hipoteca,
+        'hipoteca_banco': hipoteca_banco,
         'intereses': intereses,
+        'capital_amortizado': capital,
+        'cuadro_estimado': bool(cuadro and cuadro['estimadas']),
         'amortizacion': amortizacion,
+        'base_amortizacion': base_amortizacion,
         'rendimiento': rendimiento,
+        'exceso_arrastrable': rn['exceso_arrastrable'],
         'pct_reduccion': pct_reduccion,
         'reduccion': reduccion,
         'impuesto': impuesto,
@@ -149,8 +222,14 @@ def _metricas(propiedad, renta, gastos, hipoteca, pct_reduccion, anio, hoy):
         'neto_irpf': neto_irpf,
         'flujo': flujo,
         'flujo_mes': (flujo / 12).quantize(Decimal('1')),
-        'capital_amortizado': capital_amortizado,
+        'ganancia': ganancia,
+        'ganancia_mes': (ganancia / 12).quantize(Decimal('1')) if ganancia is not None else None,
         'coste': coste,
+        'liberable': liberable,
+        'venta': venta,
+        'sobre_capital': sobre_capital,
+        'tipo_referencia': referencia,
+        'mantener_vs_vender': mantener,
         'capital_propio': capital_propio,
         'falta_prestamo': falta_prestamo,
         'bruta': _pct(renta, coste),
@@ -159,7 +238,7 @@ def _metricas(propiedad, renta, gastos, hipoteca, pct_reduccion, anio, hoy):
         'sobre_valor': _pct(neto, propiedad.valor_actual),
         'sobre_tu_dinero': sobre_tu_dinero,
         'sobre_tu_dinero_con_capital': sobre_tu_dinero_con_capital,
-        'cascada': cascada,
+        'cascada': _cascada(pasos),
         'revalorizacion': revalorizacion(propiedad, hoy),
     }
 
@@ -207,7 +286,7 @@ def rentabilidad_real(propiedad, hoy=None):
 
     en_ventana = [m for m in todos if inicio <= m.fecha <= fin]
     cobrado = sum((m.importe for m in en_ventana if m.cuenta_como_ingreso), CERO)
-    corrientes, provisiones, hipoteca = _gastos_por_tipo(propiedad, en_ventana)
+    corrientes, provisiones, hipoteca, reparaciones = _gastos_por_tipo(propiedad, en_ventana)
 
     factor = Decimal(12) / meses
     renta = (cobrado * factor).quantize(Decimal('0.01'))
@@ -219,6 +298,7 @@ def rentabilidad_real(propiedad, hoy=None):
     datos = _metricas(
         propiedad, renta, gastos, hipoteca,
         Decimal(propiedad.reduccion_alquiler_pct or 0), fin.year, hoy,
+        reparaciones=(reparaciones * factor).quantize(Decimal('0.01')),
     )
     datos.update({
         'inicio': inicio,
@@ -249,7 +329,7 @@ def lo_que_ya_cuesta(propiedad, hoy=None):
     fin = _ultimo_mes_cerrado(hoy)
     inicio = _sumar_meses(fin.replace(day=1), -11)
     movs = [m for m in costes_activo._movimientos(propiedad) if inicio <= m.fecha <= fin]
-    corrientes, provisiones, hipoteca = _gastos_por_tipo(propiedad, movs)
+    corrientes, provisiones, hipoteca, _ = _gastos_por_tipo(propiedad, movs)
     fijos = corrientes + provisiones
     origen = 'movimientos'
     if not fijos and not hipoteca:
@@ -322,15 +402,18 @@ def simular(propiedad, valores, hoy=None):
 
     renta = (renta_mensual * meses).quantize(Decimal('0.01'))
     extra = (renta * pct_extra / CIEN).quantize(Decimal('0.01'))
+    mantenimiento = (renta * _decimal(valores.get('mantenimiento_pct'), CERO) / CIEN).quantize(Decimal('0.01'))
     gastos = fijos + extra
     datos = _metricas(
         propiedad, renta, gastos, hipoteca,
         _decimal(valores.get('reduccion_pct'), CERO), hoy.year, hoy,
+        reparaciones=mantenimiento,
     )
     # Frente a tenerla vacía: los gastos fijos y la hipoteca se pagan igual,
     # así que lo que cambia al alquilar es la renta menos lo que el alquiler
-    # añade (mantenimiento, impago, gestión) y menos su IRPF.
-    vacia = -(fijos + hipoteca)
+    # añade (mantenimiento, impago, gestión) y menos su IRPF. La hipoteca, la
+    # del cuadro si está declarada.
+    vacia = -(fijos + datos['hipoteca'])
     datos.update({
         'renta_mensual': renta_mensual,
         'meses_ocupados': meses,

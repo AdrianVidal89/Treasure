@@ -47,6 +47,64 @@ def _es_hipoteca(m):
     return any(p in nombre for p in PALABRAS_HIPOTECA)
 
 
+# Gastos de conservación y reparación: con los intereses, no pueden pasar
+# de los ingresos del año (art. 23.1.a LIRPF; el exceso se arrastra cuatro
+# años). Se reconocen por la categoría, como la hipoteca.
+PALABRAS_REPARACION = ('repar', 'manten', 'conserv', 'arreglo', 'obra')
+
+
+def _es_reparacion(m):
+    nombre = (m.categoria.nombre if m.categoria else '').lower()
+    return any(p in nombre for p in PALABRAS_REPARACION)
+
+
+def amortizacion_anual(propiedad):
+    """El 3 % de lo que es construcción. Manda el valor de la construcción en
+    euros si se dijo; si no, el % de construcción sobre el coste de compra.
+    Devuelve (importe, base) o (0, None) sin ninguno de los dos."""
+    if propiedad.valor_construccion:
+        base = propiedad.valor_construccion
+    elif propiedad.pct_construccion:
+        base = propiedad.coste_base * propiedad.pct_construccion / 100
+    else:
+        return CERO, None
+    return (base * AMORTIZACION).quantize(Decimal('0.01')), base.quantize(Decimal('0.01'))
+
+
+def rendimiento_neto(ingresos, gastos, reparaciones, intereses, amortizacion):
+    """El rendimiento del alquiler antes de la reducción.
+
+        rendimiento = ingresos − gastos (sin reparaciones)
+                      − mín(intereses + reparaciones, ingresos)
+                      − amortización
+
+    Es la misma cuenta para la declaración, la rentabilidad real y la
+    simulada."""
+    ingresos = max(ingresos, CERO)
+    financieros = intereses + reparaciones
+    deducibles = min(financieros, ingresos)
+    rendimiento = ingresos - (gastos - reparaciones) - deducibles - amortizacion
+    return {
+        'rendimiento': rendimiento,
+        'intereses_y_reparaciones': financieros,
+        'deducido_financieros': deducibles,
+        'exceso_arrastrable': financieros - deducibles,
+    }
+
+
+def intereses_hipoteca(propiedad, desde, hasta):
+    """Intereses de la hipoteca entre dos fechas: del cuadro si está
+    declarada (`origen` 'cuadro'); si no, lo dicho a mano al año
+    (`origen` 'mano' o None). Devuelve (intereses, capital, origen, estimados)."""
+    from . import hipoteca_propiedad
+    t = hipoteca_propiedad.entre(propiedad, desde, hasta)
+    if t is not None:
+        return t['intereses'], t['capital'], 'cuadro', t['estimadas']
+    if propiedad.intereses_hipoteca_anuales:
+        return propiedad.intereses_hipoteca_anuales, None, 'mano', 0
+    return CERO, None, None, 0
+
+
 def _cuota(base, tramos):
     """Cuota íntegra estatal+autonómica simplificada: tramos sobre la base menos
     los mismos tramos sobre el mínimo personal (como `calcular_irpf`)."""
@@ -118,6 +176,13 @@ def balance_desde_el_alquiler(propiedad, hoy=None, movimientos=None):
     hipoteca = sum((-m.importe_neto for m in gastos if _es_hipoteca(m)), CERO)
     meses = (hoy.year - inicio.year) * 12 + hoy.month - inicio.month + 1
     neto = cobrado - pagado
+    # La parte de lo pagado de hipoteca que fue capital, con la proporción
+    # del cuadro en ese periodo: el capital es de las cuotas que de verdad
+    # pasaron por el banco, no de todo el cuadro.
+    from . import hipoteca_propiedad
+    t = hipoteca_propiedad.entre(propiedad, inicio, hoy)
+    capital = ((hipoteca * t['capital'] / t['pagado']).quantize(Decimal('0.01'))
+               if t and t['pagado'] and hipoteca else None)
     return {
         'inicio': inicio,
         'inicio_dicho': bool(propiedad.alquilada_desde),
@@ -129,6 +194,7 @@ def balance_desde_el_alquiler(propiedad, hoy=None, movimientos=None):
         'neto_sin_hipoteca': neto + hipoteca,
         'al_mes': (neto / meses).quantize(Decimal('0.01')) if meses > 0 else CERO,
         'num_cobros': sum(1 for m in en_periodo if m.cuenta_como_ingreso),
+        'capital': capital,
     }
 
 
@@ -140,11 +206,16 @@ def impuesto_del_alquiler(propiedad, reducido, anio):
     Devuelve (tramos, titulares, impuesto_total).
     """
     tramos = _obtener_tramos('ES', anio)
+    marginal = propiedad.tipo_marginal_pct
     titulares = []
     for usuario, parte in _titulares(propiedad):
         base, bruto, en_neto = _base_trabajo(usuario, anio)
         suyo = (reducido * parte).quantize(Decimal('0.01'))
-        impuesto = (_cuota(base + suyo, tramos) - _cuota(base, tramos)).quantize(Decimal('0.01'))
+        if marginal is not None:
+            # Tipo marginal dicho a mano: manda sobre los tramos.
+            impuesto = (max(suyo, CERO) * marginal / 100).quantize(Decimal('0.01'))
+        else:
+            impuesto = (_cuota(base + suyo, tramos) - _cuota(base, tramos)).quantize(Decimal('0.01'))
         titulares.append({
             'usuario': usuario,
             'nombre': usuario.first_name or usuario.username,
@@ -157,8 +228,10 @@ def impuesto_del_alquiler(propiedad, reducido, anio):
             'tipo': round(float(impuesto / suyo * 100), 1) if suyo > 0 else 0.0,
             'en_neto': en_neto,
             'sin_ingresos': not bruto,
+            'marginal_a_mano': marginal is not None,
         })
-    return tramos, titulares, sum((t['impuesto'] for t in titulares), CERO)
+    total = sum((t['impuesto'] for t in titulares), CERO)
+    return (tramos or marginal is not None), titulares, total
 
 
 def analizar_alquiler(propiedad, anio, hoy=None):
@@ -245,12 +318,13 @@ def analizar_alquiler(propiedad, anio, hoy=None):
         (p.importe_mensual for p in costes_activo._partidas(propiedad) if p.id not in excluir), CERO,
     ) * restantes
     gastos_anio = gastos_reales + gastos_previstos
-    intereses = propiedad.intereses_hipoteca_anuales or CERO
-    amortizacion = (
-        (propiedad.coste_base * propiedad.pct_construccion / 100 * AMORTIZACION).quantize(Decimal('0.01'))
-        if propiedad.pct_construccion else CERO
+    reparaciones = sum((-m.importe_neto for m in deducibles if _es_reparacion(m)), CERO)
+    intereses, capital_anio, intereses_origen, intereses_estimados = intereses_hipoteca(
+        propiedad, date(anio, 1, 1), date(anio, 12, 31),
     )
-    rendimiento = ingresos_anio - gastos_anio - intereses - amortizacion
+    amortizacion, base_amortizacion = amortizacion_anual(propiedad)
+    rn = rendimiento_neto(ingresos_anio, gastos_anio, reparaciones, intereses, amortizacion)
+    rendimiento = rn['rendimiento']
     pct_reduccion = Decimal(propiedad.reduccion_alquiler_pct or 0)
     reduccion = (rendimiento * pct_reduccion / 100).quantize(Decimal('0.01')) if rendimiento > 0 else CERO
     reducido = rendimiento - reduccion
@@ -292,8 +366,16 @@ def analizar_alquiler(propiedad, anio, hoy=None):
         'gastos_previstos': gastos_previstos,
         'excluidos_hipoteca': sum((-m.importe_neto for m in gastos if _es_hipoteca(m)), CERO),
         'intereses': intereses,
+        'intereses_origen': intereses_origen,
+        'intereses_estimados': intereses_estimados,
+        'capital_anio': capital_anio,
+        'reparaciones': reparaciones,
+        'gastos_sin_reparaciones': gastos_anio - reparaciones,
+        'exceso_arrastrable': rn['exceso_arrastrable'],
+        'deducido_financieros': rn['deducido_financieros'],
         'amortizacion': amortizacion,
-        'falta_construccion': not propiedad.pct_construccion,
+        'base_amortizacion': base_amortizacion,
+        'falta_construccion': base_amortizacion is None,
         'rendimiento': rendimiento,
         'pct_reduccion': pct_reduccion,
         'reduccion': reduccion,
@@ -304,6 +386,10 @@ def analizar_alquiler(propiedad, anio, hoy=None):
         'coste_anio': coste_anio,
         'neto_tras_impuesto': ingresos_anio - coste_anio - impuesto_total,
         'neto_tras_impuesto_mes': ((ingresos_anio - coste_anio - impuesto_total) / 12).quantize(Decimal('1')),
+        # Con la hipoteca declarada: la parte de las cuotas del año que es
+        # capital no se pierde, se queda en el piso.
+        'ganancia_real': (ingresos_anio - coste_anio - impuesto_total + capital_anio
+                          if capital_anio is not None else None),
         'sin_tramos': not tramos,
         'partida_irpf': propiedad.partida_irpf if propiedad.partida_irpf_id else None,
     }

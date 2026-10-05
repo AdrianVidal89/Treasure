@@ -68,10 +68,10 @@ function cuotasRestantes(capital, tipoAnual, cuotaMensual) {
     if (capital <= 0) return 0;
     if (cuotaMensual <= 0) return null;
     const r = (tipoAnual || 0) / 1200;
-    if (r === 0) return Math.ceil(capital / cuotaMensual - 1e-9);
+    if (r === 0) return Math.ceil(capital / cuotaMensual - 0.01);
     if (cuotaMensual <= capital * r) return null;
     const n = -Math.log(1 - capital * r / cuotaMensual) / Math.log(1 + r);
-    return Math.max(1, Math.ceil(n - 1e-6));
+    return Math.max(1, Math.ceil(n - 0.01));
 }
 
 // ── Tipo y comisión ─────────────────────────────────────────────────────────
@@ -240,6 +240,42 @@ function cuadro(p) {
         k++;
     }
     return filas;
+}
+
+function historiaPrevia(p, filas, meses) {
+    meses = meses || 12;
+    const ancla = p.ancla || {};
+    if (vacio(ancla.fecha) || !filas.length) return [];
+    const anclaFecha = fecha(ancla.fecha);
+    const revs = revisiones(p);
+    const cuotaAncla = vacio(ancla.cuota) ? filas[0].cuota : r2(+ancla.cuota);
+    const extras = (p.amortizaciones || [])
+        .filter(function (a) { return +(a.importe || 0) > 0 && clave(fecha(a.fecha)) <= clave(anclaFecha); })
+        .map(function (a) { return {fecha: fecha(a.fecha), importe: +a.importe, comision: a.comision}; });
+    let k = filas[0].n - 1;
+    let pendiente = +ancla.saldo;
+    const salida = [];
+    while (k >= 1 && salida.length < meses) {
+        const desde = fechaPago(p, k), hasta = fechaPago(p, k + 1);
+        const suyos = extras.filter(function (a) {
+            return clave(desde) <= clave(a.fecha) && clave(a.fecha) < clave(hasta);
+        });
+        let extra = 0, com = 0;
+        suyos.forEach(function (a) {
+            extra += a.importe;
+            com += vacio(a.comision) ? comision(p, a.fecha, a.importe) : r2(+a.comision);
+        });
+        const tipo = tipoEn(p, fechaPago(p, k - 1), k - 1, revs);
+        const r = tipo / 1200;
+        const antes = r2((pendiente + extra + cuotaAncla) / (1 + r));
+        const intereses = r2(antes * r);
+        salida.push({n: k, fecha: iso(desde), tipo: tipo, cuota: cuotaAncla, intereses: intereses,
+                     capital: r2(cuotaAncla - intereses), extra: r2(extra), comision: r2(com),
+                     pendiente: r2(pendiente), estimada: true});
+        pendiente = antes;
+        k--;
+    }
+    return salida.reverse();
 }
 
 // ── Lecturas del cuadro ─────────────────────────────────────────────────────
@@ -422,6 +458,7 @@ global.Amortizacion = {
     pctComision: pctComision,
     comision: comision,
     cuadro: cuadro,
+    historiaPrevia: historiaPrevia,
     saldoA: saldoA,
     resumenAnual: resumenAnual,
     delAnio: delAnio,

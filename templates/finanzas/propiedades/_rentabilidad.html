@@ -22,6 +22,7 @@ cómo se pagó. El resto contesta otras preguntas y se dice cuál.
             <span class="rt-val">{% if r.neta_irpf is not None %}{{ r.neta_irpf|floatformat:2 }} %{% else %}—{% endif %}</span>
             <span class="rt-sub">menos {{ r.impuesto|euro:0 }} de IRPF al año</span>
         </div>
+        {% if r.modo == 'sin_declarar' %}
         <div class="rt-tile">
             <span class="rt-lbl">Sobre tu dinero</span>
             {% if r.sobre_tu_dinero is not None %}
@@ -40,19 +41,43 @@ cómo se pagó. El resto contesta otras preguntas y se dice cuál.
             <span class="rt-val">{% if r.sobre_valor is not None %}{{ r.sobre_valor|floatformat:2 }} %{% else %}—{% endif %}</span>
             <span class="rt-sub">neto / lo que vale hoy ({{ p.valor_actual|euro:0 }}) · compárala con lo que daría ese dinero en otra parte</span>
         </div>
+        {% else %}
+        <div class="rt-tile">
+            <span class="rt-lbl">Sobre tu capital</span>
+            <span class="rt-val {% if r.sobre_capital is not None and r.sobre_capital < 0 %}rt-neg{% endif %}">{% if r.sobre_capital is not None %}{{ r.sobre_capital|floatformat:2 }} %{% else %}—{% endif %}</span>
+            <span class="rt-sub">ganancia real ({{ r.ganancia|euro:0 }}: alquiler − gastos − IRPF − intereses) / lo que sacarías vendiendo hoy ({{ r.liberable|euro:0 }})</span>
+        </div>
+        <div class="rt-tile">
+            <span class="rt-lbl">Mantener frente a vender</span>
+            {% if r.mantener_vs_vender is not None %}
+            <span class="rt-val {% if r.mantener_vs_vender < 0 %}rt-neg{% endif %}">{% if r.mantener_vs_vender > 0 %}+{% endif %}{{ r.mantener_vs_vender|euro:0 }}<small style="font-size:0.7rem;font-weight:600;color:var(--muted);">/año</small></span>
+            <span class="rt-sub">{% if r.mantener_vs_vender >= 0 %}ganas manteniéndola{% else %}ganarías vendiendo{% endif %} frente a invertir {{ r.liberable|euro:0 }} al {{ r.tipo_referencia|floatformat:"-2" }} % · <a href="{% url 'finanzas:editar_propiedad' p.pk %}">cambiar el tipo</a></span>
+            {% else %}
+            <span class="rt-val">—</span>
+            <span class="rt-sub">sin capital liberable</span>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
+
+    {% if r.modo == 'sin_declarar' %}
+    <div class="rt-aviso">La cuota de la hipoteca va entera, sin separar intereses (gasto) de capital (ahorro), y el IRPF {% if r.intereses %}usa los intereses puestos a mano{% else %}no deduce intereses{% endif %}. <a href="{% url 'finanzas:nueva_hipoteca' p.pk %}">Declara la hipoteca</a> para que todo salga de su cuadro.</div>
+    {% elif r.cuadro_estimado %}
+    <div class="rt-aviso">Parte de las cuotas del cuadro son anteriores al saldo que diste y están estimadas hacia atrás.</div>
+    {% endif %}
 
     <div class="rt-cascada" aria-label="De lo que entra a lo que queda en un año">
         {% for c in r.cascada %}
         <div class="rt-paso rt-{{ c.clave }}">
             <span class="rt-paso-nombre">{{ c.nombre }}</span>
             <span class="rt-paso-pista"><i style="left:{{ c.izq|stringformat:'s' }}%; width:{{ c.ancho|stringformat:'s' }}%;"></i></span>
-            <span class="rt-paso-cifra">{% if c.clave == 'renta' %}+{{ c.importe|euro:0 }}{% elif c.clave == 'flujo' %}{% if c.importe > 0 %}+{% endif %}{{ c.importe|euro:0 }}{% else %}{{ c.importe|euro:0|cut:"-" }}{% endif %}</span>
+            <span class="rt-paso-cifra">{% if c.clave == 'renta' %}+{{ c.importe|euro:0 }}{% elif c.clave == 'flujo' or c.clave == 'ganancia' %}{% if c.importe > 0 %}+{% endif %}{{ c.importe|euro:0 }}{% else %}{{ c.importe|euro:0|cut:"-" }}{% endif %}</span>
         </div>
         {% endfor %}
         <div class="rt-pie">
             Al año{% if modo == 'real' and r.anualizado %}, llevado a un año desde {{ r.meses }} mes{{ r.meses|pluralize:"es" }} alquilada{% endif %} ·
-            ≈ {% if r.flujo_mes > 0 %}+{% endif %}{{ r.flujo_mes|euro:0 }} al mes en tu bolsillo{% if r.capital_amortizado %}, y {{ r.capital_amortizado|euro:0 }} al año de la cuota son capital que amortizas: se quedan en el piso{% endif %}.
+            caja ≈ {% if r.flujo_mes > 0 %}+{% endif %}{{ r.flujo_mes|euro:0 }} al mes en tu bolsillo{% if r.capital_amortizado %}, y {{ r.capital_amortizado|euro:0 }} al año de la cuota son capital que amortizas: se quedan en el piso{% if r.ganancia is not None %}. Ganancia real {{ r.ganancia|euro:0 }} al año (≈ {{ r.ganancia_mes|euro:0 }}/mes){% endif %}{% endif %}.
+            {% if r.modo == 'cuadro' %}La hipoteca, de su cuadro: las 12 cuotas siguientes ({{ r.hipoteca|euro:0 }}).{% if modo == 'real' and r.hipoteca_banco %} Por el banco pasaron {{ r.hipoteca_banco|euro:0 }} en el periodo.{% endif %}{% endif %}
         </div>
     </div>
 

@@ -124,11 +124,13 @@ def cuotas_restantes(capital, tipo_anual, cuota_mensual):
         return None
     r = (tipo_anual or 0) / 1200
     if r == 0:
-        return math.ceil(capital / cuota_mensual - 1e-9)
+        return math.ceil(capital / cuota_mensual - 0.01)
     if cuota_mensual <= capital * r:
         return None
     n = -math.log(1 - capital * r / cuota_mensual) / math.log(1 + r)
-    return max(1, math.ceil(n - 1e-6))
+    # Un resto de céntimos (la cuota va redondeada) no es una cuota más: el
+    # banco lo cobra en la última.
+    return max(1, math.ceil(n - 0.01))
 
 
 # ── Tipo y comisión ──────────────────────────────────────────────────────────
@@ -318,6 +320,52 @@ def cuadro(p):
         })
         k += 1
     return filas
+
+
+def historia_previa(p, filas, meses=12):
+    """Las cuotas de antes del ANCLA, estimadas hacia atrás.
+
+    Con un punto de partida conocido el cuadro empieza en él, pero la
+    declaración del año y la rentabilidad de los últimos doce meses necesitan
+    las cuotas de antes. Se reconstruyen deshaciendo cada cuota con el tipo
+    de su periodo y la cuota del ancla:
+
+        pendiente antes = (pendiente después + amortizado de más + cuota) / (1 + r)
+
+    Es exacto mientras la cuota y el tipo fueran los de ahora (desde la
+    última revisión); antes, una estimación. Cada fila lleva
+    `estimada: True`. Sin ancla, lista vacía: el cuadro ya empieza en la
+    firma."""
+    ancla = p.get('ancla') or {}
+    if not ancla.get('fecha') or not filas:
+        return []
+    ancla_fecha = fecha(ancla['fecha'])
+    revisiones = _revisiones(p)
+    cuota_ancla = r2(float(ancla['cuota'])) if ancla.get('cuota') not in (None, '') else filas[0]['cuota']
+    extras = [{'fecha': fecha(a['fecha']), 'importe': float(a['importe']), 'comision': a.get('comision')}
+              for a in p.get('amortizaciones') or []
+              if float(a.get('importe') or 0) > 0 and fecha(a['fecha']) <= ancla_fecha]
+    k = filas[0]['n'] - 1
+    pendiente = float(ancla['saldo'])
+    salida = []
+    while k >= 1 and len(salida) < meses:
+        desde, hasta = fecha_pago(p, k), fecha_pago(p, k + 1)
+        suyos = [a for a in extras if desde <= a['fecha'] < hasta]
+        extra = sum(a['importe'] for a in suyos)
+        com = sum(r2(float(a['comision'])) if a['comision'] not in (None, '') else comision(p, a['fecha'], a['importe'])
+                  for a in suyos)
+        tipo = tipo_en(p, fecha_pago(p, k - 1), k - 1, revisiones)
+        r = tipo / 1200
+        antes = r2((pendiente + extra + cuota_ancla) / (1 + r))
+        intereses = r2(antes * r)
+        salida.append({
+            'n': k, 'fecha': desde, 'tipo': tipo, 'cuota': cuota_ancla, 'intereses': intereses,
+            'capital': r2(cuota_ancla - intereses), 'extra': r2(extra), 'comision': r2(com),
+            'pendiente': r2(pendiente), 'estimada': True,
+        })
+        pendiente = antes
+        k -= 1
+    return list(reversed(salida))
 
 
 # ── Lecturas del cuadro ──────────────────────────────────────────────────────
