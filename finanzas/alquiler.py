@@ -132,6 +132,35 @@ def balance_desde_el_alquiler(propiedad, hoy=None, movimientos=None):
     }
 
 
+def impuesto_del_alquiler(propiedad, reducido, anio):
+    """El IRPF de un rendimiento del alquiler ya reducido, titular a titular.
+
+    Lo usan la declaración del año (`analizar_alquiler`) y la rentabilidad, la
+    real y la simulada (`rentabilidad.py`): el mismo cálculo para las tres.
+    Devuelve (tramos, titulares, impuesto_total).
+    """
+    tramos = _obtener_tramos('ES', anio)
+    titulares = []
+    for usuario, parte in _titulares(propiedad):
+        base, bruto, en_neto = _base_trabajo(usuario, anio)
+        suyo = (reducido * parte).quantize(Decimal('0.01'))
+        impuesto = (_cuota(base + suyo, tramos) - _cuota(base, tramos)).quantize(Decimal('0.01'))
+        titulares.append({
+            'usuario': usuario,
+            'nombre': usuario.first_name or usuario.username,
+            'parte': parte,
+            'pct': round(float(parte * 100)),
+            'bruto_trabajo': bruto,
+            'base_trabajo': base,
+            'rendimiento': suyo,
+            'impuesto': impuesto,
+            'tipo': round(float(impuesto / suyo * 100), 1) if suyo > 0 else 0.0,
+            'en_neto': en_neto,
+            'sin_ingresos': not bruto,
+        })
+    return tramos, titulares, sum((t['impuesto'] for t in titulares), CERO)
+
+
 def analizar_alquiler(propiedad, anio, hoy=None):
     hoy = hoy or date.today()
     excluir = {propiedad.partida_irpf_id} - {None}
@@ -227,26 +256,7 @@ def analizar_alquiler(propiedad, anio, hoy=None):
     reducido = rendimiento - reduccion
 
     # --- Quién lo paga ---
-    tramos = _obtener_tramos('ES', anio)
-    titulares = []
-    for usuario, parte in _titulares(propiedad):
-        base, bruto, en_neto = _base_trabajo(usuario, anio)
-        suyo = (reducido * parte).quantize(Decimal('0.01'))
-        impuesto = (_cuota(base + suyo, tramos) - _cuota(base, tramos)).quantize(Decimal('0.01'))
-        titulares.append({
-            'usuario': usuario,
-            'nombre': usuario.first_name or usuario.username,
-            'parte': parte,
-            'pct': round(float(parte * 100)),
-            'bruto_trabajo': bruto,
-            'base_trabajo': base,
-            'rendimiento': suyo,
-            'impuesto': impuesto,
-            'tipo': round(float(impuesto / suyo * 100), 1) if suyo > 0 else 0.0,
-            'en_neto': en_neto,
-            'sin_ingresos': not bruto,
-        })
-    impuesto_total = sum((t['impuesto'] for t in titulares), CERO)
+    tramos, titulares, impuesto_total = impuesto_del_alquiler(propiedad, reducido, anio)
 
     return {
         'propiedad': propiedad,

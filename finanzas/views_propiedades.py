@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 
-from . import costes_activo
+from . import costes_activo, rentabilidad
 from .models import CategoriaGasto, PartidaGasto, Propiedad, HistorialPropiedad
 
 MESES_NOMBRES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
@@ -49,6 +49,14 @@ def listar_propiedades(request):
             a = analizar_alquiler(p, anio)
             item['alquiler'] = a
             item['neto_mensual'] = a['media_ingreso_cerrados'] - costes['ritmo_mensual']
+            item['rentabilidad'] = rentabilidad.rentabilidad_real(p)
+        else:
+            # Sin alquilar: el simulador, con el último escenario guardado.
+            valores, ya, guardado = rentabilidad.escenario(p)
+            item['sim'] = {
+                'valores': valores, 'ya': ya, 'guardado': guardado,
+                'resultado': rentabilidad.simular(p, valores) if guardado else None,
+            }
         propiedades_con_venta.append(item)
     total_coste_anual = sum(
         (d['costes']['real_anual'] for d in propiedades_con_venta), Decimal('0'),
@@ -72,6 +80,7 @@ def listar_propiedades(request):
         'anios_disponibles': anios_disponibles,
         'total_coste_anual': total_coste_anual,
         'total_coste_teorico': total_coste_teorico,
+        'reducciones': Propiedad.REDUCCION_CHOICES,
         'sin_imputar': PartidaGasto.objects.filter(
             hogar=hogar, activo=True, vehiculo__isnull=True, propiedad__isnull=True,
         ).select_related('categoria'),
@@ -120,6 +129,10 @@ def _leer_alquiler(propiedad, post, hogar):
     propiedad.intereses_hipoteca_anuales = _decimal_o_none(
         post.get('intereses_hipoteca_anuales'), 'los intereses de la hipoteca',
     )
+    if 'hipoteca_inicial' in post:
+        propiedad.hipoteca_inicial = _decimal_o_none(
+            post.get('hipoteca_inicial'), 'el préstamo inicial',
+        )
 
 
 def _contexto_form(hogar, accion, propiedad):
@@ -294,7 +307,35 @@ def alquiler_propiedad(request, pk):
     return render(request, 'finanzas/propiedades/alquiler.html', {
         'a': datos,
         'anios': anios,
+        'r': rentabilidad.rentabilidad_real(propiedad),
     })
+
+
+@login_required
+def simular_alquiler(request, pk):
+    """Guarda el escenario del simulador de alquiler de una propiedad (o lo
+    borra) y vuelve a su tarjeta, donde se pinta el resultado."""
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return redirect('dashboard')
+    propiedad = get_object_or_404(Propiedad, pk=pk, hogar=hogar)
+    destino = reverse('finanzas:listar_propiedades') + f'#propiedad-{propiedad.pk}'
+    if request.method != 'POST':
+        return redirect(destino)
+    if 'borrar' in request.POST:
+        propiedad.simulacion_alquiler = {}
+        propiedad.save(update_fields=['simulacion_alquiler'])
+        messages.success(request, f"Simulación de '{propiedad.nombre}' borrada.")
+        return redirect(destino)
+    try:
+        valores = rentabilidad.leer_escenario(request.POST)
+    except ValueError as e:
+        messages.error(request, f"Simulación de '{propiedad.nombre}': {e}")
+        return redirect(destino)
+    valores['guardado'] = date.today().isoformat()
+    propiedad.simulacion_alquiler = valores
+    propiedad.save(update_fields=['simulacion_alquiler'])
+    return redirect(destino)
 
 
 @login_required
