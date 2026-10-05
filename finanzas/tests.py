@@ -1,3 +1,4 @@
+import io
 import datetime
 from decimal import Decimal
 
@@ -4809,6 +4810,181 @@ class AlquilerDePropiedadTests(TestCase):
         self.assertContains(pagina, 'IRPF del alquiler')
         self.assertContains(pagina, 'Adrian')
         self.assertContains(self.client.get(reverse('finanzas:listar_propiedades')), 'Alquiler e IRPF')
+
+
+# ─── Cotizaciones automáticas y gráfica de evolución de Inversiones ─────────
+
+from unittest import mock
+
+from django.core.cache import cache
+from django.core.management import call_command
+
+from . import cotizaciones
+from .models import PrecioHistorico
+
+
+def _respuesta_yahoo_actual(precio):
+    return {'chart': {'result': [{'meta': {'regularMarketPrice': precio}}]}}
+
+
+def _respuesta_yahoo_historico(cierres):
+    """cierres: [(fecha, cierre)] → respuesta del endpoint chart de Yahoo."""
+    marcas = [int(datetime.datetime(f.year, f.month, f.day, 7, 0,
+                                    tzinfo=datetime.timezone.utc).timestamp()) for f, _ in cierres]
+    return {'chart': {'result': [{
+        'meta': {'gmtoffset': 7200},
+        'timestamp': marcas,
+        'indicators': {'quote': [{'close': [c for _, c in cierres]}]},
+    }]}}
+
+
+class ActualizarPreciosTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+        self.a = Inversion.objects.create(usuario=self.user, nombre='SU', ticker='SU.PA', tipo='ACCION')
+        self.b = Inversion.objects.create(usuario=self.user, nombre='SU 2', ticker='su.pa', tipo='ACCION')
+        self.c = Inversion.objects.create(usuario=self.user, nombre='ETF', ticker='I500.DU', tipo='ETF')
+
+    def test_un_ticker_se_pide_una_vez_y_actualiza_todas_sus_posiciones(self):
+        with mock.patch.object(cotizaciones, '_get_json',
+                               side_effect=lambda url, t: _respuesta_yahoo_actual(
+                                   273.4 if 'SU.PA' in url else 11.566)) as get:
+            actualizados, errores = cotizaciones.actualizar_precios([self.a, self.b, self.c])
+        self.assertEqual(get.call_count, 2)
+        self.assertEqual(errores, [])
+        self.assertEqual(sorted(actualizados), ['I500.DU: 11.566', 'SU.PA: 273.4'])
+        for inv in (self.a, self.b):
+            self.assertEqual(ValorActualInversion.objects.get(inversion=inv).valor_unitario, Decimal('273.4'))
+
+    def test_un_error_no_impide_actualizar_el_resto(self):
+        def get(url, t):
+            if 'SU.PA' in url:
+                raise OSError('caído')
+            return _respuesta_yahoo_actual(11.566)
+        with mock.patch.object(cotizaciones, '_get_json', side_effect=get):
+            actualizados, errores = cotizaciones.actualizar_precios([self.a, self.c])
+        self.assertEqual(actualizados, ['I500.DU: 11.566'])
+        self.assertEqual(len(errores), 1)
+
+    def test_comando_programado_actualiza_todo(self):
+        with mock.patch.object(cotizaciones, '_get_json',
+                               return_value=_respuesta_yahoo_actual(10)):
+            call_command('actualizar_precios', stdout=io.StringIO(), stderr=io.StringIO())
+        self.assertEqual(ValorActualInversion.objects.count(), 3)
+
+
+class RefrescoAlAbrirInversionesTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user('inversor', password='x')
+        self.client.force_login(self.user)
+        self.inv = Inversion.objects.create(usuario=self.user, nombre='ETF', ticker='I500.DU', tipo='ETF')
+
+    def test_abre_la_pestana_y_actualiza_si_no_hay_precio(self):
+        with mock.patch.object(cotizaciones, '_get_json',
+                               return_value=_respuesta_yahoo_actual(11.5)) as get:
+            resp = self.client.get(reverse('finanzas:listar'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(get.call_count, 1)
+        self.assertEqual(self.inv.valor_actual.valor_unitario, Decimal('11.5'))
+
+    def test_precio_reciente_no_vuelve_a_pedir(self):
+        ValorActualInversion.objects.create(inversion=self.inv, valor_unitario=Decimal('11'), fuente='t')
+        with mock.patch.object(cotizaciones, '_get_json') as get:
+            self.client.get(reverse('finanzas:listar'))
+        get.assert_not_called()
+
+
+class SerieEvolucionTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+        self.hoy = datetime.date.today()
+        self.d0 = self.hoy - datetime.timedelta(days=10)
+        self.inv = Inversion.objects.create(usuario=self.user, nombre='ETF', ticker='ETF.DE', tipo='ETF')
+        self.c1 = GrupoInversion.objects.create(usuario=self.user, nombre='Jubilación')
+        MovimientoInversion.objects.create(inversion=self.inv, fecha=self.d0, tipo='COMPRA',
+            cantidad=Decimal('10'), precio_unitario=Decimal('10'), grupo=self.c1)
+        MovimientoInversion.objects.create(inversion=self.inv, fecha=self.d0 + datetime.timedelta(days=5),
+            tipo='COMPRA', cantidad=Decimal('10'), precio_unitario=Decimal('12'))
+        for i, cierre in enumerate([10, 11, 11, 11, 12, 12, 13, 13, 13, 14]):
+            PrecioHistorico.objects.create(ticker='ETF.DE', fecha=self.d0 + datetime.timedelta(days=i),
+                                           cierre=Decimal(cierre))
+        ValorActualInversion.objects.create(inversion=self.inv, valor_unitario=Decimal('15'), fuente='t')
+
+    def _serie(self, **kw):
+        qs = Inversion.objects.filter(usuario=self.user).prefetch_related('movimientos')
+        return cotizaciones.serie_evolucion(qs, descargar=False, **kw)
+
+    def test_valor_dia_a_dia_con_unidades_y_cierre_de_ese_dia(self):
+        s = self._serie()
+        self.assertEqual(s['fechas'][0], self.d0.isoformat())
+        self.assertEqual(s['fechas'][-1], self.hoy.isoformat())
+        self.assertEqual(s['valor'][0], 100.0)        # 10 u × 10
+        self.assertEqual(s['invertido'][0], 100.0)
+        self.assertEqual(s['valor'][5], 240.0)        # 20 u × 12
+        self.assertEqual(s['invertido'][5], 220.0)    # 100 + 120
+        self.assertEqual(s['valor'][-1], 300.0)       # hoy: 20 u × precio actual 15
+
+    def test_solo_las_compras_de_la_cartera(self):
+        s = self._serie(cartera_id=self.c1.id)
+        self.assertEqual(s['valor'][5], 120.0)        # solo las 10 u de la cartera
+        self.assertEqual(s['invertido'][-1], 100.0)
+        self.assertEqual(s['valor'][-1], 150.0)
+
+    def test_rango_de_fechas(self):
+        desde = self.d0 + datetime.timedelta(days=6)
+        s = self._serie(desde=desde, hasta=self.d0 + datetime.timedelta(days=8))
+        self.assertEqual(s['fechas'], [(desde + datetime.timedelta(days=i)).isoformat() for i in range(3)])
+        self.assertEqual(s['valor'], [260.0, 260.0, 260.0])
+
+    def test_venta_reduce_las_unidades(self):
+        MovimientoInversion.objects.create(inversion=self.inv, fecha=self.d0 + datetime.timedelta(days=7),
+            tipo='VENTA', cantidad=Decimal('5'), precio_unitario=Decimal('13'))
+        s = self._serie()
+        self.assertEqual(s['valor'][7], 195.0)        # 15 u × 13
+
+    def test_sin_historico_usa_el_precio_de_las_operaciones(self):
+        PrecioHistorico.objects.all().delete()
+        s = self._serie()
+        self.assertEqual(s['valor'][3], 100.0)        # 10 u × 10 (precio de compra)
+        self.assertEqual(s['valor'][5], 240.0)        # 20 u × 12 (segunda compra)
+        self.assertEqual(s['sin_historico'], ['ETF.DE'])
+
+    def test_descarga_historico_que_falta_sin_guardar_hoy(self):
+        PrecioHistorico.objects.all().delete()
+        cotizaciones._ULTIMO_INTENTO_HISTORICO.clear()
+        cierres = [(self.d0 + datetime.timedelta(days=i), 10.0 + i) for i in range(11)]
+        with mock.patch.object(cotizaciones, '_get_json',
+                               return_value=_respuesta_yahoo_historico(cierres)):
+            nuevos = cotizaciones.asegurar_historico('ETF.DE', self.d0)
+        self.assertEqual(nuevos, 10)  # el día de hoy no se guarda
+        self.assertFalse(PrecioHistorico.objects.filter(fecha=self.hoy).exists())
+        self.assertEqual(PrecioHistorico.objects.get(fecha=self.d0).cierre, Decimal('10'))
+
+
+class ApiEvolucionInversionesTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user('inversor', password='x')
+        self.otro = User.objects.create_user('otro', password='x')
+        self.client.force_login(self.user)
+        _crear_inversion(self.user, 'ETF A', 'ETF', 10, 10, 12)
+
+    def test_devuelve_la_serie(self):
+        resp = self.client.get(reverse('finanzas:api_evolucion_inversiones'))
+        self.assertEqual(resp.status_code, 200)
+        datos = resp.json()
+        self.assertEqual(datos['inicio'], '2026-01-15')
+        self.assertEqual(datos['valor'][-1], 120.0)
+        self.assertEqual(datos['invertido'][-1], 100.0)
+
+    def test_cartera_ajena_404(self):
+        ajena = GrupoInversion.objects.create(usuario=self.otro, nombre='X')
+        resp = self.client.get(reverse('finanzas:api_evolucion_inversiones'), {'cartera': ajena.id})
+        self.assertEqual(resp.status_code, 404)
+
+    def test_fecha_no_valida_400(self):
+        resp = self.client.get(reverse('finanzas:api_evolucion_inversiones'), {'desde': 'ayer'})
+        self.assertEqual(resp.status_code, 400)
 
 
 class RentabilidadPropiedadTests(TestCase):

@@ -17,6 +17,7 @@ import calendar
 import datetime
 from django.views.generic import UpdateView
 
+from . import cotizaciones
 from .parsing import parse_decimal, parse_fecha
 
 logger = logging.getLogger(__name__)
@@ -521,36 +522,7 @@ def actualizar_precios_inversiones(request):
         actualizable=True
     ).exclude(ticker__isnull=True).exclude(ticker='')
 
-    actualizados = []
-    errores = []
-
-    for inv in inversiones:
-        try:
-            url = (
-                'https://query2.finance.yahoo.com/v8/finance/chart/'
-                f'{urllib.parse.quote(inv.ticker)}?interval=1d&range=1d'
-            )
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                data = json.loads(resp.read())
-
-            precio = (
-                data['chart']['result'][0]['meta'].get('regularMarketPrice')
-                or data['chart']['result'][0]['meta'].get('previousClose')
-            )
-
-            if precio:
-                ValorActualInversion.objects.update_or_create(
-                    inversion=inv,
-                    defaults={
-                        'valor_unitario': precio,
-                        'fuente': 'Yahoo Finance'
-                    }
-                )
-                actualizados.append(f"{inv.ticker}: {precio}")
-
-        except Exception as e:
-            errores.append(f"{inv.ticker}: {e}")
+    actualizados, errores = cotizaciones.actualizar_precios(inversiones)
 
     if actualizados:
         messages.success(request, f"Precios actualizados: {', '.join(actualizados)}")
@@ -558,6 +530,88 @@ def actualizar_precios_inversiones(request):
         messages.warning(request, f"Errores: {', '.join(errores)}")
 
     return redirect('finanzas:listar')
+
+
+def _inversiones_visibles(user):
+    """Las inversiones que ve el usuario: las de todo su hogar, o las suyas."""
+    from core.models import UserProfile
+    profile = UserProfile.objects.filter(user=user).select_related('hogar').first()
+    if profile and profile.hogar:
+        miembros_ids = profile.hogar.miembros.values_list('user_id', flat=True)
+        return Inversion.objects.filter(usuario_id__in=miembros_ids)
+    return Inversion.objects.filter(usuario=user)
+
+
+def _filtrar_por_cartera(qs, user, cartera_id):
+    """La cartera es a nivel de COMPRA, así que incluye los activos que tengan
+    al menos una compra asignada a esa cartera (no solo la "cartera por defecto")."""
+    return qs.filter(
+        usuario=user,
+        movimientos__grupo_id=cartera_id,
+        movimientos__tipo=MovimientoInversion.COMPRA,
+    ).distinct()
+
+
+# Al abrir Inversiones se refrescan los precios si tienen más de esto. El
+# servicio `precios` ya los actualiza cada hora; esto cubre el "lo abro y
+# quiero el precio de ahora" sin pedir a Yahoo en cada recarga.
+REFRESCO_AL_ABRIR = datetime.timedelta(minutes=5)
+
+
+def _refrescar_precios_si_obsoletos(user):
+    from django.core.cache import cache
+    inversiones = list(
+        _inversiones_visibles(user).filter(actualizable=True)
+        .exclude(tipo='DEPOSITO')
+        .exclude(ticker__isnull=True).exclude(ticker='')
+        .select_related('valor_actual')
+    )
+    if not cotizaciones.precios_obsoletos(inversiones, REFRESCO_AL_ABRIR):
+        return
+    # Un intento cada pocos minutos como mucho: si Yahoo falla, la pestaña no
+    # debe quedarse esperando la red en cada recarga.
+    if not cache.add(f'inversiones:refresco:{user.pk}', 1,
+                     int(REFRESCO_AL_ABRIR.total_seconds())):
+        return
+    try:
+        _, errores = cotizaciones.actualizar_precios(inversiones, timeout=5)
+        if errores:
+            logger.warning("Refresco de precios al abrir Inversiones: %s", errores)
+    except Exception:
+        logger.exception("Refresco de precios al abrir Inversiones")
+
+
+@login_required
+def api_evolucion_inversiones(request):
+    """Serie diaria de valor de mercado y capital invertido para la gráfica.
+
+    ?cartera=<id>  solo las compras de esa cartera (vacío: todas)
+    ?desde=AAAA-MM-DD&hasta=AAAA-MM-DD  rango (vacío: desde el inicio / hasta hoy)
+    """
+    qs = _inversiones_visibles(request.user).exclude(tipo='DEPOSITO')
+    cartera_id = request.GET.get('cartera') or None
+    if cartera_id:
+        try:
+            cartera_id = int(cartera_id)
+        except ValueError:
+            return JsonResponse({'error': 'Cartera no válida'}, status=400)
+        if not GrupoInversion.objects.filter(pk=cartera_id, usuario=request.user).exists():
+            return JsonResponse({'error': 'Cartera no encontrada'}, status=404)
+        qs = _filtrar_por_cartera(qs, request.user, cartera_id)
+    qs = qs.select_related('valor_actual').prefetch_related('movimientos')
+
+    def fecha(param):
+        valor = request.GET.get(param)
+        if not valor:
+            return None
+        return datetime.date.fromisoformat(valor)
+
+    try:
+        desde, hasta = fecha('desde'), fecha('hasta')
+    except ValueError:
+        return JsonResponse({'error': 'Fecha no válida'}, status=400)
+
+    return JsonResponse(cotizaciones.serie_evolucion(qs, cartera_id, desde, hasta))
 
 @login_required
 def importar_movimientos_csv(request):
@@ -769,14 +823,12 @@ class InversionListView(LoginRequiredMixin, ListView):
     template_name = 'inversiones/inversion_list.html'
     context_object_name = 'inversiones'
 
+    def get(self, request, *args, **kwargs):
+        _refrescar_precios_si_obsoletos(request.user)
+        return super().get(request, *args, **kwargs)
+
     def get_queryset(self):
-        from core.models import UserProfile
-        profile = UserProfile.objects.filter(user=self.request.user).select_related('hogar').first()
-        if profile and profile.hogar:
-            miembros_ids = profile.hogar.miembros.values_list('user_id', flat=True)
-            qs = Inversion.objects.filter(usuario_id__in=miembros_ids)
-        else:
-            qs = Inversion.objects.filter(usuario=self.request.user)
+        qs = _inversiones_visibles(self.request.user)
         # Todo lo que la pantalla lee de cada activo, en las mismas consultas:
         # el dueño y el valor actual por JOIN, y los movimientos en un único
         # prefetch ordenado (el orden importa: la ganancia realizada usa el
@@ -787,15 +839,9 @@ class InversionListView(LoginRequiredMixin, ListView):
                                                          .order_by('fecha', 'id')),
         )
         # Filtro por cartera (grupo de inversión): las carteras son del propio usuario.
-        # La cartera es a nivel de COMPRA, así que incluimos los activos que tengan
-        # al menos una compra asignada a esa cartera (no solo la "cartera por defecto").
         cartera_id = self.request.GET.get('cartera')
         if cartera_id:
-            qs = qs.filter(
-                usuario=self.request.user,
-                movimientos__grupo_id=cartera_id,
-                movimientos__tipo=MovimientoInversion.COMPRA,
-            ).distinct()
+            qs = _filtrar_por_cartera(qs, self.request.user, cartera_id)
         return qs
 
     def get_context_data(self, **kwargs):

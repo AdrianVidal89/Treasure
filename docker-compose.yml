@@ -34,3 +34,24 @@ services:
              python manage.py migrate --noinput &&
              python manage.py collectstatic --noinput &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 1 --threads 4 --timeout 300"
+
+  # Actualiza las cotizaciones de las inversiones cada hora (y completa el
+  # histórico de cierres de la gráfica de evolución), aunque nadie abra la app.
+  precios:
+    image: python:3.12-slim
+    restart: always
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: >
+      sh -c "pip install -r requirements.txt --quiet &&
+             python manage.py actualizar_precios --cada 3600"

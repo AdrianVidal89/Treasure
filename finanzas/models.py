@@ -658,6 +658,26 @@ class HistorialValorInversion(models.Model):
         return f"{self.inversion} @ {self.fecha} → {self.valor_unitario} x {self.cantidad_activos}"
 
 
+class PrecioHistorico(models.Model):
+    """Cierre diario de un ticker, descargado de Yahoo Finance.
+
+    Es una caché: el histórico de cotizaciones no cambia, así que se descarga
+    una vez y la gráfica de evolución de la cartera lo lee de aquí. Va por
+    ticker (no por inversión) porque el mismo valor puede estar en varias
+    posiciones (p. ej. SU.PA en Revolut y en Uptevia).
+    """
+    ticker = models.CharField(max_length=20, db_index=True)
+    fecha = models.DateField()
+    cierre = models.DecimalField(max_digits=20, decimal_places=8)
+
+    class Meta:
+        unique_together = ('ticker', 'fecha')
+        ordering = ['ticker', 'fecha']
+
+    def __str__(self):
+        return f"{self.ticker} @ {self.fecha} → {self.cierre}"
+
+
 ### Módulo de Ingresos ###
 
 class TablaIRPF(models.Model):
