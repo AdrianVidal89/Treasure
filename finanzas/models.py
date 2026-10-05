@@ -1785,8 +1785,8 @@ class Propiedad(models.Model):
 
     # Estimación de costes de venta
     gastos_venta_pct = models.DecimalField(
-        max_digits=5, decimal_places=2, default=Decimal('6.0'),
-        help_text='% costes de venta: agencia (~3%), notaría+gestoría (~1%), etc.'
+        max_digits=5, decimal_places=2, default=Decimal('3.0'),
+        help_text='% costes de venta: agencia, notaría, gestoría…'
     )
     es_residencia_habitual = models.BooleanField(
         default=False,
@@ -1851,6 +1851,24 @@ class Propiedad(models.Model):
     hipoteca_inicial = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True,
         help_text='Importe del préstamo hipotecario al comprar. Vacío o 0: sin hipoteca.',
+    )
+    # Base de la amortización del 3 % en el IRPF del alquiler, en euros: lo
+    # que es construcción (no suelo). Si se dice, manda sobre `pct_construccion`.
+    valor_construccion = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Valor de la construcción (sin suelo) para la amortización del 3 %.',
+    )
+    # El tipo marginal de IRPF con que tributa el alquiler. Vacío: se calcula
+    # con los tramos sobre la nómina del titular (Fuentes de ingreso).
+    tipo_marginal_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Tipo marginal del IRPF. Vacío: se calcula con la nómina del titular.',
+    )
+    # Lo que rendiría el dinero fuera del piso: contra eso se compara
+    # amortizar la hipoteca o mantener la propiedad. Vacío: 3 %.
+    tipo_referencia_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Rentabilidad alternativa del dinero (%). Vacío: 3 %.',
     )
     # El último escenario del simulador de alquiler (para las no alquiladas):
     # al volver a la ficha sale lo que se puso. Ver `rentabilidad.simular`.
@@ -1927,6 +1945,215 @@ class Propiedad(models.Model):
             'gastos_venta': round(float(gastos), 2),
             'neto': round(float(neto), 2),
         }
+
+
+class Hipoteca(models.Model):
+    """Un préstamo hipotecario de una propiedad, con sus condiciones.
+
+    Con ellas se genera el cuadro de amortización (`finanzas/amortizacion.py`)
+    y de él salen la deuda de hoy, los intereses y el capital del año: dejan
+    de ser números puestos a mano. Una propiedad puede tener más de una
+    (una segunda hipoteca, un préstamo para la reforma…).
+
+    Si no se conoce la historia —o un variable ha tenido revisiones que no
+    se tienen— basta un punto de partida: el saldo a una fecha (lo dice el
+    recibo o el certificado del banco) y, si se sabe, la cuota. El cuadro
+    empieza ahí.
+    """
+    MODALIDAD_CHOICES = [
+        ('fijo', 'Fijo'),
+        ('variable', 'Variable'),
+        ('mixto', 'Mixto'),
+    ]
+    INDICE_CHOICES = [
+        ('euribor_12m', 'Euríbor a 12 meses'),
+        ('irph', 'IRPH'),
+        ('otro', 'Otro'),
+    ]
+
+    propiedad = models.ForeignKey(Propiedad, on_delete=models.CASCADE, related_name='hipotecas')
+    nombre = models.CharField(max_length=100, default='Hipoteca')
+    entidad = models.CharField(max_length=100, blank=True)
+
+    # Origen
+    capital_inicial = models.DecimalField(max_digits=12, decimal_places=2)
+    fecha_firma = models.DateField()
+    plazo_meses = models.PositiveIntegerField(help_text='Plazo total en meses (30 años = 360).')
+    dia_cobro = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text='Día del mes en que se cobra. Vacío: el de la firma.',
+    )
+
+    # Tipo de interés
+    modalidad = models.CharField(max_length=10, choices=MODALIDAD_CHOICES, default='fijo')
+    tipo_inicial_pct = models.DecimalField(
+        max_digits=6, decimal_places=3,
+        help_text='TIN fijo, o el del tramo fijo inicial en variable y mixto.',
+    )
+    meses_tramo_fijo = models.PositiveIntegerField(
+        null=True, blank=True, help_text='Meses al tipo inicial antes de pasar a índice + diferencial.',
+    )
+    indice = models.CharField(max_length=20, choices=INDICE_CHOICES, default='euribor_12m', blank=True)
+    diferencial_pct = models.DecimalField(max_digits=6, decimal_places=3, null=True, blank=True)
+    revision_meses = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text='Cada cuántos meses se revisa el tipo (6 o 12).',
+    )
+
+    # Punto de partida conocido (opcional)
+    saldo_conocido = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    saldo_conocido_fecha = models.DateField(null=True, blank=True)
+    cuota_conocida = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Cuota mensual en esa fecha. Vacío: se calcula con el plazo que queda.',
+    )
+
+    # Comisión por amortización anticipada. Vacío: lo máximo que permite la
+    # Ley 5/2019 según la modalidad (ver `amortizacion.py`).
+    comision_pct_inicial = models.DecimalField(max_digits=5, decimal_places=3, null=True, blank=True)
+    comision_meses_iniciales = models.PositiveIntegerField(null=True, blank=True)
+    comision_pct_despues = models.DecimalField(max_digits=5, decimal_places=3, null=True, blank=True)
+
+    # Solo informativo: [{"concepto", "rebaja_pct", "coste_anual"}]
+    bonificaciones = models.JSONField(default=list, blank=True)
+
+    # Dónde se apunta la cuota, para conciliarla con lo que pasa por el banco.
+    partida = models.ForeignKey(
+        'PartidaGasto', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
+    )
+    activa = models.BooleanField(default=True)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['fecha_firma', 'pk']
+
+    def __str__(self):
+        return f'{self.nombre} · {self.propiedad.nombre}'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        errores = {}
+        if self.capital_inicial is not None and self.capital_inicial <= 0:
+            errores['capital_inicial'] = 'El capital tiene que ser mayor que cero.'
+        if self.plazo_meses is not None and self.plazo_meses <= 0:
+            errores['plazo_meses'] = 'El plazo tiene que ser de al menos un mes.'
+        if self.dia_cobro is not None and not 1 <= self.dia_cobro <= 31:
+            errores['dia_cobro'] = 'Un día del mes, de 1 a 31.'
+        if self.modalidad in ('variable', 'mixto') and self.diferencial_pct is None:
+            errores['diferencial_pct'] = 'Un variable necesita el diferencial sobre el índice.'
+        if self.modalidad == 'mixto' and not self.meses_tramo_fijo:
+            errores['meses_tramo_fijo'] = 'Un mixto necesita la duración del tramo fijo.'
+        if (self.saldo_conocido is None) != (self.saldo_conocido_fecha is None):
+            errores['saldo_conocido'] = 'El punto de partida necesita saldo y fecha.'
+        if errores:
+            raise ValidationError(errores)
+
+    def como_prestamo(self, indice_futuro=None):
+        """El préstamo en el formato del motor (el mismo que recibe el JS)."""
+        def f(valor):
+            return None if valor is None else float(valor)
+
+        p = {
+            'capital': float(self.capital_inicial),
+            'inicio': self.fecha_firma.isoformat(),
+            'plazo_meses': self.plazo_meses,
+            'dia_cobro': self.dia_cobro,
+            'modalidad': self.modalidad,
+            'tipo_inicial': float(self.tipo_inicial_pct),
+            'meses_tramo_fijo': self.meses_tramo_fijo,
+            'diferencial': f(self.diferencial_pct),
+            'revision_meses': self.revision_meses or 12,
+            'indice_futuro': f(indice_futuro),
+            'revisiones': [
+                {'fecha': r.fecha_desde.isoformat(), 'tipo': float(r.tipo_pct)}
+                for r in self.revisiones.all()
+            ],
+            'amortizaciones': [
+                {'fecha': a.fecha.isoformat(), 'importe': float(a.importe), 'modo': a.modo,
+                 'comision': f(a.comision_pagada)}
+                for a in self.amortizaciones.all()
+            ],
+            'comision': {
+                'pct_inicial': f(self.comision_pct_inicial),
+                'meses_iniciales': self.comision_meses_iniciales,
+                'pct_despues': f(self.comision_pct_despues),
+            },
+        }
+        if self.saldo_conocido is not None and self.saldo_conocido_fecha:
+            p['ancla'] = {
+                'fecha': self.saldo_conocido_fecha.isoformat(),
+                'saldo': float(self.saldo_conocido),
+                'cuota': f(self.cuota_conocida),
+            }
+        return p
+
+    def cuadro(self, indice_futuro=None):
+        from . import amortizacion
+        clave = ('_cuadro', indice_futuro)
+        cache = self.__dict__.setdefault('_cuadros', {})
+        if clave not in cache:
+            cache[clave] = amortizacion.cuadro(self.como_prestamo(indice_futuro))
+        return cache[clave]
+
+    def saldo_a(self, dia=None):
+        """Capital pendiente un día (hoy si no se dice)."""
+        import datetime
+        from . import amortizacion
+        dia = dia or datetime.date.today()
+        return Decimal(str(amortizacion.saldo_a(self.como_prestamo(), self.cuadro(), dia)))
+
+    def del_anio(self, anio):
+        """Cuotas, intereses y capital del año natural, según el cuadro."""
+        from . import amortizacion
+        return amortizacion.del_anio(self.cuadro(), anio)
+
+    def tipo_actual(self, dia=None):
+        import datetime
+        from . import amortizacion
+        dia = dia or datetime.date.today()
+        filas = self.cuadro()
+        previas = [f for f in filas if f['fecha'] <= dia]
+        fila = previas[-1] if previas else (filas[0] if filas else None)
+        return fila['tipo'] if fila else float(self.tipo_inicial_pct)
+
+
+class RevisionTipo(models.Model):
+    """El tipo que aplica desde una fecha: cada revisión de un variable, o el
+    «tipo actual» que se quiera fijar a mano."""
+    hipoteca = models.ForeignKey(Hipoteca, on_delete=models.CASCADE, related_name='revisiones')
+    fecha_desde = models.DateField()
+    tipo_pct = models.DecimalField(max_digits=6, decimal_places=3)
+    valor_indice_pct = models.DecimalField(
+        max_digits=6, decimal_places=3, null=True, blank=True,
+        help_text='Valor del índice usado en la revisión (informativo).',
+    )
+
+    class Meta:
+        ordering = ['fecha_desde']
+        unique_together = ('hipoteca', 'fecha_desde')
+
+    def __str__(self):
+        return f'{self.hipoteca} · {self.tipo_pct} % desde {self.fecha_desde:%d/%m/%Y}'
+
+
+class AmortizacionAnticipada(models.Model):
+    """Una amortización anticipada ya hecha."""
+    MODO_CHOICES = [
+        ('cuota', 'Reducir cuota'),
+        ('plazo', 'Reducir plazo'),
+    ]
+    hipoteca = models.ForeignKey(Hipoteca, on_delete=models.CASCADE, related_name='amortizaciones')
+    fecha = models.DateField()
+    importe = models.DecimalField(max_digits=12, decimal_places=2)
+    modo = models.CharField(max_length=5, choices=MODO_CHOICES, default='plazo')
+    comision_pagada = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='La comisión que se pagó. Vacío: se estima con la del préstamo.',
+    )
+
+    class Meta:
+        ordering = ['fecha', 'pk']
+
+    def __str__(self):
+        return f'{self.hipoteca} · {self.importe} € el {self.fecha:%d/%m/%Y}'
 
 
 class HistorialPropiedad(models.Model):
