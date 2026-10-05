@@ -42,6 +42,7 @@ urlpatterns = [
     path('inversiones/resumen/<int:pk>/', views.ResumenInversionesMensualView.as_view(), name='resumen'),
     path('inversiones/ajax/buscar-ticker/', views.buscar_ticker, name='buscar_ticker'),
     path('inversiones/actualizar-precios/', views.actualizar_precios_inversiones, name='actualizar_precios'),
+    path('inversiones/api/evolucion/', views.api_evolucion_inversiones, name='api_evolucion_inversiones'),
     path('inversiones/importar-csv/', views.importar_movimientos_csv, name='importar_csv'),
     path('inversiones/movimiento/<int:pk>/editar/', views.MovimientoUpdateView.as_view(), name='editar_movimiento'),
     path('inversiones/informe-hacienda/', views_hacienda.informe_hacienda, name='informe_hacienda'),

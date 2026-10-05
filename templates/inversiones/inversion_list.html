@@ -110,6 +110,36 @@
     border: 1px solid var(--primary-color); background: var(--primary-color); color: var(--on-primary); }
 .bulk-bar button.ghost { background: transparent; color: var(--primary-color); }
 .bulk-sep { width: 1px; align-self: stretch; background: var(--border-strong); }
+/* Gráfica de evolución de la cartera */
+.ev-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin-bottom: 24px; }
+.ev-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.ev-head h3 { margin: 0 0 4px; font-size: 1.05rem; color: var(--text-color); }
+.ev-sub { margin: 0; font-size: 0.78rem; color: var(--muted); }
+.ev-rangos { display: flex; gap: 4px; background: var(--app-bg); border: 1px solid var(--border-strong); border-radius: 10px; padding: 4px; flex-wrap: wrap; }
+.ev-rango { border: none; background: transparent; color: var(--muted); font-size: 0.78rem; font-weight: 600; padding: 7px 12px; border-radius: 7px; cursor: pointer; transition: all var(--ease); }
+.ev-rango.active { background: var(--primary-color); color: var(--on-primary); }
+.ev-custom { display: none; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; font-size: 0.8rem; color: var(--muted); }
+.ev-custom.visible { display: flex; }
+.ev-custom input { padding: 6px 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--app-bg); color: var(--text-color); font-size: 0.82rem; }
+.ev-custom button { font-size: 0.8rem; padding: 7px 14px; border-radius: 8px; font-weight: 600; cursor: pointer; border: 1px solid var(--primary-color); background: var(--primary-color); color: var(--on-primary); }
+.ev-stats { display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 10px; }
+.ev-stat { display: flex; flex-direction: column; }
+.ev-stat .l { font-size: 0.62rem; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.ev-stat .v { font-size: 1rem; font-weight: 700; color: var(--text-color); }
+.ev-body { position: relative; }
+#ev-svg { width: 100%; height: 280px; display: block; color: var(--text-color); }
+.ev-legend { display: flex; gap: 18px; margin-top: 8px; font-size: 0.76rem; color: var(--muted); flex-wrap: wrap; }
+.ev-leg { display: flex; align-items: center; gap: 6px; }
+.ev-sw { width: 16px; height: 3px; border-radius: 2px; display: inline-block; }
+.ev-sw-inv { background: repeating-linear-gradient(90deg, var(--muted) 0 6px, transparent 6px 10px); }
+.ev-nota { font-size: 0.72rem; color: var(--muted); margin-top: 6px; }
+.ev-tooltip { position: absolute; pointer-events: none; z-index: 20; background: var(--surface);
+    border: 1px solid var(--border-strong); border-radius: 10px; padding: 8px 11px; font-size: 0.75rem;
+    color: var(--text-color); box-shadow: 0 6px 20px rgba(0,0,0,.18); opacity: 0;
+    transform: translate(-50%, -112%); transition: opacity .12s; white-space: nowrap; }
+.ev-tooltip.visible { opacity: 1; }
+.ev-tooltip .tt-f { font-weight: 700; margin-bottom: 4px; }
+.ev-tooltip .tt-r { display: flex; justify-content: space-between; gap: 14px; }
 </style>
 
 <div class="inv-wrap">
@@ -225,6 +255,42 @@
             <span class="l">Activos</span>
             <span class="v">{{ cartera_kpis.num_activos }}</span>
         </div>
+    </div>
+    {% endif %}
+
+    <!-- EVOLUCIÓN DE LA CARTERA -->
+    {% if inv_data %}
+    <div class="ev-panel" id="ev-panel"
+         data-url="{% url 'finanzas:api_evolucion_inversiones' %}"
+         data-cartera="{{ cartera_sel_id }}"
+         data-color="{% if cartera_kpis %}{{ cartera_kpis.color }}{% endif %}">
+        <div class="ev-head">
+            <div>
+                <h3>Evolución {% if cartera_kpis %}de {{ cartera_kpis.nombre }}{% else %}de todas tus inversiones{% endif %}</h3>
+                <p class="ev-sub">Valor de mercado de cada día (unidades que tenías × cierre de ese día) frente al capital invertido.</p>
+            </div>
+            <div class="ev-rangos" role="tablist">
+                <button type="button" class="ev-rango active" data-rango="todo">Todo</button>
+                <button type="button" class="ev-rango" data-rango="2a">2 años</button>
+                <button type="button" class="ev-rango" data-rango="1a">1 año</button>
+                <button type="button" class="ev-rango" data-rango="custom">Personalizado</button>
+            </div>
+        </div>
+        <div class="ev-custom" id="ev-custom">
+            <label>Desde <input type="date" id="ev-desde"></label>
+            <label>Hasta <input type="date" id="ev-hasta"></label>
+            <button type="button" id="ev-aplicar">Aplicar</button>
+        </div>
+        <div class="ev-stats" id="ev-stats"></div>
+        <div class="ev-body">
+            <svg id="ev-svg" role="img" aria-label="Evolución del valor de mercado frente al capital invertido"></svg>
+            <div class="ev-tooltip" id="ev-tooltip"></div>
+        </div>
+        <div class="ev-legend">
+            <span class="ev-leg"><span class="ev-sw" id="ev-sw-valor"></span>Valor de mercado</span>
+            <span class="ev-leg"><span class="ev-sw ev-sw-inv"></span>Capital invertido</span>
+        </div>
+        <div class="ev-nota" id="ev-nota"></div>
     </div>
     {% endif %}
 
@@ -616,5 +682,203 @@ function toggleAll(master) {
     updateBulkBar();
 }
 document.addEventListener('DOMContentLoaded', updateBulkBar);
+// === Gráfica de evolución de la cartera ===
+(function () {
+    const panel = document.getElementById('ev-panel');
+    if (!panel) return;
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const COLOR = panel.dataset.color || 'var(--success-2)';
+    const PAD_L = 62, PAD_R = 14, PAD_T = 14, PAD_B = 28;
+    const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const svg = document.getElementById('ev-svg');
+    const tooltip = document.getElementById('ev-tooltip');
+    const stats = document.getElementById('ev-stats');
+    const nota = document.getElementById('ev-nota');
+    document.getElementById('ev-sw-valor').style.background = COLOR;
+    let datos = null;
+
+    function el(tipo, attrs) {
+        const e = document.createElementNS(SVG_NS, tipo);
+        for (const k in attrs) e.setAttribute(k, attrs[k]);
+        return e;
+    }
+    function euro(v, dec) {
+        return '€' + v.toLocaleString('es-ES', {minimumFractionDigits: dec || 0, maximumFractionDigits: dec || 0});
+    }
+    function signo(v) { return v >= 0 ? '+' : '−'; }
+    function parseISO(s) { const p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+    function iso(d) {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    function fechaLarga(s) { const d = parseISO(s); return d.getDate() + ' ' + MESES[d.getMonth()] + ' ' + d.getFullYear(); }
+
+    function cargar(desde, hasta) {
+        const params = new URLSearchParams();
+        if (panel.dataset.cartera) params.set('cartera', panel.dataset.cartera);
+        if (desde) params.set('desde', desde);
+        if (hasta) params.set('hasta', hasta);
+        svg.innerHTML = '';
+        const t = el('text', {x: '50%', y: 140, 'text-anchor': 'middle', 'font-size': '13', fill: 'currentColor', opacity: '0.5'});
+        t.textContent = 'Cargando evolución…';
+        svg.appendChild(t);
+        fetch(panel.dataset.url + '?' + params.toString(), {credentials: 'same-origin'})
+            .then(r => r.json())
+            .then(d => { datos = d; render(); })
+            .catch(() => { datos = {fechas: [], error: true}; render(); });
+    }
+
+    function pintarStats() {
+        stats.innerHTML = '';
+        const n = datos.fechas.length;
+        if (!n) return;
+        const vF = datos.valor[n - 1], iF = datos.invertido[n - 1];
+        const gF = vF - iF, g0 = datos.valor[0] - datos.invertido[0];
+        const items = [
+            ['Valor a ' + fechaLarga(datos.fechas[n - 1]), euro(vF, 2), ''],
+            ['Ganancia latente', signo(gF) + euro(Math.abs(gF), 2), gF >= 0 ? 'pos' : 'neg'],
+            ['Variación en el periodo', signo(gF - g0) + euro(Math.abs(gF - g0), 2), gF - g0 >= 0 ? 'pos' : 'neg'],
+        ];
+        items.forEach(([l, v, c]) => {
+            const d = document.createElement('div');
+            d.className = 'ev-stat';
+            d.innerHTML = '<span class="l"></span><span class="v ' + c + '"></span>';
+            d.children[0].textContent = l;
+            d.children[1].textContent = v;
+            stats.appendChild(d);
+        });
+    }
+
+    function render() {
+        svg.innerHTML = '';
+        tooltip.classList.remove('visible');
+        nota.textContent = '';
+        const rect = svg.getBoundingClientRect();
+        const W = Math.max(rect.width || 720, 300), H = rect.height || 280;
+        svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+        if (!datos || !datos.fechas || datos.fechas.length < 2) {
+            stats.innerHTML = '';
+            const t = el('text', {x: W / 2, y: H / 2, 'text-anchor': 'middle', 'font-size': '13', fill: 'currentColor', opacity: '0.5'});
+            t.textContent = datos && datos.error ? 'No se pudo cargar la evolución.' : 'No hay datos en este periodo.';
+            svg.appendChild(t);
+            return;
+        }
+        pintarStats();
+        if (datos.sin_historico && datos.sin_historico.length) {
+            nota.textContent = 'Sin cotizaciones históricas para ' + datos.sin_historico.join(', ') +
+                ': se usa el precio de tus operaciones y de las actualizaciones guardadas.';
+        }
+
+        const f = datos.fechas, v = datos.valor, inv = datos.invertido, n = f.length;
+        const t0 = parseISO(f[0]).getTime(), t1 = parseISO(f[n - 1]).getTime();
+        const x = (i) => PAD_L + ((parseISO(f[i]).getTime() - t0) / Math.max(t1 - t0, 1)) * (W - PAD_L - PAD_R);
+        const todos = v.concat(inv);
+        let yMin = Math.min(...todos), yMax = Math.max(...todos);
+        const margen = Math.max((yMax - yMin) * 0.1, 10);
+        yMin = Math.max(0, yMin - margen); yMax += margen;
+        const y = (val) => H - PAD_B - ((val - yMin) / (yMax - yMin)) * (H - PAD_T - PAD_B);
+
+        for (let k = 0; k <= 4; k++) {
+            const val = yMin + (yMax - yMin) * k / 4, ly = y(val);
+            svg.appendChild(el('line', {x1: PAD_L, x2: W - PAD_R, y1: ly, y2: ly, stroke: 'currentColor', 'stroke-opacity': '0.08'}));
+            const lab = el('text', {x: PAD_L - 8, y: ly + 4, 'text-anchor': 'end', 'font-size': '10', fill: 'currentColor', opacity: '0.55'});
+            lab.textContent = euro(val);
+            svg.appendChild(lab);
+        }
+        // Eje X: unas 6 etiquetas repartidas; meses si el rango es largo, días si es corto.
+        const dias = (t1 - t0) / 86400000;
+        const nEtiq = Math.min(6, n);
+        for (let k = 0; k < nEtiq; k++) {
+            const i = Math.round(k * (n - 1) / Math.max(nEtiq - 1, 1));
+            const d = parseISO(f[i]);
+            const lab = el('text', {x: x(i), y: H - 8, 'text-anchor': k === 0 ? 'start' : (k === nEtiq - 1 ? 'end' : 'middle'),
+                'font-size': '10', fill: 'currentColor', opacity: '0.55'});
+            lab.textContent = dias > 240 ? MESES[d.getMonth()] + ' ' + String(d.getFullYear()).slice(2)
+                                         : d.getDate() + ' ' + MESES[d.getMonth()];
+            svg.appendChild(lab);
+        }
+
+        const path = (vals) => vals.map((val, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(val).toFixed(1)).join(' ');
+        const defs = el('defs', {});
+        const grad = el('linearGradient', {id: 'evGrad', x1: '0', y1: '0', x2: '0', y2: '1'});
+        grad.appendChild(el('stop', {offset: '0%', 'stop-color': COLOR, 'stop-opacity': '0.25'}));
+        grad.appendChild(el('stop', {offset: '100%', 'stop-color': COLOR, 'stop-opacity': '0'}));
+        defs.appendChild(grad);
+        svg.appendChild(defs);
+        const base = (H - PAD_B).toFixed(1);
+        svg.appendChild(el('path', {d: path(v) + ' L' + x(n - 1).toFixed(1) + ',' + base + ' L' + x(0).toFixed(1) + ',' + base + ' Z',
+            fill: 'url(#evGrad)'}));
+        svg.appendChild(el('path', {d: path(inv), fill: 'none', stroke: 'var(--muted)', 'stroke-width': '2',
+            'stroke-dasharray': '6 5', 'stroke-linejoin': 'round', opacity: '0.8'}));
+        svg.appendChild(el('path', {d: path(v), fill: 'none', stroke: COLOR, 'stroke-width': '2.5',
+            'stroke-linejoin': 'round', 'stroke-linecap': 'round'}));
+
+        // Cursor + tooltip: el punto más cercano a la posición horizontal.
+        const guia = el('line', {y1: PAD_T, y2: H - PAD_B, stroke: 'currentColor', 'stroke-opacity': '0.25', visibility: 'hidden'});
+        const punto = el('circle', {r: 4.5, fill: COLOR, stroke: 'var(--surface)', 'stroke-width': '2', visibility: 'hidden'});
+        svg.appendChild(guia); svg.appendChild(punto);
+        const capa = el('rect', {x: PAD_L, y: PAD_T, width: W - PAD_L - PAD_R, height: H - PAD_T - PAD_B, fill: 'transparent'});
+        svg.appendChild(capa);
+        const xs = f.map((_, i) => x(i));
+        function mover(ev) {
+            const r = svg.getBoundingClientRect();
+            const px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - r.left;
+            let i = 0;
+            for (let k = 1; k < n; k++) if (Math.abs(xs[k] - px) < Math.abs(xs[i] - px)) i = k;
+            guia.setAttribute('x1', xs[i]); guia.setAttribute('x2', xs[i]); guia.setAttribute('visibility', 'visible');
+            punto.setAttribute('cx', xs[i]); punto.setAttribute('cy', y(v[i])); punto.setAttribute('visibility', 'visible');
+            const g = v[i] - inv[i];
+            tooltip.innerHTML = '<div class="tt-f"></div><div class="tt-r"><span>Valor</span><b></b></div>' +
+                '<div class="tt-r"><span>Invertido</span><span></span></div><div class="tt-r"><span>Ganancia</span><b></b></div>';
+            tooltip.children[0].textContent = fechaLarga(f[i]);
+            tooltip.children[1].children[1].textContent = euro(v[i], 2);
+            tooltip.children[2].children[1].textContent = euro(inv[i], 2);
+            const gEl = tooltip.children[3].children[1];
+            gEl.textContent = signo(g) + euro(Math.abs(g), 2) + (inv[i] > 0 ? ' (' + signo(g) + Math.abs(g / inv[i] * 100).toFixed(2) + '%)' : '');
+            gEl.className = g >= 0 ? 'pos' : 'neg';
+            tooltip.style.left = Math.min(Math.max(xs[i], 90), W - 90) + 'px';
+            tooltip.style.top = y(v[i]) + 'px';
+            tooltip.classList.add('visible');
+        }
+        function salir() {
+            tooltip.classList.remove('visible');
+            guia.setAttribute('visibility', 'hidden'); punto.setAttribute('visibility', 'hidden');
+        }
+        capa.addEventListener('mousemove', mover);
+        capa.addEventListener('touchmove', mover, {passive: true});
+        capa.addEventListener('touchstart', mover, {passive: true});
+        capa.addEventListener('mouseleave', salir);
+        capa.addEventListener('touchend', salir);
+    }
+
+    function rango(clave) {
+        const hoy = new Date();
+        if (clave === 'todo') return [null, null];
+        const d = new Date(hoy);
+        d.setFullYear(hoy.getFullYear() - (clave === '2a' ? 2 : 1));
+        return [iso(d), null];
+    }
+    const custom = document.getElementById('ev-custom');
+    const inDesde = document.getElementById('ev-desde'), inHasta = document.getElementById('ev-hasta');
+    panel.querySelectorAll('.ev-rango').forEach(btn => btn.addEventListener('click', () => {
+        panel.querySelectorAll('.ev-rango').forEach(b => b.classList.toggle('active', b === btn));
+        const clave = btn.dataset.rango;
+        custom.classList.toggle('visible', clave === 'custom');
+        if (clave === 'custom') {
+            if (!inHasta.value) inHasta.value = iso(new Date());
+            if (!inDesde.value) inDesde.value = rango('1a')[0];
+            return;
+        }
+        cargar(...rango(clave));
+    }));
+    document.getElementById('ev-aplicar').addEventListener('click', () => {
+        if (inDesde.value && inHasta.value && inDesde.value > inHasta.value) {
+            const tmp = inDesde.value; inDesde.value = inHasta.value; inHasta.value = tmp;
+        }
+        cargar(inDesde.value || null, inHasta.value || null);
+    });
+    let resizeTimer;
+    window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+    cargar(null, null);
+})();
 </script>
 {% endblock %}
