@@ -8,7 +8,8 @@ from django.contrib import messages
 from django.shortcuts import render, redirect, get_object_or_404
 from django.urls import reverse
 
-from . import costes_activo, rentabilidad
+from . import costes_activo, hipoteca_propiedad, rentabilidad
+from .alquiler import _es_hipoteca
 from .models import CategoriaGasto, PartidaGasto, Propiedad, HistorialPropiedad
 
 MESES_NOMBRES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
@@ -28,9 +29,14 @@ def listar_propiedades(request):
     if not hogar:
         return redirect('dashboard')
 
-    propiedades = Propiedad.objects.filter(hogar=hogar, activo=True)
+    propiedades = list(Propiedad.objects.filter(hogar=hogar, activo=True))
+    # La deuda de las que tienen hipoteca declarada sale de su cuadro; la
+    # copia en `deuda_hipotecaria` (la que leen Evolución y el asistente) se
+    # pone al día al pasar por aquí.
+    for p in propiedades:
+        hipoteca_propiedad.sincronizar(p)
     total_valor = sum(p.valor_actual for p in propiedades)
-    total_deuda = sum(p.deuda_hipotecaria for p in propiedades)
+    total_deuda = sum(p.deuda_actual for p in propiedades)
     total_neto = total_valor - total_deuda
 
     # Una propiedad no solo vale dinero: cuesta dinero. El coste de tenerla
@@ -42,6 +48,7 @@ def listar_propiedades(request):
     for p in propiedades:
         costes = costes_activo.costes(p, anio)
         item = {'propiedad': p, 'neto_venta': p.calcular_neto_venta(), 'costes': costes, 'alquiler': None}
+        item.update(_hipotecas_de(p, costes))
         # Una alquilada no es solo lo que cuesta: lo que importa es lo que
         # deja. Se resta del coste mensual —la misma cifra de la tarjeta— lo
         # cobrado al mes, sobre los mismos meses cerrados.
@@ -87,6 +94,37 @@ def listar_propiedades(request):
     })
 
 
+def _hipotecas_de(propiedad, costes):
+    """Lo que la tarjeta enseña de sus hipotecas: cada una con su saldo y su
+    cuota, el coste del mes separado en intereses y capital, y si los pagos
+    del banco cuadran con el cuadro."""
+    hoy = date.today()
+    hipotecas = []
+    for h in hipoteca_propiedad.activas(propiedad):
+        filas = h.cuadro()
+        proxima = next((f for f in filas if f['fecha'] > hoy), None)
+        hipotecas.append({
+            'h': h,
+            'saldo': h.saldo_a(hoy),
+            'cuota': proxima['cuota'] if proxima else None,
+            'tipo': h.tipo_actual(hoy),
+            'fin': filas[-1]['fecha'] if filas else None,
+        })
+    coste = hipoteca_propiedad.coste_mensual(propiedad, costes)
+    conciliacion = hipoteca_propiedad.conciliacion(propiedad, hoy) if hipotecas else None
+    # Sin hipoteca declarada, ¿hay señales de que la tiene? Entonces «cuesta»
+    # lleva la cuota entera, capital incluido, y conviene decirlo.
+    cuota_en_movimientos = not hipotecas and any(
+        _es_hipoteca(m) for m in costes['movimientos']
+    )
+    return {
+        'hipotecas': hipotecas,
+        'coste': coste,
+        'avisos_conciliacion': len(conciliacion['avisos']) if conciliacion else 0,
+        'sin_hipoteca_declarada': cuota_en_movimientos,
+    }
+
+
 def _anio_elegido(request):
     try:
         return int(request.GET.get('anio'))
@@ -129,6 +167,10 @@ def _leer_alquiler(propiedad, post, hogar):
     propiedad.intereses_hipoteca_anuales = _decimal_o_none(
         post.get('intereses_hipoteca_anuales'), 'los intereses de la hipoteca',
     )
+    if 'tipo_referencia_pct' in post:
+        propiedad.tipo_referencia_pct = _decimal_o_none(
+            post.get('tipo_referencia_pct'), 'el tipo de referencia',
+        )
     if 'hipoteca_inicial' in post:
         propiedad.hipoteca_inicial = _decimal_o_none(
             post.get('hipoteca_inicial'), 'el préstamo inicial',
@@ -164,7 +206,7 @@ def crear_propiedad(request):
                 gastos_compra=Decimal(request.POST.get('gastos_compra', '0').replace(',', '.') or '0'),
                 valor_actual=Decimal(request.POST['valor_actual'].replace(',', '.')),
                 deuda_hipotecaria=Decimal(request.POST.get('deuda_hipotecaria', '0').replace(',', '.') or '0'),
-                gastos_venta_pct=Decimal(request.POST.get('gastos_venta_pct', '6').replace(',', '.') or '6'),
+                gastos_venta_pct=Decimal(request.POST.get('gastos_venta_pct', '3').replace(',', '.') or '3'),
                 es_residencia_habitual='es_residencia_habitual' in request.POST,
                 color=request.POST.get('color', '#e67e22'),
             )
@@ -175,7 +217,7 @@ def crear_propiedad(request):
             hoy = datetime.date.today()
             HistorialPropiedad.objects.get_or_create(
                 propiedad=p, año=hoy.year, mes=hoy.month,
-                defaults={'valor_mercado': p.valor_actual, 'deuda_hipotecaria': p.deuda_hipotecaria},
+                defaults={'valor_mercado': p.valor_actual, 'deuda_hipotecaria': p.deuda_actual},
             )
             messages.success(request, f"Propiedad '{p.nombre}' añadida.")
             return redirect('finanzas:listar_propiedades')
@@ -204,17 +246,20 @@ def editar_propiedad(request, pk):
             propiedad.gastos_compra = Decimal(request.POST.get('gastos_compra', '0').replace(',', '.') or '0')
             propiedad.valor_actual = Decimal(request.POST['valor_actual'].replace(',', '.'))
             propiedad.deuda_hipotecaria = Decimal(request.POST.get('deuda_hipotecaria', '0').replace(',', '.') or '0')
-            propiedad.gastos_venta_pct = Decimal(request.POST.get('gastos_venta_pct', '6').replace(',', '.') or '6')
+            propiedad.gastos_venta_pct = Decimal(request.POST.get('gastos_venta_pct', '3').replace(',', '.') or '3')
             propiedad.es_residencia_habitual = 'es_residencia_habitual' in request.POST
             propiedad.color = request.POST.get('color', '#e67e22')
             _leer_alquiler(propiedad, request.POST, hogar)
             propiedad.full_clean()
             propiedad.save()
+            # Con hipoteca declarada, la deuda no es la del formulario: es la
+            # del cuadro.
+            hipoteca_propiedad.sincronizar(propiedad)
             # Sincronizar snapshot del mes actual con los valores editados
             hoy = datetime.date.today()
             HistorialPropiedad.objects.update_or_create(
                 propiedad=propiedad, año=hoy.year, mes=hoy.month,
-                defaults={'valor_mercado': propiedad.valor_actual, 'deuda_hipotecaria': propiedad.deuda_hipotecaria},
+                defaults={'valor_mercado': propiedad.valor_actual, 'deuda_hipotecaria': propiedad.deuda_actual},
             )
             messages.success(request, f"Propiedad '{propiedad.nombre}' actualizada.")
             return redirect('finanzas:listar_propiedades')
@@ -266,7 +311,12 @@ def registrar_historial(request):
         else:
             try:
                 valor = Decimal(valor_raw.replace(',', '.'))
-                deuda = Decimal(deuda_raw.replace(',', '.')) if deuda_raw else Decimal('0')
+                if deuda_raw:
+                    deuda = Decimal(deuda_raw.replace(',', '.'))
+                else:
+                    # Vacía: la del cuadro a fin de ese mes si hay hipoteca
+                    # declarada; si no, sin deuda.
+                    deuda = hipoteca_propiedad.deuda_fin_de_mes(propiedad, año, mes) or Decimal('0')
             except InvalidOperation:
                 messages.error(request, "Importe inválido.")
                 return redirect(f"/finanzas/evolucion/?año={año}")

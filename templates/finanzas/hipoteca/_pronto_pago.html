@@ -1,0 +1,60 @@
+{% comment %}
+Simulador de pronto pago. Se monta con `ProntoPago.montar(raiz, {...})`
+(static/js/pronto_pago.js), que necesita antes `amortizacion.js`. Lo usan la
+ficha de una hipoteca y el simulador de vivienda.
+
+Parámetros: `pp_id` (id del contenedor).
+{% endcomment %}
+<style>
+.pp-campos { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px 14px; margin-bottom:14px; }
+.pp-campos label { min-width:0; display:flex; flex-direction:column; gap:4px; font-size:0.74rem; color:var(--muted); font-weight:600; }
+.pp-campos input, .pp-campos select { min-width:0; width:100%; box-sizing:border-box; padding:8px 10px; background:var(--app-bg); border:1px solid var(--border-strong); color:var(--text-color); border-radius:8px; font-size:0.86rem; }
+.pp-tabla { display:flex; flex-direction:column; font-size:0.82rem; overflow-x:auto; }
+.pp-fila { display:grid; grid-template-columns:minmax(130px, 1.3fr) repeat(3, minmax(92px, 1fr)); gap:8px; padding:6px 0; border-bottom:1px solid var(--surface-2); font-variant-numeric:tabular-nums; }
+.pp-fila span:not(.k) { text-align:right; }
+.pp-fila .k { color:var(--muted); }
+.pp-cab { font-size:0.66rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); font-weight:700; }
+.pp-sub { color:var(--muted); font-size:0.72rem; }
+/* En el móvil, la etiqueta encima y las tres cifras debajo. */
+@media (max-width: 560px) {
+    .pp-fila { grid-template-columns:repeat(3, 1fr); gap:2px 8px; }
+    .pp-fila .k { grid-column:1 / -1; }
+    .pp-cab span:first-child { display:none; }
+    .pp-campos { grid-template-columns:1fr 1fr; }
+}
+.pp-veredicto { margin:14px 0 6px; padding:10px 12px; border-radius:10px; font-size:0.84rem; border:1px solid var(--border); }
+.pp-veredicto.pos { background:color-mix(in srgb, var(--success) 8%, transparent); }
+.pp-veredicto.neg { background:color-mix(in srgb, var(--warning) 10%, transparent); }
+.pp-nota, .pp-vacio { font-size:0.76rem; color:var(--muted); margin:6px 0 0; }
+.pp-grafico-cab { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:16px; font-size:0.74rem; color:var(--muted); }
+.pp-grafico-cab select { padding:5px 8px; background:var(--app-bg); border:1px solid var(--border-strong); color:var(--text-color); border-radius:7px; font-size:0.76rem; }
+.pp-grafico { width:100%; height:auto; display:block; }
+</style>
+<div id="{{ pp_id|default:'pronto-pago' }}" class="pp">
+    <div class="pp-campos">
+        <label>Amortizar una vez (€)
+            <input type="number" data-pp="importe" min="0" step="1000" value="" placeholder="Ej: 20000">
+        </label>
+        <label>el día
+            <input type="date" data-pp="fecha">
+        </label>
+        <label>Y cada año (€)
+            <input type="number" data-pp="periodica" min="0" step="500" value="" placeholder="Ej: 3000">
+        </label>
+        <label>desde
+            <input type="date" data-pp="desde">
+        </label>
+        <label>Tipo de referencia (%)
+            <input type="number" data-pp="referencia" step="0.1" min="0" title="Lo que rendiría ese dinero invertido">
+        </label>
+    </div>
+    <div data-pp="resultado"></div>
+    <div class="pp-grafico-cab">
+        <span>Capital e intereses por año</span>
+        <select data-pp="modo-grafico" aria-label="Escenario del gráfico">
+            <option value="plazo">Reduciendo plazo</option>
+            <option value="cuota">Reduciendo cuota</option>
+        </select>
+    </div>
+    <svg data-pp="grafico" class="pp-grafico" viewBox="0 0 720 260" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Capital e intereses por año, antes y después de amortizar"></svg>
+</div>

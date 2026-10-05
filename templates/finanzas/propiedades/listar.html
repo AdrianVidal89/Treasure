@@ -228,19 +228,32 @@ dato de los que había.
                 </div>
                 <div class="prop-kpi">
                     <span class="k">Deuda hipotecaria</span>
-                    <span class="v" style="color: var(--danger);">-€{{ p.deuda_hipotecaria|floatformat:0 }}</span>
-                    <span class="sub">pendiente de pago</span>
+                    <span class="v" style="color: var(--danger);">-€{{ p.deuda_actual|floatformat:0 }}</span>
+                    <span class="sub">{% if item.hipotecas %}según el cuadro{% if item.avisos_conciliacion %} · <span class="text-negative">{{ item.avisos_conciliacion }} mes{{ item.avisos_conciliacion|pluralize:"es" }} no cuadra{{ item.avisos_conciliacion|pluralize:"n" }}</span>{% endif %}{% elif p.deuda_hipotecaria %}puesta a mano · <a href="{% url 'finanzas:nueva_hipoteca' p.pk %}">declarar la hipoteca</a>{% else %}pendiente de pago{% endif %}</span>
                 </div>
                 <div class="prop-kpi">
                     <span class="k">Patrimonio neto</span>
                     <span class="v" style="color: var(--success);">€{{ p.patrimonio_neto|floatformat:0 }}</span>
-                    <span class="sub">€{{ v.neto|floatformat:0 }} libres si vendieras hoy</span>
+                    <span class="sub">€{{ v.liberable|floatformat:0 }} liberables si vendieras hoy</span>
                 </div>
+                {% comment %}
+                Con la hipoteca declarada, la cuota se parte en dos: los
+                intereses son coste; el capital, ahorro que se queda en la casa.
+                Sin ella, la cifra es la de siempre (cuota entera dentro).
+                {% endcomment %}
+                {% with c=item.coste %}
                 <div class="prop-kpi">
+                    {% if c %}
+                    <span class="k">Coste real · {{ anio }}</span>
+                    <span class="v">{{ c.coste_real|euro:0 }}<small>/mes</small></span>
+                    <span class="sub">gastos {{ c.gastos|euro:0 }} + intereses {{ c.intereses|euro:0 }} · y <span class="text-positive">{{ c.capital|euro:0 }}/mes de capital</span> (ahorro)</span>
+                    {% else %}
                     <span class="k">Cuesta · {{ anio }}</span>
                     <span class="v {% if f.diferencia_mensual > 0 %}text-negative{% endif %}">{{ f.ritmo_mensual|euro:0 }}<small>/mes</small></span>
-                    <span class="sub">presupuestado {{ f.teorico_mensual|euro:0 }}/mes</span>
+                    <span class="sub">presupuestado {{ f.teorico_mensual|euro:0 }}/mes{% if item.sin_hipoteca_declarada %} · incluye la cuota entera: <a href="{% url 'finanzas:nueva_hipoteca' p.pk %}">declara la hipoteca</a> para separar intereses (coste) y capital (ahorro){% endif %}</span>
+                    {% endif %}
                 </div>
+                {% endwith %}
             </div>
 
             {% if al %}
@@ -371,6 +384,39 @@ dato de los que había.
             </details>
             {% endif %}{% endwith %}
 
+            <!-- ── Hipoteca ─────────────────────────────────────────────── -->
+            <details class="prop-seccion" {% if item.avisos_conciliacion %}open{% endif %}>
+                <summary>
+                    <span class="chev">›</span> Hipoteca
+                    <span class="prop-seccion-resumen">{% if item.hipotecas %}{% for x in item.hipotecas %}{% if x.cuota %}{{ x.cuota|euro }}/mes{% else %}pagada{% endif %}{% if not forloop.last %} + {% endif %}{% endfor %}{% elif p.deuda_hipotecaria %}sin declarar{% else %}sin hipoteca{% endif %}</span>
+                </summary>
+                <div class="prop-seccion-cuerpo">
+                    {% for x in item.hipotecas %}
+                    <a class="prop-rent" href="{% url 'finanzas:detalle_hipoteca' x.h.pk %}">
+                        <span class="k">{{ x.h.nombre }}{% if x.h.entidad %} · {{ x.h.entidad }}{% endif %} · {{ x.h.get_modalidad_display|lower }}</span>
+                        <span class="prop-rent-cifras">
+                            <strong>{{ x.saldo|euro:0 }} pendientes</strong>
+                            <span>{% if x.cuota %}{{ x.cuota|euro }}/mes{% else %}pagada{% endif %}</span>
+                            <span>{{ x.tipo|floatformat:2 }} %</span>
+                            {% if x.fin %}<span>hasta {{ x.fin|date:"m/Y" }}</span>{% endif %}
+                            <span class="prop-rent-ver">Cuadro y pronto pago →</span>
+                        </span>
+                    </a>
+                    {% empty %}
+                    <p class="coste-vacio" style="font-style:normal;">
+                        {% if p.deuda_hipotecaria %}La deuda de {{ p.deuda_hipotecaria|euro:0 }} está puesta a mano y no baja sola.{% endif %}
+                        Declara la hipoteca (capital, fecha, plazo y tipo) y la deuda, los intereses y el capital de cada año saldrán de su cuadro de amortización. Podrás simular amortizaciones anticipadas.
+                    </p>
+                    {% endfor %}
+                    {% if item.avisos_conciliacion %}
+                    <p class="coste-vacio" style="font-style:normal;color:var(--warning);">Lo que cobró el banco en {{ item.avisos_conciliacion }} mes{{ item.avisos_conciliacion|pluralize:"es" }} no coincide con el cuadro: ábrelo para verlo.</p>
+                    {% endif %}
+                    <div class="coste-acciones">
+                        <a class="btn btn-edit" href="{% url 'finanzas:nueva_hipoteca' p.pk %}">+ Declarar {% if item.hipotecas %}otra {% endif %}hipoteca</a>
+                    </div>
+                </div>
+            </details>
+
             <!-- ── La compra ────────────────────────────────────────────── -->
             <details class="prop-seccion">
                 <summary>
@@ -383,7 +429,7 @@ dato de los que había.
                         <div class="prop-row"><span class="k">Precio compra</span><span class="v">€{{ p.precio_compra|floatformat:0 }}</span></div>
                         <div class="prop-row"><span class="k">Gastos compra</span><span class="v">€{{ p.gastos_compra|floatformat:0 }}</span></div>
                         <div class="prop-row"><span class="k">Valor actual</span><span class="v" style="color: var(--warning);">€{{ p.valor_actual|floatformat:0 }}</span></div>
-                        <div class="prop-row"><span class="k">Deuda hipotecaria</span><span class="v" style="color: var(--danger);">-€{{ p.deuda_hipotecaria|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">Deuda hipotecaria</span><span class="v" style="color: var(--danger);">-€{{ p.deuda_actual|floatformat:0 }}</span></div>
                         <div class="prop-row"><span class="k">Patrimonio neto</span><span class="v" style="color: var(--success);">€{{ p.patrimonio_neto|floatformat:0 }}</span></div>
                     </div>
                 </div>
@@ -393,19 +439,22 @@ dato de los que había.
             <details class="prop-seccion">
                 <summary>
                     <span class="chev">›</span> Si vendieras hoy
-                    <span class="prop-seccion-resumen" style="color: var(--success);">€{{ v.neto|floatformat:0 }} libres</span>
+                    <span class="prop-seccion-resumen" style="color: var(--success);">€{{ v.liberable|floatformat:0 }} liberables</span>
                 </summary>
                 <div class="prop-seccion-cuerpo">
                     <div class="prop-filas">
                         <div class="prop-row"><span class="k">Valor venta</span><span class="v">€{{ v.valor_actual|floatformat:0 }}</span></div>
-                        <div class="prop-row"><span class="k">− Deuda hipoteca</span><span class="v" style="color:var(--danger);">-€{{ v.deuda|floatformat:0 }}</span></div>
-                        <div class="prop-row"><span class="k">− Gastos venta ({{ p.gastos_venta_pct }}%)</span><span class="v" style="color:var(--warning);">-€{{ v.gastos_venta|floatformat:0 }}</span></div>
-                        <div class="prop-row"><span class="k">− Plusvalía IRPF</span><span class="v" style="color:var(--warning);">-€{{ v.plusvalia|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">− Deuda hipoteca{% if v.deuda_del_cuadro %} (cuadro){% endif %}</span><span class="v" style="color:var(--danger);">-€{{ v.deuda|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">− Gastos venta ({{ p.gastos_venta_pct|floatformat:"-2" }} %)</span><span class="v" style="color:var(--warning);">-€{{ v.gastos_venta|floatformat:0 }}</span></div>
+                        <div class="prop-row"><span class="k">− Plusvalía IRPF{% if v.plusvalia_exenta_si_reinviertes %} <em>(exenta si reinviertes en otra vivienda habitual)</em>{% endif %}</span><span class="v" style="color:var(--warning);">{% if v.plusvalia_exenta_si_reinviertes %}€{{ v.plusvalia|floatformat:0 }} aparte{% else %}-€{{ v.plusvalia|floatformat:0 }}{% endif %}</span></div>
                     </div>
                     <div class="prop-row total">
-                        <span class="k">Capital neto libre</span>
-                        <span class="v" style="color:var(--success);">€{{ v.neto|floatformat:0 }}</span>
+                        <span class="k">Capital liberable</span>
+                        <span class="v" style="color:var(--success);">€{{ v.liberable|floatformat:0 }}</span>
                     </div>
+                    {% if v.plusvalia_exenta_si_reinviertes %}
+                    <p class="coste-vacio" style="font-style:normal;">Al ser tu vivienda habitual, la ganancia puede quedar exenta si reinviertes lo obtenido en otra vivienda habitual en dos años (art. 38 LIRPF). Si no reinviertes, pagarías {{ v.plusvalia|euro:0 }} y quedarían €{{ v.neto|floatformat:0 }}.</p>
+                    {% endif %}
                 </div>
             </details>
 

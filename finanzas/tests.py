@@ -5449,3 +5449,183 @@ class HipotecaModeloTests(TestCase):
             h.full_clean()
         self.assertEqual(set(e.exception.message_dict),
                          {'diferencial_pct', 'meses_tramo_fijo', 'saldo_conocido'})
+
+
+class HipotecaPropiedadTests(TestCase):
+    """La hipoteca declarada manda en la deuda, el coste y la conciliación."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from extractos.models import ExtractoBancario
+        from finanzas.models import Propiedad
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('hipotecado', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=datetime.date(2024, 1, 15),
+            precio_compra=Decimal('420000'), valor_actual=Decimal('430000'),
+            deuda_hipotecaria=Decimal('999999'), es_residencia_habitual=True,
+        )
+
+    def hipoteca(self, **extra):
+        from finanzas.models import Hipoteca
+        datos = dict(propiedad=self.piso, capital_inicial=Decimal('323400'),
+                     fecha_firma=datetime.date(2024, 1, 15), plazo_meses=360,
+                     modalidad='fijo', tipo_inicial_pct=Decimal('2'))
+        datos.update(extra)
+        return Hipoteca.objects.create(**datos)
+
+    def pago(self, fecha, importe, categoria='Hipoteca / Alquiler'):
+        from extractos.models import MovimientoBancario
+        from finanzas import costes_activo
+        from finanzas.models import CategoriaGasto
+        mov = MovimientoBancario(
+            extracto=self.extracto, hogar=self.hogar, fecha=fecha, concepto=categoria,
+            importe=-Decimal(str(importe)),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria),
+        )
+        costes_activo.asignar(mov, self.piso)
+        mov.save()
+        return mov
+
+    def test_sin_hipoteca_declarada_todo_sigue_como_estaba(self):
+        from finanzas import hipoteca_propiedad
+        self.assertEqual(self.piso.deuda_actual, Decimal('999999'))
+        self.assertIsNone(hipoteca_propiedad.coste_mensual(self.piso, {}))
+        self.assertIsNone(hipoteca_propiedad.conciliacion(self.piso))
+
+    def test_la_deuda_sale_del_cuadro_y_se_sincroniza(self):
+        from finanzas import hipoteca_propiedad
+        from finanzas.models import HistorialPropiedad
+        h = self.hipoteca()
+        hoy = datetime.date.today()
+        HistorialPropiedad.objects.create(propiedad=self.piso, año=hoy.year, mes=hoy.month,
+                                          valor_mercado=Decimal('430000'), deuda_hipotecaria=Decimal('1'))
+        hipoteca_propiedad.sincronizar(self.piso)
+        self.piso.refresh_from_db()
+        self.assertEqual(self.piso.deuda_hipotecaria, h.saldo_a(hoy))
+        self.assertEqual(self.piso.deuda_actual, h.saldo_a(hoy))
+        self.assertEqual(self.piso.patrimonio_neto, Decimal('430000') - h.saldo_a(hoy))
+        self.assertEqual(HistorialPropiedad.objects.get(propiedad=self.piso).deuda_hipotecaria, h.saldo_a(hoy))
+
+    def test_capital_liberable_de_la_vivienda_habitual(self):
+        self.hipoteca()
+        v = self.piso.calcular_neto_venta()
+        deuda = float(self.piso.deuda_actual)
+        # 3 % de gastos de venta por defecto; la plusvalía no se resta (exenta si reinviertes).
+        self.assertAlmostEqual(v['liberable'], 430000 - deuda - 12900, places=2)
+        self.assertTrue(v['plusvalia_exenta_si_reinviertes'])
+        self.assertLess(v['neto'], v['liberable'])
+
+    def test_el_coste_separa_intereses_de_capital(self):
+        from finanzas import costes_activo, hipoteca_propiedad
+        h = self.hipoteca()
+        for mes in range(1, 13):
+            self.pago(datetime.date(2025, mes, 15), '1195.35')
+        self.pago(datetime.date(2025, 5, 3), '600', 'IBI')
+        costes = costes_activo.costes(self.piso, 2025)
+        self.assertEqual(costes['ritmo_mensual'], Decimal('1245.35'))
+        c = hipoteca_propiedad.coste_mensual(self.piso, costes)
+        anio = h.del_anio(2025)
+        self.assertEqual(c['gastos'], Decimal('50.00'))
+        self.assertAlmostEqual(float(c['intereses']), anio['intereses'] / 12, delta=0.01)
+        self.assertAlmostEqual(float(c['capital']), anio['capital'] / 12, delta=0.01)
+        self.assertAlmostEqual(float(c['intereses'] + c['capital']), 1195.35, delta=0.02)
+        self.assertEqual(c['coste_real'], c['gastos'] + c['intereses'])
+        self.assertGreater(c['capital'], c['intereses'] / 2)
+
+    def test_una_hipoteca_que_empieza_a_mitad_de_anio_no_cuesta_menos_al_mes(self):
+        from finanzas import costes_activo, hipoteca_propiedad
+        self.hipoteca(saldo_conocido=Decimal('113341'), saldo_conocido_fecha=datetime.date(2025, 6, 1),
+                      cuota_conocida=Decimal('472.93'), tipo_inicial_pct=Decimal('1.5'))
+        c = hipoteca_propiedad.coste_mensual(self.piso, costes_activo.costes(self.piso, 2025))
+        self.assertAlmostEqual(float(c['intereses'] + c['capital']), 472.93, delta=0.02)
+
+    def test_conciliacion_con_los_pagos_del_banco(self):
+        from finanzas import hipoteca_propiedad
+        self.hipoteca()
+        for mes in range(1, 13):
+            self.pago(datetime.date(2025, mes, 15), '1300' if mes == 7 else '1195.35')
+        r = hipoteca_propiedad.conciliacion(self.piso, hoy=datetime.date(2026, 1, 10))
+        self.assertEqual(r['pagos'], 12)
+        self.assertEqual([(a['mes'], a['diferencia']) for a in r['avisos']], [(7, 104.65)])
+
+    def test_alta_ficha_revision_y_amortizacion_desde_las_pantallas(self):
+        from finanzas.models import Hipoteca
+        r = self.client.post(reverse('finanzas:nueva_hipoteca', args=[self.piso.pk]), {
+            'nombre': 'Hipoteca', 'entidad': 'Banco', 'capital_inicial': '323400',
+            'fecha_firma': '2024-01-15', 'plazo_meses': '360', 'modalidad': 'variable',
+            'tipo_inicial_pct': '2', 'meses_tramo_fijo': '12', 'indice': 'euribor_12m',
+            'diferencial_pct': '0.8', 'revision_meses': '12', 'activa': 'on',
+            'bonificaciones_texto': 'Nómina; 0,30; 0',
+        })
+        h = Hipoteca.objects.get(propiedad=self.piso)
+        self.assertRedirects(r, reverse('finanzas:detalle_hipoteca', args=[h.pk]))
+        self.assertEqual(h.bonificaciones, [{'concepto': 'Nómina', 'rebaja_pct': 0.3, 'coste_anual': 0.0}])
+        self.piso.refresh_from_db()
+        self.assertLess(self.piso.deuda_hipotecaria, Decimal('323400'))
+
+        self.client.post(reverse('finanzas:nueva_revision_hipoteca', args=[h.pk]),
+                         {'fecha_desde': '2025-01-15', 'tipo_pct': '3.1'})
+        self.client.post(reverse('finanzas:nueva_amortizacion_hipoteca', args=[h.pk]),
+                         {'fecha': '2025-06-01', 'importe': '10000', 'modo': 'plazo'})
+        h = Hipoteca.objects.get(pk=h.pk)
+        self.assertEqual(h.revisiones.count(), 1)
+        self.assertEqual(sum(f['extra'] for f in h.cuadro()), 10000)
+
+        r = self.client.get(reverse('finanzas:detalle_hipoteca', args=[h.pk]) + '?indice=2.4')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'prestamo-data')
+        self.assertContains(r, 'Cuadro de amortización')
+        r = self.client.get(reverse('finanzas:listar_propiedades'))
+        self.assertContains(r, 'Coste real')
+        self.assertContains(r, 'Cuadro y pronto pago')
+
+        self.client.post(reverse('finanzas:eliminar_amortizacion_hipoteca', args=[h.amortizaciones.get().pk]))
+        self.client.post(reverse('finanzas:eliminar_revision_hipoteca', args=[h.revisiones.get().pk]))
+        self.client.post(reverse('finanzas:eliminar_hipoteca', args=[h.pk]))
+        self.assertFalse(Hipoteca.objects.exists())
+
+    def test_formulario_valida_las_condiciones(self):
+        r = self.client.post(reverse('finanzas:nueva_hipoteca', args=[self.piso.pk]), {
+            'nombre': 'Hipoteca', 'capital_inicial': '100000', 'fecha_firma': '2024-01-15',
+            'plazo_meses': '300', 'modalidad': 'mixto', 'tipo_inicial_pct': '2', 'activa': 'on',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'diferencial')
+
+    def test_sin_declarar_se_avisa_de_la_cuota_entera(self):
+        self.pago(datetime.date.today().replace(day=1), '700')
+        r = self.client.get(reverse('finanzas:listar_propiedades'))
+        self.assertContains(r, 'incluye la cuota entera')
+
+    def test_no_se_toca_la_hipoteca_de_otro_hogar(self):
+        from core.models import Hogar
+        from finanzas.models import Hipoteca, Propiedad
+        otra = Propiedad.objects.create(hogar=Hogar.objects.create(nombre='Otro'), nombre='Suya',
+                                        fecha_compra=datetime.date(2020, 1, 1),
+                                        precio_compra=Decimal('1'), valor_actual=Decimal('1'))
+        ajena = Hipoteca.objects.create(propiedad=otra, capital_inicial=Decimal('1000'),
+                                        fecha_firma=datetime.date(2020, 1, 1), plazo_meses=12,
+                                        tipo_inicial_pct=Decimal('1'))
+        self.assertEqual(self.client.get(reverse('finanzas:detalle_hipoteca', args=[ajena.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('finanzas:eliminar_hipoteca', args=[ajena.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('finanzas:nueva_hipoteca', args=[otra.pk])).status_code, 404)
+        self.assertTrue(Hipoteca.objects.filter(pk=ajena.pk).exists())
+
+    def test_evolucion_lee_la_deuda_del_cuadro(self):
+        from finanzas.models import HistorialPropiedad
+        from finanzas.views_evolucion import _construir_tabla_propiedades
+        h = self.hipoteca()
+        HistorialPropiedad.objects.create(propiedad=self.piso, año=2025, mes=3,
+                                          valor_mercado=Decimal('425000'), deuda_hipotecaria=Decimal('1'))
+        _, filas = _construir_tabla_propiedades(self.hogar, 2025)
+        marzo = next(f for f in filas if f['mes'] == 3)
+        self.assertEqual(marzo['celdas'][0]['deuda'], h.saldo_a(datetime.date(2025, 3, 31)))

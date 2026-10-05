@@ -87,7 +87,13 @@
                 </div>
                 <div class="fg">
                     <label>Deuda hipotecaria pendiente (€)</label>
+                    {% if propiedad.tiene_hipoteca_declarada %}
+                    <input type="number" name="deuda_hipotecaria" value="{{ propiedad.deuda_actual|unlocalize }}" readonly>
+                    <small>Sale del cuadro de su hipoteca. Se cambia desde la hipoteca.</small>
+                    {% else %}
                     <input type="number" name="deuda_hipotecaria" value="{{ propiedad.deuda_hipotecaria|unlocalize|default:'0' }}" step="1" min="0" placeholder="Capital pendiente">
+                    {% if propiedad %}<small>A mano. <a href="{% url 'finanzas:nueva_hipoteca' propiedad.pk %}">Declara la hipoteca</a> y saldrá de su cuadro.</small>{% endif %}
+                    {% endif %}
                 </div>
             </div>
             <div class="fg">
@@ -99,8 +105,13 @@
             <div class="section-title">Estimación de venta</div>
             <div class="fg">
                 <label>Gastos estimados de venta (%)</label>
-                <input type="number" name="gastos_venta_pct" value="{{ propiedad.gastos_venta_pct|unlocalize|default:'6' }}" step="0.5" min="0" max="20">
-                <small>Agencia (~3%), notaría + gestoría (~1%), cancelación hipoteca (~0.5%)… típico 5–7%</small>
+                <input type="number" name="gastos_venta_pct" value="{{ propiedad.gastos_venta_pct|unlocalize|default:'3' }}" step="0.5" min="0" max="20">
+                <small>Agencia, notaría, gestoría, cancelación de la hipoteca… 3 % es una referencia sin agencia cara.</small>
+            </div>
+            <div class="fg">
+                <label>Rentabilidad alternativa del dinero (%)</label>
+                <input type="text" inputmode="decimal" name="tipo_referencia_pct" value="{% if propiedad.tipo_referencia_pct is not None %}{{ propiedad.tipo_referencia_pct|unlocalize }}{% endif %}" placeholder="3">
+                <small>Lo que rendiría el dinero fuera del piso. Contra él se compara amortizar la hipoteca o mantener la propiedad. Vacío: 3 %.</small>
             </div>
             <div class="fg">
                 <div class="checkbox-row">

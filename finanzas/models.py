@@ -1897,8 +1897,21 @@ class Propiedad(models.Model):
         return f'propiedad:{self.pk}'
 
     @property
+    def tiene_hipoteca_declarada(self):
+        from . import hipoteca_propiedad
+        return bool(hipoteca_propiedad.activas(self))
+
+    @property
+    def deuda_actual(self):
+        """Lo que se debe hoy: del cuadro de sus hipotecas si están
+        declaradas; si no, el número puesto a mano."""
+        from . import hipoteca_propiedad
+        deuda = hipoteca_propiedad.deuda(self)
+        return self.deuda_hipotecaria if deuda is None else deuda
+
+    @property
     def patrimonio_neto(self):
-        return self.valor_actual - self.deuda_hipotecaria
+        return self.valor_actual - self.deuda_actual
 
     @property
     def coste_base(self):
@@ -1931,19 +1944,30 @@ class Propiedad(models.Model):
         return tax.quantize(Decimal('0.01'))
 
     def calcular_neto_venta(self):
-        """Capital neto que quedaría libre hoy si se vendiera al valor actual."""
+        """Capital que quedaría libre hoy si se vendiera al valor actual.
+
+        `neto` descuenta deuda, gastos de venta y la plusvalía del IRPF.
+        `liberable` es lo que de verdad quedaría para usar: en la vivienda
+        habitual la plusvalía puede quedar exenta si se reinvierte en otra
+        (art. 38 LIRPF), así que ahí se dice aparte y no se resta."""
+        deuda = self.deuda_actual
         gastos = (self.valor_actual * self.gastos_venta_pct / Decimal('100')).quantize(Decimal('0.01'))
         plusvalia = self.calcular_plusvalia()
-        neto = self.valor_actual - self.deuda_hipotecaria - gastos - plusvalia
+        neto = self.valor_actual - deuda - gastos - plusvalia
+        liberable = self.valor_actual - deuda - gastos - (Decimal('0') if self.es_residencia_habitual else plusvalia)
         return {
             'id': self.pk,
             'nombre': self.nombre,
             'valor_actual': round(float(self.valor_actual), 2),
-            'deuda': round(float(self.deuda_hipotecaria), 2),
+            'deuda': round(float(deuda), 2),
+            'deuda_del_cuadro': self.tiene_hipoteca_declarada,
             'ganancia_bruta': round(float(self.ganancia_bruta), 2),
             'plusvalia': round(float(plusvalia), 2),
+            'plusvalia_exenta_si_reinviertes': self.es_residencia_habitual and plusvalia > 0,
             'gastos_venta': round(float(gastos), 2),
+            'gastos_venta_pct': float(self.gastos_venta_pct),
             'neto': round(float(neto), 2),
+            'liberable': round(float(liberable), 2),
         }
 
 

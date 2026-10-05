@@ -89,7 +89,7 @@ def construir_contexto_financiero(hogar):
     for propiedad in propiedades[:MAX_PROPIEDADES_DETALLADAS]:
         partes.append(
             f"- Propiedad '{propiedad.nombre}': valor actual {propiedad.valor_actual}, "
-            f"deuda hipotecaria {propiedad.deuda_hipotecaria}, "
+            f"deuda hipotecaria {propiedad.deuda_actual}, "
             f"patrimonio neto {propiedad.patrimonio_neto}."
         )
     if len(propiedades) > MAX_PROPIEDADES_DETALLADAS:
