@@ -5190,3 +5190,442 @@ class RentabilidadPropiedadTests(TestCase):
         })
         self.piso.refresh_from_db()
         self.assertEqual(self.piso.hipoteca_inicial, Decimal('80000.00'))
+
+
+# ─── Motor de amortización ───────────────────────────────────────────────────
+
+def _casos_amortizacion():
+    import json
+    from pathlib import Path
+    return json.loads((Path(__file__).resolve().parent / 'amortizacion_casos.json').read_text())
+
+
+class AmortizacionMotorTests(SimpleTestCase):
+    """El motor único de préstamos (`amortizacion.py`)."""
+
+    FIJO = {'capital': 323400, 'inicio': '2024-01-15', 'plazo_meses': 360,
+            'modalidad': 'fijo', 'tipo_inicial': 2}
+
+    def test_323400_al_2_por_ciento_a_30_anios(self):
+        from . import amortizacion as A
+        filas = A.cuadro(self.FIJO)
+        t = A.totales(filas)
+        self.assertEqual(t['cuotas'], 360)
+        self.assertEqual(t['primera_cuota'], 1195.35)
+        self.assertAlmostEqual(t['intereses'], 106926, delta=1)
+        self.assertAlmostEqual(t['capital'], 323400, places=2)
+        self.assertEqual(filas[-1]['pendiente'], 0)
+
+    def test_saldo_113341_al_1_5_con_cuota_anual_conocida(self):
+        """Desde un punto conocido (sin la historia del préstamo): el primer
+        año, ~1.670 € de intereses y ~4.005 € de capital."""
+        from . import amortizacion as A
+        p = {'capital': 200000, 'inicio': '2010-01-01', 'plazo_meses': 360, 'modalidad': 'fijo',
+             'tipo_inicial': 1.5, 'ancla': {'fecha': '2026-01-01', 'saldo': 113341, 'cuota': 5675.12 / 12}}
+        anio = A.siguientes(A.cuadro(p), '2026-01-01', 12)
+        self.assertAlmostEqual(anio['intereses'], 1670, delta=5)
+        self.assertAlmostEqual(anio['capital'], 4005, delta=5)
+        self.assertAlmostEqual(anio['intereses'] + anio['capital'], 5675.12, delta=0.1)
+
+    def test_los_casos_compartidos_con_el_js(self):
+        """Lo que da hoy el motor es lo que dice el fichero de casos: si
+        cambia, cambia también para el JS (que pasa el mismo fichero)."""
+        from . import amortizacion as A
+        casos = _casos_amortizacion()
+        for c in casos['cuadros']:
+            with self.subTest(c['nombre']):
+                filas = A.cuadro(c['prestamo'])
+                t = A.totales(filas)
+                e = c['esperado']
+                for k in ('cuotas', 'primera_cuota', 'intereses', 'pagado', 'extra', 'comision'):
+                    self.assertAlmostEqual(t[k], e[k], places=2, msg=k)
+                self.assertEqual(t['fin'].isoformat(), e['fin'])
+                self.assertEqual(filas[-1]['cuota'], e['ultima_cuota'])
+                for a, b in zip(A.resumen_anual(filas), e['anual']):
+                    for k in b:
+                        self.assertAlmostEqual(a[k], b[k], places=2, msg=f"{b['anio']} {k}")
+                if 'siguientes' in e:
+                    s = A.siguientes(filas, e['siguientes']['desde'])
+                    self.assertAlmostEqual(s['intereses'], e['siguientes']['intereses'], places=2)
+                    self.assertAlmostEqual(s['capital'], e['siguientes']['capital'], places=2)
+                    self.assertAlmostEqual(A.saldo_a(c['prestamo'], filas, e['saldo']['dia']),
+                                           e['saldo']['valor'], places=2)
+        for c in casos['pronto_pago']:
+            with self.subTest(c['nombre']):
+                r = A.simular_pronto_pago(c['prestamo'], c['puntuales'], c['periodica'],
+                                          c['tipo_referencia'], c['hoy'])
+                for modo, esperado in c['esperado'].items():
+                    for k, v in esperado.items():
+                        valor = r[modo][k]
+                        valor = valor.isoformat() if hasattr(valor, 'isoformat') else valor
+                        self.assertEqual(valor, v, msg=f'{modo}.{k}')
+        for c in casos['comisiones']:
+            self.assertEqual(A.comision(c['prestamo'], c['fecha'], c['importe']), c['esperado'])
+
+    def test_el_capital_devuelto_es_lo_prestado(self):
+        from . import amortizacion as A
+        for c in _casos_amortizacion()['cuadros']:
+            if c['prestamo'].get('ancla'):
+                continue
+            with self.subTest(c['nombre']):
+                t = A.totales(A.cuadro(c['prestamo']))
+                self.assertAlmostEqual(t['capital'] + t['extra'], c['prestamo']['capital'], places=2)
+
+    def test_reducir_plazo_mantiene_cuota_y_reducir_cuota_mantiene_fin(self):
+        from . import amortizacion as A
+        r = A.simular_pronto_pago(self.FIJO, [{'fecha': '2026-03-01', 'importe': 20000}], hoy='2026-01-01')
+        self.assertEqual(r['plazo']['cuota_despues'], 1195.35)
+        self.assertLess(r['plazo']['cuotas'], 360)
+        self.assertEqual(r['cuota']['fin'], r['base']['fin'])
+        self.assertLess(r['cuota']['cuota_despues'], 1195.35)
+        # Reducir plazo ahorra más intereses que reducir cuota.
+        self.assertGreater(r['plazo']['intereses_ahorrados'], r['cuota']['intereses_ahorrados'])
+        # Dentro de los 10 primeros años de un fijo: 2 % de comisión.
+        self.assertEqual(r['plazo']['comision_pagada'], 400)
+        self.assertEqual(r['plazo']['ahorro_neto'], r['plazo']['intereses_ahorrados'] - 400)
+
+    def test_sin_comision_amortizar_rinde_el_tipo_del_prestamo(self):
+        from . import amortizacion as A
+        p = dict(self.FIJO, comision={'pct_inicial': 0, 'meses_iniciales': 0, 'pct_despues': 0})
+        r = A.simular_pronto_pago(p, [{'fecha': '2027-01-01', 'importe': 15000}], tipo_referencia=3.5,
+                                  hoy='2026-01-01')
+        for modo in ('cuota', 'plazo'):
+            self.assertAlmostEqual(r[modo]['rentabilidad'], 2.0, places=2)
+            self.assertAlmostEqual(r[modo]['frente_a_invertir'], -1.5, places=2)
+
+    def test_comision_por_defecto_segun_la_ley_5_2019(self):
+        from . import amortizacion as A
+        fijo = self.FIJO
+        self.assertEqual(A.comision(fijo, '2033-12-31', 10000), 200)   # < 10 años: 2 %
+        self.assertEqual(A.comision(fijo, '2034-01-15', 10000), 150)   # después: 1,5 %
+        variable = {'capital': 1, 'inicio': '2024-01-15', 'plazo_meses': 1, 'modalidad': 'variable'}
+        self.assertEqual(A.comision(variable, '2026-12-31', 10000), 25)  # < 3 años: 0,25 %
+        self.assertEqual(A.comision(variable, '2027-01-15', 10000), 0)
+        cinco = dict(variable, comision={'pct_inicial': 0.15, 'meses_iniciales': 60})
+        self.assertEqual(A.comision(cinco, '2028-06-01', 10000), 15)
+        mixto = dict(variable, modalidad='mixto', meses_tramo_fijo=60)
+        self.assertEqual(A.comision(mixto, '2028-06-01', 10000), 200)  # en el tramo fijo, como un fijo
+        self.assertEqual(A.comision(mixto, '2029-06-01', 10000), 0)
+
+    def test_una_revision_recalcula_la_cuota(self):
+        from . import amortizacion as A
+        p = {'capital': 100000, 'inicio': '2024-01-01', 'plazo_meses': 240, 'modalidad': 'variable',
+             'tipo_inicial': 2, 'diferencial': 1, 'revision_meses': 12,
+             'revisiones': [{'fecha': '2025-01-01', 'tipo': 4}]}
+        filas = A.cuadro(p)
+        self.assertEqual(filas[11]['tipo'], 2)
+        self.assertEqual(filas[12]['tipo'], 4)
+        esperada = A.r2(A.cuota(filas[11]['pendiente'], 4, 228))
+        self.assertEqual(filas[12]['cuota'], esperada)
+        # Sin supuesto del índice, el último tipo conocido se mantiene...
+        self.assertEqual(filas[-1]['tipo'], 4)
+        # ...y con él, pasada la revisión, índice + diferencial.
+        filas = A.cuadro(dict(p, indice_futuro=2.2))
+        self.assertEqual(filas[23]['tipo'], 4)
+        self.assertEqual(filas[24]['tipo'], 3.2)
+
+    def test_conciliar_avisa_de_lo_que_no_cuadra(self):
+        from . import amortizacion as A
+        filas = A.cuadro(self.FIJO)
+        pagos = [(f['fecha'], f['cuota']) for f in filas[:6]]
+        self.assertEqual(A.conciliar(filas, pagos), [])
+        pagos[3] = (pagos[3][0], 1250.0)
+        del pagos[4]
+        avisos = A.conciliar(filas, pagos)
+        self.assertEqual([(a['mes'], a['diferencia']) for a in avisos], [(5, 54.65), (6, -1195.35)])
+
+
+class AmortizacionJSTests(SimpleTestCase):
+    """`static/js/amortizacion.js` da lo mismo que el motor Python."""
+
+    def test_el_js_pasa_los_mismos_casos(self):
+        import json
+        import shutil
+        import subprocess
+        from pathlib import Path
+        from unittest import SkipTest
+        if not shutil.which('node'):
+            raise SkipTest('node no está instalado')
+        raiz = Path(__file__).resolve().parent.parent
+        motor = raiz / 'static' / 'js' / 'amortizacion.js'
+        casos = Path(__file__).resolve().parent / 'amortizacion_casos.json'
+        script = f"""
+require({json.dumps(str(motor))});
+const A = globalThis.Amortizacion;
+const C = require({json.dumps(str(casos))});
+const fallos = [];
+function cmp(nombre, a, b, ruta) {{
+  if (typeof b === 'number') {{
+    if (typeof a !== 'number' || Math.abs(a - b) > 0.005) fallos.push([nombre, ruta, a, b]);
+    return;
+  }}
+  if (b === null || typeof b !== 'object') {{ if (a !== b) fallos.push([nombre, ruta, a, b]); return; }}
+  for (const k of Object.keys(b)) cmp(nombre, a == null ? undefined : a[k], b[k], ruta + '.' + k);
+}}
+for (const c of C.cuadros) {{
+  const f = A.cuadro(c.prestamo), t = A.totales(f), e = c.esperado;
+  const r = {{cuotas: t.cuotas, primera_cuota: t.primera_cuota, intereses: t.intereses, pagado: t.pagado,
+    extra: t.extra, comision: t.comision, fin: t.fin, ultima_cuota: f[f.length - 1].cuota,
+    anual: A.resumenAnual(f).slice(0, 4), tipos: [...new Set(f.map(x => x.tipo))].sort((a, b) => a - b)}};
+  if (e.siguientes) {{
+    const s = A.siguientes(f, e.siguientes.desde);
+    r.siguientes = {{desde: e.siguientes.desde, intereses: s.intereses, capital: s.capital}};
+    r.saldo = {{dia: e.saldo.dia, valor: A.saldoA(c.prestamo, f, e.saldo.dia)}};
+  }}
+  cmp(c.nombre, r, e, '');
+}}
+for (const c of C.pronto_pago)
+  cmp(c.nombre, A.simularProntoPago(c.prestamo, c.puntuales, c.periodica, c.tipo_referencia, c.hoy), c.esperado, '');
+for (const c of C.comisiones)
+  cmp('comisión ' + c.fecha, A.comision(c.prestamo, c.fecha, c.importe), c.esperado, '');
+console.log(JSON.stringify(fallos));
+"""
+        salida = subprocess.run(['node', '-e', script], capture_output=True, text=True, timeout=30)
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        self.assertEqual(json.loads(salida.stdout), [])
+
+
+class HipotecaModeloTests(TestCase):
+    def setUp(self):
+        from core.models import Hogar
+        from .models import Propiedad
+        user = User.objects.create_user('h', password='x')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=user)
+        self.piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=datetime.date(2024, 1, 15),
+            precio_compra=Decimal('420000'), valor_actual=Decimal('430000'),
+        )
+
+    def crear(self, **extra):
+        from .models import Hipoteca
+        datos = dict(propiedad=self.piso, capital_inicial=Decimal('323400'),
+                     fecha_firma=datetime.date(2024, 1, 15), plazo_meses=360,
+                     modalidad='fijo', tipo_inicial_pct=Decimal('2'))
+        datos.update(extra)
+        return Hipoteca.objects.create(**datos)
+
+    def test_los_gastos_de_venta_por_defecto_son_el_3_por_ciento(self):
+        self.assertEqual(self.piso.gastos_venta_pct, Decimal('3.0'))
+
+    def test_el_cuadro_sale_de_las_condiciones(self):
+        h = self.crear()
+        self.assertEqual(h.cuadro()[0]['cuota'], 1195.35)
+        self.assertEqual(h.saldo_a(datetime.date(2024, 1, 1)), 0)   # antes de firmar
+        self.assertEqual(h.saldo_a(datetime.date(2024, 2, 1)), Decimal('323400.0'))
+        self.assertEqual(h.saldo_a(datetime.date(2024, 2, 15)), Decimal(str(h.cuadro()[0]['pendiente'])))
+        anio = h.del_anio(2025)
+        self.assertEqual(anio['cuotas'], 12)
+        self.assertAlmostEqual(anio['intereses'] + anio['capital'], 1195.35 * 12, places=2)
+        self.assertEqual(h.tipo_actual(), 2)
+
+    def test_revisiones_y_amortizaciones_entran_en_el_cuadro(self):
+        from .models import AmortizacionAnticipada, RevisionTipo
+        h = self.crear(modalidad='variable', diferencial_pct=Decimal('0.9'), revision_meses=12)
+        RevisionTipo.objects.create(hipoteca=h, fecha_desde=datetime.date(2025, 1, 15), tipo_pct=Decimal('3.2'))
+        AmortizacionAnticipada.objects.create(hipoteca=h, fecha=datetime.date(2025, 6, 20),
+                                              importe=Decimal('10000'), modo='plazo')
+        from .models import Hipoteca
+        h = Hipoteca.objects.get(pk=h.pk)
+        filas = h.cuadro()
+        self.assertEqual(filas[12]['tipo'], 3.2)
+        self.assertEqual(sum(f['extra'] for f in filas), 10000)
+        self.assertEqual(sum(f['comision'] for f in filas), 25)   # variable, < 3 años: 0,25 %
+        self.assertLess(len(filas), 360)
+
+    def test_punto_de_partida_conocido(self):
+        h = self.crear(capital_inicial=Decimal('200000'), fecha_firma=datetime.date(2010, 1, 1),
+                       tipo_inicial_pct=Decimal('1.5'), saldo_conocido=Decimal('113341'),
+                       saldo_conocido_fecha=datetime.date(2026, 1, 1), cuota_conocida=Decimal('472.93'))
+        self.assertEqual(h.saldo_a(datetime.date(2026, 1, 15)), Decimal('113341.0'))
+        self.assertAlmostEqual(h.del_anio(2026)['intereses'], 1535.58, places=2)
+
+    def test_validacion(self):
+        from django.core.exceptions import ValidationError
+        from .models import Hipoteca
+        h = Hipoteca(propiedad=self.piso, capital_inicial=Decimal('100000'),
+                     fecha_firma=datetime.date(2024, 1, 1), plazo_meses=300,
+                     modalidad='mixto', tipo_inicial_pct=Decimal('2'), saldo_conocido=Decimal('5'))
+        with self.assertRaises(ValidationError) as e:
+            h.full_clean()
+        self.assertEqual(set(e.exception.message_dict),
+                         {'diferencial_pct', 'meses_tramo_fijo', 'saldo_conocido'})
+
+
+class HipotecaPropiedadTests(TestCase):
+    """La hipoteca declarada manda en la deuda, el coste y la conciliación."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from extractos.models import ExtractoBancario
+        from finanzas.models import Propiedad
+        from finanzas.views_gastos import _crear_categorias_predefinidas
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.user = User.objects.create_user('hipotecado', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso', fecha_compra=datetime.date(2024, 1, 15),
+            precio_compra=Decimal('420000'), valor_actual=Decimal('430000'),
+            deuda_hipotecaria=Decimal('999999'), es_residencia_habitual=True,
+        )
+
+    def hipoteca(self, **extra):
+        from finanzas.models import Hipoteca
+        datos = dict(propiedad=self.piso, capital_inicial=Decimal('323400'),
+                     fecha_firma=datetime.date(2024, 1, 15), plazo_meses=360,
+                     modalidad='fijo', tipo_inicial_pct=Decimal('2'))
+        datos.update(extra)
+        return Hipoteca.objects.create(**datos)
+
+    def pago(self, fecha, importe, categoria='Hipoteca / Alquiler'):
+        from extractos.models import MovimientoBancario
+        from finanzas import costes_activo
+        from finanzas.models import CategoriaGasto
+        mov = MovimientoBancario(
+            extracto=self.extracto, hogar=self.hogar, fecha=fecha, concepto=categoria,
+            importe=-Decimal(str(importe)),
+            categoria=CategoriaGasto.objects.get(hogar=self.hogar, nombre=categoria),
+        )
+        costes_activo.asignar(mov, self.piso)
+        mov.save()
+        return mov
+
+    def test_sin_hipoteca_declarada_todo_sigue_como_estaba(self):
+        from finanzas import hipoteca_propiedad
+        self.assertEqual(self.piso.deuda_actual, Decimal('999999'))
+        self.assertIsNone(hipoteca_propiedad.coste_mensual(self.piso, {}))
+        self.assertIsNone(hipoteca_propiedad.conciliacion(self.piso))
+
+    def test_la_deuda_sale_del_cuadro_y_se_sincroniza(self):
+        from finanzas import hipoteca_propiedad
+        from finanzas.models import HistorialPropiedad
+        h = self.hipoteca()
+        hoy = datetime.date.today()
+        HistorialPropiedad.objects.create(propiedad=self.piso, año=hoy.year, mes=hoy.month,
+                                          valor_mercado=Decimal('430000'), deuda_hipotecaria=Decimal('1'))
+        hipoteca_propiedad.sincronizar(self.piso)
+        self.piso.refresh_from_db()
+        self.assertEqual(self.piso.deuda_hipotecaria, h.saldo_a(hoy))
+        self.assertEqual(self.piso.deuda_actual, h.saldo_a(hoy))
+        self.assertEqual(self.piso.patrimonio_neto, Decimal('430000') - h.saldo_a(hoy))
+        self.assertEqual(HistorialPropiedad.objects.get(propiedad=self.piso).deuda_hipotecaria, h.saldo_a(hoy))
+
+    def test_capital_liberable_de_la_vivienda_habitual(self):
+        self.hipoteca()
+        v = self.piso.calcular_neto_venta()
+        deuda = float(self.piso.deuda_actual)
+        # 3 % de gastos de venta por defecto; la plusvalía no se resta (exenta si reinviertes).
+        self.assertAlmostEqual(v['liberable'], 430000 - deuda - 12900, places=2)
+        self.assertTrue(v['plusvalia_exenta_si_reinviertes'])
+        self.assertLess(v['neto'], v['liberable'])
+
+    def test_el_coste_separa_intereses_de_capital(self):
+        from finanzas import costes_activo, hipoteca_propiedad
+        h = self.hipoteca()
+        for mes in range(1, 13):
+            self.pago(datetime.date(2025, mes, 15), '1195.35')
+        self.pago(datetime.date(2025, 5, 3), '600', 'IBI')
+        costes = costes_activo.costes(self.piso, 2025)
+        self.assertEqual(costes['ritmo_mensual'], Decimal('1245.35'))
+        c = hipoteca_propiedad.coste_mensual(self.piso, costes)
+        anio = h.del_anio(2025)
+        self.assertEqual(c['gastos'], Decimal('50.00'))
+        self.assertAlmostEqual(float(c['intereses']), anio['intereses'] / 12, delta=0.01)
+        self.assertAlmostEqual(float(c['capital']), anio['capital'] / 12, delta=0.01)
+        self.assertAlmostEqual(float(c['intereses'] + c['capital']), 1195.35, delta=0.02)
+        self.assertEqual(c['coste_real'], c['gastos'] + c['intereses'])
+        self.assertGreater(c['capital'], c['intereses'] / 2)
+
+    def test_una_hipoteca_que_empieza_a_mitad_de_anio_no_cuesta_menos_al_mes(self):
+        from finanzas import costes_activo, hipoteca_propiedad
+        self.hipoteca(saldo_conocido=Decimal('113341'), saldo_conocido_fecha=datetime.date(2025, 6, 1),
+                      cuota_conocida=Decimal('472.93'), tipo_inicial_pct=Decimal('1.5'))
+        c = hipoteca_propiedad.coste_mensual(self.piso, costes_activo.costes(self.piso, 2025))
+        self.assertAlmostEqual(float(c['intereses'] + c['capital']), 472.93, delta=0.02)
+
+    def test_conciliacion_con_los_pagos_del_banco(self):
+        from finanzas import hipoteca_propiedad
+        self.hipoteca()
+        for mes in range(1, 13):
+            self.pago(datetime.date(2025, mes, 15), '1300' if mes == 7 else '1195.35')
+        r = hipoteca_propiedad.conciliacion(self.piso, hoy=datetime.date(2026, 1, 10))
+        self.assertEqual(r['pagos'], 12)
+        self.assertEqual([(a['mes'], a['diferencia']) for a in r['avisos']], [(7, 104.65)])
+
+    def test_alta_ficha_revision_y_amortizacion_desde_las_pantallas(self):
+        from finanzas.models import Hipoteca
+        r = self.client.post(reverse('finanzas:nueva_hipoteca', args=[self.piso.pk]), {
+            'nombre': 'Hipoteca', 'entidad': 'Banco', 'capital_inicial': '323400',
+            'fecha_firma': '2024-01-15', 'plazo_meses': '360', 'modalidad': 'variable',
+            'tipo_inicial_pct': '2', 'meses_tramo_fijo': '12', 'indice': 'euribor_12m',
+            'diferencial_pct': '0.8', 'revision_meses': '12', 'activa': 'on',
+            'bonificaciones_texto': 'Nómina; 0,30; 0',
+        })
+        h = Hipoteca.objects.get(propiedad=self.piso)
+        self.assertRedirects(r, reverse('finanzas:detalle_hipoteca', args=[h.pk]))
+        self.assertEqual(h.bonificaciones, [{'concepto': 'Nómina', 'rebaja_pct': 0.3, 'coste_anual': 0.0}])
+        self.piso.refresh_from_db()
+        self.assertLess(self.piso.deuda_hipotecaria, Decimal('323400'))
+
+        self.client.post(reverse('finanzas:nueva_revision_hipoteca', args=[h.pk]),
+                         {'fecha_desde': '2025-01-15', 'tipo_pct': '3.1'})
+        self.client.post(reverse('finanzas:nueva_amortizacion_hipoteca', args=[h.pk]),
+                         {'fecha': '2025-06-01', 'importe': '10000', 'modo': 'plazo'})
+        h = Hipoteca.objects.get(pk=h.pk)
+        self.assertEqual(h.revisiones.count(), 1)
+        self.assertEqual(sum(f['extra'] for f in h.cuadro()), 10000)
+
+        r = self.client.get(reverse('finanzas:detalle_hipoteca', args=[h.pk]) + '?indice=2.4')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'prestamo-data')
+        self.assertContains(r, 'Cuadro de amortización')
+        r = self.client.get(reverse('finanzas:listar_propiedades'))
+        self.assertContains(r, 'Coste real')
+        self.assertContains(r, 'Cuadro y pronto pago')
+
+        self.client.post(reverse('finanzas:eliminar_amortizacion_hipoteca', args=[h.amortizaciones.get().pk]))
+        self.client.post(reverse('finanzas:eliminar_revision_hipoteca', args=[h.revisiones.get().pk]))
+        self.client.post(reverse('finanzas:eliminar_hipoteca', args=[h.pk]))
+        self.assertFalse(Hipoteca.objects.exists())
+
+    def test_formulario_valida_las_condiciones(self):
+        r = self.client.post(reverse('finanzas:nueva_hipoteca', args=[self.piso.pk]), {
+            'nombre': 'Hipoteca', 'capital_inicial': '100000', 'fecha_firma': '2024-01-15',
+            'plazo_meses': '300', 'modalidad': 'mixto', 'tipo_inicial_pct': '2', 'activa': 'on',
+        })
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'diferencial')
+
+    def test_sin_declarar_se_avisa_de_la_cuota_entera(self):
+        self.pago(datetime.date.today().replace(day=1), '700')
+        r = self.client.get(reverse('finanzas:listar_propiedades'))
+        self.assertContains(r, 'incluye la cuota entera')
+
+    def test_no_se_toca_la_hipoteca_de_otro_hogar(self):
+        from core.models import Hogar
+        from finanzas.models import Hipoteca, Propiedad
+        otra = Propiedad.objects.create(hogar=Hogar.objects.create(nombre='Otro'), nombre='Suya',
+                                        fecha_compra=datetime.date(2020, 1, 1),
+                                        precio_compra=Decimal('1'), valor_actual=Decimal('1'))
+        ajena = Hipoteca.objects.create(propiedad=otra, capital_inicial=Decimal('1000'),
+                                        fecha_firma=datetime.date(2020, 1, 1), plazo_meses=12,
+                                        tipo_inicial_pct=Decimal('1'))
+        self.assertEqual(self.client.get(reverse('finanzas:detalle_hipoteca', args=[ajena.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('finanzas:eliminar_hipoteca', args=[ajena.pk])).status_code, 404)
+        self.assertEqual(self.client.get(reverse('finanzas:nueva_hipoteca', args=[otra.pk])).status_code, 404)
+        self.assertTrue(Hipoteca.objects.filter(pk=ajena.pk).exists())
+
+    def test_evolucion_lee_la_deuda_del_cuadro(self):
+        from finanzas.models import HistorialPropiedad
+        from finanzas.views_evolucion import _construir_tabla_propiedades
+        h = self.hipoteca()
+        HistorialPropiedad.objects.create(propiedad=self.piso, año=2025, mes=3,
+                                          valor_mercado=Decimal('425000'), deuda_hipotecaria=Decimal('1'))
+        _, filas = _construir_tabla_propiedades(self.hogar, 2025)
+        marzo = next(f for f in filas if f['mes'] == 3)
+        self.assertEqual(marzo['celdas'][0]['deuda'], h.saldo_a(datetime.date(2025, 3, 31)))

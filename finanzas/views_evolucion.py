@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
 
 from .models import FondoFamiliar, SaldoRealFondo, IngresoRealMes, Propiedad, HistorialPropiedad
+from . import hipoteca_propiedad
 from .distribucion import calcular_flujos
 
 MESES_NOMBRES = [
@@ -595,7 +596,12 @@ def _construir_tabla_propiedades(hogar, año):
         tiene_datos = False
         for p in propiedades:
             h = hist_map.get((p.id, mes))
-            neto = (h.valor_mercado - h.deuda_hipotecaria) if h else None
+            deuda = h.deuda_hipotecaria if h else None
+            if h:
+                # Con hipoteca declarada, la deuda del mes es la del cuadro.
+                del_cuadro = hipoteca_propiedad.deuda_fin_de_mes(p, año, mes)
+                deuda = del_cuadro if del_cuadro is not None else deuda
+            neto = (h.valor_mercado - deuda) if h else None
             if neto is not None:
                 total_neto += neto
                 tiene_datos = True
@@ -603,7 +609,7 @@ def _construir_tabla_propiedades(hogar, año):
                 'propiedad': p,
                 'historial': h,
                 'valor': h.valor_mercado if h else None,
-                'deuda': h.deuda_hipotecaria if h else None,
+                'deuda': deuda,
                 'neto': neto,
             })
         filas.append({

@@ -105,3 +105,23 @@ class CierreMensualAdmin(admin.ModelAdmin):
     para ese mes: solo para corregir un cierre mal tomado."""
     list_display = ('hogar', 'año', 'mes', 'ingreso', 'gastos', 'inversion', 'congelado_en')
     list_filter = ('hogar', 'año', 'mes')
+
+
+from .models import AmortizacionAnticipada, Hipoteca, RevisionTipo  # noqa: E402
+
+
+class RevisionTipoInline(admin.TabularInline):
+    model = RevisionTipo
+    extra = 0
+
+
+class AmortizacionAnticipadaInline(admin.TabularInline):
+    model = AmortizacionAnticipada
+    extra = 0
+
+
+@admin.register(Hipoteca)
+class HipotecaAdmin(admin.ModelAdmin):
+    list_display = ('nombre', 'propiedad', 'entidad', 'modalidad', 'capital_inicial', 'fecha_firma', 'activa')
+    list_filter = ('modalidad', 'activa')
+    inlines = [RevisionTipoInline, AmortizacionAnticipadaInline]

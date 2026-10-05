@@ -1,0 +1,888 @@
+{
+ "_nota": "Generado con el motor Python (finanzas/amortizacion.py). Los tests de Python y de JS comprueban que ambos dan esto. Regenerar solo si cambia la lógica a propósito.",
+ "cuadros": [
+  {
+   "nombre": "323.400 € al 2 % fijo, 30 años",
+   "prestamo": {
+    "capital": 323400,
+    "inicio": "2024-01-15",
+    "plazo_meses": 360,
+    "modalidad": "fijo",
+    "tipo_inicial": 2
+   },
+   "esperado": {
+    "cuotas": 360,
+    "primera_cuota": 1195.35,
+    "intereses": 106925.92,
+    "pagado": 430325.92,
+    "extra": 0.0,
+    "comision": 0.0,
+    "fin": "2054-01-15",
+    "ultima_cuota": 1195.27,
+    "anual": [
+     {
+      "anio": 2024,
+      "cuotas": 11,
+      "intereses": 5868.53,
+      "capital": 7280.32,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 316119.68
+     },
+     {
+      "anio": 2025,
+      "cuotas": 12,
+      "intereses": 6248.46,
+      "capital": 8095.74,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 308023.94
+     },
+     {
+      "anio": 2026,
+      "cuotas": 12,
+      "intereses": 6085.07,
+      "capital": 8259.13,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 299764.81
+     },
+     {
+      "anio": 2027,
+      "cuotas": 12,
+      "intereses": 5918.34,
+      "capital": 8425.86,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 291338.95
+     }
+    ],
+    "tipos": [
+     2.0
+    ],
+    "siguientes": {
+     "desde": "2026-10-05",
+     "intereses": 5960.34,
+     "capital": 8383.86
+    },
+    "saldo": {
+     "dia": "2026-10-05",
+     "valor": 301845.09
+    }
+   }
+  },
+  {
+   "nombre": "Ancla: 113.341 € al 1,5 % con cuota 5.675,12 €/año",
+   "prestamo": {
+    "capital": 200000,
+    "inicio": "2010-01-01",
+    "plazo_meses": 360,
+    "modalidad": "fijo",
+    "tipo_inicial": 1.5,
+    "ancla": {
+     "fecha": "2026-01-01",
+     "saldo": 113341,
+     "cuota": 472.93
+    }
+   },
+   "esperado": {
+    "cuotas": 286,
+    "primera_cuota": 472.93,
+    "intereses": 21457.4,
+    "pagado": 134798.4,
+    "extra": 0.0,
+    "comision": 0.0,
+    "fin": "2049-11-01",
+    "ultima_cuota": 13.35,
+    "anual": [
+     {
+      "anio": 2026,
+      "cuotas": 11,
+      "intereses": 1535.58,
+      "capital": 3666.65,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 109674.35
+     },
+     {
+      "anio": 2027,
+      "cuotas": 12,
+      "intereses": 1617.29,
+      "capital": 4057.87,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 105616.48
+     },
+     {
+      "anio": 2028,
+      "cuotas": 12,
+      "intereses": 1556.01,
+      "capital": 4119.15,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 101497.33
+     },
+     {
+      "anio": 2029,
+      "cuotas": 12,
+      "intereses": 1493.79,
+      "capital": 4181.37,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 97315.96
+     }
+    ],
+    "tipos": [
+     1.5
+    ],
+    "siguientes": {
+     "desde": "2026-01-01",
+     "intereses": 1672.67,
+     "capital": 4002.49
+    },
+    "saldo": {
+     "dia": "2026-01-01",
+     "valor": 113341.0
+    }
+   }
+  },
+  {
+   "nombre": "Fijo con amortizaciones hechas (cuota y plazo) y comisión real",
+   "prestamo": {
+    "capital": 323400,
+    "inicio": "2024-01-15",
+    "plazo_meses": 360,
+    "modalidad": "fijo",
+    "tipo_inicial": 2,
+    "amortizaciones": [
+     {
+      "fecha": "2025-06-20",
+      "importe": 15000,
+      "modo": "cuota",
+      "comision": null
+     },
+     {
+      "fecha": "2026-02-15",
+      "importe": 10000,
+      "modo": "plazo",
+      "comision": 50
+     }
+    ]
+   },
+   "esperado": {
+    "cuotas": 345,
+    "primera_cuota": 1195.35,
+    "intereses": 94955.55,
+    "pagado": 393355.55,
+    "extra": 25000.0,
+    "comision": 350.0,
+    "fin": "2052-10-15",
+    "ultima_cuota": 941.3,
+    "anual": [
+     {
+      "anio": 2024,
+      "cuotas": 11,
+      "intereses": 5868.53,
+      "capital": 7280.32,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 316119.68
+     },
+     {
+      "anio": 2025,
+      "cuotas": 12,
+      "intereses": 6099.27,
+      "capital": 7900.23,
+      "extra": 15000.0,
+      "comision": 300.0,
+      "pendiente": 293219.45
+     },
+     {
+      "anio": 2026,
+      "cuotas": 12,
+      "intereses": 5624.66,
+      "capital": 8030.14,
+      "extra": 10000.0,
+      "comision": 50.0,
+      "pendiente": 275189.31
+     },
+     {
+      "anio": 2027,
+      "cuotas": 12,
+      "intereses": 5428.65,
+      "capital": 8226.15,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 266963.16
+     }
+    ],
+    "tipos": [
+     2.0
+    ],
+    "siguientes": {
+     "desde": "2026-03-01",
+     "intereses": 5564.51,
+     "capital": 8090.29
+    },
+    "saldo": {
+     "dia": "2026-03-01",
+     "valor": 281919.97
+    }
+   }
+  },
+  {
+   "nombre": "Mixto 5 años al 1,2 %, luego Euríbor + 0,8 con revisión conocida",
+   "prestamo": {
+    "capital": 200000,
+    "inicio": "2020-03-10",
+    "plazo_meses": 300,
+    "modalidad": "mixto",
+    "tipo_inicial": 1.2,
+    "meses_tramo_fijo": 60,
+    "diferencial": 0.8,
+    "revision_meses": 12,
+    "indice_futuro": 2.5,
+    "revisiones": [
+     {
+      "fecha": "2025-03-10",
+      "tipo": 3.4
+     }
+    ]
+   },
+   "esperado": {
+    "cuotas": 300,
+    "primera_cuota": 771.99,
+    "intereses": 71638.05,
+    "pagado": 271638.05,
+    "extra": 0.0,
+    "comision": 0.0,
+    "fin": "2045-03-10",
+    "ultima_cuota": 937.52,
+    "anual": [
+     {
+      "anio": 2020,
+      "cuotas": 9,
+      "intereses": 1779.36,
+      "capital": 5168.55,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 194831.45
+     },
+     {
+      "anio": 2021,
+      "cuotas": 12,
+      "intereses": 2299.76,
+      "capital": 6964.12,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 187867.33
+     },
+     {
+      "anio": 2022,
+      "cuotas": 12,
+      "intereses": 2215.73,
+      "capital": 7048.15,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 180819.18
+     },
+     {
+      "anio": 2023,
+      "cuotas": 12,
+      "intereses": 2130.68,
+      "capital": 7133.2,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 173685.98
+     }
+    ],
+    "tipos": [
+     1.2,
+     3.3,
+     3.4
+    ],
+    "siguientes": {
+     "desde": "2026-01-01",
+     "intereses": 5238.46,
+     "capital": 6046.79
+    },
+    "saldo": {
+     "dia": "2026-01-01",
+     "valor": 160279.46
+    }
+   }
+  },
+  {
+   "nombre": "Variable semestral, cobro el día 31",
+   "prestamo": {
+    "capital": 150000,
+    "inicio": "2023-01-31",
+    "plazo_meses": 240,
+    "dia_cobro": 31,
+    "modalidad": "variable",
+    "tipo_inicial": 3.9,
+    "diferencial": 0.6,
+    "revision_meses": 6,
+    "revisiones": [
+     {
+      "fecha": "2023-07-31",
+      "tipo": 4.6
+     },
+     {
+      "fecha": "2024-01-31",
+      "tipo": 4.2
+     },
+     {
+      "fecha": "2024-07-31",
+      "tipo": 3.5
+     }
+    ],
+    "indice_futuro": 2.2
+   },
+   "esperado": {
+    "cuotas": 240,
+    "primera_cuota": 816.96,
+    "intereses": 49201.27,
+    "pagado": 199201.27,
+    "extra": 0.0,
+    "comision": 0.0,
+    "fin": "2043-01-31",
+    "ultima_cuota": 822.48,
+    "anual": [
+     {
+      "anio": 2023,
+      "cuotas": 11,
+      "intereses": 4889.6,
+      "capital": 4781.31,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 145218.69
+     },
+     {
+      "anio": 2024,
+      "cuotas": 12,
+      "intereses": 5637.87,
+      "capital": 5212.49,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 140006.2
+     },
+     {
+      "anio": 2025,
+      "cuotas": 12,
+      "intereses": 3925.66,
+      "capital": 6001.1,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 134005.1
+     },
+     {
+      "anio": 2026,
+      "cuotas": 12,
+      "intereses": 3672.91,
+      "capital": 6205.37,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 127799.73
+     }
+    ],
+    "tipos": [
+     2.8000000000000003,
+     3.5,
+     4.2,
+     4.6
+    ],
+    "siguientes": {
+     "desde": "2024-03-15",
+     "intereses": 5308.27,
+     "capital": 5360.09
+    },
+    "saldo": {
+     "dia": "2024-03-15",
+     "valor": 144405.38
+    }
+   }
+  },
+  {
+   "nombre": "Sin intereses",
+   "prestamo": {
+    "capital": 12000,
+    "inicio": "2025-05-01",
+    "plazo_meses": 48,
+    "modalidad": "fijo",
+    "tipo_inicial": 0
+   },
+   "esperado": {
+    "cuotas": 48,
+    "primera_cuota": 250.0,
+    "intereses": 0.0,
+    "pagado": 12000.0,
+    "extra": 0.0,
+    "comision": 0.0,
+    "fin": "2029-05-01",
+    "ultima_cuota": 250.0,
+    "anual": [
+     {
+      "anio": 2025,
+      "cuotas": 7,
+      "intereses": 0.0,
+      "capital": 1750.0,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 10250.0
+     },
+     {
+      "anio": 2026,
+      "cuotas": 12,
+      "intereses": 0.0,
+      "capital": 3000.0,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 7250.0
+     },
+     {
+      "anio": 2027,
+      "cuotas": 12,
+      "intereses": 0.0,
+      "capital": 3000.0,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 4250.0
+     },
+     {
+      "anio": 2028,
+      "cuotas": 12,
+      "intereses": 0.0,
+      "capital": 3000.0,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 1250.0
+     }
+    ],
+    "tipos": [
+     0.0
+    ]
+   }
+  },
+  {
+   "nombre": "Ancla sin cuota: la calcula con el plazo que queda",
+   "prestamo": {
+    "capital": 180000,
+    "inicio": "2015-06-05",
+    "plazo_meses": 300,
+    "modalidad": "variable",
+    "tipo_inicial": 1.0,
+    "diferencial": 0.9,
+    "ancla": {
+     "fecha": "2025-12-31",
+     "saldo": 120500.5,
+     "tipo": 3.15
+    }
+   },
+   "esperado": {
+    "cuotas": 174,
+    "primera_cuota": 744.24,
+    "intereses": 29522.85,
+    "pagado": 150023.35,
+    "extra": 0.0,
+    "comision": 0.0,
+    "fin": "2040-06-05",
+    "ultima_cuota": 863.75,
+    "anual": [
+     {
+      "anio": 2026,
+      "cuotas": 12,
+      "intereses": 3481.47,
+      "capital": 6754.45,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 113746.05
+     },
+     {
+      "anio": 2027,
+      "cuotas": 12,
+      "intereses": 3484.36,
+      "capital": 6870.2,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 106875.85
+     },
+     {
+      "anio": 2028,
+      "cuotas": 12,
+      "intereses": 3264.82,
+      "capital": 7089.74,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 99786.11
+     },
+     {
+      "anio": 2029,
+      "cuotas": 12,
+      "intereses": 3038.23,
+      "capital": 7316.33,
+      "extra": 0.0,
+      "comision": 0.0,
+      "pendiente": 92469.78
+     }
+    ],
+    "tipos": [
+     1.0,
+     3.15
+    ],
+    "siguientes": {
+     "desde": "2026-01-01",
+     "intereses": 3481.47,
+     "capital": 6754.45
+    },
+    "saldo": {
+     "dia": "2026-01-01",
+     "valor": 120500.5
+    }
+   }
+  }
+ ],
+ "pronto_pago": [
+  {
+   "nombre": "Pronto pago 20.000 € puntual, referencia 4 %",
+   "prestamo": {
+    "capital": 323400,
+    "inicio": "2024-01-15",
+    "plazo_meses": 360,
+    "modalidad": "fijo",
+    "tipo_inicial": 2
+   },
+   "puntuales": [
+    {
+     "fecha": "2026-03-01",
+     "importe": 20000
+    }
+   ],
+   "periodica": null,
+   "tipo_referencia": 4,
+   "hoy": "2026-01-01",
+   "esperado": {
+    "base": {
+     "intereses": 106925.92,
+     "cuotas": 360
+    },
+    "cuota": {
+     "cuotas": 360,
+     "intereses": 100809.41,
+     "fin": "2054-01-15",
+     "intereses_ahorrados": 6116.51,
+     "comision_pagada": 400.0,
+     "ahorro_neto": 5716.51,
+     "amortizado": 20000.0,
+     "meses_menos": 0,
+     "cuota_despues": 1117.39,
+     "rentabilidad": 1.84,
+     "frente_a_invertir": -2.16
+    },
+    "plazo": {
+     "cuotas": 332,
+     "intereses": 92782.98,
+     "fin": "2051-09-15",
+     "intereses_ahorrados": 14142.94,
+     "comision_pagada": 400.0,
+     "ahorro_neto": 13742.94,
+     "amortizado": 20000.0,
+     "meses_menos": 28,
+     "cuota_despues": 1195.35,
+     "rentabilidad": 1.93,
+     "frente_a_invertir": -2.07
+    }
+   }
+  },
+  {
+   "nombre": "Pronto pago 6.000 €/año sin comisión",
+   "prestamo": {
+    "capital": 323400,
+    "inicio": "2024-01-15",
+    "plazo_meses": 360,
+    "modalidad": "fijo",
+    "tipo_inicial": 2,
+    "comision": {
+     "pct_inicial": 0,
+     "meses_iniciales": 0,
+     "pct_despues": 0
+    }
+   },
+   "puntuales": [],
+   "periodica": {
+    "importe": 6000,
+    "desde": "2026-06-01"
+   },
+   "tipo_referencia": null,
+   "hoy": "2026-01-01",
+   "esperado": {
+    "base": {
+     "intereses": 106925.92,
+     "cuotas": 360
+    },
+    "cuota": {
+     "cuotas": 316,
+     "intereses": 81864.17,
+     "fin": "2050-05-15",
+     "intereses_ahorrados": 25061.75,
+     "comision_pagada": 0.0,
+     "ahorro_neto": 25061.75,
+     "amortizado": 148822.49,
+     "meses_menos": 44,
+     "cuota_despues": 1171.8,
+     "rentabilidad": 2.0
+    },
+    "plazo": {
+     "cuotas": 240,
+     "intereses": 70984.56,
+     "fin": "2044-01-15",
+     "intereses_ahorrados": 35941.36,
+     "comision_pagada": 0.0,
+     "ahorro_neto": 35941.36,
+     "amortizado": 108000.0,
+     "meses_menos": 120,
+     "cuota_despues": 1195.35,
+     "rentabilidad": 2.0
+    }
+   }
+  },
+  {
+   "nombre": "Pronto pago en un variable dentro de los 3 primeros años",
+   "prestamo": {
+    "capital": 150000,
+    "inicio": "2023-01-31",
+    "plazo_meses": 240,
+    "dia_cobro": 31,
+    "modalidad": "variable",
+    "tipo_inicial": 3.9,
+    "diferencial": 0.6,
+    "revision_meses": 6,
+    "revisiones": [
+     {
+      "fecha": "2023-07-31",
+      "tipo": 4.6
+     },
+     {
+      "fecha": "2024-01-31",
+      "tipo": 4.2
+     },
+     {
+      "fecha": "2024-07-31",
+      "tipo": 3.5
+     }
+    ],
+    "indice_futuro": 2.2
+   },
+   "puntuales": [
+    {
+     "fecha": "2024-05-10",
+     "importe": 30000
+    }
+   ],
+   "periodica": {
+    "importe": 3000,
+    "desde": "2025-01-10",
+    "hasta": "2030-12-31",
+    "cada_meses": 12
+   },
+   "tipo_referencia": 3,
+   "hoy": "2024-04-01",
+   "esperado": {
+    "base": {
+     "intereses": 49201.27,
+     "cuotas": 240
+    },
+    "cuota": {
+     "cuotas": 240,
+     "intereses": 36137.58,
+     "fin": "2043-01-31",
+     "intereses_ahorrados": 13063.69,
+     "comision_pagada": 90.0,
+     "ahorro_neto": 12973.69,
+     "amortizado": 48000.0,
+     "meses_menos": 0,
+     "cuota_despues": 730.15,
+     "rentabilidad": 2.83,
+     "frente_a_invertir": -0.17
+    },
+    "plazo": {
+     "cuotas": 150,
+     "intereses": 25435.94,
+     "fin": "2035-07-31",
+     "intereses_ahorrados": 23765.33,
+     "comision_pagada": 90.0,
+     "ahorro_neto": 23675.33,
+     "amortizado": 48000.0,
+     "meses_menos": 90,
+     "cuota_despues": 923.03,
+     "rentabilidad": 2.82,
+     "frente_a_invertir": -0.18
+    }
+   }
+  }
+ ],
+ "comisiones": [
+  {
+   "prestamo": {
+    "capital": 323400,
+    "inicio": "2024-01-15",
+    "plazo_meses": 360,
+    "modalidad": "fijo",
+    "tipo_inicial": 2
+   },
+   "fecha": "2026-01-01",
+   "importe": 10000,
+   "esperado": 200.0
+  },
+  {
+   "prestamo": {
+    "capital": 323400,
+    "inicio": "2024-01-15",
+    "plazo_meses": 360,
+    "modalidad": "fijo",
+    "tipo_inicial": 2
+   },
+   "fecha": "2035-02-01",
+   "importe": 10000,
+   "esperado": 150.0
+  },
+  {
+   "prestamo": {
+    "capital": 200000,
+    "inicio": "2020-03-10",
+    "plazo_meses": 300,
+    "modalidad": "mixto",
+    "tipo_inicial": 1.2,
+    "meses_tramo_fijo": 60,
+    "diferencial": 0.8,
+    "revision_meses": 12,
+    "indice_futuro": 2.5,
+    "revisiones": [
+     {
+      "fecha": "2025-03-10",
+      "tipo": 3.4
+     }
+    ]
+   },
+   "fecha": "2024-01-01",
+   "importe": 10000,
+   "esperado": 200.0
+  },
+  {
+   "prestamo": {
+    "capital": 200000,
+    "inicio": "2020-03-10",
+    "plazo_meses": 300,
+    "modalidad": "mixto",
+    "tipo_inicial": 1.2,
+    "meses_tramo_fijo": 60,
+    "diferencial": 0.8,
+    "revision_meses": 12,
+    "indice_futuro": 2.5,
+    "revisiones": [
+     {
+      "fecha": "2025-03-10",
+      "tipo": 3.4
+     }
+    ]
+   },
+   "fecha": "2026-01-01",
+   "importe": 10000,
+   "esperado": 0.0
+  },
+  {
+   "prestamo": {
+    "capital": 150000,
+    "inicio": "2023-01-31",
+    "plazo_meses": 240,
+    "dia_cobro": 31,
+    "modalidad": "variable",
+    "tipo_inicial": 3.9,
+    "diferencial": 0.6,
+    "revision_meses": 6,
+    "revisiones": [
+     {
+      "fecha": "2023-07-31",
+      "tipo": 4.6
+     },
+     {
+      "fecha": "2024-01-31",
+      "tipo": 4.2
+     },
+     {
+      "fecha": "2024-07-31",
+      "tipo": 3.5
+     }
+    ],
+    "indice_futuro": 2.2
+   },
+   "fecha": "2025-12-31",
+   "importe": 10000,
+   "esperado": 25.0
+  },
+  {
+   "prestamo": {
+    "capital": 150000,
+    "inicio": "2023-01-31",
+    "plazo_meses": 240,
+    "dia_cobro": 31,
+    "modalidad": "variable",
+    "tipo_inicial": 3.9,
+    "diferencial": 0.6,
+    "revision_meses": 6,
+    "revisiones": [
+     {
+      "fecha": "2023-07-31",
+      "tipo": 4.6
+     },
+     {
+      "fecha": "2024-01-31",
+      "tipo": 4.2
+     },
+     {
+      "fecha": "2024-07-31",
+      "tipo": 3.5
+     }
+    ],
+    "indice_futuro": 2.2
+   },
+   "fecha": "2026-02-01",
+   "importe": 10000,
+   "esperado": 0.0
+  },
+  {
+   "prestamo": {
+    "capital": 150000,
+    "inicio": "2023-01-31",
+    "plazo_meses": 240,
+    "dia_cobro": 31,
+    "modalidad": "variable",
+    "tipo_inicial": 3.9,
+    "diferencial": 0.6,
+    "revision_meses": 6,
+    "revisiones": [
+     {
+      "fecha": "2023-07-31",
+      "tipo": 4.6
+     },
+     {
+      "fecha": "2024-01-31",
+      "tipo": 4.2
+     },
+     {
+      "fecha": "2024-07-31",
+      "tipo": 3.5
+     }
+    ],
+    "indice_futuro": 2.2,
+    "comision": {
+     "pct_inicial": 0.15,
+     "meses_iniciales": 60
+    }
+   },
+   "fecha": "2026-02-01",
+   "importe": 10000,
+   "esperado": 15.0
+  }
+ ]
+}

@@ -15,6 +15,8 @@ antes de firmar nada.
 
 from decimal import Decimal
 
+from . import amortizacion
+
 # Tipo general del ITP (vivienda de segunda mano) y tipo reducido habitual para
 # menores de 35 años comprando vivienda habitual, cuando la comunidad lo tiene.
 # `ajd` es el impuesto de Actos Jurídicos Documentados, que es el que se paga
@@ -108,30 +110,14 @@ def gastos_compra(precio, ccaa='MD', obra_nueva=False, joven=False):
 
 
 def cuota_mensual(capital, tipo_anual, años):
-    """Cuota de un préstamo francés. Es la misma fórmula que usa el JS; está
-    aquí para poder comprobarla con tests."""
-    capital = float(capital or 0)
-    años = int(años or 0)
-    if capital <= 0 or años <= 0:
-        return 0.0
-    n = años * 12
-    if not tipo_anual:
-        return capital / n
-    r = float(tipo_anual) / 100 / 12
-    return capital * r * (1 + r) ** n / ((1 + r) ** n - 1)
+    """Cuota de un préstamo francés. La fórmula vive en `amortizacion.py`,
+    el motor único de préstamos."""
+    return amortizacion.cuota(float(capital or 0), float(tipo_anual or 0), int(años or 0) * 12)
 
 
 def capital_maximo(cuota_max, tipo_anual, años):
     """Cuánto capital soporta una cuota dada: la inversa de `cuota_mensual`."""
-    cuota_max = float(cuota_max or 0)
-    años = int(años or 0)
-    if cuota_max <= 0 or años <= 0:
-        return 0.0
-    n = años * 12
-    if not tipo_anual:
-        return cuota_max * n
-    r = float(tipo_anual) / 100 / 12
-    return cuota_max * ((1 + r) ** n - 1) / (r * (1 + r) ** n)
+    return amortizacion.capital_para_cuota(float(cuota_max or 0), float(tipo_anual or 0), int(años or 0) * 12)
 
 
 def coste_recurrente_mensual(valor_vivienda, mantenimiento_pct=None, ibi_pct=None,

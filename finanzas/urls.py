@@ -8,6 +8,7 @@ from .views import nueva_cuenta_bancaria, patrimonio_total_actual
 from . import views_evolucion
 from . import views_simuladores
 from . import views_propiedades
+from . import views_hipotecas
 from . import views_vehiculos
 from . import views_hacienda
 
@@ -143,4 +144,12 @@ urlpatterns = [
     path('propiedades/<int:pk>/alquiler/a-gasto/', views_propiedades.alquiler_a_gasto, name='alquiler_a_gasto'),
     path('propiedades/<int:pk>/simular-alquiler/', views_propiedades.simular_alquiler, name='simular_alquiler'),
     path('propiedades/historial/', views_propiedades.registrar_historial, name='registrar_historial_propiedad'),
+    path('propiedades/<int:pk>/hipotecas/nueva/', views_hipotecas.nueva_hipoteca, name='nueva_hipoteca'),
+    path('hipotecas/<int:pk>/', views_hipotecas.detalle_hipoteca, name='detalle_hipoteca'),
+    path('hipotecas/<int:pk>/editar/', views_hipotecas.editar_hipoteca, name='editar_hipoteca'),
+    path('hipotecas/<int:pk>/eliminar/', views_hipotecas.eliminar_hipoteca, name='eliminar_hipoteca'),
+    path('hipotecas/<int:pk>/revisiones/nueva/', views_hipotecas.nueva_revision, name='nueva_revision_hipoteca'),
+    path('hipotecas/revisiones/<int:pk>/eliminar/', views_hipotecas.eliminar_revision, name='eliminar_revision_hipoteca'),
+    path('hipotecas/<int:pk>/amortizaciones/nueva/', views_hipotecas.nueva_amortizacion, name='nueva_amortizacion_hipoteca'),
+    path('hipotecas/amortizaciones/<int:pk>/eliminar/', views_hipotecas.eliminar_amortizacion, name='eliminar_amortizacion_hipoteca'),
 ]

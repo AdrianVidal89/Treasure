@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_filters %}
+{% load l10n %}
+{% block title %}{{ h.nombre }} · {{ propiedad.nombre }} - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+{{ prestamo_json|json_script:"prestamo-data" }}
+<style>
+.hip-wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px; display: flex; flex-direction: column; gap: 18px; }
+.hip-cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.hip-cab h1 { margin: 0; font-size: 1.5rem; color: var(--primary-color); }
+.hip-cab .sub { color: var(--muted); font-size: 0.85rem; margin-top: 4px; }
+.hip-cab-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px 22px; }
+.card h2 { font-size: 1rem; margin: 0 0 12px; }
+.card .hint { font-size: 0.76rem; color: var(--muted); margin: -6px 0 12px; }
+.hip-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; padding: 0; overflow: hidden; }
+@media (max-width: 760px) { .hip-kpis { grid-template-columns: repeat(2, 1fr); } }
+.hip-kpi { padding: 16px 20px; border-right: 1px solid var(--surface-2); border-bottom: 1px solid var(--surface-2); min-width: 0; }
+.hip-kpi .k { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+.hip-kpi .v { display: block; font-size: 1.3rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.hip-kpi .s { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+.filas { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 0 30px; }
+@media (max-width: 620px) { .filas { grid-template-columns: 1fr; } }
+.fila { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--surface-2); font-size: 0.84rem; }
+.fila .k { color: var(--muted); }
+.fila .v { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.aviso { padding: 10px 14px; border-radius: 10px; font-size: 0.82rem; border: 1px solid var(--border); }
+.aviso.warn { background: color-mix(in srgb, var(--warning) 10%, transparent); }
+.aviso.ok { background: color-mix(in srgb, var(--success) 8%, transparent); }
+.lista { display: flex; flex-direction: column; font-size: 0.82rem; }
+.lista .item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--surface-2); font-variant-numeric: tabular-nums; }
+.mini-form { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; margin-top: 12px; }
+.mini-form label { display: flex; flex-direction: column; gap: 4px; font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.mini-form input, .mini-form select { padding: 7px 9px; background: var(--app-bg); border: 1px solid var(--border-strong); color: var(--text-color); border-radius: 8px; font-size: 0.84rem; max-width: 170px; }
+.dos { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 760px) { .dos { grid-template-columns: 1fr; } }
+.btn { padding: 8px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.8rem; font-weight: 600; text-decoration: none; display: inline-block; }
+.btn-edit { background: var(--surface); border: 1px solid var(--border-strong); color: var(--text-color); }
+.btn-primary { background: var(--primary-color); color: #000; }
+.btn-del { background: color-mix(in srgb, var(--danger) 10%, transparent); border: 1px solid color-mix(in srgb, var(--danger) 20%, transparent); color: var(--danger); }
+.quitar { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1rem; }
+.quitar:hover { color: var(--danger); }
+.cuadro { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.cuadro .cab, .cuadro summary, .cuadro .mes { display: grid; grid-template-columns: 70px repeat(5, 1fr); gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--surface-2); }
+.cuadro .cab { font-size: 0.64rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+.cuadro span:not(:first-child) { text-align: right; }
+.cuadro summary { list-style: none; cursor: pointer; font-weight: 600; }
+.cuadro summary::-webkit-details-marker { display: none; }
+.cuadro summary:hover { background: var(--app-bg); }
+.cuadro .actual > summary { color: var(--primary-color); }
+.cuadro .mes { color: var(--muted); font-size: 0.76rem; }
+.table-scroll { overflow-x: auto; }
+.table-scroll > .cuadro { min-width: 560px; }
+</style>
+
+<div class="hip-wrap">
+    <div class="hip-cab">
+        <div>
+            <h1>{{ h.nombre }}{% if h.entidad %} · {{ h.entidad }}{% endif %}</h1>
+            <div class="sub">
+                <a href="{% url 'finanzas:listar_propiedades' %}#propiedad-{{ propiedad.pk }}">{{ propiedad.nombre }}</a>
+                · {{ h.get_modalidad_display }}{% if variable %} ({{ h.get_indice_display }} + {{ h.diferencial_pct|default_if_none:"?" }} %{% if h.meses_tramo_fijo %}, {{ h.meses_tramo_fijo }} meses fijo al {{ h.tipo_inicial_pct|floatformat:2 }} %{% endif %}){% endif %}
+                · {{ h.capital_inicial|euro:0 }} firmados el {{ h.fecha_firma|date:"d/m/Y" }} a {{ h.plazo_meses }} meses
+                {% if not h.activa %}· <strong>cancelada</strong>{% endif %}
+            </div>
+        </div>
+        <div class="hip-cab-acciones">
+            <a href="{% url 'finanzas:editar_hipoteca' h.pk %}" class="btn btn-edit">Editar condiciones</a>
+            <form method="post" action="{% url 'finanzas:eliminar_hipoteca' h.pk %}" onsubmit="return confirm('¿Eliminar esta hipoteca y su cuadro?')">
+                {% csrf_token %}<button class="btn btn-del" type="submit">Eliminar</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card hip-kpis">
+        <div class="hip-kpi">
+            <span class="k">Pendiente hoy</span>
+            <span class="v" style="color:var(--danger);">{{ saldo_hoy|euro:0 }}</span>
+            <span class="s">{{ cuotas_pendientes }} cuota{{ cuotas_pendientes|pluralize }} por pagar</span>
+        </div>
+        <div class="hip-kpi">
+            <span class="k">Cuota</span>
+            <span class="v">{% if proxima %}{{ proxima.cuota|euro }}{% else %}—{% endif %}</span>
+            <span class="s">{% if proxima %}la próxima, el {{ proxima.fecha|date:"d/m/Y" }}{% else %}préstamo pagado{% endif %}</span>
+        </div>
+        <div class="hip-kpi">
+            <span class="k">Tipo actual</span>
+            <span class="v">{{ tipo_hoy|floatformat:2 }} %</span>
+            <span class="s">{% if variable %}{% if indice is not None %}proyectando {{ h.get_indice_display }} al {{ indice|floatformat:2 }} %{% else %}se mantiene si no hay revisiones{% endif %}{% else %}fijo{% endif %}</span>
+        </div>
+        <div class="hip-kpi">
+            <span class="k">Termina</span>
+            <span class="v">{{ totales.fin|date:"m/Y" }}</span>
+            <span class="s">{{ intereses_pendientes|euro:0 }} de intereses por pagar</span>
+        </div>
+    </div>
+
+    <div class="dos">
+        <div class="card">
+            <h2>Este año y los próximos 12 meses</h2>
+            <div class="filas" style="grid-template-columns:1fr;">
+                <div class="fila"><span class="k">{{ hoy.year }} · intereses (coste)</span><span class="v">{{ este_anio.intereses|euro }}</span></div>
+                <div class="fila"><span class="k">{{ hoy.year }} · capital (ahorro, reduce la deuda)</span><span class="v">{{ este_anio.capital|euro }}</span></div>
+                {% if este_anio.extra %}<div class="fila"><span class="k">{{ hoy.year }} · amortizado de más</span><span class="v">{{ este_anio.extra|euro }}</span></div>{% endif %}
+                <div class="fila"><span class="k">Próximos 12 meses · intereses</span><span class="v">{{ proximos_12.intereses|euro }}</span></div>
+                <div class="fila"><span class="k">Próximos 12 meses · capital</span><span class="v">{{ proximos_12.capital|euro }}</span></div>
+                <div class="fila"><span class="k">Intereses ya pagados</span><span class="v">{{ intereses_pagados|euro:0 }}</span></div>
+                <div class="fila"><span class="k">Intereses de todo el préstamo</span><span class="v">{{ totales.intereses|euro:0 }}</span></div>
+            </div>
+            {% if variable %}
+            <form method="get" class="mini-form">
+                <label>Supón el {{ h.get_indice_display }} en (%)
+                    <input type="number" step="0.01" name="indice" value="{% if indice is not None %}{{ indice|unlocalize }}{% endif %}" placeholder="Último tipo">
+                </label>
+                <button class="btn btn-edit" type="submit">Proyectar</button>
+            </form>
+            <p class="hint" style="margin-top:8px;">Pasado el periodo de la última revisión, el tipo será índice + {{ h.diferencial_pct|default_if_none:"?" }} %. Sin supuesto, se mantiene el último tipo conocido.</p>
+            {% endif %}
+        </div>
+
+        <div class="card">
+            <h2>¿Cuadra con el banco?</h2>
+            {% if conciliacion is None or not conciliacion.pagos %}
+            <p class="hint" style="margin:0;">No hay pagos de hipoteca en los últimos 12 meses cerrados para comparar. Imputa sus cobros a la propiedad desde Movimientos (categoría «Hipoteca» o «Préstamo»), o elige su partida en las condiciones.</p>
+            {% elif conciliacion.avisos %}
+            <div class="aviso warn">Del {{ conciliacion.inicio|date:"m/Y" }} al {{ conciliacion.fin|date:"m/Y" }}, {{ conciliacion.avisos|length }} mes{{ conciliacion.avisos|length|pluralize:"es" }} no cuadra{{ conciliacion.avisos|length|pluralize:"n" }} con el cuadro{% if varias %} (se comparan todas las hipotecas de la propiedad juntas){% endif %}:</div>
+            <div class="lista" style="margin-top:8px;">
+                {% for a in conciliacion.avisos %}
+                <div class="item"><span>{{ a.nombre }}</span><span>cuadro {{ a.esperado|euro }} · banco {{ a.real|euro }} · <strong class="{% if a.diferencia > 0 %}text-negative{% else %}text-positive{% endif %}">{% if a.diferencia > 0 %}+{% endif %}{{ a.diferencia|euro }}</strong></span></div>
+                {% endfor %}
+            </div>
+            <p class="hint" style="margin-top:10px;">Suele ser una revisión del tipo que falta, una amortización no apuntada, o un mes en que el cobro se movió de fecha.</p>
+            {% else %}
+            <div class="aviso ok">Los {{ conciliacion.pagos }} pagos del {{ conciliacion.inicio|date:"m/Y" }} al {{ conciliacion.fin|date:"m/Y" }} cuadran con el cuadro.</div>
+            {% endif %}
+            {% if bonificaciones %}
+            <h2 style="margin-top:18px;">Bonificaciones</h2>
+            <div class="lista">
+                {% for b in bonificaciones %}
+                <div class="item"><span>{{ b.concepto }}</span><span>−{{ b.rebaja_pct|floatformat:2 }} puntos{% if b.coste_anual %} · cuesta {{ b.coste_anual|euro:0 }}/año{% endif %}</span></div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="dos">
+        <div class="card">
+            <h2>Revisiones del tipo</h2>
+            <p class="hint">Cada cambio de tipo desde una fecha. La última es el tipo actual; la cuota se recalcula sobre lo pendiente.</p>
+            <div class="lista">
+                {% for r in revisiones %}
+                <div class="item">
+                    <span>Desde {{ r.fecha_desde|date:"d/m/Y" }}</span>
+                    <span>{{ r.tipo_pct|floatformat:3 }} %{% if r.valor_indice_pct is not None %} <span class="text-muted">(índice {{ r.valor_indice_pct|floatformat:3 }} %)</span>{% endif %}
+                        <form method="post" action="{% url 'finanzas:eliminar_revision_hipoteca' r.pk %}" style="display:inline;">{% csrf_token %}<button class="quitar" title="Quitar">×</button></form>
+                    </span>
+                </div>
+                {% empty %}
+                <div class="item text-muted">Ninguna: {{ h.tipo_inicial_pct|floatformat:2 }} % desde la firma.</div>
+                {% endfor %}
+            </div>
+            <form method="post" action="{% url 'finanzas:nueva_revision_hipoteca' h.pk %}" class="mini-form">
+                {% csrf_token %}
+                <label>{{ form_revision.fecha_desde.label }} {{ form_revision.fecha_desde }}</label>
+                <label>{{ form_revision.tipo_pct.label }} {{ form_revision.tipo_pct }}</label>
+                {% if variable %}<label>{{ form_revision.valor_indice_pct.label }} {{ form_revision.valor_indice_pct }}</label>{% endif %}
+                <button class="btn btn-primary" type="submit">Cambiar el tipo</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Amortizaciones anticipadas hechas</h2>
+            <p class="hint">Comisión hoy: {{ comision_hoy|floatformat:2 }} %. Regla: {{ texto_comision }}</p>
+            <div class="lista">
+                {% for a in amortizaciones %}
+                <div class="item">
+                    <span>{{ a.fecha|date:"d/m/Y" }} · {{ a.get_modo_display|lower }}</span>
+                    <span>{{ a.importe|euro:0 }}{% if a.comision_pagada is not None %} <span class="text-muted">(comisión {{ a.comision_pagada|euro }})</span>{% endif %}
+                        <form method="post" action="{% url 'finanzas:eliminar_amortizacion_hipoteca' a.pk %}" style="display:inline;">{% csrf_token %}<button class="quitar" title="Quitar">×</button></form>
+                    </span>
+                </div>
+                {% empty %}
+                <div class="item text-muted">Ninguna todavía.</div>
+                {% endfor %}
+            </div>
+            <form method="post" action="{% url 'finanzas:nueva_amortizacion_hipoteca' h.pk %}" class="mini-form">
+                {% csrf_token %}
+                <label>{{ form_amortizacion.fecha.label }} {{ form_amortizacion.fecha }}</label>
+                <label>{{ form_amortizacion.importe.label }} {{ form_amortizacion.importe }}</label>
+                <label>{{ form_amortizacion.modo.label }} {{ form_amortizacion.modo }}</label>
+                <label>{{ form_amortizacion.comision_pagada.label }} {{ form_amortizacion.comision_pagada }}</label>
+                <button class="btn btn-primary" type="submit">Añadir</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card" id="pronto-pago-card">
+        <h2>¿Y si amortizas?</h2>
+        <p class="hint">Sobre el cuadro de arriba (con sus revisiones y amortizaciones). Compara reducir cuota y reducir plazo, con la comisión de tu préstamo, frente a lo que rendiría ese dinero invertido.</p>
+        {% include "finanzas/hipoteca/_pronto_pago.html" with pp_id="pronto-pago" %}
+    </div>
+
+    <div class="card">
+        <h2>Cuadro de amortización</h2>
+        <p class="hint">Año a año; abre un año para ver sus cuotas. Las del pasado son las que tocaban según las condiciones: si no coinciden con el banco, mira la conciliación.</p>
+        <div class="table-scroll">
+        <div class="cuadro">
+            <div class="cab"><span>Año</span><span>Cuotas</span><span>Intereses</span><span>Capital</span><span>Amortizado</span><span>Pendiente</span></div>
+            {% for a in anual %}
+            <details {% if a.actual %}class="actual"{% endif %}>
+                <summary><span>{{ a.anio }}</span><span>{{ a.pagado|euro:0 }}</span><span>{{ a.intereses|euro:0 }}</span><span>{{ a.capital|euro:0 }}</span><span>{% if a.extra %}{{ a.extra|euro:0 }}{% else %}—{% endif %}</span><span>{{ a.pendiente|euro:0 }}</span></summary>
+                {% for f in a.meses %}
+                <div class="mes"><span>{{ f.mes }} · {{ f.tipo|floatformat:2 }} %</span><span>{{ f.cuota|euro }}</span><span>{{ f.intereses|euro }}</span><span>{{ f.capital|euro }}</span><span>{% if f.extra %}{{ f.extra|euro }}{% if f.comision %} (+{{ f.comision|euro }}){% endif %}{% else %}—{% endif %}</span><span>{{ f.pendiente|euro }}</span></div>
+                {% endfor %}
+            </details>
+            {% endfor %}
+        </div>
+        </div>
+    </div>
+</div>
+
+<script src="{% static 'js/amortizacion.js' %}"></script>
+<script src="{% static 'js/pronto_pago.js' %}"></script>
+<script>
+ProntoPago.montar(document.getElementById('pronto-pago'), {
+    prestamo: JSON.parse(document.getElementById('prestamo-data').textContent),
+    tipoReferencia: {{ tipo_referencia|unlocalize }},
+    hoy: '{{ hoy|date:"Y-m-d" }}',
+});
+</script>
+{% endblock %}
