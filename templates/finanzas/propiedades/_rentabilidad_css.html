@@ -1,0 +1,42 @@
+<style>
+/* Rentabilidad de una propiedad (_rentabilidad.html) */
+.rt { display:flex; flex-direction:column; gap:12px; }
+.rt-tiles { display:grid; grid-template-columns:minmax(220px, 1.3fr) repeat(2, minmax(0, 1fr)); gap:10px; }
+@media (max-width:760px) { .rt-tiles { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+.rt-tile { display:flex; flex-direction:column; gap:3px; padding:11px 13px; border-radius:12px; border:1px solid var(--border); background:var(--app-bg); }
+.rt-principal { grid-row:span 2; justify-content:center; border-color:color-mix(in srgb, var(--success) 45%, transparent); background:color-mix(in srgb, var(--success) 7%, var(--app-bg)); }
+.rt-principal.neg { border-color:color-mix(in srgb, var(--danger) 45%, transparent); background:color-mix(in srgb, var(--danger) 7%, var(--app-bg)); }
+.rt-principal .rt-val { font-size:1.9rem; color:var(--success); }
+.rt-principal.neg .rt-val { color:var(--danger); }
+@media (max-width:760px) { .rt-principal { grid-row:auto; grid-column:1 / -1; } }
+.rt-lbl { font-size:0.66rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.rt-val { font-size:1.25rem; font-weight:700; font-variant-numeric:tabular-nums; color:var(--text-color); }
+.rt-neg { color:var(--danger) !important; }
+.rt-sub, .rt-apagado { font-size:0.72rem; color:var(--muted); line-height:1.4; }
+.rt-cascada { display:flex; flex-direction:column; gap:6px; padding:12px 13px; border-radius:12px; border:1px solid var(--border); background:var(--app-bg); }
+.rt-paso { display:grid; grid-template-columns:110px minmax(0,1fr) 90px; gap:10px; align-items:center; font-size:0.78rem; }
+.rt-paso-nombre { color:var(--muted); }
+@media (max-width:560px) {
+    .rt-paso { grid-template-columns:minmax(0,1fr) auto; row-gap:3px; }
+    .rt-paso-pista { grid-column:1 / -1; grid-row:2; }
+}
+.rt-paso-pista { position:relative; height:14px; border-radius:4px; background:color-mix(in srgb, var(--muted) 10%, transparent); }
+.rt-paso-pista i { position:absolute; top:0; bottom:0; border-radius:4px; background:var(--danger); opacity:.8; }
+.rt-renta .rt-paso-pista i { background:var(--success); }
+.rt-hipoteca .rt-paso-pista i { background:var(--warning); }
+.rt-flujo .rt-paso-pista i { background:var(--primary-color); opacity:1; }
+.rt-paso-cifra { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+.rt-flujo { border-top:1px dashed var(--border); padding-top:6px; }
+.rt-flujo .rt-paso-nombre { color:var(--text-color); font-weight:700; }
+.rt-pie { font-size:0.72rem; color:var(--muted); line-height:1.4; }
+.rt-reval { display:flex; flex-direction:column; gap:3px; font-size:0.8rem; padding:10px 13px; border-radius:12px; border:1px dashed var(--border-strong); }
+
+/* Simulador de alquiler */
+.sim-form { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:10px 12px; margin-bottom:12px; }
+.sim-form label { display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:var(--muted); font-weight:600; }
+.sim-form input, .sim-form select { padding:8px 10px; border:1px solid var(--border-strong); border-radius:8px; background:var(--app-bg); color:var(--text-color); font-size:0.85rem; font-weight:400; }
+.sim-form small { font-weight:400; font-size:0.68rem; line-height:1.35; }
+.sim-acciones { display:flex; gap:8px; align-items:center; flex-wrap:wrap; grid-column:1 / -1; }
+.sim-vacia { padding:12px 14px; border-radius:12px; border:1px solid var(--border); font-size:0.82rem; line-height:1.45; }
+.sim-vacia strong.v { font-size:1.2rem; }
+</style>
