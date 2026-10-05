@@ -90,6 +90,11 @@
                     <input type="number" name="deuda_hipotecaria" value="{{ propiedad.deuda_hipotecaria|unlocalize|default:'0' }}" step="1" min="0" placeholder="Capital pendiente">
                 </div>
             </div>
+            <div class="fg">
+                <label>Préstamo hipotecario al comprar (€)</label>
+                <input type="text" inputmode="decimal" name="hipoteca_inicial" value="{% if propiedad.hipoteca_inicial is not None %}{{ propiedad.hipoteca_inicial|unlocalize }}{% endif %}" placeholder="Ej: 150000 · vacío o 0 si no hubo hipoteca">
+                <small>Lo que te prestó el banco al comprar. Con él se sabe cuánto pusiste de tu bolsillo, que es contra lo que se mide la rentabilidad «sobre tu dinero».</small>
+            </div>
 
             <div class="section-title">Estimación de venta</div>
             <div class="fg">

@@ -50,6 +50,17 @@
     </section>
     {% endif %}{% endwith %}
 
+    <!-- ══════════ RENTABILIDAD ══════════ -->
+    <section class="al-grafico" id="rentabilidad">
+        <div class="al-irpf-cab">
+            <div>
+                <h3>Rentabilidad · últimos 12 meses</h3>
+                <p>{% if r %}De {{ r.inicio|date:"F Y"|lower }} a {{ r.fin|date:"F Y"|lower }}{% if r.anualizado %} ({{ r.meses }} mes{{ r.meses|pluralize:"es" }} alquilada, llevado a un año){% endif %}: lo cobrado y lo pagado de la propiedad tal como pasó por el banco. Los recibos anuales (IBI, seguro) cuentan una vez.{% else %}Aún no hay un mes cerrado con la propiedad alquilada.{% endif %}</p>
+            </div>
+        </div>
+        {% if r %}{% include "finanzas/propiedades/_rentabilidad.html" with r=r modo="real" %}{% endif %}
+    </section>
+
     <!-- ══════════ LAS CIFRAS DEL AÑO ══════════ -->
     <section class="al-kpis">
         <div class="al-kpi">
@@ -154,6 +165,7 @@
 </div>
 {% endwith %}
 
+{% include "finanzas/propiedades/_rentabilidad_css.html" %}
 <style>
 .al-anio { display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted); }
 .al-anio select { background:var(--app-bg); color:var(--text-color); border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:0.84rem; }

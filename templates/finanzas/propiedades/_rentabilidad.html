@@ -1,0 +1,68 @@
+{% load custom_filters %}
+{% comment %}
+Las cifras de rentabilidad de una propiedad, reales o simuladas (ver
+`finanzas/rentabilidad.py`). Recibe `r` (el dict de métricas) y `modo`
+('real' o 'sim'). La NETA manda: es lo que renta el piso en sí, sin contar
+cómo se pagó. El resto contesta otras preguntas y se dice cuál.
+{% endcomment %}
+<div class="rt">
+    <div class="rt-tiles">
+        <div class="rt-tile rt-principal {% if r.neta is not None and r.neta < 0 %}neg{% endif %}">
+            <span class="rt-lbl">Rentabilidad neta</span>
+            <span class="rt-val">{% if r.neta is not None %}{{ r.neta|floatformat:2 }} %{% else %}—{% endif %}</span>
+            <span class="rt-sub">(alquiler − gastos del piso) / lo que costó ({{ r.coste|euro:0 }}). Sin la hipoteca: es lo que renta el piso en sí.</span>
+        </div>
+        <div class="rt-tile">
+            <span class="rt-lbl">Bruta</span>
+            <span class="rt-val">{% if r.bruta is not None %}{{ r.bruta|floatformat:2 }} %{% else %}—{% endif %}</span>
+            <span class="rt-sub">alquiler / lo que costó · la de los anuncios, sin descontar nada</span>
+        </div>
+        <div class="rt-tile">
+            <span class="rt-lbl">Neta tras IRPF</span>
+            <span class="rt-val">{% if r.neta_irpf is not None %}{{ r.neta_irpf|floatformat:2 }} %{% else %}—{% endif %}</span>
+            <span class="rt-sub">menos {{ r.impuesto|euro:0 }} de IRPF al año</span>
+        </div>
+        <div class="rt-tile">
+            <span class="rt-lbl">Sobre tu dinero</span>
+            {% if r.sobre_tu_dinero is not None %}
+            <span class="rt-val {% if r.sobre_tu_dinero < 0 %}rt-neg{% endif %}">{{ r.sobre_tu_dinero|floatformat:2 }} %</span>
+            <span class="rt-sub">lo que te queda tras pagarlo todo, hipoteca incluida, / lo que pusiste ({{ r.capital_propio|euro:0 }}){% if r.sobre_tu_dinero_con_capital is not None %} · {{ r.sobre_tu_dinero_con_capital|floatformat:2 }} % contando el capital que amortizas{% endif %}</span>
+            {% elif r.falta_prestamo %}
+            <span class="rt-val">—</span>
+            <span class="rt-sub">Falta el <a href="{% url 'finanzas:editar_propiedad' p.pk %}">préstamo al comprar</a> para saber cuánto pusiste tú.</span>
+            {% else %}
+            <span class="rt-val">—</span>
+            <span class="rt-sub">sin datos</span>
+            {% endif %}
+        </div>
+        <div class="rt-tile">
+            <span class="rt-lbl">Sobre el valor actual</span>
+            <span class="rt-val">{% if r.sobre_valor is not None %}{{ r.sobre_valor|floatformat:2 }} %{% else %}—{% endif %}</span>
+            <span class="rt-sub">neto / lo que vale hoy ({{ p.valor_actual|euro:0 }}) · compárala con lo que daría ese dinero en otra parte</span>
+        </div>
+    </div>
+
+    <div class="rt-cascada" aria-label="De lo que entra a lo que queda en un año">
+        {% for c in r.cascada %}
+        <div class="rt-paso rt-{{ c.clave }}">
+            <span class="rt-paso-nombre">{{ c.nombre }}</span>
+            <span class="rt-paso-pista"><i style="left:{{ c.izq|stringformat:'s' }}%; width:{{ c.ancho|stringformat:'s' }}%;"></i></span>
+            <span class="rt-paso-cifra">{% if c.clave == 'renta' %}+{{ c.importe|euro:0 }}{% elif c.clave == 'flujo' %}{% if c.importe > 0 %}+{% endif %}{{ c.importe|euro:0 }}{% else %}{{ c.importe|euro:0|cut:"-" }}{% endif %}</span>
+        </div>
+        {% endfor %}
+        <div class="rt-pie">
+            Al año{% if modo == 'real' and r.anualizado %}, llevado a un año desde {{ r.meses }} mes{{ r.meses|pluralize:"es" }} alquilada{% endif %} ·
+            ≈ {% if r.flujo_mes > 0 %}+{% endif %}{{ r.flujo_mes|euro:0 }} al mes en tu bolsillo{% if r.capital_amortizado %}, y {{ r.capital_amortizado|euro:0 }} al año de la cuota son capital que amortizas: se quedan en el piso{% endif %}.
+        </div>
+    </div>
+
+    {% with rv=r.revalorizacion %}
+    <div class="rt-reval">
+        <span class="rt-lbl">Aparte · revalorización</span>
+        <span>
+            {% if rv.total >= 0 %}+{% endif %}{{ rv.total|euro:0 }}{% if rv.pct is not None %} ({% if rv.pct >= 0 %}+{% endif %}{{ rv.pct|floatformat:1 }} %){% endif %} desde la compra{% if rv.anual is not None %} · {% if rv.anual >= 0 %}+{% endif %}{{ rv.anual|floatformat:2 }} % al año en {{ rv.anios|floatformat:1 }} años{% endif %}.
+            <span class="rt-apagado">No se suma a la rentabilidad: no la cobras hasta vender, y entonces pagas gastos de venta y plusvalía.</span>
+        </span>
+    </div>
+    {% endwith %}
+</div>

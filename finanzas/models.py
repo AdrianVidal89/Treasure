@@ -1844,6 +1844,17 @@ class Propiedad(models.Model):
     partida_irpf = models.ForeignKey(
         'PartidaGasto', on_delete=models.SET_NULL, null=True, blank=True, related_name='+',
     )
+    # Lo que se pidió prestado al comprar. Con él sale el dinero que pusiste
+    # de tu bolsillo (coste de compra − préstamo), que es contra lo que se
+    # mide la rentabilidad «sobre tu dinero». La deuda de hoy no sirve: baja
+    # cada mes y no dice cuánto pusiste.
+    hipoteca_inicial = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text='Importe del préstamo hipotecario al comprar. Vacío o 0: sin hipoteca.',
+    )
+    # El último escenario del simulador de alquiler (para las no alquiladas):
+    # al volver a la ficha sale lo que se puso. Ver `rentabilidad.simular`.
+    simulacion_alquiler = models.JSONField(default=dict, blank=True)
 
     color = models.CharField(max_length=7, default='#e67e22')
     activo = models.BooleanField(default=True)

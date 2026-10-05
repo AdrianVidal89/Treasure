@@ -4985,3 +4985,208 @@ class ApiEvolucionInversionesTests(TestCase):
     def test_fecha_no_valida_400(self):
         resp = self.client.get(reverse('finanzas:api_evolucion_inversiones'), {'desde': 'ayer'})
         self.assertEqual(resp.status_code, 400)
+
+
+class RentabilidadPropiedadTests(TestCase):
+    """Cuánto renta un piso: el real en los últimos 12 meses y el simulado.
+
+    Piso de 100.000 € + 10.000 € de gastos de compra (110.000), alquilado a
+    1.000 €/mes, 2.000 € de IBI al año y 400 €/mes de hipoteca; 80.000 € de
+    préstamo, así que pusiste 30.000 €."""
+
+    def setUp(self):
+        from core.models import Hogar, UserProfile
+        from extractos.models import MovimientoBancario
+        from .models import CategoriaGasto, FuenteIngreso, Propiedad, TablaIRPF
+        from .views_gastos import _crear_categorias_predefinidas
+        self.user = User.objects.create_user('adrian', password='x', first_name='Adrian')
+        self.hogar = Hogar.objects.create(nombre='Casa', creado_por=self.user)
+        perfil, _ = UserProfile.objects.get_or_create(user=self.user)
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.client.force_login(self.user)
+        self.anio = 2025
+        self.hoy = datetime.date(2026, 1, 15)
+        for anio in (2025, 2026):
+            for desde, hasta, pct in (('0', '12450', '19'), ('12450', '20200', '24'), ('20200', '35200', '30'),
+                                      ('35200', '60000', '37'), ('60000', None, '45')):
+                TablaIRPF.objects.create(pais='ES', año=anio, tramo_desde=Decimal(desde),
+                                         tramo_hasta=Decimal(hasta) if hasta else None, porcentaje=Decimal(pct))
+        FuenteIngreso.objects.create(usuario=self.user, hogar=self.hogar, nombre='Nómina',
+                                     importe_declarado=Decimal('40000'), es_bruto=True)
+        self.piso = Propiedad.objects.create(
+            hogar=self.hogar, nombre='Piso Bilbao', fecha_compra=datetime.date(2020, 1, 1),
+            precio_compra=Decimal('100000'), gastos_compra=Decimal('10000'),
+            valor_actual=Decimal('150000'), deuda_hipotecaria=Decimal('60000'),
+            alquilada=True, propietario=self.user, reduccion_alquiler_pct=50,
+        )
+        self.otros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Otros ingresos')
+        self.hipoteca, _ = CategoriaGasto.objects.get_or_create(
+            hogar=self.hogar, nombre='Hipoteca', defaults={'tipo': 'fijo'})
+        self.Mov = MovimientoBancario
+        for mes in range(1, 13):
+            self.mov(datetime.date(2025, mes, 3), '1000', self.otros, 'Inquilino')
+            self.mov(datetime.date(2025, mes, 5), '-400', self.hipoteca, 'Cuota hipoteca')
+        self.mov(datetime.date(2025, 6, 20), '-2000', None, 'IBI')
+
+    def mov(self, fecha, importe, categoria, concepto, propiedad=True):
+        return self.Mov.objects.create(hogar=self.hogar, fecha=fecha, concepto=concepto,
+                                       importe=Decimal(importe), categoria=categoria,
+                                       propiedad=self.piso if propiedad else None)
+
+    def real(self):
+        from .rentabilidad import rentabilidad_real
+        self.piso.refresh_from_db()
+        return rentabilidad_real(self.piso, hoy=self.hoy)
+
+    def test_ultimos_12_meses_bruta_y_neta_sin_hipoteca(self):
+        r = self.real()
+        self.assertEqual((r['inicio'], r['fin'], r['meses']),
+                         (datetime.date(2025, 1, 1), datetime.date(2025, 12, 31), 12))
+        self.assertEqual(r['renta'], Decimal('12000.00'))
+        self.assertEqual(r['gastos'], Decimal('2000.00'))      # el IBI; la cuota no
+        self.assertEqual(r['hipoteca'], Decimal('4800.00'))
+        self.assertEqual(r['bruta'], round(12000 / 110000 * 100, 2))
+        self.assertEqual(r['neta'], round(10000 / 110000 * 100, 2))
+        self.assertEqual(r['sobre_valor'], round(10000 / 150000 * 100, 2))
+
+    def test_el_irpf_es_el_de_la_declaracion(self):
+        from .alquiler import impuesto_del_alquiler
+        r = self.real()
+        # Rendimiento 10.000 − 50 % de reducción = 5.000 que tributan.
+        self.assertEqual(r['reduccion'], Decimal('5000.00'))
+        _, _, esperado = impuesto_del_alquiler(self.piso, Decimal('5000.00'), 2025)
+        self.assertGreater(esperado, 0)
+        self.assertEqual(r['impuesto'], esperado)
+        self.assertEqual(r['neto_irpf'], Decimal('10000.00') - esperado)
+        self.assertEqual(r['flujo'], Decimal('10000.00') - esperado - Decimal('4800.00'))
+
+    def test_sobre_tu_dinero_necesita_el_prestamo_inicial(self):
+        r = self.real()
+        self.assertTrue(r['falta_prestamo'])
+        self.assertIsNone(r['sobre_tu_dinero'])
+
+        self.piso.hipoteca_inicial = Decimal('80000')
+        self.piso.intereses_hipoteca_anuales = Decimal('1200')
+        self.piso.save()
+        r = self.real()
+        self.assertEqual(r['capital_propio'], Decimal('30000'))
+        self.assertEqual(r['sobre_tu_dinero'], round(float(r['flujo'] / 30000 * 100), 2))
+        # De los 4.800 de cuota, 3.600 son capital: patrimonio, no pérdida.
+        self.assertEqual(r['capital_amortizado'], Decimal('3600.00'))
+        self.assertEqual(r['sobre_tu_dinero_con_capital'],
+                         round(float((r['flujo'] + Decimal('3600')) / 30000 * 100), 2))
+
+    def test_sin_hipoteca_tu_dinero_es_todo_el_coste(self):
+        self.Mov.objects.filter(categoria=self.hipoteca).delete()
+        self.piso.deuda_hipotecaria = Decimal('0')
+        self.piso.save()
+        r = self.real()
+        self.assertEqual(r['capital_propio'], Decimal('110000'))
+
+    def test_alquilada_hace_poco_se_lleva_a_un_año_y_el_ibi_cuenta_una_vez(self):
+        self.piso.alquilada_desde = datetime.date(2025, 10, 1)
+        self.piso.save()
+        self.mov(datetime.date(2025, 11, 20), '-500', None, 'IBI 2º plazo')
+        self.Mov.objects.filter(concepto='IBI 2º plazo').update(
+            partida_conciliada=self._partida_anual())
+        r = self.real()
+        self.assertEqual(r['meses'], 3)
+        self.assertTrue(r['anualizado'])
+        self.assertEqual(r['renta'], Decimal('12000.00'))     # 3.000 × 4
+        self.assertEqual(r['gastos'], Decimal('500.00'))      # el recibo anual, una vez
+        self.assertEqual(r['hipoteca'], Decimal('4800.00'))
+
+    def _partida_anual(self):
+        from .models import PartidaGasto
+        return PartidaGasto.objects.create(hogar=self.hogar, nombre='IBI', importe=Decimal('500'),
+                                           periodicidad='anual', propiedad=self.piso)
+
+    def test_sin_cobros_ni_fecha_no_hay_rentabilidad(self):
+        self.Mov.objects.filter(categoria=self.otros).delete()
+        self.assertIsNone(self.real())
+
+    def test_revalorizacion_va_aparte(self):
+        r = self.real()
+        rv = r['revalorizacion']
+        self.assertEqual(rv['total'], Decimal('40000'))
+        self.assertEqual(rv['pct'], round(40000 / 110000 * 100, 2))
+        self.assertAlmostEqual(rv['anual'], ((150000 / 110000) ** (1 / rv['anios']) - 1) * 100, delta=0.05)
+
+    def test_la_ficha_de_alquiler_la_muestra(self):
+        resp = self.client.get(reverse('finanzas:alquiler_propiedad', args=[self.piso.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Rentabilidad neta')
+
+    # ── Simulador ────────────────────────────────────────────────────────
+
+    def test_simulacion_frente_a_tenerla_vacia(self):
+        from .rentabilidad import simular
+        self.piso.alquilada = False
+        self.piso.save()
+        r = simular(self.piso, {
+            'renta_mensual': '1000', 'meses_ocupados': '11', 'gastos_fijos_anuales': '2000',
+            'cuota_hipoteca_anual': '4800', 'mantenimiento_pct': '5', 'seguro_impago_pct': '4',
+            'gestion_pct': '0', 'reduccion_pct': '50',
+        }, hoy=self.hoy)
+        self.assertEqual(r['renta'], Decimal('11000.00'))
+        self.assertEqual(r['gastos_extra'], Decimal('990.00'))      # 9 % de la renta
+        self.assertEqual(r['gastos'], Decimal('2990.00'))
+        self.assertEqual(r['neta'], round(8010 / 110000 * 100, 2))
+        # Vacía pagas 2.000 + 4.800 igual: lo que cambia es renta − extra − IRPF.
+        self.assertEqual(r['vacia'], Decimal('-6800'))
+        self.assertEqual(r['frente_a_vacia'], Decimal('11000') - Decimal('990') - r['impuesto'])
+
+    def test_el_escenario_se_guarda_y_se_vuelve_a_ver(self):
+        self.piso.alquilada = False
+        self.piso.save()
+        self.Mov.objects.filter(categoria=self.otros).delete()
+        url = reverse('finanzas:simular_alquiler', args=[self.piso.pk])
+        resp = self.client.post(url, {
+            'renta_mensual': '950', 'meses_ocupados': '11', 'gastos_fijos_anuales': '2000',
+            'cuota_hipoteca_anual': '0', 'mantenimiento_pct': '5', 'seguro_impago_pct': '0',
+            'gestion_pct': '0', 'reduccion_pct': '50',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.piso.refresh_from_db()
+        self.assertEqual(self.piso.simulacion_alquiler['renta_mensual'], '950')
+
+        lista = self.client.get(reverse('finanzas:listar_propiedades'))
+        item = next(i for i in lista.context['propiedades_con_venta'] if i['propiedad'] == self.piso)
+        self.assertEqual(item['sim']['valores']['renta_mensual'], '950')
+        self.assertEqual(item['sim']['resultado']['renta'], Decimal('10450.00'))
+        self.assertContains(lista, 'frente a vacía')
+
+        self.client.post(url, {'borrar': '1'})
+        self.piso.refresh_from_db()
+        self.assertEqual(self.piso.simulacion_alquiler, {})
+
+    def test_sin_guardar_propone_lo_que_ya_cuesta(self):
+        self.piso.alquilada = False
+        self.piso.save()
+        from .rentabilidad import escenario
+        valores, ya, guardado = escenario(self.piso, hoy=self.hoy)
+        self.assertIsNone(guardado)
+        self.assertEqual(ya['gastos_fijos_anuales'], Decimal('2000.00'))
+        self.assertEqual(ya['cuota_hipoteca_anual'], Decimal('4800.00'))
+        self.assertEqual(valores['reduccion_pct'], '50')
+
+    def test_renta_no_valida_no_se_guarda(self):
+        self.piso.alquilada = False
+        self.piso.save()
+        self.client.post(reverse('finanzas:simular_alquiler', args=[self.piso.pk]),
+                         {'renta_mensual': 'mucho'})
+        self.piso.refresh_from_db()
+        self.assertEqual(self.piso.simulacion_alquiler, {})
+
+    def test_el_prestamo_inicial_se_edita_en_la_ficha(self):
+        self.client.post(reverse('finanzas:editar_propiedad', args=[self.piso.pk]), {
+            'nombre': 'Piso Bilbao', 'tipo': 'vivienda', 'fecha_compra': '2020-01-01',
+            'precio_compra': '100000', 'gastos_compra': '10000', 'valor_actual': '150000',
+            'deuda_hipotecaria': '60000', 'gastos_venta_pct': '6', 'alquilada': 'on',
+            'propietario': str(self.user.pk), 'reduccion_alquiler_pct': '50',
+            'hipoteca_inicial': '80.000',
+        })
+        self.piso.refresh_from_db()
+        self.assertEqual(self.piso.hipoteca_inicial, Decimal('80000.00'))

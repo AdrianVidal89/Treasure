@@ -836,6 +836,14 @@ def _contra_el_limite(neto, bruto, cubierto, limite, es_anual,
     estado['pct_cubierto'] = round(pct_cubierto, 1)
     estado['medido'] = medido
     estado['prorrateado'] = prorrateado
+    # El exceso que pone ESTE periodo. En un anual mirado en un mes, lo de los
+    # meses anteriores ya se juzgó en su mes: si el año se pasó en septiembre,
+    # octubre sin un solo pago no se ha pasado de nada. Solo cuenta lo que este
+    # mes añade por encima del límite (o de lo que ya se llevaba por encima).
+    if es_anual and anterior > 0 and estado['limite']:
+        estado['exceso_periodo'] = max(medido - max(estado['limite'], anterior), Decimal('0'))
+    else:
+        estado['exceso_periodo'] = estado['exceso']
     return estado
 
 
@@ -976,14 +984,17 @@ def _fuera_de_presupuesto(bloques):
     """
     excedidos, explican, sin_limite = [], [], []
     for b in bloques:
-        if b['dentro'] is False:
+        # «Fuera de lo previsto» habla del periodo que se mira: un anual que se
+        # pasó del año en un mes anterior no se repite en los siguientes. La
+        # barra del bloque sí lo sigue diciendo, que es donde se lee el año.
+        if b['dentro'] is False and b['exceso_periodo'] > 0:
             excedidos.append({
                 'tipo': b['tipo'], 'nombre': b['etiqueta'], 'color': b['color'],
                 # `medido` y no `importe`: en los anuales lo que se compara con
                 # el límite es el pago entero, así que enseñar el neto al lado
                 # del exceso daría dos cifras que no se restan entre sí.
                 'importe': b.get('medido', b['importe']), 'limite': b['limite'],
-                'exceso': b['exceso'], 'num_categorias': b['num_categorias'],
+                'exceso': b['exceso_periodo'], 'num_categorias': b['num_categorias'],
                 'categorias': b['categorias'][:5],
             })
         # Ni en discrecionales ni en ningún bloque cuyo límite se declare
@@ -997,7 +1008,9 @@ def _fuera_de_presupuesto(bloques):
                 importe=c.get('medido', c['importe']),
             )
             if c['dentro'] is False:
-                explican.append(fila)
+                if c['exceso_periodo'] > 0:
+                    fila['exceso'] = c['exceso_periodo']
+                    explican.append(fila)
             elif c['dentro'] is None and c['importe'] > 0 and c['id']:
                 sin_limite.append(fila)
 

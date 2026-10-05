@@ -141,5 +141,6 @@ urlpatterns = [
     path('propiedades/<int:pk>/alquiler/', views_propiedades.alquiler_propiedad, name='alquiler_propiedad'),
     path('propiedades/<int:pk>/alquiler/cobros/', views_propiedades.alquiler_cobros, name='alquiler_cobros'),
     path('propiedades/<int:pk>/alquiler/a-gasto/', views_propiedades.alquiler_a_gasto, name='alquiler_a_gasto'),
+    path('propiedades/<int:pk>/simular-alquiler/', views_propiedades.simular_alquiler, name='simular_alquiler'),
     path('propiedades/historial/', views_propiedades.registrar_historial, name='registrar_historial_propiedad'),
 ]
