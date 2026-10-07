@@ -619,7 +619,24 @@ class DuplicadosTests(TestCase):
         segunda = self._subir('caixabank.csv')
         self.assertEqual(segunda.context['total_nuevos'], 0)
         self.assertEqual(segunda.context['total_duplicados'], segunda.context['total_ok'])
-        self.assertTrue(all(m['ya_existe'] for a in segunda.context['archivos'] for m in a['preview']))
+        self.assertTrue(all(f['estado'] == 'duplicado' for a in segunda.context['archivos'] for f in a['filas']))
+
+    def test_la_revision_lista_todas_las_filas_con_su_estado(self):
+        lineas = ['Fecha,Concepto,Importe,Estado']
+        lineas += [f'{d:02d}/03/2026,Compra {d},-{d},COMPLETED' for d in range(1, 21)]
+        lineas += ['21/03/2026,Pendiente,-5,PENDING', 'mal,Rota,-3,COMPLETED']
+        sesion = self.client.session
+        sesion['extractos_pendientes'] = [{'nombre': 'r.csv', 'texto': '\n'.join(lineas)}]
+        sesion['extractos_pendientes_meta'] = {'nombre_banco': '', 'cuenta_id': None}
+        sesion.save()
+
+        filas = self.client.get(reverse('extractos:revisar')).context['archivos'][0]['filas']
+        estados = [f['estado'] for f in filas]
+        # Nada se recorta: las 20 válidas, la pendiente y la rota, en el orden del archivo.
+        self.assertEqual(estados, ['nuevo'] * 20 + ['sin_consolidar', 'error'])
+        self.assertEqual(filas[20]['concepto'], 'Pendiente')
+        self.assertEqual(filas[20]['importe'], Decimal('-5'))
+        self.assertEqual(filas[21]['fecha_txt'], 'mal')
 
     def test_el_mismo_archivo_dos_veces_en_el_lote_solo_cuenta_una(self):
         respuesta = self._subir('caixabank.csv', 'caixabank.csv')

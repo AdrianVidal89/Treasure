@@ -28,7 +28,7 @@
             {% else %}
             No queda nada nuevo que importar en estos archivos.
             {% endif %}
-            Los repetidos aparecen tachados en la vista previa.
+            Puedes verlos con el filtro «Duplicados» de cada archivo.
         </div>
     </div>
     {% endif %}
@@ -42,6 +42,11 @@
             <span class="stat-tile-label">Ya los tienes</span>
             <span class="stat-tile-valor num text-muted">{{ total_duplicados }}</span>
             <span style="font-size:0.65rem;color:var(--muted);">se omiten</span>
+        </div>
+        <div class="card stat-tile">
+            <span class="stat-tile-label">Sin consolidar</span>
+            <span class="stat-tile-valor num text-muted">{{ total_omitidas }}</span>
+            <span style="font-size:0.65rem;color:var(--muted);">pendientes o rechazadas</span>
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Filas con error</span>
@@ -78,7 +83,7 @@
                     <span class="badge badge-success">{{ archivo.total_nuevos }} nuevos</span>
                     {% if archivo.total_duplicados %}<span class="badge badge-info" title="Ya están importados: se omitirán.">{{ archivo.total_duplicados }} duplicados</span>{% endif %}
                     {% if archivo.total_error %}<span class="badge badge-danger">{{ archivo.total_error }} con error</span>{% endif %}
-                    {% if archivo.total_omitidas %}<span class="badge badge-info" title="Operaciones pendientes o rechazadas: se importarán cuando el banco las consolide.">{{ archivo.total_omitidas }} sin consolidar</span>{% endif %}
+                    {% if archivo.total_omitidas %}<span class="badge badge-warning" title="Operaciones pendientes o rechazadas: se importarán cuando el banco las consolide.">{{ archivo.total_omitidas }} sin consolidar</span>{% endif %}
                 </div>
             </div>
 
@@ -103,39 +108,58 @@
                 </div>
             </div>
 
-            {% if archivo.preview %}
-            <div class="table-scroll">
-                <table class="table">
-                    <thead><tr><th>Fecha</th><th>Concepto</th><th class="num">Importe</th><th class="num">Saldo</th></tr></thead>
-                    <tbody>
-                        {% for m in archivo.preview %}
-                        <tr{% if m.ya_existe %} class="revisar-duplicado"{% endif %}>
-                            <td class="num">{{ m.fecha|date:"d/m/Y" }}</td>
-                            <td>{% if m.ya_existe %}<span class="badge badge-info" title="Ya está importado: se omitirá">duplicado</span> {% endif %}{{ m.concepto }}</td>
-                            <td class="num {% if m.importe >= 0 %}text-positive{% else %}text-negative{% endif %}">{{ m.importe|euro }}</td>
-                            <td class="num">{% if m.saldo is not None %}{{ m.saldo|euro }}{% else %}—{% endif %}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            {% if archivo.filas %}
+            {% comment %}El archivo entero, no una muestra: cada fila lleva su estado y
+               se filtra aquí mismo (sin volver al servidor) para revisar justo lo
+               que importa — lo nuevo, lo que se omite por repetido o lo que el
+               banco aún no ha consolidado.{% endcomment %}
+            <div class="revisar-explorador" data-explorador>
+                <div class="revisar-filtros" role="group" aria-label="Filtrar filas">
+                    <button type="button" class="revisar-filtro activo" data-filtro="todos" aria-pressed="true">Todas <span class="num">{{ archivo.filas|length }}</span></button>
+                    <button type="button" class="revisar-filtro" data-filtro="nuevo" aria-pressed="false" {% if not archivo.total_nuevos %}disabled{% endif %}>Nuevos <span class="num">{{ archivo.total_nuevos }}</span></button>
+                    <button type="button" class="revisar-filtro" data-filtro="duplicado" aria-pressed="false" {% if not archivo.total_duplicados %}disabled{% endif %}>Duplicados <span class="num">{{ archivo.total_duplicados }}</span></button>
+                    <button type="button" class="revisar-filtro" data-filtro="sin_consolidar" aria-pressed="false" {% if not archivo.total_omitidas %}disabled{% endif %}>Sin consolidar <span class="num">{{ archivo.total_omitidas }}</span></button>
+                    <button type="button" class="revisar-filtro" data-filtro="error" aria-pressed="false" {% if not archivo.total_error %}disabled{% endif %}>Con error <span class="num">{{ archivo.total_error }}</span></button>
+                    <input type="search" class="revisar-buscar" placeholder="Buscar concepto, fecha o importe…" aria-label="Buscar en las filas">
+                </div>
+                <div class="revisar-contador" aria-live="polite"></div>
+                <div class="revisar-tabla">
+                    <table class="table">
+                        <thead><tr>
+                            <th class="num" data-orden="fila" aria-sort="ascending">Fila</th>
+                            <th data-orden="fecha">Fecha</th>
+                            <th>Estado</th>
+                            <th data-orden="concepto">Concepto</th>
+                            <th class="num" data-orden="importe">Importe</th>
+                            <th class="num">Saldo</th>
+                        </tr></thead>
+                        <tbody>
+                            {% for f in archivo.filas %}
+                            <tr class="revisar-fila revisar-{{ f.estado }}" data-estado="{{ f.estado }}"
+                                data-fila="{{ f.fila|default:0 }}"
+                                data-fecha="{% if f.fecha %}{{ f.fecha|date:'Y-m-d' }}{% endif %}"
+                                data-importe="{% if f.importe is not None %}{{ f.importe|stringformat:'s' }}{% endif %}">
+                                <td class="num text-muted">{{ f.fila|default:"" }}</td>
+                                <td class="num">{% if f.fecha %}{{ f.fecha|date:"d/m/Y" }}{% else %}{{ f.fecha_txt|default:"—" }}{% endif %}</td>
+                                <td>
+                                    {% if f.estado == 'nuevo' %}<span class="badge badge-success">nuevo</span>
+                                    {% elif f.estado == 'duplicado' %}<span class="badge badge-info">duplicado</span>
+                                    {% elif f.estado == 'sin_consolidar' %}<span class="badge badge-warning">sin consolidar</span>
+                                    {% else %}<span class="badge badge-danger">error</span>{% endif %}
+                                </td>
+                                <td class="revisar-concepto">
+                                    <span class="revisar-concepto-txt">{{ f.concepto }}</span>
+                                    {% if f.motivo %}<span class="revisar-motivo">{{ f.motivo }}</span>{% endif %}
+                                </td>
+                                <td class="num {% if f.importe is not None %}{% if f.importe >= 0 %}text-positive{% else %}text-negative{% endif %}{% endif %}">{% if f.importe is not None %}{{ f.importe|euro }}{% else %}{{ f.importe_txt|default:"—" }}{% endif %}</td>
+                                <td class="num">{% if f.saldo is not None %}{{ f.saldo|euro }}{% else %}—{% endif %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    <div class="revisar-vacio" hidden>Ninguna fila coincide con el filtro.</div>
+                </div>
             </div>
-            {% if archivo.preview_restantes %}
-            <div class="revisar-mas">… y {{ archivo.preview_restantes }} movimiento(s) más.</div>
-            {% endif %}
-            {% endif %}
-
-            {% if archivo.filas_error %}
-            <details class="revisar-errores">
-                <summary>Ver {{ archivo.total_error }} fila(s) con error</summary>
-                <ul>
-                    {% for e in archivo.filas_error %}
-                    <li><strong>Fila {{ e.fila }}:</strong> {{ e.motivo }} <span class="revisar-valores">{{ e.valores|join:" | " }}</span></li>
-                    {% endfor %}
-                </ul>
-                {% if archivo.filas_error_restantes %}
-                <div class="revisar-mas">… y {{ archivo.filas_error_restantes }} fila(s) más con error.</div>
-                {% endif %}
-            </details>
             {% endif %}
         </div>
         {% endfor %}
@@ -166,7 +190,6 @@
 .revisar-mapeo-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; }
 .revisar-mapeo-grid .form-group { margin:0; }
 .revisar-mas { font-size:0.78rem; color:var(--muted); padding:8px 2px; font-style:italic; }
-.revisar-errores { margin-top:14px; font-size:0.85rem; }
 /* Filas que ya están en la base de datos: se ven, pero no se importarán. */
 .revisar-aviso-duplicados {
     display:flex; gap:10px; align-items:flex-start; margin-bottom:16px;
@@ -174,11 +197,104 @@
     background:rgba(96,165,250,.10); border:1px solid rgba(96,165,250,.35);
 }
 .revisar-aviso-duplicados .icon { flex:0 0 auto; margin-top:2px; color:#60a5fa; }
-tr.revisar-duplicado td { opacity:.5; text-decoration:line-through; }
-tr.revisar-duplicado .badge { text-decoration:none; opacity:1; }
-.revisar-errores summary { cursor:pointer; color:var(--danger); font-weight:600; }
-.revisar-errores ul { margin:10px 0 0; padding-left:18px; }
-.revisar-errores li { margin-bottom:6px; color:var(--text-color); }
-.revisar-valores { color:var(--muted); font-size:0.76rem; }
+/* Lo que no se va a importar se ve, pero atenuado: el importe tachado deja
+   claro de un vistazo que no sumará. */
+tr.revisar-duplicado td, tr.revisar-sin_consolidar td, tr.revisar-error td { opacity:.6; }
+tr.revisar-fila td:nth-child(3) { opacity:1; }
+tr.revisar-duplicado td:nth-child(5), tr.revisar-sin_consolidar td:nth-child(5) { text-decoration:line-through; }
+.revisar-filtros { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+.revisar-filtro {
+    display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:999px;
+    border:1px solid var(--border); background:transparent; color:var(--text-color);
+    font:inherit; font-size:0.8rem; cursor:pointer;
+}
+.revisar-filtro .num { color:var(--muted); font-size:0.75rem; }
+.revisar-filtro:hover:not(:disabled) { border-color:var(--accent-color); }
+.revisar-filtro.activo { border-color:var(--accent-color); color:var(--accent-color); background:color-mix(in srgb, var(--accent-color) 12%, transparent); }
+.revisar-filtro.activo .num { color:inherit; }
+.revisar-filtro:disabled { opacity:.4; cursor:default; }
+.revisar-buscar {
+    flex:1 1 200px; min-width:0; margin-left:auto; max-width:320px; padding:6px 12px;
+    border:1px solid var(--border); border-radius:999px; background:transparent; color:var(--text-color); font:inherit; font-size:0.82rem;
+}
+.revisar-buscar:focus { outline:none; border-color:var(--accent-color); }
+.revisar-contador { font-size:0.78rem; color:var(--muted); margin-bottom:6px; }
+.revisar-tabla { max-height:65vh; overflow:auto; border:1px solid var(--border); border-radius:10px; }
+.revisar-tabla .table { margin:0; }
+.revisar-tabla thead th { position:sticky; top:0; z-index:1; background:var(--surface-2, var(--app-bg)); }
+.revisar-tabla th[data-orden] { cursor:pointer; user-select:none; white-space:nowrap; }
+.revisar-tabla th[aria-sort="ascending"]::after { content:" ▲"; font-size:.65em; }
+.revisar-tabla th[aria-sort="descending"]::after { content:" ▼"; font-size:.65em; }
+.revisar-concepto { min-width:220px; }
+.revisar-motivo { display:block; color:var(--muted); font-size:0.74rem; margin-top:2px; }
+.revisar-vacio { padding:16px; text-align:center; color:var(--muted); font-size:0.85rem; }
 </style>
+
+<script>
+// Filtro, búsqueda y orden de la tabla de revisión. Todo en el navegador: las
+// filas ya están en la página, y el formulario no envía nada de esto.
+document.querySelectorAll('[data-explorador]').forEach(function (exp) {
+    var tbody = exp.querySelector('tbody');
+    var filas = Array.prototype.slice.call(tbody.rows);
+    var botones = exp.querySelectorAll('.revisar-filtro');
+    var buscar = exp.querySelector('.revisar-buscar');
+    var contador = exp.querySelector('.revisar-contador');
+    var vacio = exp.querySelector('.revisar-vacio');
+    var filtro = 'todos';
+    var normaliza = function (t) {
+        return (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    };
+    filas.forEach(function (tr) { tr._texto = normaliza(tr.textContent); });
+
+    function aplicar() {
+        var q = normaliza(buscar.value.trim());
+        var visibles = 0;
+        filas.forEach(function (tr) {
+            var ok = (filtro === 'todos' || tr.dataset.estado === filtro) && (!q || tr._texto.indexOf(q) !== -1);
+            tr.hidden = !ok;
+            if (ok) visibles++;
+        });
+        vacio.hidden = visibles > 0;
+        contador.textContent = 'Mostrando ' + visibles + ' de ' + filas.length + ' fila' + (filas.length === 1 ? '' : 's') + '.';
+    }
+
+    botones.forEach(function (b) {
+        b.addEventListener('click', function () {
+            filtro = b.dataset.filtro;
+            botones.forEach(function (o) {
+                o.classList.toggle('activo', o === b);
+                o.setAttribute('aria-pressed', o === b ? 'true' : 'false');
+            });
+            aplicar();
+        });
+    });
+    buscar.addEventListener('input', aplicar);
+    // Enter en el buscador no debe enviar el formulario de importación.
+    buscar.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });
+
+    exp.querySelectorAll('th[data-orden]').forEach(function (th) {
+        th.addEventListener('click', function () {
+            var campo = th.dataset.orden;
+            var dir = th.getAttribute('aria-sort') === 'ascending' ? -1 : 1;
+            exp.querySelectorAll('th[data-orden]').forEach(function (o) { o.removeAttribute('aria-sort'); });
+            th.setAttribute('aria-sort', dir === 1 ? 'ascending' : 'descending');
+            var valor = function (tr) {
+                if (campo === 'concepto') return normaliza(tr.querySelector('.revisar-concepto-txt').textContent);
+                if (campo === 'fecha') return tr.dataset.fecha || '';
+                var n = parseFloat(tr.dataset[campo]);
+                return isNaN(n) ? null : n;
+            };
+            filas.sort(function (a, b) {
+                var va = valor(a), vb = valor(b);
+                if (va === vb) return 0;
+                if (va === null || va === '') return 1;   // lo vacío siempre al final
+                if (vb === null || vb === '') return -1;
+                return (va < vb ? -1 : 1) * dir;
+            });
+            filas.forEach(function (tr) { tbody.appendChild(tr); });
+        });
+    });
+    aplicar();
+});
+</script>
 {% endblock %}
