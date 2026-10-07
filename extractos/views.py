@@ -15,7 +15,7 @@ from django.utils.dateparse import parse_date
 
 from finanzas import costes_activo, presupuesto
 from finanzas.models import CategoriaGasto, CuentaBancaria, PartidaGasto
-from finanzas.parsing import leer_tabla
+from finanzas.parsing import leer_tabla, parse_decimal, parse_fecha
 from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
@@ -218,6 +218,66 @@ def _marcar_duplicados(hogar, analizados):
             # El primero del lote es nuevo salvo que ya estuviera en la BD; los
             # siguientes con el mismo hash son repeticiones dentro del lote.
             mov['ya_existe'] = ya_en_bd or pos > 0
+            if ya_en_bd:
+                mov['motivo_duplicado'] = 'Ya está importado en Treasure.'
+            elif pos > 0:
+                mov['motivo_duplicado'] = 'Repetido en los archivos de esta importación.'
+
+
+def _filas_revision(resultado):
+    """Todas las filas del archivo en una sola lista, para la tabla de revisión.
+
+    Cada fila lleva su `estado` (nuevo, duplicado, sin_consolidar o error) y se
+    ordena por su posición en el archivo, así se ve el extracto completo tal
+    cual y se filtra en la propia página. De las filas descartadas solo se
+    tienen los valores crudos: se sacan fecha, concepto e importe con el mismo
+    mapeo de columnas, y si no se pueden interpretar se enseña el texto tal cual.
+    """
+    mapa = resultado['mapa']
+
+    def crudo(valores, campo):
+        i = mapa.get(campo)
+        if i is None or i >= len(valores):
+            return ''
+        return (valores[i] or '').strip()
+
+    filas = []
+    for m in resultado['movimientos']:
+        filas.append({
+            'fila': m.get('fila'),
+            'estado': 'duplicado' if m.get('ya_existe') else 'nuevo',
+            'fecha': m['fecha'], 'fecha_txt': '',
+            'concepto': m['concepto'],
+            'importe': m['importe'], 'importe_txt': '',
+            'saldo': m['saldo'],
+            'motivo': m.get('motivo_duplicado', ''),
+        })
+    descartadas = (
+        [('sin_consolidar', f) for f in resultado.get('filas_omitidas', [])]
+        + [('error', f) for f in resultado['filas_error']]
+    )
+    for estado, f in descartadas:
+        valores = f['valores']
+        fecha_txt = crudo(valores, 'fecha')
+        importe_txt = crudo(valores, 'importe')
+        importe = parse_decimal(importe_txt) if importe_txt else None
+        if importe is None and (crudo(valores, 'haber') or crudo(valores, 'debe')):
+            haber = parse_decimal(crudo(valores, 'haber')) or Decimal('0')
+            debe = parse_decimal(crudo(valores, 'debe')) or Decimal('0')
+            importe = haber - abs(debe)
+        partes = [p for p in (crudo(valores, 'concepto'), crudo(valores, 'concepto_extra')) if p]
+        saldo_txt = crudo(valores, 'saldo')
+        filas.append({
+            'fila': f['fila'],
+            'estado': estado,
+            'fecha': parse_fecha(fecha_txt) if fecha_txt else None, 'fecha_txt': fecha_txt,
+            'concepto': ' · '.join(partes) or ' | '.join(v for v in valores if v),
+            'importe': importe, 'importe_txt': importe_txt,
+            'saldo': parse_decimal(saldo_txt) if saldo_txt else None,
+            'motivo': f['motivo'],
+        })
+    filas.sort(key=lambda f: f['fila'] or 0)
+    return filas
 
 
 def _leer_mapeos_manuales(POST, num_archivos):
@@ -551,16 +611,14 @@ def revisar(request):
             'total_duplicados': sum(1 for m in r['movimientos'] if m.get('ya_existe')),
             'total_error': len(r['filas_error']),
             'total_omitidas': len(r.get('filas_omitidas', [])),
-            'preview': r['movimientos'][:15],
-            'preview_restantes': max(0, len(r['movimientos']) - 15),
-            'filas_error': r['filas_error'][:20],
-            'filas_error_restantes': max(0, len(r['filas_error']) - 20),
+            'filas': _filas_revision(r),
         })
 
     total_ok = sum(a['total_ok'] for a in archivos_ctx)
     total_error = sum(a['total_error'] for a in archivos_ctx)
     total_nuevos = sum(a['total_nuevos'] for a in archivos_ctx)
     total_duplicados = sum(a['total_duplicados'] for a in archivos_ctx)
+    total_omitidas = sum(a['total_omitidas'] for a in archivos_ctx)
 
     return render(request, 'extractos/revisar.html', {
         'archivos': archivos_ctx,
@@ -571,6 +629,7 @@ def revisar(request):
         'total_error': total_error,
         'total_nuevos': total_nuevos,
         'total_duplicados': total_duplicados,
+        'total_omitidas': total_omitidas,
     })
 
 
