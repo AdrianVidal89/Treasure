@@ -190,6 +190,53 @@ ninguna parte. La marca de la barra es lo que va de mes: un 60 % gastado el día
             {% endif %}
         </span>
     </div>
+
+    {% with r=panel.presupuesto.ritmo %}{% if r %}
+    {% comment %}
+    El ritmo del mes. La barra dice cuánto llevas; esto dice si a ESTAS
+    alturas es mucho o poco. Lo esperado sigue el reparto de los meses de antes
+    (el alquiler sale el día 1, el súper se reparte) pero termina siempre en el
+    tope: es el presupuesto puesto en el calendario, no la media de lo gastado.
+    {% endcomment %}
+    <div class="ext-ritmo {% if r.por_encima %}encima{% endif %}">
+        {% if r.en_curso %}
+        <p class="ext-ritmo-frase">
+            Día {{ r.hoy }} de {{ r.dias }}: llevas <b>{{ r.llevado_hoy|euro:0 }}</b>
+            y a estas alturas tocaba <b>{{ r.esperado_hoy|euro:0 }}</b> ·
+            {% if r.desvio_abs < 1 %}
+            <span class="ext-ritmo-tag">justo en el ritmo</span>
+            {% elif r.por_encima %}
+            <span class="ext-ritmo-tag mal">▲ vas {{ r.desvio_abs|euro:0 }} por encima</span>
+            {% else %}
+            <span class="ext-ritmo-tag bien">▼ vas {{ r.desvio_abs|euro:0 }} por debajo</span>
+            {% endif %}
+            {% if r.proyeccion_fin is not None %}
+            <br>Si el resto del mes va como de costumbre acabarías en
+            <b>{{ r.proyeccion_fin|euro:0 }}</b>,
+            {% if r.proyeccion_pasa %}<span class="text-negative">{{ r.proyeccion_margen|euro:0 }} por encima del presupuesto</span>{% else %}<span class="text-positive">{{ r.proyeccion_margen|euro:0 }} por debajo del presupuesto</span>{% endif %}.
+            {% endif %}
+        </p>
+        {% endif %}
+        <div class="ext-ritmo-graf" id="ext-ritmo-graf">
+            <svg id="ext-ritmo" role="img" aria-label="Gasto acumulado del mes frente a lo esperado según el presupuesto"></svg>
+            <div class="ext-ritmo-tip" id="ext-ritmo-tip" hidden></div>
+        </div>
+        <div class="ext-ritmo-leyenda">
+            <span><i class="real"></i> lo que llevas</span>
+            <span><i class="esperado"></i> lo esperado para acabar en el presupuesto</span>
+            {% if r.proyeccion %}<span><i class="proy"></i> si sigue como de costumbre</span>{% endif %}
+            <span><i class="tope"></i> presupuesto</span>
+            <span class="ext-ritmo-nota">
+                {% if r.meses_historial %}
+                lo esperado reparte el presupuesto como se repartió el gasto en tus últimos {{ r.meses_historial }} mes{{ r.meses_historial|pluralize:"es" }}
+                {% else %}
+                sin meses anteriores con los que comparar, lo esperado es lineal
+                {% endif %}
+            </span>
+        </div>
+    </div>
+    {{ r|json_script:"ext-ritmo-data" }}
+    {% endif %}{% endwith %}
 </section>
 {% endif %}
 
@@ -1137,6 +1184,52 @@ desde el gasto («¿Compartido?») o desde el propio Bizum («¿es un reembolso?
 }
 .ext-presu-pie { font-size:0.74rem; color:var(--muted); }
 
+/* ── Ritmo del mes: lo que llevas frente a lo esperado, día a día ───── */
+.ext-ritmo { grid-column:1 / -1; display:flex; flex-direction:column; gap:8px; margin-top:6px;
+    padding-top:14px; border-top:1px solid var(--border); }
+.ext-ritmo-frase { margin:0; font-size:0.84rem; color:var(--muted); line-height:1.55; }
+.ext-ritmo-frase b { color:var(--text-color); font-variant-numeric:tabular-nums; }
+.ext-ritmo-tag { font-weight:700; color:var(--text-color); white-space:nowrap; }
+.ext-ritmo-tag.bien { color:var(--success); }
+.ext-ritmo-tag.mal { color:var(--danger); }
+.ext-ritmo-graf { position:relative; width:100%; height:200px; }
+#ext-ritmo { display:block; width:100%; height:100%; overflow:visible; }
+#ext-ritmo .rejilla { stroke:var(--border); stroke-width:1; }
+#ext-ritmo .eje { fill:var(--muted); font-size:10.5px; font-variant-numeric:tabular-nums; }
+#ext-ritmo .tope { stroke:var(--muted); stroke-width:1; stroke-dasharray:3 4; opacity:.8; }
+#ext-ritmo .tope-lbl { fill:var(--muted); font-size:10.5px; }
+#ext-ritmo .esperado { fill:none; stroke:var(--muted); stroke-width:2; stroke-linejoin:round; opacity:.75; }
+#ext-ritmo .real { fill:none; stroke:var(--success); stroke-width:2.5; stroke-linejoin:round; stroke-linecap:round; }
+.ext-ritmo.encima #ext-ritmo .real { stroke:var(--danger); }
+#ext-ritmo .proy { fill:none; stroke:var(--success); stroke-width:2; stroke-dasharray:5 5; opacity:.6; }
+.ext-ritmo.encima #ext-ritmo .proy { stroke:var(--danger); }
+/* La brecha entre las dos líneas: verde donde vas por debajo, roja donde te
+   adelantas. Es lo que se lee de un vistazo. */
+#ext-ritmo .hueco.bien { fill:var(--success); opacity:.16; }
+#ext-ritmo .hueco.mal { fill:var(--danger); opacity:.2; }
+#ext-ritmo .hoy { stroke:var(--text-color); stroke-width:1; opacity:.35; }
+#ext-ritmo .punto { fill:var(--success); stroke:var(--surface); stroke-width:2; }
+.ext-ritmo.encima #ext-ritmo .punto { fill:var(--danger); }
+#ext-ritmo .cursor { stroke:var(--text-color); stroke-width:1; opacity:.4; }
+#ext-ritmo .cursor-pt { stroke:var(--surface); stroke-width:2; }
+.ext-ritmo-tip {
+    position:absolute; top:0; pointer-events:none; z-index:2;
+    background:var(--surface); border:1px solid var(--border-strong); border-radius:8px;
+    padding:6px 9px; font-size:0.74rem; color:var(--muted); white-space:nowrap;
+    box-shadow:var(--shadow); font-variant-numeric:tabular-nums;
+}
+.ext-ritmo-tip b { color:var(--text-color); }
+.ext-ritmo-leyenda { display:flex; flex-wrap:wrap; gap:4px 16px; font-size:0.72rem; color:var(--muted); align-items:center; }
+.ext-ritmo-leyenda span { display:inline-flex; align-items:center; gap:6px; }
+.ext-ritmo-leyenda i { display:inline-block; width:16px; height:0; border-top:2.5px solid var(--success); }
+.ext-ritmo.encima .ext-ritmo-leyenda i.real { border-top-color:var(--danger); }
+.ext-ritmo-leyenda i.esperado { border-top:2px solid var(--muted); opacity:.75; }
+.ext-ritmo-leyenda i.proy { border-top:2px dashed var(--success); opacity:.6; }
+.ext-ritmo.encima .ext-ritmo-leyenda i.proy { border-top-color:var(--danger); }
+.ext-ritmo-leyenda i.tope { border-top:1px dashed var(--muted); }
+.ext-ritmo-nota { flex-basis:100%; font-style:italic; opacity:.85; }
+@media (max-width:720px){ .ext-ritmo-graf { height:170px; } }
+
 /* ── Tira de datos secundarios ──────────────────────────────────────── */
 .ext-chips { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:26px; }
 .ext-chip {
@@ -2069,6 +2162,150 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             svg.appendChild(path);
             ang = a2;
         });
+    }
+
+    /* ---- Ritmo del mes ----
+       Se dibuja al ancho real del contenedor (y se redibuja al cambiarlo) para
+       que el texto de los ejes no se estire con el viewBox. */
+    var ritmoEl = document.getElementById('ext-ritmo-data');
+    var ritmoSvg = document.getElementById('ext-ritmo');
+    if (ritmoEl && ritmoSvg) {
+        var R = JSON.parse(ritmoEl.textContent);
+        var caja = document.getElementById('ext-ritmo-graf');
+        var tip = document.getElementById('ext-ritmo-tip');
+        var NSr = 'http://www.w3.org/2000/svg';
+        function eur0(v) {
+            var n = Math.round(Math.abs(v)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            return (v < 0 ? '−' : '') + n + ' €';
+        }
+        function el(tag, attrs, padre) {
+            var e = document.createElementNS(NSr, tag);
+            for (var k in attrs) e.setAttribute(k, attrs[k]);
+            (padre || ritmoSvg).appendChild(e);
+            return e;
+        }
+        function pasoBonito(max) {
+            var bruto = max / 4, mag = Math.pow(10, Math.floor(Math.log10(bruto)));
+            var n = bruto / mag;
+            return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * mag;
+        }
+        function dibujarRitmo() {
+            while (ritmoSvg.firstChild) ritmoSvg.removeChild(ritmoSvg.firstChild);
+            var W = caja.clientWidth, H = caja.clientHeight;
+            if (!W || !H) return;
+            ritmoSvg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+            var m = {t: 10, r: 12, b: 22, l: 48};
+            var iw = W - m.l - m.r, ih = H - m.t - m.b;
+            var maxV = Math.max(R.tope, Math.max.apply(null, R.real),
+                                R.proyeccion ? Math.max.apply(null, R.proyeccion) : 0) * 1.06 || 1;
+            var paso = pasoBonito(maxV);
+            maxV = Math.ceil(maxV / paso) * paso;
+            function x(d) { return m.l + d / R.dias * iw; }
+            function y(v) { return m.t + ih - v / maxV * ih; }
+
+            for (var v = 0; v <= maxV + 0.01; v += paso) {
+                el('line', {x1: m.l, x2: m.l + iw, y1: y(v), y2: y(v), 'class': 'rejilla'});
+                var t = el('text', {x: m.l - 6, y: y(v) + 3.5, 'text-anchor': 'end', 'class': 'eje'});
+                t.textContent = v >= 1000 ? (v / 1000).toLocaleString('es-ES') + 'k' : Math.round(v);
+            }
+            var marcas = [1, 5, 10, 15, 20, 25, R.dias];
+            marcas.forEach(function (d) {
+                var t = el('text', {x: x(d), y: H - 6, 'text-anchor': 'middle', 'class': 'eje'});
+                t.textContent = d;
+            });
+
+            // La brecha entre lo que llevas y lo esperado, tramo a tramo. Donde
+            // las líneas se cruzan, el tramo se parte en el cruce.
+            for (var d = 0; d < R.real.length - 1; d++) {
+                var a = R.real[d] - R.esperado[d], b = R.real[d + 1] - R.esperado[d + 1];
+                var trozos = [];
+                if ((a >= 0) === (b >= 0)) trozos.push([d, d + 1, a + b > 0]);
+                else {
+                    var c = d + a / (a - b);
+                    trozos.push([d, c, a > 0], [c, d + 1, b > 0]);
+                }
+                trozos.forEach(function (tr) {
+                    if (Math.abs(R.real[d] - R.esperado[d]) < 0.5 && Math.abs(R.real[d + 1] - R.esperado[d + 1]) < 0.5) return;
+                    function interp(serie, u) {
+                        var i = Math.floor(u), f = u - i;
+                        return i >= serie.length - 1 ? serie[serie.length - 1] : serie[i] + (serie[i + 1] - serie[i]) * f;
+                    }
+                    var p = [[tr[0], interp(R.real, tr[0])], [tr[1], interp(R.real, tr[1])],
+                             [tr[1], interp(R.esperado, tr[1])], [tr[0], interp(R.esperado, tr[0])]];
+                    el('polygon', {
+                        points: p.map(function (q) { return x(q[0]).toFixed(1) + ',' + y(q[1]).toFixed(1); }).join(' '),
+                        'class': 'hueco ' + (tr[2] ? 'mal' : 'bien'),
+                    });
+                });
+            }
+
+            el('line', {x1: m.l, x2: m.l + iw, y1: y(R.tope), y2: y(R.tope), 'class': 'tope'});
+            var tl = el('text', {x: m.l + 4, y: y(R.tope) - 5, 'class': 'tope-lbl'});
+            tl.textContent = 'presupuesto ' + eur0(R.tope);
+
+            function linea(serie, desde, cls) {
+                el('path', {
+                    d: serie.map(function (v, i) {
+                        return (i ? 'L' : 'M') + x(desde + i).toFixed(1) + ',' + y(v).toFixed(1);
+                    }).join(' '),
+                    'class': cls,
+                });
+            }
+            linea(R.esperado, 0, 'esperado');
+            if (R.proyeccion) linea(R.proyeccion, R.hoy, 'proy');
+            linea(R.real, 0, 'real');
+            if (R.en_curso) {
+                el('line', {x1: x(R.hoy), x2: x(R.hoy), y1: m.t, y2: m.t + ih, 'class': 'hoy'});
+                el('circle', {cx: x(R.hoy), cy: y(R.real[R.hoy]), r: 4.5, 'class': 'punto'});
+            }
+
+            // Cursor y tooltip: el día bajo el dedo, con lo que llevabas y lo
+            // que tocaba ese día.
+            var cursor = el('line', {y1: m.t, y2: m.t + ih, 'class': 'cursor', visibility: 'hidden'});
+            var ptR = el('circle', {r: 4, 'class': 'cursor-pt', visibility: 'hidden', style: 'fill:var(--text-color)'});
+            var ptE = el('circle', {r: 3.5, 'class': 'cursor-pt', visibility: 'hidden', style: 'fill:var(--muted)'});
+            var capa = el('rect', {x: m.l, y: 0, width: iw, height: H, fill: 'transparent'});
+            function mover(ev) {
+                var caj = ritmoSvg.getBoundingClientRect();
+                var px = (ev.touches ? ev.touches[0].clientX : ev.clientX) - caj.left;
+                var d = Math.max(1, Math.min(R.dias, Math.round((px - m.l) / iw * R.dias)));
+                var cx = x(d);
+                cursor.setAttribute('x1', cx); cursor.setAttribute('x2', cx);
+                cursor.setAttribute('visibility', 'visible');
+                ptE.setAttribute('cx', cx); ptE.setAttribute('cy', y(R.esperado[d]));
+                ptE.setAttribute('visibility', 'visible');
+                var html = '<b>Día ' + d + '</b>';
+                if (d < R.real.length) {
+                    var dif = R.real[d] - R.esperado[d];
+                    ptR.setAttribute('cx', cx); ptR.setAttribute('cy', y(R.real[d]));
+                    ptR.setAttribute('visibility', 'visible');
+                    html += '<br>llevas <b>' + eur0(R.real[d]) + '</b>' +
+                            '<br>tocaba <b>' + eur0(R.esperado[d]) + '</b>' +
+                            '<br>' + (Math.abs(dif) < 1 ? 'justo en el ritmo' :
+                                      (dif > 0 ? eur0(dif) + ' por encima' : eur0(-dif) + ' por debajo'));
+                } else {
+                    ptR.setAttribute('visibility', 'hidden');
+                    html += '<br>tocaría <b>' + eur0(R.esperado[d]) + '</b>';
+                    if (R.proyeccion) html += '<br>al ritmo de siempre <b>' + eur0(R.proyeccion[d - R.hoy]) + '</b>';
+                }
+                tip.innerHTML = html;
+                tip.hidden = false;
+                var izq = cx + 12;
+                if (izq + tip.offsetWidth > W) izq = cx - 12 - tip.offsetWidth;
+                tip.style.left = izq + 'px';
+            }
+            function salir() {
+                [cursor, ptR, ptE].forEach(function (e) { e.setAttribute('visibility', 'hidden'); });
+                tip.hidden = true;
+            }
+            capa.addEventListener('mousemove', mover);
+            capa.addEventListener('touchstart', mover, {passive: true});
+            capa.addEventListener('touchmove', mover, {passive: true});
+            capa.addEventListener('mouseleave', salir);
+            capa.addEventListener('touchend', salir);
+        }
+        dibujarRitmo();
+        if (window.ResizeObserver) new ResizeObserver(dibujarRitmo).observe(caja);
     }
 
     /* ---- Barras ingresos vs gastos ---- */

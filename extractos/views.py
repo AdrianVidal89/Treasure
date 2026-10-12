@@ -929,6 +929,146 @@ def _pct_transcurrido(f, meses_periodo):
     return round(hoy.day / calendar.monthrange(hoy.year, hoy.month)[1] * 100, 1)
 
 
+# Cuántos meses de antes se miran para saber CÓMO se reparte el gasto a lo
+# largo del mes. Seis bastan para que un mes raro no mande y son pocos para que
+# un cambio de alquiler de hace dos años siga pesando.
+VENTANA_RITMO = 6
+
+
+def _gasto_acumulado_del_mes(movimientos, anio, mes):
+    """Lo gastado hasta el final de cada día del mes, con el criterio del panel.
+
+    Índice 0 es «antes del día 1» y vale cero; el último, el mes entero. Cuenta
+    exactamente lo que suma el gasto de la cabecera mirando un mes: lo que pesó
+    de verdad (descontada la reserva) y sin los pagos anuales que se sacan del
+    mes, que están repartidos en el año y llegan aparte, prorrateados.
+    """
+    dias = calendar.monthrange(anio, mes)[1]
+    diario = [Decimal('0')] * (dias + 1)
+    for m in movimientos:
+        if m.es_neutro or not m.cuenta_como_gasto or m.se_saca_del_mes:
+            continue
+        diario[m.fecha.day] += m.impacto_real
+    acumulado, suma = [], Decimal('0')
+    for importe in diario:
+        suma += importe
+        acumulado.append(suma)
+    return acumulado
+
+
+def _ritmo_del_mes(todos, f, tope, prorrateado):
+    """Cómo va el mes día a día frente a cómo debería ir para acabar en el tope.
+
+    La barra del presupuesto dice cuánto llevas y qué parte del mes ha pasado,
+    pero comparar un 37 % gastado con un 39 % de mes asume que el gasto cae
+    repartido por igual, y no cae: el alquiler, la luz y los seguros salen la
+    primera semana. Con esa vara, el día 3 cualquier mes «va fatal».
+
+    Así que lo esperado sigue la FORMA de los meses anteriores —qué parte del
+    gasto del mes solía llevarse a cada día— pero escalada al presupuesto: la
+    línea siempre termina en el tope que uno se puso, no en lo que se gastó
+    otras veces. Sin meses de antes con los que comparar, la forma es una recta.
+
+    La proyección es otra cosa: lo que llevas más lo que los meses anteriores
+    gastaron de media desde hoy hasta fin de mes. Dice dónde acabarías si el
+    resto del mes va como de costumbre, no como dice el presupuesto.
+
+    Solo con UN mes concreto y sin acotar por categoría, bloque, etiqueta,
+    activo o búsqueda: el tope es el del hogar entero, y medir contra él una
+    parte del gasto pintaría que siempre vas sobrado. Un mes futuro no tiene
+    nada que pintar.
+    """
+    anio, mes = _entero_o_none(f['anio']), _entero_o_none(f['mes'])
+    if anio is None or mes is None or not 1 <= mes <= 12 or tope <= 0:
+        return None
+    if (f['categoria'] != 'all' or f['bloque'] or f['etiqueta'] or f['activo']
+            or f['busqueda']):
+        return None
+    hoy = date.today()
+    if (anio, mes) > (hoy.year, hoy.month):
+        return None
+    dias = calendar.monthrange(anio, mes)[1]
+    en_curso = (anio, mes) == (hoy.year, hoy.month)
+    dia_hoy = hoy.day if en_curso else dias
+
+    por_mes = defaultdict(list)
+    for m in todos:
+        por_mes[(m.fecha.year, m.fecha.month)].append(m)
+
+    real = _gasto_acumulado_del_mes(por_mes.get((anio, mes), ()), anio, mes)
+
+    # Los meses de antes CON extracto, del más reciente hacia atrás. Se busca
+    # en un año como mucho: un hueco de importación no tiene por qué dejar el
+    # ritmo sin referencia, pero tampoco hay que irse a otra vida.
+    historial = []
+    a, mm = anio, mes
+    for _ in range(12):
+        a, mm = (a - 1, 12) if mm == 1 else (a, mm - 1)
+        if (a, mm) not in por_mes:
+            continue
+        acumulado = _gasto_acumulado_del_mes(por_mes[(a, mm)], a, mm)
+        if acumulado[-1] > 0:
+            historial.append(acumulado)
+        if len(historial) == VENTANA_RITMO:
+            break
+
+    def en_el_dia(acumulado, d):
+        # Se alinea por día del mes, no por fracción: el alquiler del día 1
+        # sigue siendo del día 1 en un febrero. El último día es el mes entero.
+        return acumulado[-1] if d >= dias else acumulado[min(d, len(acumulado) - 1)]
+
+    forma = []
+    for d in range(dias + 1):
+        if historial:
+            frac = sum(float(en_el_dia(h, d) / h[-1]) for h in historial) / len(historial)
+        else:
+            frac = d / dias
+        # Una devolución puede hacer que el acumulado baje un día: lo esperado
+        # nunca retrocede.
+        frac = min(max(frac, forma[-1] if forma else 0.0), 1.0)
+        forma.append(frac)
+    forma[0], forma[-1] = 0.0, 1.0
+
+    # Lo prorrateado de los anuales ya está pagado: ocupa presupuesto desde el
+    # primer día y no tiene ritmo. Las dos líneas parten de ahí.
+    base = float(prorrateado)
+    reparto = max(float(tope) - base, 0.0)
+    esperado = [round(base + reparto * x, 2) for x in forma]
+    llevado = [round(base + float(real[d]), 2) for d in range(dia_hoy + 1)]
+
+    proyeccion = None
+    if en_curso and historial and dia_hoy < dias:
+        proyeccion = [
+            round(llevado[-1] + sum(float(en_el_dia(h, d) - en_el_dia(h, dia_hoy))
+                                    for h in historial) / len(historial), 2)
+            for d in range(dia_hoy, dias + 1)
+        ]
+
+    desvio = round(llevado[-1] - esperado[dia_hoy], 2)
+    return {
+        'dias': dias,
+        'hoy': dia_hoy,
+        'en_curso': en_curso,
+        'tope': float(tope),
+        'base': base,
+        'real': llevado,
+        'esperado': esperado,
+        'proyeccion': proyeccion,
+        'meses_historial': len(historial),
+        'llevado_hoy': llevado[-1],
+        'esperado_hoy': esperado[dia_hoy],
+        'desvio': desvio,
+        'desvio_abs': abs(desvio),
+        'por_encima': desvio > 0,
+        'proyeccion_fin': proyeccion[-1] if proyeccion else None,
+        # Cuánto sobraría (o faltaría) a fin de mes si sigue como de costumbre.
+        'proyeccion_margen': (
+            round(abs(float(tope) - proyeccion[-1]), 2) if proyeccion else None
+        ),
+        'proyeccion_pasa': bool(proyeccion) and proyeccion[-1] > float(tope),
+    }
+
+
 def _anuales_prorrateados(todos, f):
     """Lo que los gastos ANUALES ya pagados le pesan al mes que se está mirando.
 
@@ -1614,6 +1754,9 @@ def _panel_context(hogar, todos, request, filtros=None):
         # 60% el día 28 se leen igual y no son lo mismo.
         'pct_transcurrido': _pct_transcurrido(f, meses_periodo),
     }
+    presupuesto_periodo['ritmo'] = _ritmo_del_mes(
+        todos, f, tope_periodo, prorrateo['total'],
+    ) if meses_periodo == 1 else None
 
     # --- Lo que explica el periodo (antes, la pestaña «Análisis») ---
     fuera_presupuesto = _fuera_de_presupuesto(bloques)

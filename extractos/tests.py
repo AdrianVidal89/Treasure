@@ -2222,6 +2222,148 @@ class PresupuestoRestanteTests(TestCase):
         self.assertFalse(self.panel()['presupuesto']['hay'])
 
 
+class RitmoDelMesTests(TestCase):
+    """Cómo va el mes día a día frente a lo que tocaría para acabar en el tope.
+
+    La barra del presupuesto compara lo gastado con la parte del mes que ha
+    pasado, como si el gasto cayera repartido por igual. No cae: el alquiler
+    sale el día 1. Lo esperado sigue la forma de los meses de antes, pero
+    siempre termina en el presupuesto."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.alquiler = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Hipoteca / Alquiler')
+        self.alimentacion = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.alquiler, nombre='Alquiler',
+            importe=Decimal('600'), periodicidad='mensual',
+        )
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=self.alimentacion, nombre='Super',
+            importe=Decimal('400'), periodicidad='mensual',
+        )
+
+    def gasto(self, importe, categoria, mes, dia):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, mes, dia),
+            concepto=f'Gasto {mes}-{dia}', importe=Decimal(importe), categoria=categoria,
+        )
+
+    def ritmo(self, hoy=date(2026, 10, 12), **params):
+        params.setdefault('anio', 2026)
+        params.setdefault('mes', 9)
+
+        class Hoy(date):
+            @classmethod
+            def today(cls):
+                return hoy
+
+        with mock.patch('extractos.views.date', Hoy):
+            panel = self.client.get(reverse('extractos:listar'), params).context['panel']
+        return panel['presupuesto']['ritmo']
+
+    def test_sin_meses_anteriores_lo_esperado_es_una_recta_hasta_el_tope(self):
+        self.gasto('-600', self.alquiler, 9, 1)
+        self.gasto('-150', self.alimentacion, 9, 20)
+
+        r = self.ritmo()
+
+        self.assertEqual(r['meses_historial'], 0)
+        self.assertEqual(r['dias'], 30)
+        self.assertEqual(r['esperado'][0], 0)
+        self.assertEqual(r['esperado'][15], 500)
+        self.assertEqual(r['esperado'][30], 1000)
+        # Un mes cerrado se pinta entero, y acaba en lo que dice la cabecera.
+        self.assertEqual(len(r['real']), 31)
+        self.assertEqual(r['real'][1], 600)
+        self.assertEqual(r['real'][30], 750)
+        self.assertIsNone(r['proyeccion'])
+
+    def test_lo_esperado_sigue_la_forma_de_los_meses_anteriores(self):
+        """Si el alquiler sale siempre el día 1, el día 1 no se va «por encima»."""
+        for mes in (7, 8):
+            self.gasto('-600', self.alquiler, mes, 1)
+            self.gasto('-400', self.alimentacion, mes, 20)
+        self.gasto('-600', self.alquiler, 9, 1)
+
+        r = self.ritmo()
+
+        self.assertEqual(r['meses_historial'], 2)
+        # El 60 % del gasto de otros meses caía el día 1: el 60 % del tope.
+        self.assertEqual(r['esperado'][1], 600)
+        self.assertEqual(r['esperado'][19], 600)
+        self.assertEqual(r['esperado'][30], 1000)
+
+    def test_la_forma_se_escala_al_presupuesto_no_a_lo_gastado(self):
+        """Lo esperado termina en el tope aunque otros meses se gastara más."""
+        self.gasto('-3000', self.alimentacion, 8, 10)
+        self.gasto('-100', self.alimentacion, 9, 2)
+
+        r = self.ritmo()
+
+        self.assertEqual(r['esperado'][9], 0)
+        self.assertEqual(r['esperado'][10], 1000)
+
+    def test_el_mes_en_curso_se_pinta_hasta_hoy_y_proyecta_el_resto(self):
+        for mes in (8, 9):
+            self.gasto('-600', self.alquiler, mes, 1)
+            self.gasto('-300', self.alimentacion, mes, 25)
+        self.gasto('-600', self.alquiler, 10, 1)
+        self.gasto('-100', self.alimentacion, 10, 5)
+
+        r = self.ritmo(mes=10)
+
+        self.assertTrue(r['en_curso'])
+        self.assertEqual(r['hoy'], 12)
+        self.assertEqual(len(r['real']), 13)
+        self.assertEqual(r['llevado_hoy'], 700)
+        # Otros meses, a día 12 iban por 600 de 900: dos tercios del tope.
+        self.assertAlmostEqual(r['esperado_hoy'], 666.67, places=2)
+        self.assertTrue(r['por_encima'])
+        # Lo que queda de mes, como de costumbre: los 300 del día 25.
+        self.assertEqual(r['proyeccion'][0], 700)
+        self.assertEqual(r['proyeccion_fin'], 1000)
+        self.assertFalse(r['proyeccion_pasa'])
+
+    def test_lo_prorrateado_de_un_anual_ocupa_desde_el_primer_dia(self):
+        seguros = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Seguros')
+        poliza = PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=seguros, nombre='Seguro',
+            importe=Decimal('480'), periodicidad='anual',
+        )
+        MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, 1, 8),
+            concepto='Recibo del seguro', importe=Decimal('-480'),
+            categoria=seguros, partida_conciliada=poliza,
+        )
+        self.gasto('-600', self.alquiler, 9, 1)
+
+        r = self.ritmo()
+
+        self.assertEqual(r['real'][0], 40)
+        self.assertEqual(r['esperado'][0], 40)
+        self.assertEqual(r['esperado'][30], 1040)
+        self.assertEqual(r['real'][30], 640)
+
+    def test_acotado_por_categoria_no_se_compara_con_el_tope_entero(self):
+        self.gasto('-600', self.alquiler, 9, 1)
+
+        self.assertIsNone(self.ritmo(categoria=self.alimentacion.id))
+        self.assertIsNone(self.ritmo(mes='all'))
+
+    def test_un_mes_futuro_no_tiene_ritmo(self):
+        self.gasto('-600', self.alquiler, 9, 1)
+
+        self.assertIsNone(self.ritmo(hoy=date(2026, 8, 20)))
+
+
 class RepartidoNoEsSinCategorizarTests(TestCase):
     """Un cobro repartido se queda sin categoría a propósito: la llevan sus
     partes. Salir en «sin categorizar» pedía clasificar algo ya resuelto, y el
