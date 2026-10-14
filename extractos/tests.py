@@ -2364,6 +2364,119 @@ class RitmoDelMesTests(TestCase):
         self.assertIsNone(self.ritmo(hoy=date(2026, 8, 20)))
 
 
+class ComparativaAbreElDesgloseTests(TestCase):
+    """Pinchar una fila de «Frente a tu media» enseña de dónde sale su «vs»."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.salud = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Salud / Farmacia')
+        self.ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+
+    def gasto(self, importe, categoria, mes, dia=10):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(2026, mes, dia),
+            concepto=f'{categoria.nombre} {mes}', importe=Decimal(importe), categoria=categoria,
+        )
+
+    def test_cada_fila_lleva_su_categoria(self):
+        self.gasto('-60', self.salud, 8)
+        self.gasto('-30', self.ocio, 9)
+        self.gasto('-50', self.ocio, 10)
+
+        panel = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 10}).context['panel']
+        ids = {p['categoria']: p['id'] for p in panel['comparativa']['puente']}
+
+        self.assertEqual(ids['Salud / Farmacia'], self.salud.id)
+        self.assertEqual(ids['Ocio'], self.ocio.id)
+
+    def test_el_desglose_trae_los_meses_con_los_que_se_compara(self):
+        """Salud: 0 € este mes frente a 30 € de media. Sin los meses de antes,
+        el modal estaría vacío justo cuando la pregunta es de dónde sale la media."""
+        agosto = self.gasto('-60', self.salud, 8)
+        self.gasto('-20', self.ocio, 9)
+        self.gasto('-20', self.ocio, 10)
+
+        r = self.client.get(reverse('extractos:desglose_categoria'), {
+            'anio': 2026, 'mes': 10, 'categoria': self.salud.id, 'comparar': '1',
+        })
+        vs = r.context['comparativa']
+
+        self.assertEqual(vs['num_meses'], 2)
+        self.assertEqual(vs['actual'], Decimal('0'))
+        self.assertEqual(vs['media'], Decimal('30'))
+        self.assertEqual([m['etiqueta'] for m in vs['meses']], ['Septiembre 2026', 'Agosto 2026'])
+        self.assertEqual(vs['meses'][1]['movimientos'], [agosto])
+        self.assertContains(r, 'Frente a tu media de 2 meses')
+
+    def test_sin_pedirlo_el_desglose_no_compara(self):
+        self.gasto('-60', self.salud, 8)
+        self.gasto('-20', self.salud, 9)
+        r = self.client.get(reverse('extractos:desglose_categoria'), {
+            'anio': 2026, 'mes': 9, 'categoria': self.salud.id,
+        })
+        self.assertIsNone(r.context['comparativa'])
+
+
+class CargaDeMovimientosTests(TestCase):
+    """El panel carga el histórico entero; leerlo no puede ir a la base de datos
+    movimiento a movimiento."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+
+    def mov(self, importe, **extra):
+        extra.setdefault('fecha', date(2026, 9, 10))
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, concepto=f'Mov {importe} {len(extra)}',
+            importe=Decimal(importe), **extra,
+        )
+
+    def test_las_relaciones_vienen_cargadas(self):
+        from .carga import cargar
+        ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+        cobro = self.mov('-100', categoria=ocio)
+        parte = self.mov('-60', categoria=ocio, dividido_de=cobro, orden_parte=1)
+        self.mov('-40', categoria=ocio, dividido_de=cobro, orden_parte=2)
+        self.mov('50', cubre=cobro, fecha=date(2026, 9, 11))
+        cena = self.mov('-90', categoria=ocio, fecha=date(2026, 9, 12))
+        self.mov('30', reembolsa=cena, fecha=date(2026, 9, 13))
+        viaje = Etiqueta.objects.create(hogar=self.hogar, nombre='Viaje')
+        cena.etiquetas.add(viaje)
+
+        todos = cargar(MovimientoBancario.objects.filter(hogar=self.hogar))
+        por_id = {m.pk: m for m in todos}
+
+        with self.assertNumQueries(0):
+            self.assertTrue(por_id[cobro.pk].esta_dividido)
+            # La parte hereda a prorrata lo que la reserva puso en el cobro.
+            self.assertEqual(por_id[parte.pk].cubierto_por_reserva, Decimal('30'))
+            self.assertEqual(por_id[cena.pk].importe_neto, Decimal('-60'))
+            self.assertEqual([e.nombre for e in por_id[cena.pk].etiquetas.all()], ['Viaje'])
+            self.assertEqual(por_id[parte.pk].dividido_de.concepto, cobro.concepto)
+            for m in todos:
+                m.impacto_real, m.cuenta_como_gasto, m.se_saca_del_mes
+
+    def test_entrar_sin_mes_salta_sin_cargar_el_historico(self):
+        self.mov('-10')
+        with self.assertNumQueries(5):
+            r = self.client.get(reverse('extractos:listar'))
+        self.assertEqual(r.status_code, 302)
+
+
 class RepartidoNoEsSinCategorizarTests(TestCase):
     """Un cobro repartido se queda sin categoría a propósito: la llevan sus
     partes. Salir en «sin categorizar» pedía clasificar algo ya resuelto, y el
