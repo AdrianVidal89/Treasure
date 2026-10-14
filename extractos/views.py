@@ -24,7 +24,10 @@ from .anuales import (
     MAX_HORIZONTE, analizar_anuales, crear_puntual, dar_por_pagado, grafico_varios_anios,
     guardar_calendario, leer_horizonte,
 )
-from .analisis import MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, analizar_mes
+from .carga import cargar
+from .analisis import (
+    MESES_REFERENCIA, MINIMO_MESES_REFERENCIA, UMBRAL_RECURRENTE, _meses_previos, analizar_mes,
+)
 from .categorizacion import categorizar, categorizar_lote
 from .models import (
     Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion, ReglaDivision,
@@ -70,18 +73,18 @@ def listar(request):
 
     extractos = ExtractoBancario.objects.filter(hogar=hogar).select_related('cuenta')
 
-    # Vista GLOBAL: el mismo panel de análisis del detalle, pero sobre TODOS
-    # los movimientos del hogar (todos los extractos juntos).
-    todos = list(
-        MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
-        .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos').order_by('-fecha')
-    )
+    del_hogar = MovimientoBancario.objects.filter(hogar=hogar)
     # Al entrar sin periodo en la URL, la pantalla se abre en el MES EN CURSO.
-    destino = _abrir_en_el_mes_en_curso(request, todos)
+    # Se decide ANTES de cargar nada: el salto se hacía después de traer el
+    # histórico entero, que se tiraba para volver a cargarlo en la página a la
+    # que se saltaba. Abrir Extractos costaba dos cargas completas.
+    destino = _abrir_en_el_mes_en_curso(request, del_hogar)
     if destino:
         return redirect(destino)
+
+    # Vista GLOBAL: el mismo panel de análisis del detalle, pero sobre TODOS
+    # los movimientos del hogar (todos los extractos juntos).
+    todos = cargar(del_hogar.order_by('-fecha'))
 
     panel = _panel_context(hogar, todos, request)
 
@@ -117,8 +120,10 @@ def _abrir_en_el_mes_en_curso(request, movimientos):
         return None
     hoy = date.today()
     periodo = (hoy.year, hoy.month)
-    if not any((m.fecha.year, m.fecha.month) == periodo for m in movimientos):
-        con_datos = {(m.fecha.year, m.fecha.month) for m in movimientos}
+    # Solo los meses, a la base de datos: no hace falta un movimiento entero
+    # para saber en qué mes cae.
+    con_datos = {(d.year, d.month) for d in movimientos.dates('fecha', 'month')}
+    if periodo not in con_datos:
         if not con_datos:
             return None
         periodo = max(con_datos)
@@ -1914,11 +1919,7 @@ def detalle(request, pk):
         return redirect('dashboard')
 
     extracto = get_object_or_404(ExtractoBancario, pk=pk, hogar=hogar)
-    todos = list(
-        extracto.movimientos.select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
-        .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos').all()
-    )
+    todos = cargar(extracto.movimientos)
     panel = _panel_context(hogar, todos, request)
     return render(request, 'extractos/detalle.html', {'extracto': extracto, 'panel': panel})
 
@@ -2963,11 +2964,7 @@ def filas_del_mes(request):
         # El panel también se usa dentro del detalle de UN extracto; sin esto,
         # desplegar un mes ahí traería los apuntes de todos los extractos.
         base = base.filter(extracto_id=extracto_id)
-    todos = list(
-        base.select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
-            .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos').order_by('-fecha')
-    )
+    todos = cargar(base.order_by('-fecha'))
 
     # El año y el mes de la fila mandan sobre los de la URL: se está pidiendo
     # ESE mes, no el que hubiera filtrado la pantalla.
@@ -3002,11 +2999,7 @@ def movimientos_de_categoria(request):
     if not categoria and clave != 'sin':
         return JsonResponse({'ok': False, 'error': 'categoria_invalida'}, status=404)
 
-    todos = list(
-        MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de').prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos')
-    )
+    todos = cargar(MovimientoBancario.objects.filter(hogar=hogar))
     # El bloque se quita: la categoría ya es más concreta que su pilar, y
     # dejarlo puesto vaciaría la lista justo cuando se entra desde otro bloque
     # (por ejemplo, después de mover la categoría de sitio).
@@ -3111,8 +3104,71 @@ def movimientos_de_categoria(request):
         # Anidado, no expandido: la plantilla de una fila de movimiento espera
         # este contexto bajo el nombre `panel`, igual que en el listado.
         'contexto_edicion': _contexto_edicion(hogar),
+        'comparativa': (
+            _comparativa_de_categoria(todos, f, categoria)
+            if request.GET.get('comparar') else None
+        ),
     }
     return render(request, 'extractos/_modal_categoria.html', contexto)
+
+
+def _comparativa_de_categoria(todos, f, categoria):
+    """Lo que hay detrás de una fila de «Frente a tu media»: el mes y los meses
+    con los que se compara, movimiento a movimiento.
+
+    La fila dice «Salud: 0 € vs 60 €», y lo que se quiere saber al pincharla
+    es de dónde salen esos 60 €. Los movimientos del mes no lo cuentan —puede
+    no haber ninguno—, así que vienen también los de los meses de referencia.
+
+    Mismo cálculo que `analizar_mes`, o el modal diría otras cifras que la
+    fila: lo que pesó de verdad cada gasto, los meses previos que tienen algún
+    extracto y la etiqueta de la pantalla si la hay.
+    """
+    anio, mes = _entero_o_none(f['anio']), _entero_o_none(f['mes'])
+    if anio is None or mes is None:
+        return None
+    referencia = _meses_previos((anio, mes), MESES_REFERENCIA)
+    con_datos = {(m.fecha.year, m.fecha.month) for m in todos}
+    referencia = [clave for clave in referencia if clave in con_datos]
+    if len(referencia) < MINIMO_MESES_REFERENCIA:
+        return None
+    etiqueta_id = _entero_o_none(f['etiqueta'])
+    cat_id = categoria.id if categoria else None
+
+    por_mes = defaultdict(list)
+    for m in todos:
+        if not m.cuenta_como_gasto or m.categoria_id != cat_id:
+            continue
+        if etiqueta_id and etiqueta_id not in {e.id for e in m.etiquetas.all()}:
+            continue
+        por_mes[(m.fecha.year, m.fecha.month)].append(m)
+
+    def suma(movs):
+        return sum((m.impacto_real for m in movs), Decimal('0'))
+
+    meses = []
+    for clave in referencia:
+        movs = sorted(por_mes.get(clave, ()), key=lambda m: m.fecha, reverse=True)
+        meses.append({
+            'etiqueta': f"{MESES_ES[clave[1]]} {clave[0]}",
+            'total': suma(movs),
+            'movimientos': movs,
+        })
+    media = sum((x['total'] for x in meses), Decimal('0')) / len(meses)
+    actual = suma(por_mes.get((anio, mes), ()))
+    tope = max([x['total'] for x in meses] + [actual, Decimal('1')])
+    for x in meses:
+        x['pct'] = float(max(x['total'], Decimal('0')) / tope * 100)
+    return {
+        'meses': meses,
+        'num_meses': len(meses),
+        'media': media,
+        'actual': actual,
+        'pct_actual': float(max(actual, Decimal('0')) / tope * 100),
+        'pct_media': float(max(media, Decimal('0')) / tope * 100),
+        'desviacion': actual - media,
+        'periodo_etiqueta': _etiqueta_periodo(f['anio'], f['mes']),
+    }
 
 
 # Acciones que se pueden aplicar a varios movimientos de una vez. Están

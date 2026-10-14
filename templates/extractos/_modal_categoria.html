@@ -19,6 +19,47 @@ estabas.
     </div>
 </div>
 
+{% if comparativa %}
+{% comment %}
+Se ha entrado desde «Frente a tu media»: la fila decía «este mes X vs media
+Y», y lo que se quiere ver es de dónde sale cada cifra. Los movimientos del mes
+están abajo; aquí, los de los meses con los que se compara.
+{% endcomment %}
+<div class="mc-seccion mc-vs">
+    <h4>Frente a tu media de {{ comparativa.num_meses }} mes{{ comparativa.num_meses|pluralize:"es" }}</h4>
+    <div class="mc-vs-resumen">
+        <span>{{ comparativa.periodo_etiqueta }} <b>{{ comparativa.actual|euro }}</b></span>
+        <span>media <b>{{ comparativa.media|euro }}</b></span>
+        <span class="{% if comparativa.desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
+            {% if comparativa.desviacion > 0 %}+{% endif %}{{ comparativa.desviacion|euro }}
+        </span>
+    </div>
+    <div class="mc-meses">
+        <div class="mc-mes mc-mes-actual">
+            <span class="mc-mes-lbl">{{ comparativa.periodo_etiqueta }}</span>
+            <span class="mc-mes-barra"><i style="width:{{ comparativa.pct_actual|unlocalize }}%;"></i><b class="mc-mes-media" style="left:{{ comparativa.pct_media|unlocalize }}%;" title="media {{ comparativa.media|euro:0 }}"></b></span>
+            <span class="mc-mes-val">{{ comparativa.actual|euro:0 }}</span>
+        </div>
+        {% for x in comparativa.meses %}
+        <details class="mc-vs-mes">
+            <summary class="mc-mes">
+                <span class="mc-mes-lbl">{{ x.etiqueta }} <em>{{ x.movimientos|length }}</em></span>
+                <span class="mc-mes-barra"><i style="width:{{ x.pct|unlocalize }}%;"></i><b class="mc-mes-media" style="left:{{ comparativa.pct_media|unlocalize }}%;"></b></span>
+                <span class="mc-mes-val">{{ x.total|euro:0 }}</span>
+            </summary>
+            <div class="ext-lista mc-lista">
+                {% for m in x.movimientos %}
+                {% include "extractos/_movimiento.html" with m=m panel=contexto_edicion %}
+                {% empty %}
+                <p class="mc-vacio">Ningún gasto de esta categoría ese mes.</p>
+                {% endfor %}
+            </div>
+        </details>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
 {% if limite %}
 <div class="mc-presupuesto">
     <div class="mc-barra {% if dentro %}dentro{% else %}fuera{% endif %}"

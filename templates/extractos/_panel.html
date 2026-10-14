@@ -541,8 +541,10 @@ cifras y los movimientos a la vez.
             <span></span>
         </div>
         {% for p in panel.comparativa.puente|dictsortreversed:"desviacion" %}
-        <div class="an-dv-fila {% if p.desviacion > 0 %}sube{% else %}baja{% endif %}"
-             title="{{ p.categoria }}: {{ p.actual|euro }} este mes frente a {{ p.media|euro }} de media ({% if p.desviacion > 0 %}+{% endif %}{{ p.desviacion|euro }})">
+        <div class="an-dv-fila an-dv-abrir {% if p.desviacion > 0 %}sube{% else %}baja{% endif %}"
+             role="button" tabindex="0"
+             data-categoria="{% if p.id %}{{ p.id }}{% else %}sin{% endif %}" data-nombre="{{ p.categoria }}"
+             title="{{ p.categoria }}: {{ p.actual|euro }} este mes frente a {{ p.media|euro }} de media ({% if p.desviacion > 0 %}+{% endif %}{{ p.desviacion|euro }}) · pulsa para ver los gastos">
             <span class="an-dv-cat">{{ p.categoria }}</span>
             <span class="an-dv-mitad izq">{% if p.desviacion < 0 %}<span class="an-dv-val">−{{ p.desviacion|multiplicar:-1|euro:0 }}</span><i style="--w:{{ p.pct|unlocalize }};"></i>{% endif %}</span>
             <span class="an-dv-mitad der">{% if p.desviacion > 0 %}<i style="--w:{{ p.pct|unlocalize }};"></i><span class="an-dv-val">+{{ p.desviacion|euro:0 }}</span>{% endif %}</span>
@@ -1587,7 +1589,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 @media (max-width:640px){ .ext-lote-campo { max-width:none; flex:1 1 140px; } }
 
 /* ── Modal del desglose de una categoría ─────────────────────────────── */
-.ext-modal { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:20px; }
+/* Por encima de la barra lateral (1000): debajo quedaba tapada la mitad
+   izquierda del modal en cuanto la pantalla no era muy ancha. */
+.ext-modal { position:fixed; inset:0; z-index:1200; display:flex; align-items:center; justify-content:center; padding:20px; }
 /* `display:flex` gana al `[hidden]` del navegador: sin esto el modal cerrado
    seguía ahí, invisible y tapando toda la pantalla, y ningún clic llegaba. */
 .ext-modal[hidden] { display:none; }
@@ -1629,6 +1633,25 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .mc-mes-barra, .mc-comercio-barra { height:7px; background:var(--app-bg); border-radius:999px; overflow:hidden; }
 .mc-mes-barra i, .mc-comercio-barra i { display:block; height:100%; border-radius:999px; background:var(--primary-color); }
 .mc-mes-val, .mc-comercio-val { font-variant-numeric:tabular-nums; font-weight:700; }
+/* El desglose abierto desde «Frente a tu media»: el mes, y debajo los meses
+   con los que se compara, cada uno desplegable con sus movimientos. La marca
+   de cada barra es la media. */
+.mc-vs-resumen { display:flex; flex-wrap:wrap; gap:4px 18px; font-size:0.82rem; color:var(--muted); margin-bottom:8px; }
+.mc-vs-resumen b { color:var(--text-color); font-variant-numeric:tabular-nums; }
+.mc-vs-resumen span:last-child { font-weight:700; font-variant-numeric:tabular-nums; }
+.mc-vs .mc-mes { grid-template-columns:150px 1fr auto; }
+.mc-vs .mc-mes-barra { position:relative; overflow:visible; }
+.mc-vs .mc-mes-barra i { background:var(--muted); opacity:.6; }
+.mc-vs .mc-mes-actual .mc-mes-barra i { background:var(--primary-color); opacity:1; }
+.mc-mes-media { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--text-color); opacity:.6; border-radius:2px; }
+.mc-mes-actual .mc-mes-lbl { color:var(--text-color); font-weight:700; }
+.mc-mes-lbl em { font-style:normal; font-size:0.7rem; opacity:.75; }
+.mc-vs-mes > summary { list-style:none; cursor:pointer; border-radius:6px; padding:2px 0; }
+.mc-vs-mes > summary::-webkit-details-marker { display:none; }
+.mc-vs-mes > summary .mc-mes-lbl::before { content:'▸'; display:inline-block; width:12px; transition:transform .15s; }
+.mc-vs-mes[open] > summary .mc-mes-lbl::before { transform:rotate(90deg); }
+.mc-vs-mes > summary:hover { background:color-mix(in srgb, var(--text-color) 5%, transparent); }
+.mc-vs-mes > .mc-lista { margin:6px 0 10px; }
 .mc-comercio { display:grid; grid-template-columns:minmax(90px,1.1fr) 1fr auto 96px; gap:11px; align-items:center; font-size:0.78rem; }
 .mc-comercio-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mc-comercio-veces { color:var(--muted); font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
@@ -1681,6 +1704,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .an-dv-eje .der { padding-left:10px; color:var(--danger); }
 .an-dv-fila { padding:4px 0; border-radius:8px; font-size:0.83rem; }
 .an-dv-fila:hover { background:color-mix(in srgb, var(--text-color) 5%, transparent); }
+.an-dv-abrir { cursor:pointer; }
+.an-dv-abrir:focus-visible { outline:2px solid var(--primary-color); outline-offset:1px; }
+.an-dv-abrir:hover .an-dv-cat { color:var(--primary-color); text-decoration:underline dotted; text-underline-offset:3px; }
 .an-dv-cat { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 10px 0 4px; }
 .an-dv-mitad { display:flex; align-items:center; gap:6px; height:22px; }
 /* El eje: una línea fina en el centro de todas las filas. */
@@ -2974,7 +3000,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         if (focoPrevio) { focoPrevio.focus(); focoPrevio = null; }
     }
 
-    function abrirModal(clave, nombre, disparador) {
+    function abrirModal(clave, nombre, disparador, comparar) {
         if (!modal) return;
         focoPrevio = disparador || null;
         modalTitulo.textContent = nombre || 'Desglose';
@@ -2988,6 +3014,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         var params = new URLSearchParams(window.location.search);
         params.set('categoria', clave);
         params.delete('bloque');
+        if (comparar) params.set('comparar', '1');
         fetch(URL_DESGLOSE + '?' + params.toString(), {
             headers: {'X-Requested-With': 'XMLHttpRequest'}
         }).then(function(r){
@@ -3007,10 +3034,22 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             abrirModal(abrir.dataset.categoria, abrir.dataset.nombre, abrir);
             return;
         }
+        /* Una fila de «Frente a tu media» abre el mismo desglose, y además
+           los meses con los que se compara: de ahí sale su «vs». */
+        var fila = e.target.closest('.an-dv-abrir');
+        if (fila) {
+            abrirModal(fila.dataset.categoria, fila.dataset.nombre, fila, true);
+            return;
+        }
         if (e.target.closest('[data-cerrar-modal]')) cerrarModal();
     });
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') cerrarModal();
+        var fila = e.target.closest && e.target.closest('.an-dv-abrir');
+        if (fila && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            abrirModal(fila.dataset.categoria, fila.dataset.nombre, fila, true);
+        }
     });
 
     /* ---- Cambio en bloque ----

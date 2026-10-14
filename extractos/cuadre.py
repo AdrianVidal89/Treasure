@@ -63,16 +63,11 @@ def _encaja(banco, fondo):
 
 
 def _lado_extractos(hogar, anio, mes, request):
+    from .carga import cargar
     from .models import MovimientoBancario
     from .views import _leer_filtros, _panel_context
 
-    todos = list(
-        MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa',
-                        'dividido_de', 'extracto')
-        .prefetch_related('etiquetas', 'partes', 'coberturas', 'dividido_de__partes',
-                          'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos')
-    )
+    todos = cargar(MovimientoBancario.objects.filter(hogar=hogar).select_related('extracto'))
     filtros = _leer_filtros(request, anio=str(anio), mes=str(mes), categoria='all',
                             bloque='', etiqueta='', activo='', busqueda='',
                             ver_traspasos=True)

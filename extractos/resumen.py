@@ -7,6 +7,7 @@ hay dos cálculos del gasto del mes, las dos pantallas dejan de coincidir.
 """
 from datetime import date
 
+from .carga import cargar
 from .models import MovimientoBancario
 from .views import _leer_filtros, _panel_context
 
@@ -27,12 +28,7 @@ def _periodo(movimientos):
 
 def resumen_del_mes(hogar, request):
     """Lo que el Dashboard enseña del mes real, o None si no hay movimientos."""
-    todos = list(
-        MovimientoBancario.objects.filter(hogar=hogar)
-        .select_related('categoria', 'partida_conciliada', 'cubre', 'reembolsa', 'dividido_de')
-        .prefetch_related('etiquetas', 'partes', 'coberturas',
-                          'dividido_de__partes', 'dividido_de__coberturas', 'reembolsos', 'dividido_de__reembolsos')
-    )
+    todos = cargar(MovimientoBancario.objects.filter(hogar=hogar))
     if not todos:
         return None
 

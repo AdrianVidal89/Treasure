@@ -155,12 +155,16 @@ def _puente(del_mes, previos, num_referencia):
     Incluye las que bajan: saber que la luz ha ido 30 € a favor es parte de
     entender por qué el mes cuadra o no."""
     actual = defaultdict(lambda: Decimal('0'))
+    # El id viaja con el nombre para que la fila pueda abrir su desglose.
+    ids = {}
     for m in del_mes:
         actual[_nombre_categoria(m)] += m.impacto_real
+        ids.setdefault(_nombre_categoria(m), m.categoria_id)
 
     historico = defaultdict(lambda: Decimal('0'))
     for m in previos:
         historico[_nombre_categoria(m)] += m.impacto_real
+        ids.setdefault(_nombre_categoria(m), m.categoria_id)
 
     filas = []
     for nombre in set(actual) | set(historico):
@@ -172,6 +176,7 @@ def _puente(del_mes, previos, num_referencia):
             continue
         filas.append({
             'categoria': nombre,
+            'id': ids.get(nombre),
             'actual': actual[nombre],
             'media': media,
             'desviacion': desviacion,
