@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load l10n %}
+{% load l10n custom_filters %}
 {% block title %}Evolución Patrimonial - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -64,6 +64,25 @@
 .evo-tooltip .tt-real { color: var(--schneider-green); font-weight: 600; }
 .evo-tooltip .tt-esp { color: var(--muted); }
 .evo-chart-empty { padding: 40px 10px; text-align: center; color: var(--muted); font-size: 0.85rem; }
+.evo-ing-panel { padding: 20px 22px; margin-bottom: 32px; }
+.evo-ing-lista { display: flex; flex-direction: column; gap: 4px; }
+.evo-ing-fila { display: grid; grid-template-columns: minmax(90px, 160px) 1fr auto; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid var(--border); }
+.evo-ing-fila:first-child { border-top: none; }
+.evo-ing-quien { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.evo-ing-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--uc); flex-shrink: 0; }
+.evo-ing-nombre { font-size: 0.88rem; font-weight: 600; color: var(--text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.evo-ing-barras { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; height: 52px; align-items: end; }
+.evo-ing-col { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 14px; }
+.evo-ing-bar { width: 100%; max-width: 22px; min-height: 2px; border-radius: 4px 4px 1px 1px; background: color-mix(in srgb, var(--uc) 75%, transparent); transition: background .15s; }
+.evo-ing-col:hover .evo-ing-bar { background: var(--uc); }
+.evo-ing-mes { position: absolute; bottom: 0; font-size: 0.58rem; color: var(--muted); line-height: 1; }
+.evo-ing-total { display: flex; flex-direction: column; align-items: flex-end; }
+.evo-ing-val { font-size: 1rem; font-weight: 700; color: var(--text-color); font-variant-numeric: tabular-nums; }
+.evo-ing-sub { font-size: 0.7rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+    .evo-ing-fila { grid-template-columns: 1fr auto; gap: 6px 12px; }
+    .evo-ing-barras { grid-column: 1 / -1; grid-row: 2; }
+}
 
 /* Ritmo real (medias/medianas vs presupuesto) y proyección */
 .evo-analisis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 32px; align-items: start; }
@@ -394,6 +413,37 @@
         </div>
     </div>
     {{ analisis|json_script:"evo-analisis-data" }}
+
+    <!-- INGRESOS POR MIEMBRO: discreto, una fila por persona con sus 12 meses -->
+    {% if ingresos_miembros.miembros %}
+    <div class="glass-panel evo-ing-panel">
+        <div class="evo-chart-head">
+            <div>
+                <h3>Ingresos de {{ año_actual }} por miembro</h3>
+                <p class="evo-chart-sub">Ingreso neto que cada persona aporta al reparto, mes a mes. Total del hogar: <strong>{{ ingresos_miembros.total|euro:0 }}</strong>.</p>
+            </div>
+        </div>
+        <div class="evo-ing-lista">
+            {% for m in ingresos_miembros.miembros %}
+            <div class="evo-ing-fila" style="--uc: {{ m.color }};">
+                <div class="evo-ing-quien">
+                    <span class="evo-ing-dot"></span>
+                    <span class="evo-ing-nombre">{{ m.nombre }}</span>
+                </div>
+                <div class="evo-ing-barras" role="img" aria-label="Ingresos mensuales de {{ m.nombre }}">
+                    {% for b in m.barras %}
+                    <span class="evo-ing-col" title="{{ b.mes }}: {{ b.valor|euro }}"><span class="evo-ing-bar" style="height:{{ b.alto|stringformat:'s' }}%;"></span><span class="evo-ing-mes">{{ b.mes|slice:":1" }}</span></span>
+                    {% endfor %}
+                </div>
+                <div class="evo-ing-total">
+                    <span class="evo-ing-val">{{ m.total|euro:0 }}</span>
+                    <span class="evo-ing-sub">{{ m.media|euro:0 }}/mes · {{ m.pct }}%</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 
     <!-- TARJETAS MENSUALES (acordeón, un fondo/depósito por fila, clic para editar) -->
     <div class="evo-months-list">

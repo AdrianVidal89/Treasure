@@ -15,4 +15,6 @@ urlpatterns = [
     path('admin-panel/backup/', views.backup_bd, name='backup_bd'),
     path('admin-panel/restaurar/', views.restaurar_bd, name='restaurar_bd'),
     path('admin-panel/sql/', views.consola_sql, name='consola_sql'),
+    path('admin-panel/copias/', views.copias_drive, name='copias_drive'),
+    path('admin-panel/copias/conectar/', views.copias_drive_conectar, name='copias_drive_conectar'),
 ]

@@ -9,6 +9,7 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.conf import settings
 from django.utils import timezone
 from .forms import UserRegisterForm, UserProfileForm
 from .models import UserProfile, Hogar
@@ -373,3 +374,96 @@ def consola_sql(request):
         'esquema': esquema(),
         'historial': ConsultaSQL.objects.select_related('usuario')[:15],
     })
+
+
+# ─── Copias de seguridad a Google Drive ────────────────────────────────────
+
+def _puede_gestionar_copias(user):
+    profile = getattr(user, 'userprofile', None)
+    return user.is_superuser or (profile is not None and profile.es_admin)
+
+
+def _entero(valor, defecto, minimo, maximo):
+    try:
+        return min(max(int(valor), minimo), maximo)
+    except (TypeError, ValueError):
+        return defecto
+
+
+@login_required
+def copias_drive(request):
+    from . import copias_drive as motor
+    from .models import CopiaDriveConfig, CopiaDriveRegistro
+
+    if not _puede_gestionar_copias(request.user):
+        messages.error(request, "No tienes permisos para gestionar las copias de seguridad.")
+        return redirect('dashboard')
+
+    cfg = CopiaDriveConfig.obtener()
+
+    if request.method == 'POST':
+        accion = request.POST.get('accion')
+        if accion == 'credenciales':
+            motor.guardar_credenciales(cfg, request.POST.get('client_id'),
+                                       request.POST.get('client_secret'))
+            cfg.save()
+            messages.success(request, "Credenciales de Google guardadas.")
+        elif accion == 'programacion':
+            periodicidad = request.POST.get('periodicidad', 'desactivada')
+            if periodicidad in dict(CopiaDriveConfig.PERIODICIDAD_CHOICES):
+                cfg.periodicidad = periodicidad
+            cfg.hora = _entero(request.POST.get('hora'), cfg.hora, 0, 23)
+            cfg.dia_semana = _entero(request.POST.get('dia_semana'), cfg.dia_semana, 0, 6)
+            cfg.dia_mes = _entero(request.POST.get('dia_mes'), cfg.dia_mes, 1, 28)
+            cfg.conservar = _entero(request.POST.get('conservar'), cfg.conservar, 0, 999)
+            ruta = '/'.join(s.strip() for s in request.POST.get('carpeta_ruta', '').split('/') if s.strip())
+            cfg.carpeta_ruta = (ruta or 'Treasure/Copias de seguridad')[:255]
+            cfg.save()
+            messages.success(request, "Programación guardada.")
+        elif accion == 'desconectar':
+            motor.desconectar(cfg)
+            messages.success(request, "Cuenta de Google desconectada. Las copias ya subidas siguen en tu Drive.")
+        elif accion == 'copiar_ahora':
+            try:
+                reg = motor.hacer_copia(origen='manual')
+            except motor.ErrorCopia as e:
+                messages.error(request, str(e))
+            else:
+                if reg.ok:
+                    messages.success(request, f"Copia subida a Drive: {reg.nombre_archivo}")
+                else:
+                    messages.error(request, f"La copia ha fallado: {reg.mensaje}")
+        return redirect('copias_drive')
+
+    client_id, secreto = motor.credenciales(cfg)
+    return render(request, 'core/copias_drive.html', {
+        'cfg': cfg,
+        'client_id': client_id,
+        'tiene_secreto': bool(secreto),
+        'credenciales_en_env': bool(settings.GOOGLE_DRIVE_CLIENT_ID) and not cfg.client_id,
+        'registros': CopiaDriveRegistro.objects.all()[:15],
+        'proxima': motor.proxima_copia(cfg) if cfg.conectado else None,
+        'pendiente': motor.debe_copiar(cfg),
+        'conectando': bool(cfg.device_code) and cfg.device_expira and cfg.device_expira > timezone.now(),
+        'horas': range(24),
+        'dias_mes': range(1, 29),
+    })
+
+
+@login_required
+def copias_drive_conectar(request):
+    from django.http import JsonResponse
+    from . import copias_drive as motor
+    from .models import CopiaDriveConfig
+
+    if not _puede_gestionar_copias(request.user):
+        return JsonResponse({'ok': False, 'error': 'Sin permisos.'}, status=403)
+    cfg = CopiaDriveConfig.obtener()
+    try:
+        if request.method == 'POST':
+            return JsonResponse({'ok': True, **motor.iniciar_conexion(cfg)})
+        return JsonResponse({'ok': True, **motor.comprobar_conexion(cfg)})
+    except motor.ErrorCopia as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=400)
+    except Exception as e:  # red caída, respuesta rara de Google...
+        return JsonResponse({'ok': False, 'error': f"No se pudo hablar con Google: {e}"}, status=502)

@@ -5795,3 +5795,18 @@ class AlquilerConHipotecaDeclaradaTests(TestCase):
         self.assertAlmostEqual(float(r['hipoteca']), 674.48 * 12, delta=0.05)
         self.assertEqual(r['reparaciones'], Decimal('570.00'))
         self.assertEqual(r['vacia'], -(Decimal('600') + r['hipoteca']))
+
+
+class ColorValidoTests(TestCase):
+    def test_hex_se_respeta(self):
+        from finanzas.colores import color_valido
+        self.assertEqual(color_valido('#2C5F7A'), '#2c5f7a')
+
+    def test_token_css_se_traduce(self):
+        from finanzas.colores import color_valido
+        self.assertEqual(color_valido('var(--success)'), '#2d6a4f')
+
+    def test_basura_usa_defecto(self):
+        from finanzas.colores import color_valido
+        self.assertEqual(color_valido('rojo chillón'), '#2d6a4f')
+        self.assertEqual(color_valido(None, '#a259ff'), '#a259ff')
