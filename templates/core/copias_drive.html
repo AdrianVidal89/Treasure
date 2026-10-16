@@ -1,0 +1,359 @@
+{% extends "base.html" %}
+{% load custom_filters %}
+{% block title %}Copias de seguridad - Treasure{% endblock %}
+{% block body_class %}dashboard-background{% endblock %}
+
+{% block content %}
+<style>
+.cd-wrap { max-width: 980px; }
+.cd-head { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+.cd-head h1 { color:var(--primary-color); margin:0 0 6px; text-shadow:none; }
+.cd-head p { color:var(--muted); margin:0; max-width:62ch; line-height:1.5; font-size:0.9rem; }
+.cd-volver { font-size:0.82rem; color:var(--muted); text-decoration:none; }
+.cd-volver:hover { color:var(--primary-color); }
+
+/* Estado: la tarjeta que responde "¿estoy cubierto?" */
+.cd-estado { display:grid; grid-template-columns:auto 1fr auto; gap:18px; align-items:center;
+    background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:22px 24px; margin-bottom:22px; position:relative; overflow:hidden; }
+.cd-estado::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--c); }
+.cd-estado.ok { --c:var(--success); } .cd-estado.aviso { --c:var(--warning); } .cd-estado.error { --c:var(--danger); } .cd-estado.off { --c:var(--muted); }
+.cd-estado-icono { width:52px; height:52px; border-radius:14px; display:grid; place-items:center; color:var(--c);
+    background:color-mix(in srgb, var(--c) 12%, transparent); }
+.cd-estado-icono .icon { width:26px; height:26px; }
+.cd-estado-titulo { font-size:1.08rem; font-weight:700; color:var(--text-color); }
+.cd-estado-sub { font-size:0.82rem; color:var(--muted); margin-top:3px; line-height:1.5; }
+.cd-datos { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px,1fr)); gap:12px; grid-column:1 / -1;
+    padding-top:16px; border-top:1px solid var(--border); }
+.cd-dato-lbl { font-size:0.66rem; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.cd-dato-val { font-size:0.95rem; font-weight:600; color:var(--text-color); margin-top:2px; overflow-wrap:anywhere; }
+
+/* Pasos */
+.cd-paso { background:var(--surface); border:1px solid var(--border); border-radius:18px; margin-bottom:16px; overflow:hidden; }
+.cd-paso > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:14px; padding:18px 22px; }
+.cd-paso > summary::-webkit-details-marker { display:none; }
+.cd-num { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; font-weight:800; font-size:0.85rem; flex-shrink:0;
+    color:var(--primary-color); background:color-mix(in srgb, var(--primary-color) 10%, transparent); border:1px solid color-mix(in srgb, var(--primary-color) 30%, transparent); }
+.cd-num.hecho { color:var(--on-primary); background:var(--success); border-color:var(--success); }
+.cd-num .icon { width:16px; height:16px; }
+.cd-paso-titulo { font-weight:700; color:var(--text-color); font-size:0.98rem; }
+.cd-paso-resumen { font-size:0.78rem; color:var(--muted); margin-top:2px; }
+.cd-paso-chev { margin-left:auto; color:var(--muted); transition:transform .2s; }
+.cd-paso[open] .cd-paso-chev { transform:rotate(180deg); }
+.cd-paso-cuerpo { padding:4px 22px 22px 66px; border-top:1px solid var(--border); }
+.cd-paso-cuerpo p, .cd-paso-cuerpo li { font-size:0.85rem; color:var(--muted); line-height:1.6; }
+.cd-paso-cuerpo ol { padding-left:18px; margin:12px 0 18px; }
+.cd-paso-cuerpo strong { color:var(--text-color); }
+.cd-paso-cuerpo code { background:var(--app-bg); padding:1px 6px; border-radius:5px; font-size:0.8rem; }
+.cd-fila { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:0 16px; }
+.cd-acciones { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+.cd-nota { font-size:0.76rem; color:var(--muted); margin-top:6px; line-height:1.5; }
+
+/* Conexión con código */
+.cd-codigo-caja { display:none; margin-top:16px; padding:20px; border-radius:14px; text-align:center;
+    background:color-mix(in srgb, var(--info) 7%, var(--surface)); border:1px dashed color-mix(in srgb, var(--info) 45%, transparent); }
+.cd-codigo-caja.visible { display:block; }
+.cd-codigo { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:2rem; font-weight:800; letter-spacing:.14em;
+    color:var(--text-color); margin:8px 0 12px; user-select:all; }
+.cd-esperando { display:inline-flex; align-items:center; gap:8px; font-size:0.8rem; color:var(--muted); margin-top:12px; }
+.cd-spinner { width:14px; height:14px; border-radius:50%; border:2px solid var(--border-strong); border-top-color:var(--info); animation:cdgira 0.9s linear infinite; }
+@keyframes cdgira { to { transform:rotate(360deg); } }
+.cd-cuenta { display:flex; align-items:center; gap:12px; padding:12px 14px; background:var(--app-bg); border-radius:12px; margin:12px 0; }
+.cd-cuenta-email { font-weight:600; color:var(--text-color); overflow-wrap:anywhere; }
+.cd-error { color:var(--danger); font-size:0.82rem; margin-top:10px; }
+
+/* Periodicidad: botones segmentados */
+.cd-segmentos { display:flex; flex-wrap:wrap; gap:6px; background:var(--app-bg); border:1px solid var(--border-strong); border-radius:12px; padding:4px; margin-bottom:16px; }
+.cd-segmentos label { margin:0; }
+.cd-segmentos input { position:absolute; opacity:0; pointer-events:none; }
+.cd-segmentos span { display:block; padding:8px 14px; border-radius:9px; font-size:0.82rem; font-weight:600; color:var(--muted); cursor:pointer; }
+.cd-segmentos input:checked + span { background:var(--primary-color); color:var(--on-primary); }
+.cd-segmentos input:focus-visible + span { outline:2px solid var(--primary-color); outline-offset:2px; }
+
+/* Historial */
+.cd-hist { background:var(--surface); border:1px solid var(--border); border-radius:18px; padding:20px 22px; }
+.cd-hist h2 { font-size:1rem; margin:0 0 12px; color:var(--text-color); }
+.cd-hist-fila { display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; padding:10px 0; border-top:1px solid var(--border); }
+.cd-hist-fila:first-of-type { border-top:none; }
+.cd-punto { width:10px; height:10px; border-radius:50%; background:var(--success); }
+.cd-punto.mal { background:var(--danger); }
+.cd-hist-nombre { font-size:0.84rem; color:var(--text-color); font-weight:500; overflow-wrap:anywhere; }
+.cd-hist-meta { font-size:0.72rem; color:var(--muted); margin-top:2px; }
+.cd-hist-msg { font-size:0.74rem; color:var(--danger); margin-top:2px; }
+.cd-hist-der { text-align:right; font-size:0.74rem; color:var(--muted); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.cd-vacio { font-size:0.84rem; color:var(--muted); font-style:italic; margin:0; }
+@media (max-width: 640px) {
+    .cd-estado { grid-template-columns:auto 1fr; padding:18px; }
+    .cd-estado > form { grid-column:1 / -1; }
+    .cd-paso-cuerpo { padding:4px 18px 18px; }
+    .cd-codigo { font-size:1.5rem; }
+}
+</style>
+
+<div class="dashboard-container cd-wrap">
+    <div class="cd-head">
+        <div>
+            <a href="{% url 'panel_admin' %}" class="cd-volver">&larr; Panel Admin</a>
+            <h1>Copias de seguridad</h1>
+            <p>Una copia completa de la base de datos, subida sola a tu Google Drive con la frecuencia que elijas.
+               Es el mismo archivo <code>.dump</code> que se puede restaurar desde el Panel Admin.</p>
+        </div>
+    </div>
+
+    {# ── ESTADO ── #}
+    {% with ultimo=registros.0 %}
+    <div class="cd-estado {% if not cfg.conectado %}off{% elif ultimo and not ultimo.ok %}error{% elif cfg.periodicidad == 'desactivada' %}aviso{% else %}ok{% endif %}">
+        <div class="cd-estado-icono">
+            <svg class="icon"><use href="{% if not cfg.conectado %}#i-upload{% elif ultimo and not ultimo.ok %}#i-alert{% elif cfg.periodicidad == 'desactivada' %}#i-info{% else %}#i-check{% endif %}"/></svg>
+        </div>
+        <div>
+            <div class="cd-estado-titulo">
+                {% if not cfg.conectado %}Sin conectar a Google Drive
+                {% elif ultimo and not ultimo.ok %}La última copia ha fallado
+                {% elif cfg.periodicidad == 'desactivada' %}Conectado, pero sin copia automática
+                {% else %}Copias automáticas activas{% endif %}
+            </div>
+            <div class="cd-estado-sub">
+                {% if not cfg.conectado %}Sigue los pasos de abajo: credenciales, conectar la cuenta y elegir cuándo.
+                {% elif ultimo and not ultimo.ok %}{{ ultimo.mensaje }}
+                {% elif cfg.periodicidad == 'desactivada' %}Elige una frecuencia en el paso 3 o haz una copia a mano.
+                {% else %}{{ cfg.get_periodicidad_display }} a las {{ cfg.hora|stringformat:"02d" }}:00{% if cfg.periodicidad == 'semanal' %}, los {{ cfg.get_dia_semana_display|lower }}{% elif cfg.periodicidad == 'mensual' %}, el día {{ cfg.dia_mes }}{% endif %}.{% endif %}
+            </div>
+        </div>
+        {% if cfg.conectado %}
+        <form method="post" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Copiando…';">
+            {% csrf_token %}
+            <input type="hidden" name="accion" value="copiar_ahora">
+            <button type="submit" class="btn btn-primary">Copiar ahora</button>
+        </form>
+        {% endif %}
+        {% if cfg.conectado %}
+        <div class="cd-datos">
+            <div><div class="cd-dato-lbl">Última copia</div><div class="cd-dato-val">{% if cfg.ultima_copia_en %}{{ cfg.ultima_copia_en|date:"d/m/Y H:i" }}{% else %}—{% endif %}</div></div>
+            <div><div class="cd-dato-lbl">Próxima</div><div class="cd-dato-val">{% if pendiente %}En unos minutos{% elif proxima %}{{ proxima|date:"d/m/Y H:i" }}{% else %}—{% endif %}</div></div>
+            <div><div class="cd-dato-lbl">Carpeta</div><div class="cd-dato-val">{{ cfg.carpeta_ruta }}</div></div>
+            <div><div class="cd-dato-lbl">Se conservan</div><div class="cd-dato-val">{% if cfg.conservar %}Las últimas {{ cfg.conservar }}{% else %}Todas{% endif %}</div></div>
+        </div>
+        {% endif %}
+    </div>
+    {% endwith %}
+
+    {# ── PASO 1: CREDENCIALES ── #}
+    <details class="cd-paso" {% if not client_id or not tiene_secreto %}open{% endif %}>
+        <summary>
+            <span class="cd-num {% if client_id and tiene_secreto %}hecho{% endif %}">{% if client_id and tiene_secreto %}<svg class="icon"><use href="#i-check"/></svg>{% else %}1{% endif %}</span>
+            <span>
+                <span class="cd-paso-titulo">Credenciales de Google</span>
+                <span class="cd-paso-resumen" style="display:block;">{% if client_id and tiene_secreto %}Listas{% if credenciales_en_env %} (desde el .env){% endif %}{% else %}Se hace una sola vez, en Google Cloud{% endif %}</span>
+            </span>
+            <svg class="icon cd-paso-chev"><use href="#i-chevron-down"/></svg>
+        </summary>
+        <div class="cd-paso-cuerpo">
+            <ol>
+                <li>Entra en <a href="https://console.cloud.google.com/" target="_blank" rel="noopener">console.cloud.google.com</a> con tu cuenta y crea un proyecto (por ejemplo «Treasure»).</li>
+                <li>En <strong>APIs y servicios › Biblioteca</strong>, busca <strong>Google Drive API</strong> y pulsa <strong>Habilitar</strong>.</li>
+                <li>En <strong>Pantalla de consentimiento de OAuth</strong> (o «Google Auth Platform»): tipo <strong>Externo</strong>, pon tu correo y guarda. Después, en <strong>Público</strong>, pulsa <strong>Publicar aplicación</strong>. Si se queda «en pruebas», Google corta el acceso cada 7 días.</li>
+                <li>En <strong>Credenciales › Crear credenciales › ID de cliente de OAuth</strong>, elige el tipo <strong>TV y dispositivos de entrada limitada</strong>.</li>
+                <li>Copia el <strong>ID de cliente</strong> y el <strong>secreto</strong> aquí abajo.</li>
+            </ol>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="credenciales">
+                <div class="cd-fila">
+                    <div class="form-group">
+                        <label for="cd-client-id">ID de cliente</label>
+                        <input type="text" id="cd-client-id" name="client_id" value="{{ cfg.client_id }}" placeholder="{% if credenciales_en_env %}Usando el del .env{% else %}123456-abc.apps.googleusercontent.com{% endif %}" autocomplete="off" spellcheck="false">
+                    </div>
+                    <div class="form-group">
+                        <label for="cd-client-secret">Secreto de cliente</label>
+                        <input type="password" id="cd-client-secret" name="client_secret" placeholder="{% if tiene_secreto %}•••••••• guardado (déjalo vacío para no cambiarlo){% else %}GOCSPX-…{% endif %}" autocomplete="new-password">
+                    </div>
+                </div>
+                <div class="cd-acciones"><button type="submit" class="btn btn-secondary">Guardar credenciales</button></div>
+                <p class="cd-nota">El secreto se guarda cifrado. Alternativa: ponlos en el <code>.env</code> como <code>GOOGLE_DRIVE_CLIENT_ID</code> y <code>GOOGLE_DRIVE_CLIENT_SECRET</code>.</p>
+            </form>
+        </div>
+    </details>
+
+    {# ── PASO 2: CUENTA ── #}
+    <details class="cd-paso" {% if client_id and tiene_secreto and not cfg.conectado %}open{% endif %}>
+        <summary>
+            <span class="cd-num {% if cfg.conectado %}hecho{% endif %}">{% if cfg.conectado %}<svg class="icon"><use href="#i-check"/></svg>{% else %}2{% endif %}</span>
+            <span>
+                <span class="cd-paso-titulo">Cuenta de Google Drive</span>
+                <span class="cd-paso-resumen" style="display:block;">{% if cfg.conectado %}{{ cfg.cuenta_email|default:"Conectada" }}{% else %}Sin conectar{% endif %}</span>
+            </span>
+            <svg class="icon cd-paso-chev"><use href="#i-chevron-down"/></svg>
+        </summary>
+        <div class="cd-paso-cuerpo">
+            {% if cfg.conectado %}
+            <div class="cd-cuenta">
+                <svg class="icon" style="color:var(--success);"><use href="#i-check"/></svg>
+                <div>
+                    <div class="cd-cuenta-email">{{ cfg.cuenta_email|default:"Cuenta conectada" }}</div>
+                    <div class="cd-nota" style="margin:0;">Desde el {{ cfg.conectado_en|date:"d/m/Y" }}. Treasure solo puede ver lo que él mismo crea en tu Drive.</div>
+                </div>
+            </div>
+            <div class="cd-acciones">
+                <button type="button" class="btn btn-secondary" id="cd-conectar">Conectar otra cuenta</button>
+                <form method="post" style="margin:0;" onsubmit="return confirm('¿Desconectar Google Drive? Se dejarán de hacer copias.');">
+                    {% csrf_token %}
+                    <input type="hidden" name="accion" value="desconectar">
+                    <button type="submit" class="btn btn-ghost">Desconectar</button>
+                </form>
+            </div>
+            {% else %}
+            <p>Al pulsar el botón, Treasure te dará un código. Ábrelo en Google desde el móvil o el ordenador, inicia sesión con la cuenta donde quieras las copias y acepta. Esta página se actualizará sola.</p>
+            <div class="cd-acciones">
+                <button type="button" class="btn btn-primary" id="cd-conectar" {% if not client_id or not tiene_secreto %}disabled title="Primero guarda las credenciales"{% endif %}>Conectar con Google Drive</button>
+            </div>
+            {% endif %}
+
+            <div class="cd-codigo-caja {% if conectando %}visible{% endif %}" id="cd-codigo-caja">
+                <div class="cd-nota" style="margin:0;">Abre <a href="{{ cfg.device_url|default:'https://www.google.com/device' }}" target="_blank" rel="noopener" id="cd-url">{{ cfg.device_url|default:"google.com/device" }}</a> y escribe este código:</div>
+                <div class="cd-codigo" id="cd-codigo">{{ cfg.device_user_code }}</div>
+                <a href="{{ cfg.device_url|default:'https://www.google.com/device' }}" target="_blank" rel="noopener" class="btn btn-primary" id="cd-abrir">Abrir Google</a>
+                <div><span class="cd-esperando"><span class="cd-spinner"></span><span id="cd-esperando-txt">Esperando a que aceptes en Google…</span></span></div>
+            </div>
+            <div class="cd-error" id="cd-error" hidden></div>
+        </div>
+    </details>
+
+    {# ── PASO 3: CARPETA Y FRECUENCIA ── #}
+    <details class="cd-paso" {% if cfg.conectado %}open{% endif %}>
+        <summary>
+            <span class="cd-num {% if cfg.conectado and cfg.periodicidad != 'desactivada' %}hecho{% endif %}">{% if cfg.conectado and cfg.periodicidad != 'desactivada' %}<svg class="icon"><use href="#i-check"/></svg>{% else %}3{% endif %}</span>
+            <span>
+                <span class="cd-paso-titulo">Carpeta y frecuencia</span>
+                <span class="cd-paso-resumen" style="display:block;">{{ cfg.get_periodicidad_display }} · {{ cfg.carpeta_ruta }}</span>
+            </span>
+            <svg class="icon cd-paso-chev"><use href="#i-chevron-down"/></svg>
+        </summary>
+        <div class="cd-paso-cuerpo">
+            <form method="post" id="cd-prog">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="programacion">
+
+                <div class="form-group">
+                    <label for="cd-carpeta">Carpeta en tu Drive</label>
+                    <input type="text" id="cd-carpeta" name="carpeta_ruta" value="{{ cfg.carpeta_ruta }}" placeholder="Treasure/Copias de seguridad">
+                    <p class="cd-nota">Ruta dentro de «Mi unidad», con <code>/</code> para subcarpetas. Treasure la crea en la primera copia. Después puedes moverla o renombrarla en Drive y las copias seguirán llegando ahí. Si cambias la ruta, se crea una carpeta nueva. Una carpeta que ya tengas creada a mano no la puede ver (solo ve lo que crea él).</p>
+                </div>
+
+                <label style="display:block; font-size:13px; color:var(--muted); margin-bottom:6px;">Frecuencia</label>
+                <div class="cd-segmentos" role="radiogroup">
+                    {% for valor, etiqueta in cfg.PERIODICIDAD_CHOICES %}
+                    <label><input type="radio" name="periodicidad" value="{{ valor }}" {% if cfg.periodicidad == valor %}checked{% endif %}><span>{{ etiqueta }}</span></label>
+                    {% endfor %}
+                </div>
+
+                <div class="cd-fila">
+                    <div class="form-group" data-solo="diaria semanal mensual">
+                        <label for="cd-hora">Hora</label>
+                        <select id="cd-hora" name="hora">
+                            {% for h in horas %}<option value="{{ h }}" {% if cfg.hora == h %}selected{% endif %}>{{ h|stringformat:"02d" }}:00</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" data-solo="semanal">
+                        <label for="cd-dia-semana">Día de la semana</label>
+                        <select id="cd-dia-semana" name="dia_semana">
+                            {% for v, n in cfg.DIAS_SEMANA %}<option value="{{ v }}" {% if cfg.dia_semana == v %}selected{% endif %}>{{ n }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" data-solo="mensual">
+                        <label for="cd-dia-mes">Día del mes</label>
+                        <select id="cd-dia-mes" name="dia_mes">
+                            {% for d in dias_mes %}<option value="{{ d }}" {% if cfg.dia_mes == d %}selected{% endif %}>{{ d }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cd-conservar">Copias a conservar</label>
+                        <input type="number" id="cd-conservar" name="conservar" min="0" max="999" value="{{ cfg.conservar }}">
+                    </div>
+                </div>
+                <p class="cd-nota" style="margin-top:-8px;">Al pasar de ese número, las más antiguas van a la papelera de Drive (se pueden recuperar durante 30 días). 0 = guardarlas todas.</p>
+                <div class="cd-acciones"><button type="submit" class="btn btn-primary">Guardar</button></div>
+            </form>
+        </div>
+    </details>
+
+    {# ── HISTORIAL ── #}
+    <div class="cd-hist">
+        <h2>Historial</h2>
+        {% for r in registros %}
+        <div class="cd-hist-fila">
+            <span class="cd-punto {% if not r.ok %}mal{% endif %}"></span>
+            <div>
+                <div class="cd-hist-nombre">{{ r.nombre_archivo }}</div>
+                <div class="cd-hist-meta">{{ r.get_origen_display }}{% if r.ok %} · {{ r.tamano|filesizeformat }} · {{ r.duracion_seg|floatformat:0 }} s{% endif %}{% if r.ok and r.mensaje %} · {{ r.mensaje }}{% endif %}</div>
+                {% if not r.ok %}<div class="cd-hist-msg">{{ r.mensaje }}</div>{% endif %}
+            </div>
+            <div class="cd-hist-der">{{ r.fecha|date:"d/m/Y" }}<br>{{ r.fecha|date:"H:i" }}</div>
+        </div>
+        {% empty %}
+        <p class="cd-vacio">Todavía no se ha hecho ninguna copia.</p>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+(function () {
+    // Campos que solo aplican a cierta frecuencia.
+    var form = document.getElementById('cd-prog');
+    function refrescar() {
+        var sel = form.querySelector('input[name=periodicidad]:checked');
+        var v = sel ? sel.value : 'desactivada';
+        form.querySelectorAll('[data-solo]').forEach(function (el) {
+            el.style.display = el.getAttribute('data-solo').split(' ').indexOf(v) !== -1 ? '' : 'none';
+        });
+    }
+    form.addEventListener('change', refrescar);
+    refrescar();
+
+    // Conexión con código de dispositivo.
+    var URL = "{% url 'copias_drive_conectar' %}";
+    var csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    var caja = document.getElementById('cd-codigo-caja');
+    var err = document.getElementById('cd-error');
+    var btn = document.getElementById('cd-conectar');
+    var intervalo = {{ cfg.device_intervalo|default:5 }} * 1000, temporizador = null;
+
+    function error(msg) { err.textContent = msg; err.hidden = false; caja.classList.remove('visible'); if (btn) btn.disabled = false; }
+
+    function consultar() {
+        fetch(URL, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) return error(d.error || 'Error desconocido.');
+                if (d.estado === 'pendiente') { temporizador = setTimeout(consultar, intervalo); return; }
+                if (d.estado === 'conectado') {
+                    document.getElementById('cd-esperando-txt').textContent = '¡Conectado! Recargando…';
+                    setTimeout(function () { location.reload(); }, 600); return;
+                }
+                if (d.estado === 'denegado') return error('Has rechazado el permiso en Google. Puedes volver a intentarlo.');
+                if (d.estado === 'caducado') return error('El código ha caducado. Pulsa de nuevo para obtener otro.');
+                caja.classList.remove('visible');
+            })
+            .catch(function () { temporizador = setTimeout(consultar, intervalo * 2); });
+    }
+
+    if (btn) btn.addEventListener('click', function () {
+        btn.disabled = true; err.hidden = true;
+        fetch(URL, {method: 'POST', headers: {'X-CSRFToken': csrf, 'X-Requested-With': 'XMLHttpRequest'}})
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) return error(d.error || 'Error desconocido.');
+                document.getElementById('cd-codigo').textContent = d.codigo;
+                ['cd-url', 'cd-abrir'].forEach(function (id) { document.getElementById(id).href = d.url; });
+                document.getElementById('cd-url').textContent = d.url.replace(/^https?:\/\//, '');
+                intervalo = (d.intervalo || 5) * 1000;
+                caja.classList.add('visible');
+                clearTimeout(temporizador); temporizador = setTimeout(consultar, intervalo);
+            })
+            .catch(function () { error('No se pudo contactar con el servidor.'); });
+    });
+
+    // Si se recarga la página a mitad de conexión, seguir esperando.
+    if (caja.classList.contains('visible')) temporizador = setTimeout(consultar, intervalo);
+})();
+</script>
+{% endblock %}

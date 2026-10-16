@@ -90,3 +90,95 @@ class ConsultaSQL(models.Model):
     def __str__(self):
         estado = 'aplicada' if self.aplicado else 'prueba'
         return f"{self.verbo} ({estado}) · {self.ejecutado_en:%d/%m/%Y %H:%M}"
+
+
+class CopiaDriveConfig(models.Model):
+    """Configuración de la copia automática de la base de datos a Google Drive.
+
+    Es un registro único (pk=1): la base de datos es una sola, así que su copia
+    también. Los secretos (client secret y refresh token) se guardan cifrados
+    con la misma clave Fernet que las claves de IA.
+    """
+    PERIODICIDAD_CHOICES = [
+        ('desactivada', 'Desactivada'),
+        ('diaria', 'Cada día'),
+        ('semanal', 'Cada semana'),
+        ('mensual', 'Cada mes'),
+    ]
+    DIAS_SEMANA = [
+        (0, 'Lunes'), (1, 'Martes'), (2, 'Miércoles'), (3, 'Jueves'),
+        (4, 'Viernes'), (5, 'Sábado'), (6, 'Domingo'),
+    ]
+
+    # Credenciales OAuth del proyecto de Google Cloud (cliente "TV y dispositivos
+    # de entrada limitada"). Si se dejan vacías se usan las del .env.
+    client_id = models.CharField(max_length=255, blank=True, default='')
+    client_secret_cifrado = models.BinaryField(null=True, blank=True)
+
+    # Cuenta conectada
+    refresh_token_cifrado = models.BinaryField(null=True, blank=True)
+    cuenta_email = models.CharField(max_length=255, blank=True, default='')
+    conectado_en = models.DateTimeField(null=True, blank=True)
+
+    # Conexión en curso (flujo de dispositivo): se guarda aquí para poder
+    # consultarla desde otra petición mientras el usuario mete el código.
+    device_code = models.CharField(max_length=512, blank=True, default='')
+    device_user_code = models.CharField(max_length=64, blank=True, default='')
+    device_url = models.CharField(max_length=255, blank=True, default='')
+    device_expira = models.DateTimeField(null=True, blank=True)
+    device_intervalo = models.PositiveSmallIntegerField(default=5)
+
+    # Destino
+    carpeta_ruta = models.CharField(
+        max_length=255, default='Treasure/Copias de seguridad',
+        help_text='Ruta de carpetas dentro de Mi unidad, separadas por /.')
+    carpeta_id = models.CharField(max_length=128, blank=True, default='')
+    carpeta_ruta_creada = models.CharField(max_length=255, blank=True, default='')
+
+    # Programación
+    periodicidad = models.CharField(max_length=12, choices=PERIODICIDAD_CHOICES, default='desactivada')
+    hora = models.PositiveSmallIntegerField(default=3, help_text='Hora del día (0-23).')
+    dia_semana = models.PositiveSmallIntegerField(choices=DIAS_SEMANA, default=0)
+    dia_mes = models.PositiveSmallIntegerField(default=1, help_text='Día del mes (1-28).')
+    conservar = models.PositiveSmallIntegerField(
+        default=10, help_text='Copias que se guardan en Drive; las más antiguas se borran. 0 = todas.')
+
+    # Estado
+    ultima_copia_en = models.DateTimeField(null=True, blank=True)
+    en_curso_desde = models.DateTimeField(null=True, blank=True)
+    actualizado_en = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Copia a Google Drive'
+
+    def __str__(self):
+        return f"Copia a Drive ({self.get_periodicidad_display()})"
+
+    @classmethod
+    def obtener(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    @property
+    def conectado(self):
+        return bool(self.refresh_token_cifrado)
+
+
+class CopiaDriveRegistro(models.Model):
+    """Una copia hecha (o intentada): el historial que se ve en Ajustes."""
+    ORIGEN_CHOICES = [('auto', 'Automática'), ('manual', 'Manual')]
+
+    fecha = models.DateTimeField(auto_now_add=True)
+    origen = models.CharField(max_length=10, choices=ORIGEN_CHOICES, default='auto')
+    ok = models.BooleanField(default=False)
+    nombre_archivo = models.CharField(max_length=255, blank=True, default='')
+    drive_file_id = models.CharField(max_length=128, blank=True, default='')
+    tamano = models.BigIntegerField(default=0)
+    duracion_seg = models.FloatField(default=0)
+    mensaje = models.TextField(blank=True, default='')
+
+    class Meta:
+        ordering = ['-fecha']
+
+    def __str__(self):
+        return f"{self.fecha:%Y-%m-%d %H:%M} {'OK' if self.ok else 'ERROR'} {self.nombre_archivo}"

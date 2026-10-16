@@ -55,3 +55,26 @@ services:
     command: >
       sh -c "pip install -r requirements.txt --quiet &&
              python manage.py actualizar_precios --cada 3600"
+
+  # Copia automática de la base de datos a Google Drive. Comprueba cada 5 min
+  # si toca según lo configurado en Panel Admin > Copias de seguridad.
+  copias:
+    image: python:3.12-slim
+    restart: always
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+    command: >
+      sh -c "apt-get update -qq &&
+             apt-get install -y --no-install-recommends -qq postgresql-client &&
+             pip install -r requirements.txt --quiet &&
+             python manage.py copias_drive --cada 300"

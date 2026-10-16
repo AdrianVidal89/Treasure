@@ -68,6 +68,12 @@ DATABASES = {
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 IA_FERNET_KEY = config("IA_FERNET_KEY")
 
+# Copia automática de la base de datos a Google Drive (Ajustes > Copias de
+# seguridad). Credenciales de un cliente OAuth de tipo "TV y dispositivos de
+# entrada limitada"; también se pueden poner desde la propia pantalla.
+GOOGLE_DRIVE_CLIENT_ID = config("GOOGLE_DRIVE_CLIENT_ID", default="")
+GOOGLE_DRIVE_CLIENT_SECRET = config("GOOGLE_DRIVE_CLIENT_SECRET", default="")
+
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
