@@ -287,6 +287,29 @@ def _agrupar_por_miembro(hogar, categorias):
         g['total_mensual'] += p.importe_mensual
         g['total_anual'] += p.importe_anual
 
+    # Dentro de cada persona, sus partidas partidas por bloque (fijos, fijos
+    # anuales, variables, discrecionales), solo los que tengan algo.
+    total_hogar = sum((g['total_mensual'] for g in grupos.values()), Decimal('0'))
+    for g in grupos.values():
+        por_bloque = defaultdict(list)
+        for p in g['partidas']:
+            por_bloque[p.tipo_bloque or 'variable'].append(p)
+        g['bloques'] = []
+        for tipo in TIPOS_GASTO:
+            partidas = sorted(por_bloque.get(tipo, []), key=lambda p: -p.importe_mensual)
+            if not partidas:
+                continue
+            mensual = sum((p.importe_mensual for p in partidas), Decimal('0'))
+            g['bloques'].append({
+                'tipo': tipo,
+                'etiqueta': ETIQUETAS_TIPO.get(tipo, tipo),
+                'partidas': partidas,
+                'total_mensual': mensual,
+                'total_anual': sum((p.importe_anual for p in partidas), Decimal('0')),
+                'pct': round(float(mensual / g['total_mensual'] * 100), 1) if g['total_mensual'] else 0,
+            })
+        g['pct_hogar'] = round(float(g['total_mensual'] / total_hogar * 100)) if total_hogar else 0
+
     # Común primero, luego miembros con gasto, luego los que no tienen nada.
     ordenados = sorted(
         grupos.values(),

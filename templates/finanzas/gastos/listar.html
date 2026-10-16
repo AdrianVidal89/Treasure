@@ -242,6 +242,71 @@
 }
 .poner-techo:hover { color:var(--primary-color); border-color:var(--primary-color); }
 .bloque-vacio { color:var(--muted); font-size:0.82rem; font-style:italic; margin:0 2px 22px; }
+
+/* ===== Vista por miembro ===== */
+.pm-lista { display:flex; flex-direction:column; gap:14px; margin-bottom:28px; }
+.pm-card { background:var(--surface); border:1px solid var(--border); border-radius:18px; overflow:hidden;
+    box-shadow:0 1px 2px rgba(28,35,33,.06); transition:border-color .2s, box-shadow .2s; position:relative; }
+.pm-card::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--uc); }
+.pm-card:hover { border-color:var(--border-strong); }
+.pm-card.open { box-shadow:0 6px 24px rgba(28,35,33,.08); }
+.pm-head { all:unset; box-sizing:border-box; width:100%; cursor:pointer; display:grid;
+    grid-template-columns:auto 1fr auto auto auto; align-items:center; gap:14px; padding:18px 20px 16px 24px; }
+.pm-head:focus-visible { outline:2px solid var(--primary-color); outline-offset:-2px; border-radius:18px; }
+.pm-avatar { width:42px; height:42px; border-radius:50%; display:grid; place-items:center; font-weight:800; font-size:1.05rem;
+    color:var(--uc); background:color-mix(in srgb, var(--uc) 14%, transparent); border:1px solid color-mix(in srgb, var(--uc) 35%, transparent); }
+.pm-avatar .icon { width:20px; height:20px; }
+.pm-quien { display:flex; flex-direction:column; min-width:0; }
+.pm-nombre { font-size:1.02rem; font-weight:700; color:var(--text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pm-meta { font-size:0.74rem; color:var(--muted); margin-top:2px; }
+.pm-chips { display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+.pm-chip { font-size:0.68rem; color:var(--c); background:color-mix(in srgb, var(--c) 10%, transparent);
+    border:1px solid color-mix(in srgb, var(--c) 28%, transparent); border-radius:999px; padding:2px 9px; white-space:nowrap; }
+.pm-chip b { font-variant-numeric:tabular-nums; margin-left:3px; }
+.pm-total { display:flex; flex-direction:column; align-items:flex-end; }
+.pm-total-val { font-size:1.3rem; font-weight:800; color:var(--text-color); font-variant-numeric:tabular-nums; line-height:1.1; }
+.pm-total-sub { font-size:0.7rem; color:var(--muted); margin-top:2px; white-space:nowrap; }
+.pm-chevron { color:var(--muted); font-size:0.9rem; transition:transform .25s; }
+.pm-card.open .pm-chevron { transform:rotate(180deg); }
+.pm-barra { grid-column:1 / -1; display:flex; height:6px; border-radius:999px; overflow:hidden; background:var(--app-bg); }
+.pm-seg { background:var(--c); }
+.pm-seg + .pm-seg { border-left:2px solid var(--surface); }
+.pm-c-fijo { --c:var(--warning); }
+.pm-c-anual { --c:var(--info); }
+.pm-c-variable { --c:var(--primary-color); }
+.pm-c-discrecional { --c:var(--accent-alt); }
+.pm-body { display:none; padding:4px 20px 20px 24px; border-top:1px solid var(--border); }
+.pm-card.open .pm-body { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(340px,100%),1fr)); gap:14px 22px; animation:pmIn .25s ease; }
+@keyframes pmIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.pm-bloque { padding-top:14px; }
+.pm-bloque-head { display:flex; align-items:baseline; gap:8px; padding-bottom:8px; margin-bottom:4px; border-bottom:2px solid color-mix(in srgb, var(--c) 35%, transparent); }
+.pm-bloque-nombre { font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:var(--c); }
+.pm-bloque-pct { font-size:0.7rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+.pm-bloque-total { margin-left:auto; font-size:0.85rem; font-weight:700; color:var(--text-color); font-variant-numeric:tabular-nums; }
+.pm-bloque-total small { font-weight:500; color:var(--muted); }
+.pm-partida { display:flex; align-items:center; gap:10px; padding:8px 4px; border-bottom:1px dashed var(--border); border-radius:6px; }
+.pm-partida:last-child { border-bottom:none; }
+.pm-partida:hover { background:var(--app-bg); }
+.pm-partida-info { flex:1; min-width:0; display:flex; flex-direction:column; }
+.pm-partida-nombre { font-size:0.86rem; font-weight:500; color:var(--text-color); overflow-wrap:anywhere; }
+.pm-partida-meta { font-size:0.7rem; color:var(--muted); margin-top:1px; }
+.pm-partida-importe { display:flex; flex-direction:column; align-items:flex-end; font-weight:700; font-size:0.88rem; color:var(--text-color); font-variant-numeric:tabular-nums; white-space:nowrap; }
+.pm-partida-importe small { font-weight:500; font-size:0.66rem; color:var(--muted); }
+.pm-partida-acciones { display:flex; gap:2px; opacity:.55; transition:opacity .2s; }
+.pm-partida:hover .pm-partida-acciones { opacity:1; }
+.pm-partida-acciones form { margin:0; display:flex; }
+.pm-accion { display:grid; place-items:center; width:30px; height:30px; border:none; background:transparent; color:var(--muted); border-radius:8px; cursor:pointer; text-decoration:none; }
+.pm-accion:hover { background:color-mix(in srgb, var(--success) 15%, transparent); color:var(--primary-color); }
+.pm-accion.danger:hover { background:color-mix(in srgb, var(--danger) 15%, transparent); color:var(--danger); }
+.pm-vacio { color:var(--muted); font-size:0.82rem; font-style:italic; padding:14px 2px 0; margin:0; }
+@media (max-width: 760px) {
+    .pm-head { grid-template-columns:auto 1fr auto auto; gap:10px 12px; padding:16px 16px 14px 20px; }
+    .pm-chips { grid-column:1 / -1; grid-row:2; justify-content:flex-start; }
+    .pm-barra { grid-row:3; }
+    .pm-body { padding:4px 14px 16px 20px; }
+    .pm-nombre { white-space:normal; }
+    .pm-partida-acciones { opacity:1; }
+}
 </style>
 
 <div class="dashboard-container">
@@ -313,50 +378,70 @@
     </div>
 
     {% if vista == 'miembro' %}
-    <!-- ===== VISTA POR MIEMBRO ===== -->
-    <div class="grid-gastos">
+    <!-- ===== VISTA POR MIEMBRO =====
+         Cada persona (y lo común) es una tarjeta plegada: de un vistazo se ve
+         cuánto lleva, qué parte del hogar es y cómo se reparte por bloque. Al
+         abrirla, sus partidas salen agrupadas por fijos, anuales, variables y
+         discrecionales. -->
+    <div class="pm-lista">
         {% for g in grupos_miembro %}
-        <div class="gasto-card {% if g.es_comun %}tipo-anual{% else %}tipo-variable{% endif %} {% if forloop.first %}open{% endif %}" onclick="toggleCard(this)">
-            <div class="gasto-card-header">
-                <div>
-                    <div class="gasto-card-nombre">
-                        {% if g.es_comun %}🏠 {{ g.nombre }}{% else %}👤 {{ g.nombre }}{% endif %}
+        <section class="pm-card" style="--uc: {% if g.es_comun %}{{ g|color_hogar }}{% else %}{{ g.clave|color_usuario }}{% endif %};">
+            <button type="button" class="pm-head" onclick="togglePm(this)" aria-expanded="false">
+                <span class="pm-avatar" aria-hidden="true">{% if g.es_comun %}<svg class="icon"><use href="#i-properties"/></svg>{% else %}{{ g.nombre|slice:":1"|upper }}{% endif %}</span>
+                <span class="pm-quien">
+                    <span class="pm-nombre">{{ g.nombre }}</span>
+                    <span class="pm-meta">{{ g.partidas|length }} partida{{ g.partidas|length|pluralize:"s" }}{% if g.pct_hogar %} · {{ g.pct_hogar }}% del hogar{% endif %}</span>
+                </span>
+                <span class="pm-chips">
+                    {% for b in g.bloques %}
+                    <span class="pm-chip pm-c-{{ b.tipo }}" title="{{ b.etiqueta }}: {{ b.total_mensual|euro }}/mes">{{ b.etiqueta }} <b>{{ b.total_mensual|euro:0 }}</b></span>
+                    {% endfor %}
+                </span>
+                <span class="pm-total">
+                    <span class="pm-total-val">{{ g.total_mensual|euro }}</span>
+                    <span class="pm-total-sub">/mes{% if g.total_anual %} · {{ g.total_anual|euro:0 }}/año{% endif %}</span>
+                </span>
+                <svg class="icon pm-chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+                {% if g.bloques %}
+                <span class="pm-barra" aria-hidden="true">
+                    {% for b in g.bloques %}<span class="pm-seg pm-c-{{ b.tipo }}" style="width:{{ b.pct|stringformat:'s' }}%;"></span>{% endfor %}
+                </span>
+                {% endif %}
+            </button>
+
+            <div class="pm-body">
+                {% for b in g.bloques %}
+                <div class="pm-bloque pm-c-{{ b.tipo }}">
+                    <div class="pm-bloque-head">
+                        <span class="pm-bloque-nombre">{{ b.etiqueta }}</span>
+                        <span class="pm-bloque-pct">{{ b.pct|floatformat:0 }}%</span>
+                        <span class="pm-bloque-total">{{ b.total_mensual|euro }}/mes{% if b.tipo == 'anual' %} <small>· {{ b.total_anual|euro:0 }}/año</small>{% endif %}</span>
                     </div>
-                    <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ g.partidas|length }} partida{{ g.partidas|length|pluralize:"s" }}</div>
-                </div>
-                <div style="text-align:right;">
-                    <div class="gasto-card-monto" style="color: {% if g.es_comun %}var(--info){% else %}var(--primary-color){% endif %};">&euro;{{ g.total_mensual|floatformat:2 }}</div>
-                    <div class="gasto-card-sub">/mes{% if g.total_anual %} &middot; &euro;{{ g.total_anual|floatformat:0 }}/a{% endif %}</div>
-                </div>
-            </div>
-            <div class="gasto-card-detail" onclick="event.stopPropagation()">
-                {% for p in g.partidas %}
-                <div class="gasto-partida">
-                    <div class="gasto-partida-left">
-                        <div class="gasto-partida-nombre">{{ p.nombre }}</div>
-                        <div class="gasto-partida-meta">
-                            <span class="badge-cat">{% if p.categoria %}{{ p.categoria.nombre }}{% else %}{{ p.get_bloque_display }} · sin desglosar{% endif %}</span>
-                            {% if p.periodicidad != 'mensual' %} &middot; {{ p.get_periodicidad_display }}{% endif %}
-                            {% if p.mes_pago %} &middot; {{ p.meses_pago_display }}{% endif %}
+                    {% for p in b.partidas %}
+                    <div class="pm-partida">
+                        <div class="pm-partida-info">
+                            <span class="pm-partida-nombre">{{ p.nombre }}</span>
+                            <span class="pm-partida-meta">{% if p.categoria %}{{ p.categoria.nombre }}{% else %}{{ p.get_bloque_display }} · sin desglosar{% endif %}{% if p.periodicidad != 'mensual' %} · {{ p.get_periodicidad_display }}{% endif %}{% if p.mes_pago %} · {{ p.meses_pago_display }}{% endif %}</span>
+                        </div>
+                        <div class="pm-partida-importe">
+                            <span>{{ p.importe|euro }}{% if p.periodicidad != 'mensual' %}<small>/{{ p.get_periodicidad_display|lower }}</small>{% endif %}</span>
+                            {% if p.periodicidad != 'mensual' %}<small>{{ p.importe_mensual|euro }}/mes</small>{% endif %}
+                        </div>
+                        <div class="pm-partida-acciones">
+                            <a href="{% url 'finanzas:editar_partida' p.id %}" class="pm-accion" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
+                            <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="pm-accion danger" title="Eliminar" onclick="return confirm('Eliminar {{ p.nombre|escapejs }}?')"><svg class="icon"><use href="#i-trash"/></svg></button>
+                            </form>
                         </div>
                     </div>
-                    <div class="gasto-partida-right">
-                        <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: {% if g.es_comun %}var(--info){% else %}var(--primary-color){% endif %};">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
-                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
-                        </div>
-                        <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
-                        <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
-                            {% csrf_token %}
-                            <button type="submit" class="gasto-action-btn danger" title="Eliminar" onclick="event.stopPropagation(); return confirm('Eliminar {{ p.nombre }}?')"><svg class="icon"><use href="#i-trash"/></svg></button>
-                        </form>
-                    </div>
+                    {% endfor %}
                 </div>
                 {% empty %}
-                <p style="color:var(--muted); font-size:0.82rem; padding:10px 2px; font-style:italic;">Sin gastos asignados a {% if g.es_comun %}lo común{% else %}esta persona{% endif %}.</p>
+                <p class="pm-vacio">Sin gastos asignados a {% if g.es_comun %}lo común{% else %}esta persona{% endif %}.</p>
                 {% endfor %}
             </div>
-        </div>
+        </section>
         {% endfor %}
     </div>
     {% else %}
@@ -614,6 +699,11 @@
 <script>
 function toggleCard(card) {
     card.classList.toggle('open');
+}
+function togglePm(btn) {
+    var card = btn.closest('.pm-card');
+    var abierta = card.classList.toggle('open');
+    btn.setAttribute('aria-expanded', abierta ? 'true' : 'false');
 }
 
 // El cómputo habitual del bloque elegido se propone solo; sigue siendo editable.

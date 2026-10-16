@@ -624,6 +624,40 @@ def _construir_tabla_propiedades(hogar, año):
     return propiedades, filas
 
 
+def _ingresos_por_miembro(flujos_por_mes):
+    """Ingreso neto de cada miembro mes a mes y su total del año, a partir del
+    mismo motor que el resto de Evolución. Para el gráfico pequeño de ingresos
+    por persona: cada miembro con sus 12 barras y su total anual."""
+    from finanzas.templatetags.custom_filters import color_usuario
+    por_uid = {}
+    for mes in range(1, 13):
+        for dm in flujos_por_mes.get(mes, {}).get('datos_miembros', []):
+            user = dm['miembro'].user
+            fila = por_uid.setdefault(user.id, {
+                'nombre': user.first_name or user.username,
+                'color': color_usuario(user.id),
+                'meses': [Decimal('0')] * 12,
+            })
+            fila['meses'][mes - 1] = dm['ingreso_base'] or Decimal('0')
+
+    filas = list(por_uid.values())
+    if not filas:
+        return {'miembros': [], 'total': Decimal('0')}
+    maximo_mes = max((v for f in filas for v in f['meses']), default=Decimal('0'))
+    total_hogar = sum((sum(f['meses']) for f in filas), Decimal('0'))
+    for f in filas:
+        f['total'] = sum(f['meses'])
+        f['media'] = f['total'] / 12
+        f['pct'] = round(float(f['total'] / total_hogar * 100)) if total_hogar else 0
+        f['barras'] = [
+            {'mes': MESES_NOMBRES[i + 1], 'valor': v,
+             'alto': round(float(v / maximo_mes * 100), 1) if maximo_mes else 0}
+            for i, v in enumerate(f['meses'])
+        ]
+    filas.sort(key=lambda f: -f['total'])
+    return {'miembros': filas, 'total': total_hogar}
+
+
 @login_required
 def vista_evolucion(request):
     profile, hogar = _get_hogar(request)
@@ -645,6 +679,7 @@ def vista_evolucion(request):
     grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen, datos_por_mes)
     analisis = _analizar_ritmo(año, datos_por_mes, flujos_por_mes, resumen)
     años_disponibles = [hoy.year - 1, hoy.year, hoy.year + 1]
+    ingresos_miembros = _ingresos_por_miembro(flujos_por_mes)
 
     return render(request, 'finanzas/evolucion/vista.html', {
         'hogar': hogar,
@@ -658,6 +693,7 @@ def vista_evolucion(request):
         'analisis': analisis,
         'año_actual': año,
         'años': años_disponibles,
+        'ingresos_miembros': ingresos_miembros,
     })
 
 
