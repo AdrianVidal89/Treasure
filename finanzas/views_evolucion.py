@@ -10,6 +10,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from .models import FondoFamiliar, SaldoRealFondo, IngresoRealMes, Propiedad, HistorialPropiedad
 from . import hipoteca_propiedad
 from .distribucion import calcular_flujos
+from .colores import color_valido
 
 MESES_NOMBRES = [
     '', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
@@ -765,7 +766,7 @@ def crear_fondo_evolucion(request):
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
         tipo_fondo = request.POST.get('tipo_fondo', 'ahorro')
-        color = request.POST.get('color', '#00ff88')
+        color = color_valido(request.POST.get('color'))
         cuenta = request.POST.get('cuenta_asociada', '').strip()
 
         if not nombre:

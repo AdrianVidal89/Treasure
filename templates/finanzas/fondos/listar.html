@@ -160,13 +160,13 @@
             <div class="fg">
                 <label>Color</label>
                 <div class="color-row" id="fondo-color-row">
-                    <button type="button" class="cdot active" style="background:var(--success);" onclick="selC(this,'var(--success)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--info);" onclick="selC(this,'var(--info)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--primary-color);" onclick="selC(this,'var(--primary-color)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--danger);" onclick="selC(this,'var(--danger)','fondo')"></button>
-                    <button type="button" class="cdot" style="background:var(--warning);" onclick="selC(this,'var(--warning)','fondo')"></button>
+                    <button type="button" class="cdot active" style="background:#2d6a4f;" onclick="selC(this,'#2d6a4f','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#2c5f7a;" onclick="selC(this,'#2c5f7a','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#1b4332;" onclick="selC(this,'#1b4332','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#b4442e;" onclick="selC(this,'#b4442e','fondo')"></button>
+                    <button type="button" class="cdot" style="background:#b7791f;" onclick="selC(this,'#b7791f','fondo')"></button>
                 </div>
-                <input type="hidden" name="color" id="color-fondo" value="var(--success)">
+                <input type="hidden" name="color" id="color-fondo" value="#2d6a4f">
             </div>
             <div class="modal-actions">
                 <button type="button" onclick="cerrar('modal-fondo')" class="btn btn-secondary">Cancelar</button>
@@ -309,7 +309,7 @@ function abrirModalFondo(){
     document.getElementById('fondo-cuenta').value='';
     document.getElementById('fondo-tipo').value='comun';
     document.getElementById('fondo-propietario').value='';
-    selCByVal('fondo','var(--success)');
+    selCByVal('fondo','#2d6a4f');
     abrir('modal-fondo');
 }
 function editarFondo(id,nombre,tipo,color,cuenta,propietarioId){

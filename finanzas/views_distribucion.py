@@ -11,6 +11,7 @@ from .models import (
     FuenteIngreso, AjusteIngresoMensual, PartidaGasto,
 )
 from .distribucion import calcular_flujos, calcular_resumen_anual
+from .colores import color_valido
 
 MESES = [
     (1, 'Enero'), (2, 'Febrero'), (3, 'Marzo'), (4, 'Abril'),
@@ -179,7 +180,7 @@ def crear_regla(request):
         tipo = request.POST.get('tipo_regla', 'porcentaje')
         fondo_id = request.POST.get('fondo_id') or None
         usuario_id = request.POST.get('usuario_id') or None
-        color = request.POST.get('color', '#00ff88')
+        color = color_valido(request.POST.get('color'))
         solo_mes_raw = request.POST.get('solo_mes', '')
         solo_mes = int(solo_mes_raw) if solo_mes_raw.isdigit() else None
 
@@ -219,7 +220,7 @@ def editar_regla(request, regla_id):
         tipo = request.POST.get('tipo_regla', 'porcentaje')
         fondo_id = request.POST.get('fondo_id') or None
         usuario_id = request.POST.get('usuario_id') or None
-        color = request.POST.get('color', '#00ff88')
+        color = color_valido(request.POST.get('color'))
 
         try:
             porcentaje = Decimal(request.POST.get('porcentaje', '0') or '0')

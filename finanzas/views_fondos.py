@@ -17,6 +17,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 
 from .models import FondoFamiliar, PartidaGasto, Inversion
+from .colores import color_valido
 
 
 def _get_hogar_o_redirect(request):
@@ -108,7 +109,7 @@ def crear_fondo(request):
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
         tipo_fondo = request.POST.get('tipo_fondo', 'comun')
-        color = request.POST.get('color', '#00ff88')
+        color = color_valido(request.POST.get('color'))
         cuenta = request.POST.get('cuenta_asociada', '').strip()
         propietario = _propietario_de_post(request, hogar)
 
@@ -142,7 +143,7 @@ def editar_fondo(request, fondo_id):
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
         tipo_fondo = request.POST.get('tipo_fondo', 'comun')
-        color = request.POST.get('color', '#00ff88')
+        color = color_valido(request.POST.get('color'))
         cuenta = request.POST.get('cuenta_asociada', '').strip()
 
         if not nombre:
