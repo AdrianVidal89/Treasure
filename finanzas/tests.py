@@ -5810,3 +5810,50 @@ class ColorValidoTests(TestCase):
         from finanzas.colores import color_valido
         self.assertEqual(color_valido('rojo chillón'), '#2d6a4f')
         self.assertEqual(color_valido(None, '#a259ff'), '#a259ff')
+
+
+class IngresosPorMiembroTests(TestCase):
+    """El gráfico de ingresos por miembro cuenta solo lo ya ingresado: hasta el
+    mes en curso, y en los meses cerrados cuadrando con la foto del cierre."""
+
+    def _flujos(self, ana, luis):
+        from types import SimpleNamespace
+        flujos = {}
+        for mes in range(1, 13):
+            flujos[mes] = {
+                'ingreso_base_hogar': Decimal('3000'),
+                'datos_miembros': [
+                    {'miembro': SimpleNamespace(user=ana), 'ingreso_base': Decimal('2000')},
+                    {'miembro': SimpleNamespace(user=luis), 'ingreso_base': Decimal('1000')},
+                ],
+            }
+        return flujos
+
+    def test_solo_hasta_el_mes_en_curso_y_cuadra_con_el_cierre(self):
+        import datetime
+        from .views_evolucion import _ingresos_por_miembro
+        ana = User.objects.create_user('ana_ipm', first_name='Ana')
+        luis = User.objects.create_user('luis_ipm', first_name='Luis')
+        flujos = self._flujos(ana, luis)
+        # Marzo cerrado con más ingreso del que dice el motor hoy.
+        flujos[3]['ingreso_base_hogar'] = Decimal('6000')
+
+        r = _ingresos_por_miembro(flujos, 2026, hoy=datetime.date(2026, 4, 15))
+
+        self.assertEqual(r['num_meses'], 4)
+        self.assertEqual(r['hasta_mes'], 'abril')
+        self.assertEqual(r['total'], Decimal('15000'))
+        a = next(m for m in r['miembros'] if m['nombre'] == 'Ana')
+        self.assertEqual(a['meses'][2], Decimal('4000'))
+        self.assertIsNone(a['meses'][4])
+        self.assertEqual(a['total'], Decimal('10000'))
+        self.assertEqual(a['media'], Decimal('2500'))
+        self.assertTrue(a['barras'][11]['futuro'])
+
+    def test_año_futuro_no_tiene_ingresos(self):
+        import datetime
+        from .views_evolucion import _ingresos_por_miembro
+        ana = User.objects.create_user('ana_ipm2')
+        luis = User.objects.create_user('luis_ipm2')
+        r = _ingresos_por_miembro(self._flujos(ana, luis), 2027, hoy=datetime.date(2026, 4, 1))
+        self.assertEqual(r['miembros'], [])
