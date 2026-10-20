@@ -75,6 +75,8 @@
 .evo-ing-col { position: relative; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 14px; }
 .evo-ing-bar { width: 100%; max-width: 22px; min-height: 2px; border-radius: 4px 4px 1px 1px; background: color-mix(in srgb, var(--uc) 75%, transparent); transition: background .15s; }
 .evo-ing-col:hover .evo-ing-bar { background: var(--uc); }
+.evo-ing-futuro .evo-ing-bar { background: transparent; }
+.evo-ing-futuro .evo-ing-mes { opacity: .45; }
 .evo-ing-mes { position: absolute; bottom: 0; font-size: 0.58rem; color: var(--muted); line-height: 1; }
 .evo-ing-total { display: flex; flex-direction: column; align-items: flex-end; }
 .evo-ing-val { font-size: 1rem; font-weight: 700; color: var(--text-color); font-variant-numeric: tabular-nums; }
@@ -420,7 +422,7 @@
         <div class="evo-chart-head">
             <div>
                 <h3>Ingresos de {{ año_actual }} por miembro</h3>
-                <p class="evo-chart-sub">Ingreso neto que cada persona aporta al reparto, mes a mes. Total del hogar: <strong>{{ ingresos_miembros.total|euro:0 }}</strong>.</p>
+                <p class="evo-chart-sub">Ingreso neto real que cada persona aporta al reparto, de enero a {{ ingresos_miembros.hasta_mes }}. Total del hogar: <strong>{{ ingresos_miembros.total|euro:0 }}</strong>.</p>
             </div>
         </div>
         <div class="evo-ing-lista">
@@ -432,7 +434,7 @@
                 </div>
                 <div class="evo-ing-barras" role="img" aria-label="Ingresos mensuales de {{ m.nombre }}">
                     {% for b in m.barras %}
-                    <span class="evo-ing-col" title="{{ b.mes }}: {{ b.valor|euro }}"><span class="evo-ing-bar" style="height:{{ b.alto|stringformat:'s' }}%;"></span><span class="evo-ing-mes">{{ b.mes|slice:":1" }}</span></span>
+                    <span class="evo-ing-col{% if b.futuro %} evo-ing-futuro{% endif %}" title="{% if b.futuro %}{{ b.mes }}: aún no ha llegado{% else %}{{ b.mes }}: {{ b.valor|euro }}{% endif %}"><span class="evo-ing-bar" style="height:{{ b.alto|stringformat:'s' }}%;"></span><span class="evo-ing-mes">{{ b.mes|slice:":1" }}</span></span>
                     {% endfor %}
                 </div>
                 <div class="evo-ing-total">

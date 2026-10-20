@@ -191,13 +191,13 @@
         </div>
         <div class="inv-kpi" style="border-color: var(--border);">
             <div class="label">Capital invertido</div>
-            <div class="valor" style="color: var(--text-color);">€{{ total_aportado|floatformat:2 }}</div>
-            <div class="sub">Total compras neto</div>
+            <div class="valor" style="color: var(--text-color);">€{{ total_coste_base|floatformat:2 }}</div>
+            <div class="sub" title="Lo que pagaste por las unidades que sigues teniendo (precio medio). Es la base de la rentabilidad. Compras totales, incluidas las vendidas: €{{ total_aportado|floatformat:2 }}.">Coste de lo que sigues teniendo</div>
         </div>
         <div class="inv-kpi" style="border-color: {% if rentabilidad_total >= 0 %}color-mix(in srgb, var(--success) 27%, transparent){% else %}color-mix(in srgb, var(--danger) 27%, transparent){% endif %};">
             <div class="label">Rentabilidad total</div>
             <div class="valor {% if rentabilidad_total >= 0 %}pos{% else %}neg{% endif %}">
-                {% if total_aportado > 0 %}
+                {% if total_coste_base > 0 %}
                     {% if rentabilidad_total >= 0 %}+{% endif %}{{ rentabilidad_total|floatformat:2 }}%
                 {% else %}
                     —

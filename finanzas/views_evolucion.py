@@ -16,6 +16,10 @@ MESES_NOMBRES = [
     '', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
     'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic',
 ]
+MESES_COMPLETOS = [
+    '', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+]
 
 
 def _get_hogar(request):
@@ -624,38 +628,64 @@ def _construir_tabla_propiedades(hogar, año):
     return propiedades, filas
 
 
-def _ingresos_por_miembro(flujos_por_mes):
-    """Ingreso neto de cada miembro mes a mes y su total del año, a partir del
-    mismo motor que el resto de Evolución. Para el gráfico pequeño de ingresos
-    por persona: cada miembro con sus 12 barras y su total anual."""
+def _ingresos_por_miembro(flujos_por_mes, año, hoy=None):
+    """Ingreso neto REAL de cada miembro mes a mes, de enero hasta el mes en
+    curso, para el gráfico pequeño de ingresos por persona.
+
+    Solo cuenta lo que ya ha pasado: los meses futuros saldrían del
+    presupuesto y el total del año sería una previsión, no lo ingresado. Se
+    dejan como hueco para que las barras sigan alineadas con su mes.
+
+    En los meses cerrados manda la foto del cierre (`cierres.py`), que guarda
+    el total del hogar pero no el reparto por persona. El reparto se toma del
+    motor en vivo (con los ajustes de ingreso de ese mes) y se escala para que
+    sume lo registrado: así el gráfico cuadra con las tarjetas de cada mes."""
     from finanzas.templatetags.custom_filters import color_usuario
+    from .cierres import mes_cerrado
+
+    hoy = hoy or datetime.date.today()
+    if año > hoy.year:
+        return {'miembros': [], 'total': Decimal('0'), 'num_meses': 0}
+    ultimo_mes = hoy.month if año == hoy.year else 12
+
     por_uid = {}
-    for mes in range(1, 13):
-        for dm in flujos_por_mes.get(mes, {}).get('datos_miembros', []):
+    for mes in range(1, ultimo_mes + 1):
+        flujo = flujos_por_mes.get(mes, {})
+        datos = flujo.get('datos_miembros', [])
+        valores = {dm['miembro'].user.id: dm['ingreso_base'] or Decimal('0') for dm in datos}
+        suma = sum(valores.values(), Decimal('0'))
+        registrado = flujo.get('ingreso_base_hogar')
+        if mes_cerrado(año, mes, hoy) and registrado is not None and suma > 0 and registrado != suma:
+            factor = Decimal(registrado) / suma
+            valores = {uid: v * factor for uid, v in valores.items()}
+        for dm in datos:
             user = dm['miembro'].user
             fila = por_uid.setdefault(user.id, {
                 'nombre': user.first_name or user.username,
                 'color': color_usuario(user.id),
-                'meses': [Decimal('0')] * 12,
+                'meses': [None] * 12,
             })
-            fila['meses'][mes - 1] = dm['ingreso_base'] or Decimal('0')
+            fila['meses'][mes - 1] = valores[user.id]
 
     filas = list(por_uid.values())
     if not filas:
-        return {'miembros': [], 'total': Decimal('0')}
-    maximo_mes = max((v for f in filas for v in f['meses']), default=Decimal('0'))
-    total_hogar = sum((sum(f['meses']) for f in filas), Decimal('0'))
+        return {'miembros': [], 'total': Decimal('0'), 'num_meses': 0}
+    maximo_mes = max((v for f in filas for v in f['meses'] if v is not None), default=Decimal('0'))
+    total_hogar = sum((v for f in filas for v in f['meses'] if v is not None), Decimal('0'))
     for f in filas:
-        f['total'] = sum(f['meses'])
-        f['media'] = f['total'] / 12
+        f['total'] = sum((v for v in f['meses'] if v is not None), Decimal('0'))
+        f['media'] = f['total'] / ultimo_mes
         f['pct'] = round(float(f['total'] / total_hogar * 100)) if total_hogar else 0
         f['barras'] = [
-            {'mes': MESES_NOMBRES[i + 1], 'valor': v,
-             'alto': round(float(v / maximo_mes * 100), 1) if maximo_mes else 0}
+            {'mes': MESES_NOMBRES[i + 1], 'valor': v, 'futuro': v is None,
+             'alto': round(float(v / maximo_mes * 100), 1) if v and maximo_mes else 0}
             for i, v in enumerate(f['meses'])
         ]
     filas.sort(key=lambda f: -f['total'])
-    return {'miembros': filas, 'total': total_hogar}
+    return {
+        'miembros': filas, 'total': total_hogar, 'num_meses': ultimo_mes,
+        'hasta_mes': MESES_COMPLETOS[ultimo_mes],
+    }
 
 
 @login_required
@@ -679,7 +709,7 @@ def vista_evolucion(request):
     grafico = _serie_evolucion(hogar, año, flujos_por_mes, resumen, datos_por_mes)
     analisis = _analizar_ritmo(año, datos_por_mes, flujos_por_mes, resumen)
     años_disponibles = [hoy.year - 1, hoy.year, hoy.year + 1]
-    ingresos_miembros = _ingresos_por_miembro(flujos_por_mes)
+    ingresos_miembros = _ingresos_por_miembro(flujos_por_mes, año)
 
     return render(request, 'finanzas/evolucion/vista.html', {
         'hogar': hogar,
