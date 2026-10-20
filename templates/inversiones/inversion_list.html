@@ -16,7 +16,7 @@
 .inv-kpi .sub { font-size: 0.75rem; color: var(--muted); margin-top: 4px; }
 
 /* Tabla activos */
-.inv-table-wrap { background: var(--app-bg); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.inv-table-wrap { background: var(--app-bg); border: 1px solid var(--border); border-radius: 14px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .inv-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .inv-table thead tr { background: var(--surface); }
 .inv-table th { padding: 14px 18px; text-align: left; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
@@ -140,6 +140,73 @@
 .ev-tooltip.visible { opacity: 1; }
 .ev-tooltip .tt-f { font-weight: 700; margin-bottom: 4px; }
 .ev-tooltip .tt-r { display: flex; justify-content: space-between; gap: 14px; }
+
+/* ── Móvil: cada activo y cada movimiento pasa a ser una tarjeta ──
+   La tabla de 9 columnas no cabe en un iPhone y se quedaba recortada. */
+@media (max-width: 720px) {
+    .inv-wrap { padding: 16px 12px; }
+    .inv-kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+    .inv-kpi { padding: 14px; }
+    .inv-kpi .valor { font-size: 1.15rem; }
+    .cartera-manage { margin-left: 0; }
+
+    .inv-table, .inv-table tbody { display: block; width: 100%; }
+    .inv-table thead { display: none; }
+    .inv-table td { padding: 0; border-top: none; }
+    .inv-table tbody tr.activo-row {
+        display: grid; grid-template-columns: 28px 1fr auto; column-gap: 10px; row-gap: 6px;
+        grid-template-areas:
+            "check activo valor"
+            "check activo rent"
+            "check tipo   edit"
+            "check uds    precio";
+        padding: 14px 14px 14px 10px; border-top: 1px solid var(--border); align-items: center;
+    }
+    .inv-table tbody tr.activo-row:first-child { border-top: none; }
+    .c-check { grid-area: check; align-self: start; padding-top: 2px !important; }
+    .c-activo { grid-area: activo; min-width: 0; }
+    .c-activo .badge-cartera { margin-left: 0; margin-top: 4px; }
+    .c-ticker { display: none; }
+    .c-tipo { grid-area: tipo; }
+    .c-valor { grid-area: valor; }
+    .c-rent { grid-area: rent; }
+    .c-edit { grid-area: edit; text-align: right; }
+    .c-uds { grid-area: uds; text-align: left !important; font-size: 0.8rem; }
+    .c-precio { grid-area: precio; font-size: 0.8rem; }
+    .c-uds::before, .c-precio::before, .h-uds::before, .h-precio::before, .h-com::before {
+        content: attr(data-label); display: block; font-size: 0.6rem; font-weight: 600;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 1px;
+    }
+
+    .historico-row.open { display: block; }
+    .historico-cell { display: block; }
+    .historico-inner { padding: 14px 12px 16px; }
+    .historico-inner h4 { line-height: 1.4; }
+    .hist-table, .hist-table tbody { display: block; width: 100%; }
+    .hist-table thead { display: none; }
+    .hist-table td { padding: 0; border-bottom: none; }
+    .hist-table tr {
+        display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px 10px; align-items: center;
+        grid-template-areas:
+            "fecha fecha coste"
+            "tipo  cartera edit"
+            "uds   precio com";
+        padding: 10px 0; border-bottom: 1px solid var(--surface-2);
+    }
+    .hist-table tr:last-child { border-bottom: none; }
+    .h-fecha { grid-area: fecha; }
+    .h-coste { grid-area: coste; }
+    .h-tipo { grid-area: tipo; }
+    .h-cartera { grid-area: cartera; }
+    .h-edit { grid-area: edit; text-align: right; }
+    .h-uds { grid-area: uds; text-align: left !important; font-size: 0.76rem; }
+    .h-precio { grid-area: precio; text-align: left !important; font-size: 0.76rem; }
+    .h-com { grid-area: com; font-size: 0.76rem; }
+
+    .bulk-bar { gap: 8px; }
+    .bulk-sep { display: none; }
+    .bulk-bar select { flex: 1 1 140px; min-width: 0; }
+}
 </style>
 
 <div class="inv-wrap">
@@ -319,13 +386,13 @@
                 <!-- Fila principal del activo -->
                 <tr class="activo-row" onclick="toggleHistorico({{ forloop.counter }})"
                     id="fila-{{ forloop.counter }}">
-                    <td onclick="event.stopPropagation()" style="text-align:center;">
+                    <td class="c-check" onclick="event.stopPropagation()" style="text-align:center;">
                         {% if item.es_propio %}
                         <input type="checkbox" class="inv-check row-check" name="inversion_ids"
                                value="{{ item.inv.id }}" onchange="updateBulkBar()">
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="c-activo">
                         <span class="chevron-ico">▶</span>
                         <strong style="color: var(--text-color);">{{ item.inv.nombre }}</strong>
                         {% for c in item.carteras %}
@@ -346,18 +413,18 @@
                         </div>
                         {% endif %}
                     </td>
-                    <td style="color: var(--muted); font-family: monospace;">
+                    <td class="c-ticker" style="color: var(--muted); font-family: monospace;">
                         {{ item.inv.ticker|default:"—" }}
                     </td>
-                    <td>
+                    <td class="c-tipo">
                         <span class="badge-tipo badge-{{ item.inv.tipo }}">
                             {{ item.inv.get_tipo_display }}
                         </span>
                     </td>
-                    <td class="right" style="color: var(--text-color);">
+                    <td class="right c-uds" data-label="Unidades" style="color: var(--text-color);">
                         {{ item.cantidad|floatformat:4 }}
                     </td>
-                    <td class="right">
+                    <td class="right c-precio" data-label="Precio">
                         {% if item.valor_unitario %}
                             <span style="color: var(--primary-color);">
                                 {{ item.valor_unitario|floatformat:4 }} {{ item.inv.moneda }}
@@ -369,7 +436,7 @@
                             <span style="color: var(--border-strong);">—</span>
                         {% endif %}
                     </td>
-                    <td class="right">
+                    <td class="right c-valor">
                         {% if item.valor_total %}
                             <strong style="color: var(--primary-color); font-size: 0.95rem;">
                                 €{{ item.valor_total|floatformat:2 }}
@@ -378,7 +445,7 @@
                             <span style="color: var(--border-strong);">—</span>
                         {% endif %}
                     </td>
-                    <td class="right">
+                    <td class="right c-rent">
                         {% if item.rentabilidad is not None %}
                             <span class="{% if item.rentabilidad >= 0 %}pos{% else %}neg{% endif %}"
                                   style="font-weight: 600; font-size: 0.85rem;">
@@ -388,7 +455,7 @@
                             <span style="color: var(--border-strong);">—</span>
                         {% endif %}
                     </td>
-                    <td>
+                    <td class="c-edit">
                         <a href="{% url 'finanzas:editar' item.inv.id %}"
                            onclick="event.stopPropagation()"
                            title="Editar activo"
@@ -426,8 +493,8 @@
                                 <tbody>
                                     {% for m in item.movimientos %}
                                     <tr>
-                                        <td style="color: var(--muted);">{{ m.fecha }}</td>
-                                        <td>
+                                        <td class="h-fecha" style="color: var(--muted);">{{ m.fecha }}</td>
+                                        <td class="h-tipo">
                                             {% if m.tipo == 'COMPRA' %}
                                                 <span style="font-size:0.72rem; padding:2px 8px;
                                                              border-radius:20px; font-weight:600;
@@ -454,7 +521,7 @@
                                                 </span>
                                             {% endif %}
                                         </td>
-                                        <td>
+                                        <td class="h-cartera">
                                             {% if m.grupo_nombre %}
                                             <span class="badge-cartera" style="margin-left:0; background: {{ m.grupo_color }};">
                                                 {{ m.grupo_nombre }}
@@ -463,23 +530,23 @@
                                             <span style="color: var(--border-strong); font-size:0.75rem;">—</span>
                                             {% endif %}
                                         </td>
-                                        <td class="right" style="color: var(--text-color);">
+                                        <td class="right h-uds" data-label="Unidades" style="color: var(--text-color);">
                                             {{ m.cantidad|floatformat:4 }}
                                         </td>
-                                        <td class="right" style="color: var(--text-color);">
+                                        <td class="right h-precio" data-label="Precio/ud." style="color: var(--text-color);">
                                             {{ m.precio_unitario|floatformat:4 }} {{ item.inv.moneda }}
                                         </td>
-                                        <td class="right" style="color: var(--muted);">
+                                        <td class="right h-com" data-label="Comisión" style="color: var(--muted);">
                                             {% if m.comision > 0 %}
                                                 €{{ m.comision|floatformat:2 }}
                                             {% else %}
                                                 —
                                             {% endif %}
                                         </td>
-                                        <td class="right" style="color: var(--warning); font-weight: 600;">
+                                        <td class="right h-coste" style="color: var(--warning); font-weight: 600;">
                                             €{{ m.coste_total|floatformat:2 }}
                                         </td>
-                                        <td>
+                                        <td class="h-edit">
                                             <a href="{% url 'finanzas:editar_movimiento' m.id %}"
                                                onclick="event.stopPropagation()"
                                                title="Editar movimiento / asignar cartera"
@@ -501,7 +568,7 @@
                                    style="color: var(--success); text-decoration: none; font-weight: 600;">
                                     Añadir movimiento
                                 </a>
-                                <div style="display: flex; gap: 20px;">
+                                <div style="display: flex; gap: 8px 20px; flex-wrap: wrap;">
                                     <span style="color: var(--muted);">
                                         Capital invertido:
                                         <strong style="color: var(--text-color);">
