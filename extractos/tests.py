@@ -1796,10 +1796,10 @@ class ImputacionAActivosTests(TestCase):
         self.assertEqual(sugerencia['n_similares'], 2)
 
         respuesta = self.client.post(reverse('extractos:imputar_comercio'), {
-            'activo': self.coche.clave_activo, 'comercio': self.mov.comercio,
+            'activo': self.coche.clave_activo, 'movimiento_id': self.mov.id, 'pasado': '1',
         }, HTTP_X_REQUESTED_WITH='XMLHttpRequest')
 
-        self.assertEqual(respuesta.json()['aplicados'], 3)
+        self.assertEqual(respuesta.json()['aplicados'], 2)
         self.assertEqual(
             MovimientoBancario.objects.filter(vehiculo=self.coche).count(), 3,
         )
@@ -7379,3 +7379,162 @@ class AlquilerQueLlegaSoloTests(TestCase):
         a.propiedad = self.piso
         a.save()
         self.assertIsNone(self.importar('Dinero añadido a través de BIZUM', '50', 9).propiedad)
+
+
+class RecordarActivoTests(TestCase):
+    """Al imputar se cambia el movimiento y se pregunta: ¿los de antes? ¿los que vengan?"""
+
+    def setUp(self):
+        from finanzas.models import Propiedad, Vehiculo
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='x')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        self.client.force_login(self.user)
+        nuevo = dict(fecha_compra=date(2019, 1, 1), precio_compra=Decimal('1'), valor_actual=Decimal('1'))
+        self.casa = Propiedad.objects.create(hogar=self.hogar, nombre='Casa', **nuevo)
+        self.piso = Propiedad.objects.create(hogar=self.hogar, nombre='Piso', **nuevo)
+        self.coche = Vehiculo.objects.create(hogar=self.hogar, nombre='Golf')
+
+    def mov(self, concepto, importe, mes, extracto=None):
+        extracto = extracto or ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        return MovimientoBancario.objects.create(
+            extracto=extracto, hogar=self.hogar, fecha=date(2026, mes, 3),
+            concepto=concepto, importe=Decimal(importe),
+        )
+
+    def importar(self, concepto, importe, mes):
+        from .recordar_activo import aplicar_reglas
+        m = self.mov(concepto, importe, mes)
+        aplicar_reglas(self.hogar, m.extracto)
+        m.refresh_from_db()
+        return m
+
+    def imputar(self, mov, activo):
+        return self.client.post(
+            reverse('extractos:imputar_movimiento', args=[mov.id]),
+            {'activo': activo.clave_activo if activo else ''},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+
+    def responder(self, mov, activo, **decision):
+        datos = {'movimiento_id': mov.id, 'activo': activo.clave_activo}
+        datos.update({k: '1' for k, v in decision.items() if v})
+        return self.client.post(
+            reverse('extractos:imputar_comercio'), datos, HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        ).json()
+
+    def test_la_hipoteca_se_recuerda_en_lo_que_se_importe(self):
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        sugerencia = self.imputar(hoy, self.casa)['sugerencia']
+        self.assertEqual(sugerencia['n_similares'], 0)
+        self.assertFalse(sugerencia['recordado'])
+
+        self.assertTrue(self.responder(hoy, self.casa, futuro=True)['recordado'])
+
+        self.assertEqual(self.importar('PRES.32199162107', '-640', 10).propiedad, self.casa)
+
+    def test_solo_cambia_el_presente_hasta_que_se_responde(self):
+        antes = self.mov('PRES.32199162107', '-640', 8)
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        sugerencia = self.imputar(hoy, self.casa)['sugerencia']
+
+        antes.refresh_from_db()
+        self.assertIsNone(antes.propiedad)
+        self.assertEqual(sugerencia['n_similares'], 1)
+        self.assertIsNone(self.importar('PRES.32199162107', '-640', 10).propiedad)
+
+    def test_pasado_y_futuro_son_decisiones_separadas(self):
+        antes = self.mov('PRES.32199162107', '-640', 8)
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        self.imputar(hoy, self.casa)
+
+        self.assertEqual(self.responder(hoy, self.casa, pasado=True)['aplicados'], 1)
+        antes.refresh_from_db()
+        self.assertEqual(antes.propiedad, self.casa)
+        self.assertIsNone(self.importar('PRES.32199162107', '-640', 10).propiedad)
+
+    def test_dos_hipotecas_del_mismo_banco_no_se_mezclan(self):
+        for mes in (7, 8):
+            self.mov('PRES.32199162107', '-640', mes)
+            self.mov('PRES.40055501234', '-420', mes)
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        sugerencia = self.imputar(hoy, self.casa)['sugerencia']
+        self.assertEqual(sugerencia['n_similares'], 2)
+
+        self.responder(hoy, self.casa, pasado=True, futuro=True)
+
+        self.assertEqual(MovimientoBancario.objects.filter(propiedad=self.casa).count(), 3)
+        self.assertEqual(self.importar('PRES.32199162107', '-640', 10).propiedad, self.casa)
+        self.assertIsNone(self.importar('PRES.40055501234', '-420', 10).propiedad)
+
+    def test_el_alquiler_con_el_mes_en_el_concepto_es_el_mismo_pagador(self):
+        antes = self.mov('Transferencia de ANA RUIZ alquiler septiembre', '900', 9)
+        hoy = self.mov('Transferencia de ANA RUIZ alquiler octubre', '900', 10)
+        self.assertEqual(self.imputar(hoy, self.piso)['sugerencia']['n_similares'], 1)
+
+        self.responder(hoy, self.piso, pasado=True, futuro=True)
+
+        antes.refresh_from_db()
+        self.assertEqual(antes.propiedad, self.piso)
+        self.assertEqual(
+            self.importar('Transferencia de ANA RUIZ alquiler noviembre 2026', '900', 11).propiedad, self.piso,
+        )
+
+    def test_los_vehiculos_tambien_se_recuerdan(self):
+        hoy = self.mov('Recibo MAPFRE SEGUROS', '-35', 9)
+        self.imputar(hoy, self.coche)
+        self.responder(hoy, self.coche, futuro=True)
+
+        self.assertEqual(self.importar('Recibo MAPFRE SEGUROS', '-35', 10).vehiculo, self.coche)
+
+    def test_no_pisa_lo_que_ya_tiene_activo(self):
+        from .recordar_activo import aplicar_reglas
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        self.imputar(hoy, self.casa)
+        self.responder(hoy, self.casa, futuro=True)
+        nuevo = self.mov('PRES.32199162107', '-640', 10)
+        nuevo.propiedad = self.piso
+        nuevo.save()
+
+        aplicar_reglas(self.hogar, nuevo.extracto)
+        nuevo.refresh_from_db()
+        self.assertEqual(nuevo.propiedad, self.piso)
+
+    def test_ya_recordado_no_vuelve_a_preguntar(self):
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        self.imputar(hoy, self.casa)
+        self.responder(hoy, self.casa, futuro=True)
+        nuevo = self.importar('PRES.32199162107', '-640', 10)
+
+        self.assertIsNone(self.imputar(nuevo, self.casa)['sugerencia'])
+
+    def test_quitar_el_activo_ofrece_olvidar_la_regla(self):
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        self.imputar(hoy, self.casa)
+        self.responder(hoy, self.casa, futuro=True)
+
+        sugerencia = self.imputar(hoy, None)['sugerencia']
+        self.assertTrue(sugerencia['olvidar'])
+        self.client.post(reverse('extractos:imputar_comercio'), {'movimiento_id': hoy.id, 'olvidar': '1'},
+                         HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+
+        self.assertIsNone(self.importar('PRES.32199162107', '-640', 10).propiedad)
+
+    def test_las_partes_de_un_cobro_dividido_heredan_el_activo_recordado(self):
+        from .models import ReglaDivision, ParteDeDivision
+        from .views import _aplicar_divisiones
+        from .recordar_activo import aplicar_reglas
+        hoy = self.mov('PRES.32199162107', '-640', 9)
+        self.imputar(hoy, self.casa)
+        self.responder(hoy, self.casa, futuro=True)
+        regla = ReglaDivision.objects.create(hogar=self.hogar, patron='pres')
+        ParteDeDivision.objects.create(regla=regla, orden=1, proporcion=Decimal('0.7'))
+        ParteDeDivision.objects.create(regla=regla, orden=2, proporcion=Decimal('0.3'))
+
+        nuevo = self.mov('PRES.32199162107', '-640', 10)
+        aplicar_reglas(self.hogar, nuevo.extracto)
+        _aplicar_divisiones(self.hogar, nuevo.extracto)
+
+        self.assertEqual(nuevo.partes.filter(propiedad=self.casa).count(), 2)

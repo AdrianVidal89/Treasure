@@ -2697,48 +2697,109 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     /* ---- Imputar a un vehículo o propiedad ----
        La pata «real» de «cuánto me cuesta el coche»: lo presupuestado sale de
        Gastos, pero lo que de verdad se paga solo se sabe marcando aquí qué
-       apuntes son suyos. Como los gastos de un coche vienen casi siempre del
-       mismo puñado de comercios, se ofrece imputarlos todos de una vez. */
+       apuntes son suyos. Al elegir se cambia SOLO este movimiento y luego se
+       pregunta, por separado, por los anteriores del mismo pagador y por los
+       que se importen a partir de ahora (la hipoteca, el seguro, el alquiler
+       llegan cada mes con el mismo concepto). */
     var URL_IMPUTAR = "/extractos/movimiento/__ID__/imputar/";
     var URL_IMPUTAR_COMERCIO = "{% url 'extractos:imputar_comercio' %}";
 
-    function ofrecerImputarComercio(fila, sug) {
+    function pedirImputar(datos) {
+        var body = new URLSearchParams();
+        Object.keys(datos).forEach(function(k){ body.set(k, datos[k]); });
+        return fetch(URL_IMPUTAR_COMERCIO, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+            body: body.toString()
+        }).then(function(r){ return r.json(); });
+    }
+
+    function ofrecerImputarComercio(fila, movId, sug) {
         quitarAviso();
         var aviso = document.createElement('div');
         aviso.className = 'ext-sugerencia';
         var texto = document.createElement('span');
         texto.className = 'ext-sugerencia-texto';
-        texto.textContent = '¿Imputar a «' + sug.nombre + '» los otros ' +
-            plural(sug.n_similares, 'movimiento', 'movimientos') + ' de «' + sug.comercio + '»?';
         var acciones = document.createElement('span');
         acciones.className = 'ext-sugerencia-btns';
-
-        var si = document.createElement('button');
-        si.type = 'button'; si.className = 'btn btn-primary btn-sm'; si.textContent = 'Sí, todos';
-        si.addEventListener('click', function() {
-            si.disabled = true;
-            var body = new URLSearchParams();
-            body.set('activo', sug.clave);
-            body.set('comercio', sug.comercio);
-            fetch(URL_IMPUTAR_COMERCIO, {
-                method: 'POST',
-                headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
-                body: body.toString()
-            }).then(function(r){ return r.json(); }).then(function(data){
-                if (!data.ok) { si.disabled = false; return; }
-                texto.textContent = data.aplicados + ' movimiento(s) imputados a «' + data.activo + '». Recargando…';
-                acciones.remove();
-                setTimeout(function(){ window.location.reload(); }, 800);
-            }).catch(function(){ si.disabled = false; });
-        });
-
-        var no = document.createElement('button');
-        no.type = 'button'; no.className = 'btn btn-ghost btn-sm'; no.textContent = 'Solo este';
-        no.addEventListener('click', quitarAviso);
-
-        acciones.appendChild(si); acciones.appendChild(no);
         aviso.appendChild(texto); aviso.appendChild(acciones);
         fila.parentNode.insertBefore(aviso, fila.nextSibling);
+
+        var cambiados = 0;
+
+        function boton(clase, etiqueta, alPulsar) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn ' + clase + ' btn-sm';
+            b.textContent = etiqueta;
+            b.addEventListener('click', function(){ alPulsar(b); });
+            acciones.appendChild(b);
+            return b;
+        }
+
+        function terminar(mensaje) {
+            acciones.innerHTML = '';
+            if (!cambiados) {
+                texto.textContent = mensaje;
+                setTimeout(function(){ aviso.remove(); }, 2500);
+                return;
+            }
+            texto.textContent = mensaje + ' Recargando…';
+            setTimeout(function(){ window.location.reload(); }, 900);
+        }
+
+        /* Quitar el activo con una regla guardada: si no se olvida, el mes que
+           viene volvería a ponerse solo. */
+        if (sug.olvidar) {
+            texto.textContent = 'Los movimientos de «' + sug.concepto + '» que importes se asocian solos a «' +
+                sug.nombre_recordado + '». ¿Dejar de hacerlo?';
+            boton('btn-primary', 'Sí, dejar de asociarlos', function(b) {
+                b.disabled = true;
+                pedirImputar({movimiento_id: movId, olvidar: '1'}).then(function(data) {
+                    if (!data.ok) { b.disabled = false; return; }
+                    terminar('Hecho: «' + sug.concepto + '» ya no se asociará solo.');
+                }).catch(function(){ b.disabled = false; });
+            });
+            boton('btn-ghost', 'No, mantenerlo', quitarAviso);
+            return;
+        }
+
+        function preguntarFuturo(prefijo) {
+            acciones.innerHTML = '';
+            if (sug.recordado) {
+                terminar(prefijo + 'Los de «' + sug.concepto + '» que importes ya se asocian solos a «' + sug.nombre + '».');
+                return;
+            }
+            texto.textContent = prefijo + '¿Y los de «' + sug.concepto + '» que importes a partir de ahora?' +
+                (sug.nombre_recordado ? ' (ahora van a «' + sug.nombre_recordado + '»)' : '') +
+                ' ¿Asociarlos solos a «' + sug.nombre + '»?';
+            boton('btn-primary', 'Sí, recordarlo', function(b) {
+                b.disabled = true;
+                pedirImputar({movimiento_id: movId, activo: sug.clave, futuro: '1'}).then(function(data) {
+                    if (!data.ok) { b.disabled = false; return; }
+                    terminar('Hecho: los de «' + sug.concepto + '» irán a «' + sug.nombre + '» al importar.');
+                }).catch(function(){ b.disabled = false; });
+            });
+            boton('btn-ghost', 'No', function() { terminar('De acuerdo, los futuros los eliges tú.'); });
+        }
+
+        if (!sug.n_similares) {
+            preguntarFuturo('');
+            return;
+        }
+
+        texto.textContent = 'Asociado a «' + sug.nombre + '». Hay ' +
+            plural(sug.n_similares, 'movimiento más', 'movimientos más') + ' de «' + sug.concepto + '» ya importados' +
+            (sug.n_con_otro ? ' (' + sug.n_con_otro + ' con otro activo)' : '') + '. ¿Asociarlos también?';
+        boton('btn-primary', 'Sí, también esos (' + sug.n_similares + ')', function(b) {
+            b.disabled = true;
+            pedirImputar({movimiento_id: movId, activo: sug.clave, pasado: '1'}).then(function(data) {
+                if (!data.ok) { b.disabled = false; return; }
+                cambiados = data.aplicados;
+                preguntarFuturo('Listo: ' + plural(data.aplicados, 'movimiento', 'movimientos') + ' más en «' + data.activo + '». ');
+            }).catch(function(){ b.disabled = false; });
+        });
+        boton('btn-ghost', 'Solo este', function() { preguntarFuturo(''); });
     }
 
     document.addEventListener('change', function(e) {
@@ -2746,6 +2807,10 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         if (!sel) return;
         quitarAviso();
         var movId = sel.dataset.movId;
+        /* La fila se coge ANTES de pedir: al perder el foco el desplegable
+           vuelve a ser un botón y, ya fuera de la página, no encontraría su
+           fila para colgar debajo la pregunta. */
+        var fila = sel.closest('.ext-mov');
         var body = new URLSearchParams();
         body.set('activo', sel.value);
         fetch(URL_IMPUTAR.replace('__ID__', movId), {
@@ -2756,8 +2821,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             if (!data.ok) return;
             sincronizarCampo(movId, 'ext-activo-select', sel.value, textoDe(sel), !!data.clave);
             destacar(movId);
-            var fila = sel.closest('.ext-mov');
-            if (data.sugerencia && fila) ofrecerImputarComercio(fila, data.sugerencia);
+            if (data.sugerencia && fila) ofrecerImputarComercio(fila, movId, data.sugerencia);
         }).catch(function(){});
     });
 

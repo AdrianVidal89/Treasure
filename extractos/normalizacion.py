@@ -190,3 +190,36 @@ def es_traspaso_interno(concepto, nombres_hogar):
     if not any(verbo in texto for verbo in _VERBOS_TRASPASO):
         return False
     return any(contiene_patron(texto, nombre) for nombre in nombres_hogar if nombre)
+
+
+# Palabras que cambian de un mes a otro en el concepto de un pago que, por lo
+# demás, es siempre el mismo: «Transferencia de Ana Ruiz alquiler octubre» y
+# «… noviembre» son el mismo inquilino. Solo sirven para reconocer al pagador
+# al RECORDAR un activo; la clave de comercio no se toca, porque de ella
+# dependen las reglas de categoría ya guardadas.
+_PALABRAS_VARIABLES = frozenset((
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto',
+    'septiembre', 'setiembre', 'octubre', 'noviembre', 'diciembre',
+    'mes', 'mensualidad', 'cuota', 'alquiler', 'renta', 'de', 'del',
+))
+# Números largos y estables (el del préstamo, el del contrato): distinguen dos
+# hipotecas del mismo banco, que sin ellos son el mismo «pres».
+_RE_REFERENCIA = re.compile(r'\b\d{6,}\b')
+
+
+def clave_pagador(comercio):
+    """El comercio sin las palabras que cambian cada mes.
+
+        'ana ruiz alquiler octubre' → 'ana ruiz'
+        'pres'                      → 'pres'
+
+    Si no queda nada (el concepto era solo «Alquiler octubre»), se devuelve el
+    comercio tal cual: mejor una clave algo variable que ninguna.
+    """
+    palabras = [p for p in (comercio or '').split() if p not in _PALABRAS_VARIABLES]
+    return ' '.join(palabras) or (comercio or '')
+
+
+def referencias(concepto):
+    """Los números largos del concepto (6 dígitos o más), sin repetir."""
+    return set(_RE_REFERENCIA.findall(normalizar_texto(concepto)))
