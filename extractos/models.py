@@ -111,6 +111,40 @@ class ReglaCategorizacion(models.Model):
         super().save(*args, **kwargs)
 
 
+class ReglaActivo(ImputableAActivo):
+    """«Lo de este pagador va a este piso / este coche», también en lo que se
+    importe a partir de ahora.
+
+    Se crea solo cuando el usuario lo pide al imputar un movimiento: la
+    hipoteca, el seguro del coche o el alquiler del inquilino llegan cada mes
+    con el mismo concepto, y elegirlos a mano cada vez es lo que hacía que la
+    ficha del activo se quedara a medias.
+
+    `patron` es la clave del pagador (el comercio sin meses ni «cuota»).
+    `referencia`, cuando la hay, es el número estable del concepto —el del
+    préstamo— y es lo que separa dos hipotecas del mismo banco.
+    """
+
+    hogar = models.ForeignKey('core.Hogar', on_delete=models.CASCADE, related_name='reglas_activo')
+    patron = models.CharField(max_length=120)
+    referencia = models.CharField(max_length=40, blank=True, default='')
+    veces_aplicada = models.PositiveIntegerField(default=0)
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-creado_en']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['hogar', 'patron', 'referencia'], name='uniq_regla_activo_hogar_patron',
+            ),
+        ]
+        verbose_name = 'Regla de activo'
+        verbose_name_plural = 'Reglas de activo'
+
+    def __str__(self):
+        return f"«{self.patron}» → {self.activo_imputado or '—'}"
+
+
 class ReglaDivision(models.Model):
     """División aprendida: si el concepto contiene `patron`, el cobro se parte
     en estas partidas.

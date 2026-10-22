@@ -19,7 +19,7 @@ from finanzas.parsing import leer_tabla, parse_decimal, parse_fecha
 from finanzas.models import COMPUTO_NEUTRO, ETIQUETAS_TIPO, ORDEN_TIPOS, TIPOS_GASTO
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
-from . import reparto
+from . import recordar_activo, reparto
 from .anuales import (
     MAX_HORIZONTE, analizar_anuales, crear_puntual, dar_por_pagado, grafico_varios_anios,
     guardar_calendario, leer_horizonte,
@@ -403,7 +403,10 @@ def _importar_analizados(hogar, usuario, nombre_banco, cuenta, analizados):
         extractos_ok += 1
         # Y lo que sea de varias partidas se parte solo. Va DESPUÉS de crear el
         # extracto para no contar las partes como movimientos importados: no
-        # vienen del banco, salen de un criterio que puso el usuario.
+        # vienen del banco, salen de un criterio que puso el usuario. Los
+        # activos recordados van ANTES, para que las partes hereden el del
+        # cobro igual que cuando se divide a mano.
+        recordar_activo.aplicar_reglas(hogar, extracto)
         total_divididos += _aplicar_divisiones(hogar, extracto)
         _imputar_como_antes(hogar, extracto)
 
@@ -3466,25 +3469,47 @@ def imputar_movimiento(request, pk):
     costes_activo.asignar(mov, activo)
     mov.save(update_fields=['vehiculo', 'propiedad'])
 
-    # Mismo patrón que categorías y etiquetas: los gastos de un coche vienen
-    # casi siempre del mismo puñado de comercios, así que se ofrece aplicarlo a
-    # todos de una vez en vez de apunte a apunte.
-    similares = 0
-    if activo and mov.comercio:
-        campo = 'vehiculo' if clave.startswith('vehiculo') else 'propiedad'
-        similares = MovimientoBancario.objects.filter(
-            hogar=hogar, comercio=mov.comercio,
-        ).exclude(pk=mov.pk).exclude(**{campo: activo}).count()
-
     return JsonResponse({
         'ok': True,
         'activo': str(activo) if activo else None,
         'clave': clave if activo else '',
-        'sugerencia': {
-            'clave': clave, 'nombre': str(activo),
-            'comercio': mov.comercio, 'n_similares': similares,
-        } if similares else None,
+        'sugerencia': _sugerencia_activo(hogar, mov, activo, clave),
     })
+
+
+def _sugerencia_activo(hogar, mov, activo, clave):
+    """Lo que se pregunta después de imputar un movimiento: si llevar el mismo
+    activo a los otros movimientos del pagador (pasado) y si recordarlo para
+    lo que se importe (futuro). None si no hay nada que preguntar.
+
+    Se cambia primero el movimiento y luego se pregunta, nunca al revés: la
+    hipoteca de este mes es de la casa aunque no quieras tocar las otras."""
+    patron, _ = recordar_activo.criterio(hogar, mov)
+    if not patron:
+        return None
+    regla = recordar_activo.regla_de(hogar, mov)
+    recordado = regla.activo_imputado if regla else None
+
+    if not activo:
+        # Quitar el activo no deshace nada más, pero si había una regla se
+        # ofrece olvidarla: si no, el mes que viene volvería a aparecer.
+        if not recordado:
+            return None
+        return {'olvidar': True, 'concepto': mov.concepto, 'nombre_recordado': str(recordado)}
+
+    otros = recordar_activo.similares(hogar, mov)
+    pendientes = [m for m in otros if m.activo_imputado != activo]
+    if not pendientes and recordado == activo:
+        return None
+    return {
+        'clave': clave,
+        'nombre': str(activo),
+        'concepto': mov.concepto,
+        'n_similares': len(pendientes),
+        'n_con_otro': sum(1 for m in pendientes if m.activo_imputado),
+        'recordado': recordado == activo,
+        'nombre_recordado': str(recordado) if recordado and recordado != activo else None,
+    }
 
 
 @login_required
@@ -3526,25 +3551,42 @@ def marcar_provision(request, pk):
 
 @login_required
 def imputar_comercio(request):
-    """Imputa al mismo activo todos los movimientos de un comercio."""
+    """Lleva el activo de un movimiento a los otros del mismo pagador (hacia el
+    pasado) y, si se pide, lo recuerda para lo que se importe (hacia el futuro).
+
+    `pasado` y `futuro` van por separado porque son dos preguntas: se puede
+    querer una sin la otra. Con `olvidar` se borra la regla del pagador."""
     profile, hogar = _get_hogar(request)
     if not hogar:
         return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
     if request.method != 'POST':
         return JsonResponse({'ok': False, 'error': 'metodo'}, status=405)
 
+    mov = get_object_or_404(
+        MovimientoBancario, pk=_entero_o_none(request.POST.get('movimiento_id')), hogar=hogar,
+    )
+    if request.POST.get('olvidar') == '1':
+        return JsonResponse({'ok': True, 'olvidadas': recordar_activo.olvidar(hogar, mov)})
+
     activo = costes_activo.resolver(hogar, request.POST.get('activo') or '')
-    comercio = (request.POST.get('comercio') or '').strip()
-    if not activo or not comercio:
+    if not activo:
         return JsonResponse({'ok': False, 'error': 'datos_incompletos'}, status=400)
 
     aplicados = 0
-    for mov in MovimientoBancario.objects.filter(hogar=hogar, comercio=comercio):
-        costes_activo.asignar(mov, activo)
-        mov.save(update_fields=['vehiculo', 'propiedad'])
-        aplicados += 1
+    if request.POST.get('pasado') == '1':
+        for m in recordar_activo.similares(hogar, mov):
+            if m.activo_imputado != activo:
+                costes_activo.asignar(m, activo)
+                m.save(update_fields=['vehiculo', 'propiedad'])
+                aplicados += 1
 
-    return JsonResponse({'ok': True, 'aplicados': aplicados, 'activo': str(activo)})
+    recordado = False
+    if request.POST.get('futuro') == '1':
+        recordado = recordar_activo.recordar(hogar, mov, activo) is not None
+
+    return JsonResponse({
+        'ok': True, 'aplicados': aplicados, 'recordado': recordado, 'activo': str(activo),
+    })
 
 
 @login_required
