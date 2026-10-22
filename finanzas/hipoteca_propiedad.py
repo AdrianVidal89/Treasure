@@ -231,11 +231,24 @@ def conciliacion(propiedad, hoy=None, meses=12):
     hoy = hoy or datetime.date.today()
     fin = hoy.replace(day=1) - datetime.timedelta(days=1)
     inicio = amortizacion.sumar_meses(fin.replace(day=1), -(meses - 1))
+    # Con un punto de partida el cuadro empieza en él: antes no tiene cuotas
+    # y compararlo con lo cobrado daría «cuadro 0 €» en cada mes. Solo se
+    # mira desde que empiezan TODOS los cuadros de la propiedad.
+    primeras = [h.cuadro() for h in activas(propiedad)]
+    primeras = [c[0]['fecha'] for c in primeras if c]
+    empieza = None
+    if primeras:
+        empieza = max(primeras).replace(day=1)
+        if empieza > inicio:
+            inicio = empieza
+    base = {'inicio': inicio, 'fin': fin, 'empieza': empieza}
+    if inicio > fin:
+        return {**base, 'pagos': 0, 'avisos': [], 'sin_meses': True}
     pagos = pagos_reales(propiedad, inicio, fin)
     if not pagos:
-        return {'pagos': 0, 'avisos': [], 'inicio': inicio, 'fin': fin}
+        return {**base, 'pagos': 0, 'avisos': []}
     avisos = amortizacion.conciliar(filas(propiedad), [(f, float(i)) for f, i in pagos])
-    return {'pagos': len(pagos), 'avisos': avisos, 'inicio': inicio, 'fin': fin}
+    return {**base, 'pagos': len(pagos), 'avisos': avisos}
 
 
 def sincronizar(propiedad, hoy=None):

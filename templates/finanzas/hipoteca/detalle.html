@@ -123,7 +123,9 @@
 
         <div class="card">
             <h2>¿Cuadra con el banco?</h2>
-            {% if conciliacion is None or not conciliacion.pagos %}
+            {% if conciliacion.sin_meses %}
+            <p class="hint" style="margin:0;">El cuadro empieza el {{ conciliacion.empieza|date:"m/Y" }} (tu punto de partida): todavía no hay meses cerrados desde entonces para comparar con el banco.</p>
+            {% elif conciliacion is None or not conciliacion.pagos %}
             <p class="hint" style="margin:0;">No hay pagos de hipoteca en los últimos 12 meses cerrados para comparar. Imputa sus cobros a la propiedad desde Movimientos (categoría «Hipoteca» o «Préstamo»), o elige su partida en las condiciones.</p>
             {% elif conciliacion.avisos %}
             <div class="aviso warn">Del {{ conciliacion.inicio|date:"m/Y" }} al {{ conciliacion.fin|date:"m/Y" }}, {{ conciliacion.avisos|length }} mes{{ conciliacion.avisos|length|pluralize:"es" }} no cuadra{{ conciliacion.avisos|length|pluralize:"n" }} con el cuadro{% if varias %} (se comparan todas las hipotecas de la propiedad juntas){% endif %}:</div>

@@ -5566,6 +5566,22 @@ class HipotecaPropiedadTests(TestCase):
         self.assertEqual(r['pagos'], 12)
         self.assertEqual([(a['mes'], a['diferencia']) for a in r['avisos']], [(7, 104.65)])
 
+    def test_conciliacion_no_mira_antes_del_punto_de_partida(self):
+        """Antes del punto de partida el cuadro no tiene cuotas: compararlas
+        con lo cobrado daba «cuadro 0 €» en cada mes."""
+        from finanzas import hipoteca_propiedad
+        h = self.hipoteca(saldo_conocido=Decimal('113341'), saldo_conocido_fecha=datetime.date(2025, 6, 1),
+                          cuota_conocida=Decimal('472.93'), tipo_inicial_pct=Decimal('1.5'))
+        cuota = h.cuadro()[0]['cuota']
+        for mes in range(1, 13):
+            self.pago(datetime.date(2025, mes, 15), str(cuota))
+        r = hipoteca_propiedad.conciliacion(self.piso, hoy=datetime.date(2026, 1, 10))
+        self.assertEqual(r['inicio'], h.cuadro()[0]['fecha'].replace(day=1))
+        self.assertEqual(r['avisos'], [])
+        self.assertLess(r['pagos'], 12)
+        r = hipoteca_propiedad.conciliacion(self.piso, hoy=datetime.date(2025, 6, 10))
+        self.assertTrue(r['sin_meses'])
+
     def test_alta_ficha_revision_y_amortizacion_desde_las_pantallas(self):
         from finanzas.models import Hipoteca
         r = self.client.post(reverse('finanzas:nueva_hipoteca', args=[self.piso.pk]), {
