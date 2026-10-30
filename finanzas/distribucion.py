@@ -275,6 +275,24 @@ def calcular_flujos(hogar, mes=None, anio=None):
         falta = necesidad_fondo[fondo_id] - fondos_aportaciones[fondo_id]['total_aportacion_base']
         return max(falta, Decimal('0'))
 
+    def _proporcion(dm):
+        # `ingreso_base` es el ingreso de ESE mes: el declarado en «Ajustar
+        # ingreso» si lo hay; si no, el previsto (con pagas extra del mes).
+        if total_base_hogar > 0:
+            return dm['ingreso_base'] / total_base_hogar
+        return Decimal('1') / Decimal(str(len(datos_miembros)))
+
+    def _parte_de_miembro(fondo_id, dm):
+        if fondo_id not in fondos_aportaciones:
+            return Decimal('0')
+        parte = round(max(necesidad_fondo[fondo_id], Decimal('0')) * _proporcion(dm), 2)
+        ya_puesto = sum(
+            (ap['importe_base'] for ap in dm['aportaciones_fondos']
+             if ap['fondo'] and ap['fondo'].id == fondo_id),
+            Decimal('0'),
+        )
+        return max(parte - ya_puesto, Decimal('0'))
+
     for regla in reglas:
         if regla.tipo_regla == 'cubrir_fondo' and not regla.usuario_id:
             # El hogar cubre lo que necesita el fondo y cada uno pone según su
@@ -329,7 +347,9 @@ def calcular_flujos(hogar, mes=None, anio=None):
             libre_p = dm['libre_ponderado']
 
             if regla.tipo_regla == 'cubrir_fondo':
-                importe_b = importe_p = _necesidad_pendiente(regla.fondo_id)
+                # Solo su parte de lo que necesita el fondo, según lo que
+                # ingresa este mes frente al hogar, menos lo que ya ha puesto.
+                importe_b = importe_p = _parte_de_miembro(regla.fondo_id, dm)
             elif regla.tipo_regla == 'resto':
                 importe_b = max(libre_b, Decimal('0'))
                 importe_p = max(libre_p, Decimal('0'))
