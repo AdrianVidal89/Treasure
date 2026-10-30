@@ -5972,3 +5972,25 @@ class ReglaCubrirFondoYRestoTests(TestCase):
         flujo = calcular_flujos(self.hogar, mes=7, anio=2026)
         self.assertEqual(self._aportes(flujo, self.conjunta),
                          {'irene': Decimal('1793.50'), 'adrian': Decimal('1793.50')})
+
+    def test_la_vista_enseña_el_calculo_de_la_proporcion(self):
+        self.client.force_login(self.irene)
+        resp = self.client.get(reverse('finanzas:vista_distribucion') + '?mes=6&anio=2026')
+        self.assertContains(resp, 'Así se reparte Conjunta')
+        self.assertContains(resp, 'id="calculo-%d"' % self.conjunta.id)
+        calc = resp.context['d']['calculos_cubrir'][0]
+        self.assertEqual(calc['necesidad'], Decimal('3587'))
+        self.assertEqual({f['nombre']: f['pct'] for f in calc['filas']},
+                         {'Irene': Decimal('66.67'), 'Adrian': Decimal('33.33')})
+        self.assertTrue(calc['cuadra'])
+        self.assertContains(resp, 'Qué transfiere cada uno')
+
+    def test_avisa_si_alguien_no_tiene_regla_para_cubrir_su_parte(self):
+        from .models import ReglaReparto
+        from .distribucion import calcular_flujos
+
+        ReglaReparto.objects.filter(nombre='Conjunta').update(usuario=self.adrian)
+        calc = calcular_flujos(self.hogar, mes=6, anio=2026)['calculos_cubrir'][0]
+        self.assertFalse(calc['cuadra'])
+        self.assertEqual(calc['sin_regla'], ['Irene'])
+        self.assertEqual(calc['falta'], Decimal('2391.33'))
