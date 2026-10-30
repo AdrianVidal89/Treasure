@@ -1162,8 +1162,8 @@ button, .btn, .sidebar-link, .barra-movil a { -webkit-tap-highlight-color: trans
     border-radius: 999px; background: var(--surface-2); color: var(--muted); text-decoration: none; white-space: nowrap;
 }
 a.ah-tag { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
-.ah-pct { color: var(--muted); font-size: 0.85rem; min-width: 4.5em; text-align: right; }
-.ah-importe { font-weight: 650; min-width: 7.5em; text-align: right; }
+.ah-pct { color: var(--muted); font-size: 0.85rem; min-width: 4.5rem; text-align: right; }
+.ah-importe { font-weight: 650; min-width: 8.5rem; text-align: right; }
 .ah-resta .ah-importe { color: var(--danger); }
 .ah-total { border-bottom: 0; padding-top: 12px; }
 .ah-total .ah-nombre, .ah-total .ah-importe { font-weight: 750; }
