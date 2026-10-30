@@ -169,6 +169,10 @@ def ajustar_ingreso_mes(request):
 # CRUD reglas
 # ---------------------------------------------------------------------------
 
+def _tipo_regla_valido(tipo):
+    return tipo if tipo in dict(ReglaReparto.TIPO_REGLA_CHOICES) else 'porcentaje'
+
+
 @login_required
 def crear_regla(request):
     profile, hogar = _get_hogar_o_redirect(request)
@@ -177,7 +181,7 @@ def crear_regla(request):
 
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
-        tipo = request.POST.get('tipo_regla', 'porcentaje')
+        tipo = _tipo_regla_valido(request.POST.get('tipo_regla'))
         fondo_id = request.POST.get('fondo_id') or None
         usuario_id = request.POST.get('usuario_id') or None
         color = color_valido(request.POST.get('color'))
@@ -193,6 +197,8 @@ def crear_regla(request):
 
         if not nombre:
             messages.error(request, "El nombre es obligatorio.")
+        elif tipo == 'cubrir_fondo' and not fondo_id:
+            messages.error(request, "Para cubrir un fondo hay que elegir cuál.")
         else:
             fondo = FondoFamiliar.objects.filter(id=fondo_id, hogar=hogar).first() if fondo_id else None
             max_orden = ReglaReparto.objects.filter(hogar=hogar).count()
@@ -217,7 +223,7 @@ def editar_regla(request, regla_id):
 
     if request.method == 'POST':
         nombre = request.POST.get('nombre', '').strip()
-        tipo = request.POST.get('tipo_regla', 'porcentaje')
+        tipo = _tipo_regla_valido(request.POST.get('tipo_regla'))
         fondo_id = request.POST.get('fondo_id') or None
         usuario_id = request.POST.get('usuario_id') or None
         color = color_valido(request.POST.get('color'))
@@ -231,6 +237,8 @@ def editar_regla(request, regla_id):
 
         if not nombre:
             messages.error(request, "El nombre es obligatorio.")
+        elif tipo == 'cubrir_fondo' and not fondo_id:
+            messages.error(request, "Para cubrir un fondo hay que elegir cuál.")
         else:
             regla.nombre = nombre
             regla.tipo_regla = tipo
