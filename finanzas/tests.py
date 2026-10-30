@@ -5857,3 +5857,92 @@ class IngresosPorMiembroTests(TestCase):
         luis = User.objects.create_user('luis_ipm2')
         r = _ingresos_por_miembro(self._flujos(ana, luis), 2027, hoy=datetime.date(2026, 4, 1))
         self.assertEqual(r['miembros'], [])
+
+
+class ReglaCubrirFondoYRestoTests(TestCase):
+    """La conjunta recibe lo que necesita (gastos + lo que sale de ella),
+    cada uno pone según su ingreso, y el resto va entero a la remunerada."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from .models import (
+            FuenteIngreso, FondoFamiliar, CategoriaGasto, PartidaGasto,
+            SubsobreFondo, ReglaReparto,
+        )
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.irene = User.objects.create_user('irene', password='x', first_name='Irene')
+        self.adrian = User.objects.create_user('adrian', password='x', first_name='Adrian')
+        for u, anual in ((self.irene, '72000'), (self.adrian, '36000')):
+            u.userprofile.hogar = self.hogar
+            u.userprofile.save()
+            FuenteIngreso.objects.create(
+                usuario=u, hogar=self.hogar, nombre='Nómina', modo_entrada='anual',
+                importe_declarado=Decimal(anual), es_bruto=False, num_pagas=12, activo=True,
+            )
+
+        self.conjunta = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Conjunta', tipo_fondo='comun')
+        self.remunerada = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Remunerada', tipo_fondo='ahorro')
+        inversion = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Inversión', tipo_fondo='inversion')
+
+        cat = CategoriaGasto.objects.create(hogar=self.hogar, nombre='Casa', tipo='fijo')
+        PartidaGasto.objects.create(
+            hogar=self.hogar, categoria=cat, nombre='Gastos', importe=Decimal('3127'),
+            periodicidad='mensual', fondo_asignado=self.conjunta)
+        SubsobreFondo.objects.create(
+            fondo=self.conjunta, nombre='A inversión', tipo='libre',
+            importe_manual=Decimal('460'), fondo_destino=inversion)
+
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.conjunta, nombre='Conjunta',
+            tipo_regla='cubrir_fondo', orden=0)
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.remunerada, nombre='Sobrante',
+            tipo_regla='resto', orden=1)
+
+    def _aportes(self, flujo, fondo):
+        return {
+            dm['miembro'].user.username: ap['importe_base']
+            for dm in flujo['datos_miembros'] for ap in dm['aportaciones_fondos']
+            if ap['fondo'] == fondo
+        }
+
+    def test_cada_uno_cubre_la_conjunta_segun_su_ingreso(self):
+        from .distribucion import calcular_flujos
+
+        flujo = calcular_flujos(self.hogar, mes=6, anio=2026)
+
+        # 3127 + 460 = 3587; Irene gana 2/3 y Adrián 1/3.
+        self.assertEqual(self._aportes(flujo, self.conjunta),
+                         {'irene': Decimal('2391.33'), 'adrian': Decimal('1195.67')})
+        self.assertEqual(self._aportes(flujo, self.remunerada),
+                         {'irene': Decimal('3608.67'), 'adrian': Decimal('1804.33')})
+        self.assertEqual(flujo['libre_personal'], Decimal('0'))
+
+    def test_lo_ya_aportado_al_fondo_se_descuenta(self):
+        from .models import ReglaReparto
+        from .distribucion import calcular_flujos
+
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.conjunta, nombre='Fijo Adrián',
+            usuario=self.adrian, tipo_regla='fijo', importe_fijo=Decimal('587'), orden=-1)
+
+        flujo = calcular_flujos(self.hogar, mes=6, anio=2026)
+        conjunta = next(fa for fa in flujo['fondos_aportaciones'] if fa['fondo'] == self.conjunta)
+        self.assertEqual(conjunta['total_aportacion_base'], Decimal('3587'))
+
+    def test_la_vista_crea_y_muestra_la_regla(self):
+        from .models import ReglaReparto
+
+        self.client.force_login(self.irene)
+        self.client.post(reverse('finanzas:crear_regla'), {
+            'nombre': 'Sin fondo', 'tipo_regla': 'cubrir_fondo',
+        })
+        self.assertFalse(ReglaReparto.objects.filter(nombre='Sin fondo').exists())
+
+        resp = self.client.get(reverse('finanzas:vista_distribucion'))
+        self.assertContains(resp, 'lo que necesita el fondo, según ingresos')
+        self.assertContains(resp, 'todo lo que quede libre')

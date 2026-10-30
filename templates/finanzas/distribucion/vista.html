@@ -136,7 +136,7 @@
             <div class="regla-pill-nombre">{{ regla.nombre }}</div>
             <div class="regla-pill-sub">
                 {% if regla.usuario %}{{ regla.usuario.first_name|default:regla.usuario.username }}{% else %}Hogar{% endif %}
-                · {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
+                · {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre{% elif regla.tipo_regla == 'cubrir_fondo' %}lo que necesita el fondo{% if not regla.usuario %}, según ingresos{% endif %}{% elif regla.tipo_regla == 'resto' %}todo lo que quede libre{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
                 {% if regla.fondo %} → {{ regla.fondo.nombre }}{% else %} → sin fondo{% endif %}
                 {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
             </div>
@@ -363,6 +363,12 @@
                     <button type="button" id="btn-pct" class="btn btn-secondary active" onclick="setTipoR('porcentaje')" style="flex:1;">%</button>
                     <button type="button" id="btn-fijo" class="btn btn-secondary" onclick="setTipoR('fijo')" style="flex:1;">€ fijo</button>
                 </div>
+                <div style="display:flex; gap:8px; margin-top:8px;">
+                    <button type="button" id="btn-cubrir_fondo" class="btn btn-secondary" onclick="setTipoR('cubrir_fondo')" style="flex:1;">Cubrir fondo</button>
+                    <button type="button" id="btn-resto" class="btn btn-secondary" onclick="setTipoR('resto')" style="flex:1;">Todo el resto</button>
+                </div>
+                <p id="ayuda-cubrir_fondo" class="paso-sub" style="display:none; margin-top:6px;">Pone lo que el fondo necesita este mes: sus gastos asignados más lo que sale de él en movimientos. Con «Aplicar a: Hogar», cada uno aporta en proporción a su ingreso.</p>
+                <p id="ayuda-resto" class="paso-sub" style="display:none; margin-top:6px;">Cada uno manda al fondo todo lo que le queda libre tras las reglas anteriores. Ponla la última.</p>
                 <input type="hidden" name="tipo_regla" id="tipo_regla_input" value="porcentaje">
             </div>
             <div id="campo-pct" class="fg"><label>Porcentaje (%)</label><input type="number" name="porcentaje" id="regla-pct" step="0.01" min="0" max="100" value="0"></div>
@@ -691,6 +697,10 @@ function setTipoR(t){
     document.getElementById('campo-fijo').style.display=t==='fijo'?'block':'none';
     document.getElementById('btn-pct').classList.toggle('active',t==='porcentaje');
     document.getElementById('btn-fijo').classList.toggle('active',t==='fijo');
+    ['cubrir_fondo','resto'].forEach(function(k){
+        document.getElementById('btn-'+k).classList.toggle('active',t===k);
+        document.getElementById('ayuda-'+k).style.display=t===k?'block':'none';
+    });
 }
 function abrirModalRegla(){
     document.getElementById('modal-regla-titulo').textContent='Nueva regla';

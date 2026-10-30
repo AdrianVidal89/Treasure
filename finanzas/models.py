@@ -1434,6 +1434,8 @@ class ReglaReparto(models.Model):
     TIPO_REGLA_CHOICES = [
         ('porcentaje', 'Porcentaje del dinero libre'),
         ('fijo', 'Importe fijo mensual'),
+        ('cubrir_fondo', 'Lo que necesita el fondo, en proporción al ingreso'),
+        ('resto', 'Todo lo que quede libre'),
     ]
     PERIODICIDAD_REGLA_CHOICES = [
         ('mensual', 'Aplica cada mes sobre ingreso mensual'),
@@ -1467,6 +1469,10 @@ class ReglaReparto(models.Model):
     def __str__(self):
         if self.tipo_regla == 'porcentaje':
             return f"{self.nombre} ({self.porcentaje}%)"
+        if self.tipo_regla == 'cubrir_fondo':
+            return f"{self.nombre} (cubre el fondo)"
+        if self.tipo_regla == 'resto':
+            return f"{self.nombre} (todo el resto)"
         return f"{self.nombre} ({self.importe_fijo} EUR/mes)"
 
 
