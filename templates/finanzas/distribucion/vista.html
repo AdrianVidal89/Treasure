@@ -49,8 +49,8 @@
     <svg class="icon"><use href="#i-info"/></svg>
     <span>
         Se está omitiendo del reparto, por decisión tuya,
-        <strong>€{{ d.total_fuera_reparto|floatformat:2 }}/mes</strong>:
-        {% for i in d.ingresos_fuera_reparto %}{{ i.fuente }} de {{ i.miembro }} (€{{ i.importe|floatformat:2 }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        <strong>{{ d.total_fuera_reparto|euro:2 }}/mes</strong>:
+        {% for i in d.ingresos_fuera_reparto %}{{ i.fuente }} de {{ i.miembro }} ({{ i.importe|euro:2 }}){% if not forloop.last %}, {% endif %}{% endfor %}.
         Sigue contando como ingreso del hogar en el Dashboard.
     </span>
     <a href="{% url 'finanzas:listar_ingresos' %}" class="btn btn-secondary">Ingresos</a>
@@ -63,8 +63,8 @@
 <div class="aviso-fuera-reparto">
     <svg class="icon"><use href="#i-calendar"/></svg>
     <span>
-        Este mes se apartan <strong>€{{ d.aporte_puntuales|floatformat:2 }}</strong> más para gastos puntuales:
-        {% for p in d.puntuales %}{{ p.nombre }} (€{{ p.mensual|floatformat:2 }}/mes hasta {{ p.cuando|lower }}){% if not forloop.last %}, {% endif %}{% endfor %}.
+        Este mes se apartan <strong>{{ d.aporte_puntuales|euro:2 }}</strong> más para gastos puntuales:
+        {% for p in d.puntuales %}{{ p.nombre }} ({{ p.mensual|euro:2 }}/mes hasta {{ p.cuando|lower }}){% if not forloop.last %}, {% endif %}{% endfor %}.
         {% if d.puntuales_en_aporte %}Ya van dentro del movimiento que sigue a los fijos anuales.
         {% else %}Ningún movimiento entre fondos sigue al bloque de fijos anuales: créalo para que este dinero vaya a la reserva.{% endif %}
         No son gasto: no cuentan en el presupuesto.
@@ -179,14 +179,14 @@
             {% else %}<span class="chip chip-previsto" title="No has declarado el ingreso de este mes: se usa lo previsto">previsto</span>{% endif %}
         </div>
         <div class="entra-cifras">
-            <span class="entra-importe">€{{ dm.ingreso_base|floatformat:2 }}</span>
+            <span class="entra-importe">{{ dm.ingreso_base|euro:2 }}</span>
             <span class="entra-pct">{{ dm.pct_ingreso|floatformat:2 }}% del hogar</span>
         </div>
         {% if dm.ajustes_mes or dm.extras_mes or dm.gastos_individuales > 0 %}
         <div class="persona-chips">
-            {% for aj in dm.ajustes_mes %}<span class="chip chip-ajuste" title="Previsto €{{ aj.importe_base|floatformat:2 }}">{{ aj.fuente }}: €{{ aj.importe_ajustado|floatformat:2 }} (previsto €{{ aj.importe_base|floatformat:2 }})</span>{% endfor %}
-            {% for ex in dm.extras_mes %}<span class="chip chip-extra">{{ ex.fuente }}: +€{{ ex.importe|floatformat:2 }} extra</span>{% endfor %}
-            {% if dm.gastos_individuales > 0 %}<span class="chip chip-gasto">Gastos solo suyos: −€{{ dm.gastos_individuales|floatformat:2 }}</span>{% endif %}
+            {% for aj in dm.ajustes_mes %}<span class="chip chip-ajuste" title="Previsto {{ aj.importe_base|euro:2 }}">{{ aj.fuente }}: {{ aj.importe_ajustado|euro:2 }} (previsto {{ aj.importe_base|euro:2 }})</span>{% endfor %}
+            {% for ex in dm.extras_mes %}<span class="chip chip-extra">{{ ex.fuente }}: +{{ ex.importe|euro:2 }} extra</span>{% endfor %}
+            {% if dm.gastos_individuales > 0 %}<span class="chip chip-gasto">Gastos solo suyos: −{{ dm.gastos_individuales|euro:2 }}</span>{% endif %}
         </div>
         {% endif %}
         {% if dm.fuentes %}
@@ -215,7 +215,7 @@
     </div>
     {% endfor %}
     </div>
-    <div class="entra-total"><span>Total del hogar</span><span>€{{ d.ingreso_base_hogar|floatformat:2 }}</span></div>
+    <div class="entra-total"><span>Total del hogar</span><span>{{ d.ingreso_base_hogar|euro:2 }}</span></div>
 </section>
 
 
@@ -252,7 +252,7 @@
             </div>
             {% if regla.este_mes %}
             <div class="regla-mueve">
-                {% for m in regla.este_mes %}<span class="mueve-chip" style="--uc: {{ m.uid|color_usuario }};"><span class="dot-uc"></span>{{ m.nombre }} €{{ m.importe|floatformat:2 }}</span>{% endfor %}
+                {% for m in regla.este_mes %}<span class="mueve-chip" style="--uc: {{ m.uid|color_usuario }};"><span class="dot-uc"></span>{{ m.nombre }} {{ m.importe|euro:2 }}</span>{% endfor %}
                 {% if regla.tipo_regla == 'cubrir_fondo' %}<a href="#calculo-{{ regla.fondo_id }}" class="mueve-link">Ver cálculo</a>{% endif %}
             </div>
             {% elif not regla.aplica_este_mes %}
@@ -289,10 +289,10 @@
             <li>
                 <div class="cp-titulo">Lo que necesita {{ c.fondo.nombre }}</div>
                 <div class="cp-lineas">
-                    <div class="cp-linea"><span>{{ c.desglose.num_gastos }} gasto{{ c.desglose.num_gastos|pluralize:"s" }} que paga</span><span>€{{ c.desglose.gastos|floatformat:2 }}</span></div>
-                    {% for s in c.desglose.salidas %}<div class="cp-linea"><span>+ {{ s.nombre }} <em>(→ {{ s.destino }})</em></span><span>€{{ s.importe|floatformat:2 }}</span></div>{% endfor %}
-                    {% for e in c.desglose.entradas %}<div class="cp-linea"><span>− {{ e.nombre }} <em>(llega de {{ e.origen }})</em></span><span>−€{{ e.importe|floatformat:2 }}</span></div>{% endfor %}
-                    <div class="cp-linea cp-resultado"><span>Necesita</span><span>€{{ c.necesidad|floatformat:2 }}</span></div>
+                    <div class="cp-linea"><span>{{ c.desglose.num_gastos }} gasto{{ c.desglose.num_gastos|pluralize:"s" }} que paga</span><span>{{ c.desglose.gastos|euro:2 }}</span></div>
+                    {% for s in c.desglose.salidas %}<div class="cp-linea"><span>+ {{ s.nombre }} <em>(→ {{ s.destino }})</em></span><span>{{ s.importe|euro:2 }}</span></div>{% endfor %}
+                    {% for e in c.desglose.entradas %}<div class="cp-linea"><span>− {{ e.nombre }} <em>(llega de {{ e.origen }})</em></span><span>−{{ e.importe|euro:2 }}</span></div>{% endfor %}
+                    <div class="cp-linea cp-resultado"><span>Necesita</span><span>{{ c.necesidad|euro:2 }}</span></div>
                 </div>
             </li>
             <li>
@@ -301,7 +301,7 @@
                     {% for f in c.filas %}
                     <div class="cp-ecuacion" style="--uc: {{ f.uid|color_usuario }};">
                         <span class="cp-quien"><span class="dot-uc"></span>{{ f.nombre }}</span>
-                        <span class="cp-op">€{{ f.ingreso|floatformat:2 }} <small>{% if f.origen_ingreso == 'declarado' %}declarado{% elif f.origen_ingreso == 'mixto' %}en parte declarado{% else %}previsto{% endif %}</small> ÷ €{{ c.total_ingreso|floatformat:2 }}</span>
+                        <span class="cp-op">{{ f.ingreso|euro:2 }} <small>{% if f.origen_ingreso == 'declarado' %}declarado{% elif f.origen_ingreso == 'mixto' %}en parte declarado{% else %}previsto{% endif %}</small> ÷ {{ c.total_ingreso|euro:2 }}</span>
                         <span class="cp-igual">= <strong>{{ f.pct|floatformat:2 }}%</strong></span>
                     </div>
                     {% endfor %}
@@ -313,8 +313,8 @@
                     {% for f in c.filas %}
                     <div class="cp-ecuacion" style="--uc: {{ f.uid|color_usuario }};">
                         <span class="cp-quien"><span class="dot-uc"></span>{{ f.nombre }}</span>
-                        <span class="cp-op">€{{ c.necesidad|floatformat:2 }} × {{ f.pct|floatformat:2 }}%</span>
-                        <span class="cp-igual">= <strong>€{{ f.le_toca|floatformat:2 }}</strong></span>
+                        <span class="cp-op">{{ c.necesidad|euro:2 }} × {{ f.pct|floatformat:2 }}%</span>
+                        <span class="cp-igual">= <strong>{{ f.le_toca|euro:2 }}</strong></span>
                     </div>
                     {% endfor %}
                 </div>
@@ -325,17 +325,17 @@
             {% if c.cuadra %}
             <span>✓</span>
             <span>
-                {% for f in c.filas %}€{{ f.aporta|floatformat:2 }}{% if not forloop.last %} + {% endif %}{% endfor %}
-                = <strong>€{{ c.total_aporta|floatformat:2 }}</strong>: {{ c.fondo.nombre }} queda cubierta.
+                {% for f in c.filas %}{{ f.aporta|euro:2 }}{% if not forloop.last %} + {% endif %}{% endfor %}
+                = <strong>{{ c.total_aporta|euro:2 }}</strong>: {{ c.fondo.nombre }} queda cubierta.
             </span>
             {% else %}
             <span>!</span>
-            <span>Faltan <strong>€{{ c.falta|floatformat:2 }}</strong> para cubrir {{ c.fondo.nombre }}.
+            <span>Faltan <strong>{{ c.falta|euro:2 }}</strong> para cubrir {{ c.fondo.nombre }}.
             {% if c.sin_regla %}{{ c.sin_regla|join:" y " }} no tiene{{ c.sin_regla|length|pluralize:"n" }} regla para este fondo: crea una «Cubrir fondo» para {% if c.sin_regla|length > 1 %}ellos{% else %}su parte{% endif %}, o usa una sola con «Aplicar a: Hogar».{% endif %}</span>
             {% endif %}
         </div>
         {% for f in c.filas %}{% if f.de_mas > 0 %}
-        <p class="calculo-nota">{{ f.nombre }} pone €{{ f.de_mas|floatformat:2 }} más de lo que le toca por otras reglas que mandan dinero a {{ c.fondo.nombre }}.</p>
+        <p class="calculo-nota">{{ f.nombre }} pone {{ f.de_mas|euro:2 }} más de lo que le toca por otras reglas que mandan dinero a {{ c.fondo.nombre }}.</p>
         {% endif %}{% endfor %}
     </div>
     {% endfor %}
@@ -364,7 +364,7 @@
                        igual y no son lo mismo.{% endcomment %}
                     {% if ss.bloque %}<span class="cascada-auto" title="Sigue al presupuesto: se actualiza solo al añadir o cambiar gastos de ese bloque.">= {{ ss.bloque_display }}</span>
                     {% else %}<span class="cascada-auto fijo" title="Importe fijo que escribiste tú: NO cambia al tocar el presupuesto. Para que siga a un bloque, bórralo y créalo de nuevo eligiendo el bloque.">fijo</span>{% endif %}
-                    <span class="cascada-importe">€{{ ss.importe|floatformat:2 }}</span>
+                    <span class="cascada-importe">{{ ss.importe|euro:2 }}</span>
                     {% if not solo_lectura %}<form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>{% endif %}
                 </div>
             </div>
@@ -392,24 +392,43 @@
             <span class="tag-tipo tag-{{ fa.fondo.tipo_fondo }}">{% if fa.fondo.tipo_fondo == 'comun' %}Común{% elif fa.fondo.tipo_fondo == 'ahorro' %}Ahorro{% else %}Inversión{% endif %}</span>
         </div>
         <div class="fondo-estado-filas">
-            <div class="fe-fila"><span>Entra</span><span class="fe-val" style="color:{{ fa.fondo.color }};">+€{{ fa.total_aportacion_base|floatformat:2 }}</span></div>
+            <div class="fe-fila"><span>Entra</span><span class="fe-val" style="color:{{ fa.fondo.color }};">+{{ fa.total_aportacion_base|euro:2 }}</span></div>
             {% if fa.gastos_cubiertos > 0 %}
-            <div class="fe-fila"><span>Paga gastos</span><span class="fe-val" style="color:var(--danger);">−€{{ fa.gastos_cubiertos|floatformat:2 }}</span></div>
+            <div class="fe-fila"><span>Paga gastos</span><span class="fe-val" style="color:var(--danger);">−{{ fa.gastos_cubiertos|euro:2 }}</span></div>
             {% endif %}
             {% if fa.total_cascada_saliente > 0 %}
-            <div class="fe-fila"><span>Sale a otros fondos</span><span class="fe-val" style="color:var(--warning);">−€{{ fa.total_cascada_saliente|floatformat:2 }}</span></div>
+            <div class="fe-fila"><span>Sale a otros fondos</span><span class="fe-val" style="color:var(--warning);">−{{ fa.total_cascada_saliente|euro:2 }}</span></div>
             {% endif %}
             {% if fa.fondo.tipo_fondo == 'comun' and fa.libre_fondo is not None %}
-            <div class="fe-fila fe-total"><span>Queda</span><span class="fe-val" style="color:{% if fa.libre_fondo >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if fa.libre_fondo >= 0 %}+{% endif %}€{{ fa.libre_fondo|floatformat:2 }}</span></div>
+            <div class="fe-fila fe-total"><span>Queda</span><span class="fe-val" style="color:{% if fa.libre_fondo >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if fa.libre_fondo >= 0 %}+{% endif %}{{ fa.libre_fondo|euro:2 }}</span></div>
             {% else %}
-            <div class="fe-fila fe-total"><span>Queda</span><span class="fe-val" style="color:{% if fa.total_aportacion_neta >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if fa.total_aportacion_neta >= 0 %}+{% endif %}€{{ fa.total_aportacion_neta|floatformat:2 }}</span></div>
+            <div class="fe-fila fe-total"><span>Queda</span><span class="fe-val" style="color:{% if fa.total_aportacion_neta >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if fa.total_aportacion_neta >= 0 %}+{% endif %}{{ fa.total_aportacion_neta|euro:2 }}</span></div>
             {% endif %}
         </div>
+        {% with pv=fa.previsto %}{% if pv and pv.final is not None %}
+        <!-- Lo que tiene, lo que le pasa este mes y cómo acaba. -->
+        <div class="fe-saldo" title="Aproximado: parte del saldo de {{ pv.base_mes }} en Evolución y le suma lo que mueve el reparto.">
+            <div class="fe-saldo-paso">
+                <span class="fe-saldo-lbl">Tenía en {{ pv.base_mes }}{% if pv.auto %} · automático{% endif %}</span>
+                <span class="fe-saldo-val numero">{{ pv.base|euro:0 }}</span>
+            </div>
+            <span class="fe-saldo-flecha" aria-hidden="true">{% if pv.movimiento >= 0 %}+{% else %}−{% endif %}{{ pv.movimiento|absoluto|euro:0 }} →</span>
+            <div class="fe-saldo-paso fe-saldo-final">
+                <span class="fe-saldo-lbl">Quedará en ~</span>
+                <span class="fe-saldo-val numero">{{ pv.final|euro:0 }}</span>
+            </div>
+        </div>
+        {% if pv.apuntado is not None %}
+        <p class="fe-saldo-nota">En Evolución apuntaste {{ pv.apuntado|euro:0 }}{% if pv.diferencia %} ({% if pv.diferencia > 0 %}+{% endif %}{{ pv.diferencia|euro:0 }} frente a lo previsto){% endif %}.</p>
+        {% endif %}
+        {% elif pv %}
+        <p class="fe-saldo-nota">Apunta su saldo en <a href="{% url 'finanzas:vista_evolucion' %}">Evolución</a> para ver cómo queda.</p>
+        {% endif %}{% endwith %}
         {% if fa.gastos_asignados %}
         <details class="fondo-estado-gastos">
             <summary>{{ fa.gastos_asignados|length }} gasto{{ fa.gastos_asignados|pluralize:"s" }} que paga</summary>
             {% for g in fa.gastos_asignados %}
-            <div class="fe-gasto"><span>{{ g.nombre }}</span><span>€{{ g.importe_mensual|floatformat:2 }}</span></div>
+            <div class="fe-gasto"><span>{{ g.nombre }}</span><span>{{ g.importe_mensual|euro:2 }}</span></div>
             {% endfor %}
         </details>
         {% endif %}
@@ -451,7 +470,7 @@
             </div>
             <div class="persona-libre">
                 <span class="persona-libre-lbl">Transfiere</span>
-                <span class="persona-libre-val" style="color:var(--uc);">€{{ dm.aportaciones_total|floatformat:2 }}</span>
+                <span class="persona-libre-val" style="color:var(--uc);">{{ dm.aportaciones_total|euro:2 }}</span>
             </div>
         </div>
 
@@ -473,7 +492,7 @@
                 {% if t.cuenta %}<div class="transfer-cuenta">{{ t.cuenta }}</div>{% endif %}
                 <div class="transfer-sub">{{ t.conceptos|join:" + " }}</div>
             </div>
-            <div class="transfer-importe" style="color:{{ t.color }};">€{{ t.importe|floatformat:2 }}</div>
+            <div class="transfer-importe" style="color:{{ t.color }};">{{ t.importe|euro:2 }}</div>
         </div>
         {% empty %}
         <p class="empty-msg">No tiene que transferir nada este mes.</p>
@@ -481,10 +500,10 @@
         </div>
 
         <div class="persona-rows">
-            <div class="resumen-row"><span class="rl">Ingreso de {{ d.mes_nombre|lower }}</span><span style="color:var(--success);">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
-            {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos solo suyos</span><span style="color:var(--danger);">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
-            <div class="resumen-row"><span class="rl">Transferencias</span><span style="color:var(--uc);">−€{{ dm.aportaciones_total|floatformat:2 }}</span></div>
-            <div class="resumen-row resumen-total"><span class="rl">Le queda en su cuenta</span><span style="color:{% if dm.libre_base >= 0 %}var(--success){% else %}var(--danger){% endif %};">€{{ dm.libre_base|floatformat:2 }}</span></div>
+            <div class="resumen-row"><span class="rl">Ingreso de {{ d.mes_nombre|lower }}</span><span style="color:var(--success);">+{{ dm.ingreso_base|euro:2 }}</span></div>
+            {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos solo suyos</span><span style="color:var(--danger);">−{{ dm.gastos_individuales|euro:2 }}</span></div>{% endif %}
+            <div class="resumen-row"><span class="rl">Transferencias</span><span style="color:var(--uc);">−{{ dm.aportaciones_total|euro:2 }}</span></div>
+            <div class="resumen-row resumen-total"><span class="rl">Le queda en su cuenta</span><span style="color:{% if dm.libre_base >= 0 %}var(--success){% else %}var(--danger){% endif %};">{{ dm.libre_base|euro:2 }}</span></div>
         </div>
     </div>
     {% endfor %}
@@ -501,7 +520,7 @@
                 <div class="transfer-destino">{{ tc.origen }} → {{ tc.destino }}</div>
                 <div class="transfer-sub">{{ tc.nombre }}</div>
             </div>
-            <div class="transfer-importe" style="color:{{ tc.color }};">€{{ tc.importe|floatformat:2 }}</div>
+            <div class="transfer-importe" style="color:{{ tc.color }};">{{ tc.importe|euro:2 }}</div>
         </div>
         {% endfor %}
         </div>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block title %}Informe Hacienda - Treasure{% endblock %}
 
 {% block content %}
@@ -33,24 +34,24 @@
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Ganancias</span>
-            <span class="stat-tile-valor num text-positive">{{ informe.ganancias_positivas|floatformat:2 }} €</span>
+            <span class="stat-tile-valor num text-positive">{{ informe.ganancias_positivas|euro:2 }}</span>
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Pérdidas</span>
-            <span class="stat-tile-valor num text-negative">{{ informe.perdidas|floatformat:2 }} €</span>
+            <span class="stat-tile-valor num text-negative">{{ informe.perdidas|euro:2 }}</span>
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Ganancia neta (plusvalías)</span>
-            <span class="stat-tile-valor num {% if informe.ganancia_neta < 0 %}text-negative{% else %}text-positive{% endif %}">{{ informe.ganancia_neta|floatformat:2 }} €</span>
+            <span class="stat-tile-valor num {% if informe.ganancia_neta < 0 %}text-negative{% else %}text-positive{% endif %}">{{ informe.ganancia_neta|euro:2 }}</span>
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Rendimientos depósitos</span>
-            <span class="stat-tile-valor num text-positive">{{ informe.interes_depositos|floatformat:2 }} €</span>
+            <span class="stat-tile-valor num text-positive">{{ informe.interes_depositos|euro:2 }}</span>
         </div>
         <div class="card stat-tile">
             <span class="stat-tile-label">Impuesto estimado</span>
-            <span class="stat-tile-valor num">{{ informe.impuesto_estimado|floatformat:2 }} €</span>
-            {% if informe.tipo_efectivo %}<span class="stat-tile-sub">tipo efectivo {{ informe.tipo_efectivo }}% · base {{ informe.base_ahorro|floatformat:2 }} €</span>{% endif %}
+            <span class="stat-tile-valor num">{{ informe.impuesto_estimado|euro:2 }}</span>
+            {% if informe.tipo_efectivo %}<span class="stat-tile-sub">tipo efectivo {{ informe.tipo_efectivo }}% · base {{ informe.base_ahorro|euro:2 }}</span>{% endif %}
         </div>
     </div>
 
@@ -78,14 +79,14 @@
                     <td class="text-muted">{{ d.fondo|default:"—" }}</td>
                     <td>{{ d.apertura|date:"d/m/Y"|default:"—" }}</td>
                     <td class="num">{{ d.tipo_interes|default:"0"|floatformat:"-3" }}% {{ d.frecuencia|lower }}</td>
-                    <td class="num text-positive">{{ d.interes_anio|floatformat:2 }} €</td>
-                    <td class="num text-muted">{{ d.interes_total|floatformat:2 }} €{% if d.interes_pct != None %} <span style="font-size:0.72rem;">({% if d.interes_pct >= 0 %}+{% endif %}{{ d.interes_pct }}%)</span>{% endif %}</td>
-                    <td class="num text-muted">{{ d.saldo|floatformat:2 }} €</td>
+                    <td class="num text-positive">{{ d.interes_anio|euro:2 }}</td>
+                    <td class="num text-muted">{{ d.interes_total|euro:2 }}{% if d.interes_pct != None %} <span style="font-size:0.72rem;">({% if d.interes_pct >= 0 %}+{% endif %}{{ d.interes_pct }}%)</span>{% endif %}</td>
+                    <td class="num text-muted">{{ d.saldo|euro:2 }}</td>
                 </tr>
                 {% endfor %}
                 <tr>
                     <td colspan="5" class="num" style="font-weight:700;">Total rendimientos {{ anio_actual }}</td>
-                    <td class="num text-positive" style="font-weight:700;">{{ informe.interes_depositos|floatformat:2 }} €</td>
+                    <td class="num text-positive" style="font-weight:700;">{{ informe.interes_depositos|euro:2 }}</td>
                     <td colspan="2"></td>
                 </tr>
             </tbody>
@@ -127,11 +128,11 @@
                     <td>{{ v.ticker|default:"—" }}</td>
                     <td>{{ v.titular }}</td>
                     <td class="num">{{ v.cantidad|floatformat:"-4" }}</td>
-                    <td class="num">{{ v.precio_venta|floatformat:2 }} €</td>
-                    <td class="num">{{ v.importe_venta|floatformat:2 }} €</td>
-                    <td class="num">{{ v.coste_adquisicion|floatformat:2 }} €</td>
-                    <td class="num text-muted">{{ v.comision|floatformat:2 }} €</td>
-                    <td class="num {% if v.ganancia >= 0 %}text-positive{% else %}text-negative{% endif %}" style="font-weight:650;">{{ v.ganancia|floatformat:2 }} €</td>
+                    <td class="num">{{ v.precio_venta|euro:2 }}</td>
+                    <td class="num">{{ v.importe_venta|euro:2 }}</td>
+                    <td class="num">{{ v.coste_adquisicion|euro:2 }}</td>
+                    <td class="num text-muted">{{ v.comision|euro:2 }}</td>
+                    <td class="num {% if v.ganancia >= 0 %}text-positive{% else %}text-negative{% endif %}" style="font-weight:650;">{{ v.ganancia|euro:2 }}</td>
                 </tr>
                 <tr class="detalle-row" id="detalle-{{ forloop.counter }}" hidden>
                     <td colspan="10" style="background:var(--surface-2); padding:8px 16px;">
@@ -152,8 +153,8 @@
                                     <td class="num">{{ l.fecha|date:"d/m/Y" }}</td>
                                     <td>{{ l.origen|default:"—" }}</td>
                                     <td class="num">{{ l.cantidad|floatformat:"-4" }}</td>
-                                    <td class="num">{{ l.precio|floatformat:2 }} €</td>
-                                    <td class="num">{{ l.coste|floatformat:2 }} €</td>
+                                    <td class="num">{{ l.precio|euro:2 }}</td>
+                                    <td class="num">{{ l.coste|euro:2 }}</td>
                                 </tr>
                                 {% endfor %}
                                 {% if not v.cubierto %}
@@ -169,7 +170,7 @@
                                     <td></td>
                                     <td class="num" style="font-weight:650;">{{ v.cantidad|floatformat:"-4" }}</td>
                                     <td></td>
-                                    <td class="num" style="font-weight:650;">{{ v.coste_adquisicion|floatformat:2 }} €</td>
+                                    <td class="num" style="font-weight:650;">{{ v.coste_adquisicion|euro:2 }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -180,10 +181,10 @@
             <tfoot>
                 <tr>
                     <td colspan="6" style="text-align:right; font-weight:650;">Totales</td>
-                    <td class="num" style="font-weight:650;">{{ informe.total_importe|floatformat:2 }} €</td>
-                    <td class="num" style="font-weight:650;">{{ informe.total_coste|floatformat:2 }} €</td>
-                    <td class="num" style="font-weight:650;">{{ informe.total_comisiones|floatformat:2 }} €</td>
-                    <td class="num {% if informe.ganancia_neta < 0 %}text-negative{% else %}text-positive{% endif %}" style="font-weight:700;">{{ informe.ganancia_neta|floatformat:2 }} €</td>
+                    <td class="num" style="font-weight:650;">{{ informe.total_importe|euro:2 }}</td>
+                    <td class="num" style="font-weight:650;">{{ informe.total_coste|euro:2 }}</td>
+                    <td class="num" style="font-weight:650;">{{ informe.total_comisiones|euro:2 }}</td>
+                    <td class="num {% if informe.ganancia_neta < 0 %}text-negative{% else %}text-positive{% endif %}" style="font-weight:700;">{{ informe.ganancia_neta|euro:2 }}</td>
                 </tr>
             </tfoot>
         </table>

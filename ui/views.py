@@ -318,6 +318,7 @@ def dashboard_view(request):
     # Patrimonio neto del hogar entero y de qué está hecho: el dinero a mano,
     # lo invertido y lo que vale lo que tenéis en ladrillo menos lo que se debe.
     from finanzas.ahorro import desglose_ahorro
+    from finanzas.salud import indicadores
     inversiones_patrimonio = max(patrimonio_real - liquidez_real, 0)
     patrimonio_total = patrimonio_real + patrimonio_inmuebles
     def _pct(v):
@@ -327,7 +328,7 @@ def dashboard_view(request):
          'pct': _pct(liquidez_real), 'enlace': '/finanzas/evolucion/'},
         {'clase': 'inversion', 'nombre': 'Inversiones', 'importe': inversiones_patrimonio,
          'pct': _pct(inversiones_patrimonio), 'enlace': '/finanzas/inversiones/'},
-        {'clase': 'inmuebles', 'nombre': 'Casas, sin la hipoteca', 'importe': patrimonio_inmuebles,
+        {'clase': 'inmuebles', 'nombre': 'Casas (neto)', 'importe': patrimonio_inmuebles,
          'pct': _pct(patrimonio_inmuebles), 'enlace': '/finanzas/propiedades/'},
     ]
     composicion = [c for c in composicion if c['importe'] > 0]
@@ -338,6 +339,11 @@ def dashboard_view(request):
         'patrimonio_total': patrimonio_total,
         'composicion': composicion,
         'ah': desglose_ahorro(flujo),
+        'salud': indicadores(
+            hogar, liquidez=liquidez_real, inversiones=inversiones_patrimonio,
+            ingreso_mensual=ahorro['ingresos_mensuales'], gasto_mensual=ahorro['gastos_mensuales'],
+            tasa_ahorro=salud_tasa,
+        ),
         'ahorro': ahorro,
         'real': real,
         'saludo': _saludo(),

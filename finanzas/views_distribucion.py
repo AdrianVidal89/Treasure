@@ -83,6 +83,10 @@ def vista_distribucion(request):
     anios = [anio - 1, anio, anio + 1]
 
     from .ahorro import desglose_ahorro
+    from .saldo_previsto import saldos_previstos
+    previstos = saldos_previstos(hogar, anio, mes, datos['fondos_aportaciones'])
+    for fa in datos['fondos_aportaciones']:
+        fa['previsto'] = previstos.get(getattr(fa['fondo'], 'id', None))
 
     return render(request, 'finanzas/distribucion/vista.html', {
         'hogar': hogar,

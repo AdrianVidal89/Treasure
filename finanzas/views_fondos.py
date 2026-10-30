@@ -64,10 +64,27 @@ def listar_fondos(request):
         if g.fondo_asignado_id:
             gastos_por_fondo.setdefault(g.fondo_asignado_id, []).append(g)
 
+    # Lo que tiene cada fondo: el último saldo apuntado en Evolución (o el
+    # valor automático de su depósito). Es la pregunta de esta pantalla:
+    # dónde vive el dinero y cuánto hay en cada sitio.
+    import datetime as _dt
+    from .views_evolucion import celdas_del_mes
+    from .saldo_previsto import _ultimo_mes_con_saldos, MESES as _MESES
+    _hoy = _dt.date.today()
+    _mes_saldos = _ultimo_mes_con_saldos(hogar, _hoy.year + (_hoy.month == 12), (_hoy.month % 12) + 1)
+    saldo_de = {}
+    if _mes_saldos:
+        celdas, _, liquidez_fondos, _ = celdas_del_mes(hogar, *_mes_saldos, fondos=fondos)
+        saldo_de = {c['fondo'].id: c for c in celdas}
+    else:
+        liquidez_fondos = None
     fondos_data = []
     for f in fondos:
         cubiertos = gastos_por_fondo.get(f.id, [])
+        celda = saldo_de.get(f.id) or {}
         fondos_data.append({
+            'saldo': celda.get('saldo_valor'),
+            'saldo_viejo': celda.get('arrastrado_de', ''),
             'fondo': f,
             'gastos': cubiertos,
             'total_gastos': sum((g.importe_mensual for g in cubiertos), Decimal('0')),
@@ -97,6 +114,8 @@ def listar_fondos(request):
         'miembros': hogar.miembros.select_related('user').all(),
         'depositos_data': depositos_data,
         'depositos_total': depositos_total,
+        'saldos_mes': (_MESES[_mes_saldos[1]] + ' ' + str(_mes_saldos[0])) if _mes_saldos else '',
+        'liquidez_fondos': liquidez_fondos,
     })
 
 

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block title %}Ajuste de ingresos variables — {{ mes_nombre }} {{ año }}{% endblock %}
 
 {% block content %}
@@ -52,14 +53,14 @@
           <div>
             <div style="color:var(--muted);">Neto estimado base</div>
             <div style="color:var(--warning);font-weight:600;">
-              &euro;{{ ctx.base_estimada_neto|floatformat:2 }}/mes
+              {{ ctx.base_estimada_neto|euro:2 }}/mes
             </div>
           </div>
           {% if ctx.fuente.es_bruto %}
           <div>
             <div style="color:var(--muted);">Bruto base</div>
             <div style="color:var(--muted);font-weight:500;">
-              &euro;{{ ctx.base_bruta|floatformat:2 }}
+              {{ ctx.base_bruta|euro:2 }}
             </div>
           </div>
           {% endif %}
@@ -67,7 +68,7 @@
           <div>
             <div style="color:var(--muted);">Declarado</div>
             <div style="color:var(--success);font-weight:600;">
-              &euro;{{ ctx.override.importe_real|floatformat:2 }}
+              {{ ctx.override.importe_real|euro:2 }}
             </div>
           </div>
           {% endif %}
@@ -82,7 +83,7 @@
             name="importe_{{ ctx.fuente.id }}"
             step="0.01"
             min="0"
-            placeholder="Vacío = usar estimado ({{ ctx.base_estimada_neto|floatformat:2 }} €)"
+            placeholder="Vacío = usar estimado ({{ ctx.base_estimada_neto|euro:2 }})"
             value="{% if ctx.importe_actual %}{{ ctx.importe_actual|floatformat:2 }}{% endif %}"
             style="width:100%;padding:12px 14px;background:var(--app-bg);border:1px solid var(--border-strong);
                    border-radius:10px;color:var(--text-color);font-size:0.9rem;box-sizing:border-box;"

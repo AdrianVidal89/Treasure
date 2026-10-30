@@ -135,3 +135,21 @@ def pct_de(value, total):
         return 100
     return round(p, 2)
 
+
+
+@register.filter
+def absoluto(valor):
+    """Valor absoluto (para enseñar «−200 €» con el signo aparte)."""
+    try:
+        return abs(Decimal(str(valor)))
+    except (InvalidOperation, TypeError, ValueError):
+        return valor
+
+
+@register.filter
+def menos(valor, otro):
+    """Resta en plantilla: {{ a|menos:b }}."""
+    try:
+        return Decimal(str(valor)) - Decimal(str(otro))
+    except (InvalidOperation, TypeError, ValueError):
+        return valor

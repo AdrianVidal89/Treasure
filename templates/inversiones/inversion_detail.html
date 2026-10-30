@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% load l10n %}
 {% block title %}{{ inversion.nombre }} - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
@@ -96,20 +97,20 @@
         <div class="dep-grid">
             <div class="dep-kpi">
                 <span class="l">Saldo restante{% if deposito.saldo_manual != None %} (saldo real){% elif deposito.liquidado %} (liquidado){% endif %}</span>
-                <span class="v" style="color:var(--info); font-size:1.6rem;">€{{ deposito.valor|floatformat:2 }}</span>
+                <span class="v" style="color:var(--info); font-size:1.6rem;">{{ deposito.valor|euro:2 }}</span>
             </div>
             <div class="dep-kpi">
                 <span class="l">Aportado</span>
-                <span class="v">€{{ deposito.aportado|floatformat:2 }}</span>
+                <span class="v">{{ deposito.aportado|euro:2 }}</span>
             </div>
             <div class="dep-kpi">
                 <span class="l">Retirado</span>
-                <span class="v">€{{ deposito.retirado|floatformat:2 }}</span>
+                <span class="v">{{ deposito.retirado|euro:2 }}</span>
             </div>
             <div class="dep-kpi">
                 <span class="l">Rendimiento</span>
                 <span class="v {% if deposito.interes >= 0 %}pos{% else %}neg{% endif %}">
-                    {% if deposito.interes >= 0 %}+{% endif %}€{{ deposito.interes|floatformat:2 }}
+                    {% if deposito.interes >= 0 %}+{% endif %}{{ deposito.interes|euro:2 }}
                 </span>
                 {% if deposito.interes_pct != None %}
                 <span class="l {% if deposito.interes >= 0 %}pos{% else %}neg{% endif %}" style="font-weight:700;">
@@ -119,10 +120,10 @@
             </div>
         </div>
         <div style="font-size:0.8rem; color:var(--muted); margin:-4px 0 8px;">
-            Aportado €{{ deposito.aportado|floatformat:2 }}
-            → retirado €{{ deposito.retirado|floatformat:2 }} + queda €{{ deposito.valor|floatformat:2 }}
-            = <strong style="color:var(--text-color);">€{{ deposito.total_recuperado|floatformat:2 }}</strong>
-            ({% if deposito.interes >= 0 %}+{% endif %}€{{ deposito.interes|floatformat:2 }} de rendimiento)
+            Aportado {{ deposito.aportado|euro:2 }}
+            → retirado {{ deposito.retirado|euro:2 }} + queda {{ deposito.valor|euro:2 }}
+            = <strong style="color:var(--text-color);">{{ deposito.total_recuperado|euro:2 }}</strong>
+            ({% if deposito.interes >= 0 %}+{% endif %}{{ deposito.interes|euro:2 }} de rendimiento)
         </div>
 
         <p class="dep-params">
@@ -197,7 +198,7 @@
         <div class="regla-card">
             <div class="regla-top">
                 <div>
-                    <strong style="color: var(--text-color);">€{{ regla.importe|floatformat:2 }}/mes</strong>
+                    <strong style="color: var(--text-color);">{{ regla.importe|euro:2 }}/mes</strong>
                     <span style="color: var(--muted); font-size: 0.82rem;"> · día {{ regla.dia_mes }} · desde {{ regla.fecha_inicio|date:"m/Y" }}{% if regla.fecha_fin %} hasta {{ regla.fecha_fin|date:"m/Y" }}{% endif %}</span>
                     {% if not regla.activa %}<span class="badge-tipo badge-OTRO">Inactiva</span>{% endif %}
                 </div>
@@ -274,7 +275,7 @@
                         {% if m.origen_recurrente_id %} <span style="color: var(--muted); font-size:0.72rem;">(recurrente)</span>{% endif %}
                     </td>
                     {% if not deposito %}<td>{% if m.grupo %}<span class="badge-cartera" style="background: {{ m.grupo.color }};">{{ m.grupo.nombre }}</span>{% else %}—{% endif %}</td>{% endif %}
-                    <td class="right">{% if deposito %}€{{ m.cantidad|floatformat:2 }}{% else %}{{ m.cantidad|floatformat:4 }}{% endif %}</td>
+                    <td class="right">{% if deposito %}{{ m.cantidad|euro:2 }}{% else %}{{ m.cantidad|floatformat:4 }}{% endif %}</td>
                     {% if not deposito %}<td class="right">{{ m.precio_unitario|floatformat:4 }}</td><td class="right">{{ m.comision|floatformat:2 }}</td>{% endif %}
                     <td style="white-space:nowrap; display:flex; gap:6px;">
                         <a href="{% url 'finanzas:editar_movimiento' m.id %}" class="act-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
