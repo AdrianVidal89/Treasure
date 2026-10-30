@@ -1656,6 +1656,11 @@ class CierreMensual(models.Model):
         help_text='Ingreso base presupuestado para ese mes (sin ajustes ni extras), '
                   'tal y como estaba al cerrarlo. Es el "según el plan" con el que se '
                   'compara lo que de verdad entró.')
+    # La foto completa del reparto de ese mes: lo que ingresó cada uno (fuente
+    # a fuente), las reglas tal y como se aplicaron, lo que transfirió cada
+    # uno y cómo quedó cada fondo. Nulo = cierre anterior a guardar el detalle.
+    detalle = models.JSONField(null=True, blank=True,
+        help_text='Reparto completo del mes tal y como quedó al cerrarlo.')
     congelado_en = models.DateTimeField(auto_now_add=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 

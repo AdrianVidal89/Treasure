@@ -63,23 +63,18 @@ def vista_distribucion(request):
     ).select_related('fondo', 'usuario').order_by('orden')
     miembros = hogar.miembros.select_related('user').all()
 
-    # Lo que ha movido cada regla este mes, por persona: así cada regla dice
-    # a la vista cuánto supone, no solo cómo está definida.
-    from .templatetags.custom_filters import color_usuario
-    movido = {}
-    for dm in datos['datos_miembros']:
-        user = dm['miembro'].user
-        for ap in dm['aportaciones_fondos']:
-            if ap['importe_base'] > 0:
-                movido.setdefault(ap['regla'].id, []).append({
-                    'nombre': user.first_name or user.username,
-                    'color': color_usuario(user.id),
-                    'importe': ap['importe_base'],
-                })
-    reglas = list(reglas)
-    for regla in reglas:
-        regla.este_mes = movido.get(regla.id, [])
-        regla.aplica_este_mes = regla.solo_mes is None or regla.solo_mes == mes
+    # Un mes cerrado se enseña tal y como se repartió: sus reglas salen de la
+    # foto y no se pueden tocar desde aquí. Cambiar una regla vale de ahora en
+    # adelante, nunca hacia atrás.
+    solo_lectura = bool(datos.get('mes_cerrado') and datos.get('detalle_congelado'))
+    if solo_lectura:
+        reglas = datos.get('reglas_aplicadas', [])
+    else:
+        movido = {r['id']: r['este_mes'] for r in datos.get('reglas_aplicadas', [])}
+        reglas = list(reglas)
+        for regla in reglas:
+            regla.este_mes = movido.get(regla.id, [])
+            regla.aplica_este_mes = regla.solo_mes is None or regla.solo_mes == mes
 
     gastos_hogar = PartidaGasto.objects.filter(
         hogar=hogar, activo=True, responsable__isnull=True
@@ -93,6 +88,8 @@ def vista_distribucion(request):
         'fondos': fondos,
         'fondos_quietos': fondos_quietos,
         'reglas': reglas,
+        'solo_lectura': solo_lectura,
+        'mes_hoy_nombre': MESES[hoy.month - 1][1],
         'miembros': miembros,
         'gastos_hogar': gastos_hogar,
         'profile': profile,

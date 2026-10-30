@@ -7,7 +7,7 @@ from django.utils import timezone
 from .models import (
     ValorActualInversion, HistorialValorInversion, MovimientoInversion,
     FuenteIngreso, PartidaGasto, ReglaReparto, AjusteIngresoMensual,
-    TablaIRPF, CotizacionSS,
+    TablaIRPF, CotizacionSS, FondoFamiliar, SubsobreFondo,
 )
 
 
@@ -62,6 +62,21 @@ def congelar_meses_cerrados_antes_del_cambio(sender, instance, **kwargs):
     _congelar_antes_de_cambiar(getattr(instance, 'hogar', None))
 
 
+@receiver(pre_save, sender=FondoFamiliar)
+@receiver(pre_delete, sender=FondoFamiliar)
+@receiver(pre_save, sender=SubsobreFondo)
+@receiver(pre_delete, sender=SubsobreFondo)
+def congelar_antes_de_cambiar_fondos(sender, instance, **kwargs):
+    # Un fondo o un movimiento entre fondos también cambia el reparto: la foto
+    # de los meses cerrados se hace antes, con lo que había.
+    hogar_id = getattr(instance, 'hogar_id', None)
+    if hogar_id is None and getattr(instance, 'fondo_id', None):
+        hogar_id = FondoFamiliar.objects.filter(id=instance.fondo_id).values_list('hogar_id', flat=True).first()
+    if hogar_id:
+        from core.models import Hogar
+        _congelar_antes_de_cambiar(Hogar.objects.filter(id=hogar_id).first())
+
+
 @receiver(post_save, sender=AjusteIngresoMensual)
 @receiver(post_delete, sender=AjusteIngresoMensual)
 def rehacer_cierre_del_mes_ajustado(sender, instance, **kwargs):
@@ -69,11 +84,11 @@ def rehacer_cierre_del_mes_ajustado(sender, instance, **kwargs):
     realmente ese mes. Si se corrige un mes ya cerrado, su foto se rehace para
     recoger la corrección — es un cambio explícito sobre ese mes, no el
     arrastre de un cambio de configuración."""
-    from .cierres import congelar_mes
+    from .cierres import corregir_ingreso_cerrado
     hogar = getattr(instance.fuente, 'hogar', None)
     if hogar is None:
         return
-    congelar_mes(hogar, instance.año, instance.mes, forzar=True)
+    corregir_ingreso_cerrado(hogar, instance.año, instance.mes)
 
 
 # ── Tablas fiscales ─────────────────────────────────────────────────────────

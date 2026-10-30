@@ -5975,7 +5975,7 @@ class ReglaCubrirFondoYRestoTests(TestCase):
 
     def test_la_vista_enseña_el_calculo_de_la_proporcion(self):
         self.client.force_login(self.irene)
-        resp = self.client.get(reverse('finanzas:vista_distribucion') + '?mes=6&anio=2026')
+        resp = self.client.get(reverse('finanzas:vista_distribucion'))
         self.assertContains(resp, 'Así se reparte Conjunta')
         self.assertContains(resp, 'id="calculo-%d"' % self.conjunta.id)
         calc = resp.context['d']['calculos_cubrir'][0]
@@ -5994,3 +5994,115 @@ class ReglaCubrirFondoYRestoTests(TestCase):
         self.assertFalse(calc['cuadra'])
         self.assertEqual(calc['sin_regla'], ['Irene'])
         self.assertEqual(calc['falta'], Decimal('2391.33'))
+
+
+class RepartoCerradoNoCambiaHaciaAtrasTests(TestCase):
+    """Lo que se cambia hoy vale de ahora en adelante: un mes cerrado se
+    enseña tal y como se repartió, también en el detalle por persona."""
+
+    def setUp(self):
+        from core.models import Hogar
+        from .models import FuenteIngreso, FondoFamiliar, ReglaReparto
+
+        self.hoy = datetime.date.today()
+        if self.hoy.month == 1:
+            self.skipTest('En enero no hay ningún mes cerrado de este año')
+        self.año, self.mes = self.hoy.year, self.hoy.month - 1
+
+        self.hogar = Hogar.objects.create(nombre='Hogar')
+        self.irene = User.objects.create_user('irene_c', password='x', first_name='Irene')
+        self.adrian = User.objects.create_user('adrian_c', password='x', first_name='Adrian')
+        self.fuentes = {}
+        for u, anual in ((self.irene, '72000'), (self.adrian, '36000')):
+            u.userprofile.hogar = self.hogar
+            u.userprofile.save()
+            self.fuentes[u.id] = FuenteIngreso.objects.create(
+                usuario=u, hogar=self.hogar, nombre='Nómina', modo_entrada='anual',
+                importe_declarado=Decimal(anual), es_bruto=False, num_pagas=12, activo=True)
+        self.conjunta = FondoFamiliar.objects.create(
+            hogar=self.hogar, nombre='Conjunta', tipo_fondo='comun')
+        self.regla = ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.conjunta, nombre='Aporte',
+            tipo_regla='fijo', importe_fijo=Decimal('1000'), orden=0)
+        # Montar el hogar paso a paso ya congela el mes pasado a medias (antes
+        # de cada alta): se empieza de cero, como un hogar ya configurado.
+        from .models import CierreMensual
+        CierreMensual.objects.filter(hogar=self.hogar).delete()
+        self.client.force_login(self.irene)
+
+    def _cerrado(self):
+        url = reverse('finanzas:vista_distribucion')
+        return self.client.get(f'{url}?mes={self.mes}&anio={self.año}')
+
+    def _aportes(self, d):
+        return {dm['miembro'].user.first_name: dm['aportaciones_total'] for dm in d['datos_miembros']}
+
+    def test_cambiar_una_regla_no_cambia_el_reparto_de_un_mes_cerrado(self):
+        antes = self._cerrado().context['d']
+        aportes = self._aportes(antes)
+
+        self.regla.importe_fijo = Decimal('3000')
+        self.regla.nombre = 'Aporte nuevo'
+        self.regla.save()
+
+        resp = self._cerrado()
+        d = resp.context['d']
+        self.assertTrue(resp.context['solo_lectura'])
+        self.assertEqual(self._aportes(d), aportes)
+        self.assertEqual([r.get('nombre') if isinstance(r, dict) else r.nombre
+                          for r in resp.context['reglas']], ['Aporte'])
+        self.assertNotContains(resp, 'Nueva regla</button>')
+        # El mes en curso sí usa la regla nueva.
+        hoy = self.client.get(reverse('finanzas:vista_distribucion')).context['d']
+        self.assertEqual(sum(self._aportes(hoy).values()), Decimal('3000'))
+
+    def test_subir_un_sueldo_no_mueve_el_ingreso_por_persona_del_pasado(self):
+        from .views_evolucion import _flujos_por_mes, _ingresos_por_miembro
+
+        self._cerrado()  # congela el mes
+        fuente = self.fuentes[self.adrian.id]
+        fuente.importe_declarado = Decimal('72000')
+        fuente.save()
+
+        r = _ingresos_por_miembro(_flujos_por_mes(self.hogar, self.año), self.año)
+        por_nombre = {m['nombre']: m['meses'][self.mes - 1] for m in r['miembros']}
+        self.assertEqual(por_nombre, {'Irene': Decimal('6000'), 'Adrian': Decimal('3000')})
+
+    def test_declarar_el_ingreso_de_un_mes_cerrado_solo_corrige_el_ingreso(self):
+        from .models import AjusteIngresoMensual
+        from .views_evolucion import _flujos_por_mes, _ingresos_por_miembro
+
+        antes = self._cerrado().context['d']
+        aportes = self._aportes(antes)
+        AjusteIngresoMensual.objects.create(
+            fuente=self.fuentes[self.adrian.id], año=self.año, mes=self.mes,
+            importe_real=Decimal('3500'))
+
+        d = self._cerrado().context['d']
+        adrian = next(dm for dm in d['datos_miembros'] if dm['miembro'].user.first_name == 'Adrian')
+        self.assertEqual(adrian['ingreso_base'], Decimal('3500'))
+        self.assertEqual(adrian['origen_ingreso'], 'declarado')
+        self.assertEqual(d['ingreso_base_hogar'], Decimal('9500'))
+        self.assertEqual(self._aportes(d), aportes)
+
+        # Evolución dice lo mismo que lo declarado en Distribución.
+        r = _ingresos_por_miembro(_flujos_por_mes(self.hogar, self.año), self.año)
+        por_nombre = {m['nombre']: m['meses'][self.mes - 1] for m in r['miembros']}
+        self.assertEqual(por_nombre, {'Irene': Decimal('6000'), 'Adrian': Decimal('3500')})
+
+    def test_un_cierre_antiguo_sin_detalle_no_reparte_lo_declarado(self):
+        """Mes cerrado antes de guardar el detalle: el total registrado manda,
+        pero la diferencia no se le carga a quien declaró lo que cobró."""
+        from .models import AjusteIngresoMensual, CierreMensual
+        from .views_evolucion import _flujos_por_mes, _ingresos_por_miembro
+
+        AjusteIngresoMensual.objects.create(
+            fuente=self.fuentes[self.irene.id], año=self.año, mes=self.mes,
+            importe_real=Decimal('6000'))
+        CierreMensual.objects.filter(hogar=self.hogar).delete()
+        CierreMensual.objects.create(hogar=self.hogar, año=self.año, mes=self.mes,
+                                     ingreso=Decimal('8000'), gastos=Decimal('0'))
+
+        r = _ingresos_por_miembro(_flujos_por_mes(self.hogar, self.año), self.año)
+        por_nombre = {m['nombre']: m['meses'][self.mes - 1] for m in r['miembros']}
+        self.assertEqual(por_nombre, {'Irene': Decimal('6000'), 'Adrian': Decimal('2000')})

@@ -27,7 +27,7 @@ from .fiscal import calcular_neto_anual
 # Helpers de ingreso
 # ---------------------------------------------------------------------------
 
-def _neto_fuente_mes(f, mes, anio):
+def _neto_fuente_mes(f, mes, anio, usar_ajuste=True):
     bruto_anual = f.importe_anual_bruto
     estimado_anual = f.importe_anual_estimado
 
@@ -41,7 +41,7 @@ def _neto_fuente_mes(f, mes, anio):
 
     ajuste = AjusteIngresoMensual.objects.filter(
         fuente=f, mes=mes, **{'año': anio}
-    ).first()
+    ).first() if usar_ajuste else None
     if ajuste and ajuste.importe_real is not None:
         return ajuste.importe_real, pond, True
 
@@ -156,10 +156,17 @@ def calcular_flujos(hogar, mes=None, anio=None):
         ing_base_puro = Decimal('0')
         extras_mes = []
         ajustes_mes = []
+        por_fuente = []
 
         for f in fuentes:
             b, p, tiene_ajuste = _neto_fuente_mes(f, mes, anio)
             b_base, _ = _neto_fuente_base(f)
+            # Lo cobrado por cada fuente y lo que se preveía: si un mes cerrado
+            # se corrige después, se cambia solo esa fuente (ver cierres.py).
+            por_fuente.append({
+                'id': f.id, 'nombre': f.nombre, 'importe': b, 'declarado': tiene_ajuste,
+                'previsto': _neto_fuente_mes(f, mes, anio, usar_ajuste=False)[0] if tiene_ajuste else b,
+            })
 
             if tiene_ajuste:
                 ajustes_mes.append({
@@ -201,6 +208,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
             'extras_mes': extras_mes,
             'ajustes_mes': ajustes_mes,
             'fuentes': fuentes_lista,
+            'por_fuente': por_fuente,
             'origen_ingreso': origen_ingreso,
             'gastos_individuales': Decimal('0'),
             'aportacion_hogar_informativa': Decimal('0'),
@@ -597,8 +605,31 @@ def calcular_flujos(hogar, mes=None, anio=None):
             t['conceptos'].append(ap['regla'].nombre)
         dm['transferencias'] = list(por_destino.values())
 
+    # Las reglas que se han aplicado este mes y lo que ha movido cada una, por
+    # persona. Es lo que la pantalla enseña bajo cada regla y lo que queda en
+    # la foto del mes al cerrarlo.
+    movido = {}
+    for dm in datos_miembros.values():
+        user = dm['miembro'].user
+        for ap in dm['aportaciones_fondos']:
+            if ap['importe_base'] > 0:
+                movido.setdefault(ap['regla'].id, []).append({
+                    'uid': user.id,
+                    'nombre': user.first_name or user.username,
+                    'importe': ap['importe_base'],
+                })
+    reglas_aplicadas = [{
+        'id': r.id, 'nombre': r.nombre, 'color': r.color, 'tipo_regla': r.tipo_regla,
+        'porcentaje': r.porcentaje, 'importe_fijo': r.importe_fijo,
+        'fondo_id': r.fondo_id, 'fondo': r.fondo,
+        'usuario_id': r.usuario_id, 'usuario': r.usuario,
+        'solo_mes': r.solo_mes, 'get_solo_mes_display': r.get_solo_mes_display() if r.solo_mes else '',
+        'este_mes': movido.get(r.id, []), 'aplica_este_mes': True,
+    } for r in reglas]
+
     return {
         'mes': mes, 'anio': anio, 'mes_nombre': _nombre_mes(mes),
+        'reglas_aplicadas': reglas_aplicadas,
 
         'datos_miembros': list(datos_miembros.values()),
         'fondos_aportaciones': list(fondos_aportaciones.values()),

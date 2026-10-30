@@ -637,11 +637,11 @@ def _ingresos_por_miembro(flujos_por_mes, año, hoy=None):
     dejan como hueco para que las barras sigan alineadas con su mes.
 
     En los meses cerrados manda la foto del cierre (`cierres.py`), que guarda
-    el total del hogar pero no el reparto por persona. El reparto se toma del
-    motor en vivo (con los ajustes de ingreso de ese mes) y se escala para que
-    sume lo registrado: así el gráfico cuadra con las tarjetas de cada mes."""
+    lo que ingresó cada uno: es exactamente lo que enseña Distribución para
+    ese mes, con lo declarado tal cual. Solo si un mes no tuviera esa foto se
+    cuadra con el total registrado, y aun así sin tocar lo declarado."""
     from finanzas.templatetags.custom_filters import color_usuario
-    from .cierres import mes_cerrado
+    from .cierres import mes_cerrado, _cuadrar_ingresos
 
     hoy = hoy or datetime.date.today()
     if año > hoy.year:
@@ -652,12 +652,13 @@ def _ingresos_por_miembro(flujos_por_mes, año, hoy=None):
     for mes in range(1, ultimo_mes + 1):
         flujo = flujos_por_mes.get(mes, {})
         datos = flujo.get('datos_miembros', [])
-        valores = {dm['miembro'].user.id: dm['ingreso_base'] or Decimal('0') for dm in datos}
-        suma = sum(valores.values(), Decimal('0'))
+        suma = sum((dm['ingreso_base'] or Decimal('0') for dm in datos), Decimal('0'))
         registrado = flujo.get('ingreso_base_hogar')
-        if mes_cerrado(año, mes, hoy) and registrado is not None and suma > 0 and registrado != suma:
-            factor = Decimal(registrado) / suma
-            valores = {uid: v * factor for uid, v in valores.items()}
+        if (mes_cerrado(año, mes, hoy) and not flujo.get('detalle_congelado')
+                and registrado is not None and suma > 0 and registrado != suma):
+            datos = [dict(dm) for dm in datos]
+            _cuadrar_ingresos({'datos_miembros': datos}, registrado)
+        valores = {dm['miembro'].user.id: dm['ingreso_base'] or Decimal('0') for dm in datos}
         for dm in datos:
             user = dm['miembro'].user
             fila = por_uid.setdefault(user.id, {

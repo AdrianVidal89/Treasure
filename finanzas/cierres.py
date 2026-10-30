@@ -16,10 +16,18 @@ Cuándo se congela un mes:
     hace con los valores de antes del cambio, no con los nuevos.
 
 Un mes está cerrado cuando ya ha pasado: (año, mes) < (año, mes) de hoy.
+
+Además de los totales, el cierre guarda la foto COMPLETA del reparto
+(`detalle`): ingresos de cada uno fuente a fuente, reglas tal y como se
+aplicaron, transferencias y fondos. Un mes cerrado se enseña siempre desde
+esa foto: cambiar hoy una regla, un fondo o un sueldo vale de ahora en
+adelante, nunca hacia atrás.
 """
 
 import datetime
+import re
 from decimal import Decimal
+from types import SimpleNamespace
 
 from django.db import IntegrityError
 
@@ -35,6 +43,91 @@ CAMPOS_CONGELADOS = {
     'ahorro': 'total_ahorro',
     'libre': 'libre_total',
 }
+
+# Lo que se guarda del flujo en la foto del mes, además de los totales.
+CLAVES_DETALLE = (
+    'datos_miembros', 'fondos_aportaciones', 'transferencias_cascada',
+    'calculos_cubrir', 'reglas_aplicadas', 'ingresos_fuera_reparto',
+    'total_fuera_reparto', 'puntuales', 'aporte_puntuales', 'puntuales_en_aporte',
+    'gastos_hogar_total', 'total_gastos_individuales', 'total_gastos_cubiertos',
+    'libre_personal', 'libre_comun',
+)
+_IMPORTE = re.compile(r'^-?\d+\.\d{2}$')
+_CENT = Decimal('0.01')
+
+
+def _plano(v):
+    """El flujo a JSON. Los importes van como texto con dos decimales (para
+    no perder céntimos) y los objetos de la base de datos se copian con lo que
+    la pantalla necesita: si mañana se borra un fondo, la foto no se rompe."""
+    from django.contrib.auth.models import User
+    from .models import FondoFamiliar, ReglaReparto
+
+    if isinstance(v, Decimal):
+        return str(v.quantize(_CENT))
+    if isinstance(v, dict):
+        return {k: _plano(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_plano(x) for x in v]
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if isinstance(v, User):
+        return {'__obj': 1, 'id': v.id, 'first_name': v.first_name, 'username': v.username}
+    if isinstance(v, FondoFamiliar):
+        return {'__obj': 1, 'id': v.id, 'nombre': v.nombre, 'color': v.color,
+                'tipo_fondo': v.tipo_fondo, 'cuenta_asociada': v.cuenta_asociada}
+    if isinstance(v, ReglaReparto):
+        return {'__obj': 1, 'id': v.id, 'nombre': v.nombre, 'color': v.color}
+    if isinstance(getattr(v, 'user', None), User):
+        return {'__obj': 1, 'user': _plano(v.user)}
+    return str(v)
+
+
+def _vivo(v):
+    """La foto de vuelta a algo que la pantalla y Evolución leen igual que un
+    flujo en vivo: importes como Decimal y objetos con atributos."""
+    if isinstance(v, dict):
+        datos = {k: _vivo(x) for k, x in v.items() if k != '__obj'}
+        return SimpleNamespace(**datos) if v.get('__obj') else datos
+    if isinstance(v, list):
+        return [_vivo(x) for x in v]
+    if isinstance(v, str) and _IMPORTE.match(v):
+        return Decimal(v)
+    return v
+
+
+def _detalle_de(flujo):
+    return _plano({k: flujo[k] for k in CLAVES_DETALLE if k in flujo})
+
+
+def _cuadrar_ingresos(flujo, total):
+    """Ajusta lo que ingresó cada uno para que sume el total registrado.
+
+    Solo para fotos de meses que se cerraron antes de que se guardara el
+    detalle: el total es el de entonces y el reparto por persona se calcula
+    hoy. Lo DECLARADO de cada fuente es un dato y no se toca; la diferencia
+    se reparte solo entre lo que se calculó por previsión, y lo que se suma o
+    resta a alguien se le suma o resta también de lo que le quedó libre."""
+    datos = flujo['datos_miembros']
+    declarado = {id(dm): sum((f['importe'] for f in dm.get('por_fuente', []) if f['declarado']), Decimal('0'))
+                 for dm in datos}
+    previsto = {id(dm): dm['ingreso_base'] - declarado[id(dm)] for dm in datos}
+    suma_prev = sum(previsto.values(), Decimal('0'))
+    diferencia = Decimal(total) - sum((dm['ingreso_base'] for dm in datos), Decimal('0'))
+    if not diferencia or suma_prev <= 0:
+        return
+    for dm in datos:
+        delta = (diferencia * previsto[id(dm)] / suma_prev).quantize(_CENT)
+        dm['ingreso_base'] += delta
+        if 'libre_base' in dm:
+            dm['libre_base'] += delta
+    total = Decimal(total)
+    for dm in datos:
+        dm['pct_ingreso'] = round(dm['ingreso_base'] / total * 100, 2) if total > 0 else Decimal('0')
+
+
+def detalle_vivo(cierre):
+    return _vivo(cierre.detalle) if cierre and cierre.detalle else None
 
 
 def mes_cerrado(año, mes, hoy=None):
@@ -71,16 +164,26 @@ def congelar_mes(hogar, año, mes, flujo=None, forzar=False):
     if not mes_cerrado(año, mes):
         return None
 
-    if not forzar and CierreMensual.objects.filter(hogar=hogar, año=año, mes=mes).exists():
+    existente = CierreMensual.objects.filter(hogar=hogar, año=año, mes=mes).first()
+    if existente and existente.detalle and not forzar:
         return None
 
     if flujo is None:
         from .distribucion import calcular_flujos
         flujo = calcular_flujos(hogar, mes=mes, anio=año)
 
+    if existente and not forzar:
+        # Foto antigua, solo con totales: se le añade el detalle sin tocar
+        # las cifras que ya quedaron registradas, cuadrando con ellas.
+        _cuadrar_ingresos(flujo, existente.ingreso)
+        existente.detalle = _detalle_de(flujo)
+        existente.save(update_fields=['detalle', 'actualizado_en'])
+        return None
+
     valores = _valores_de(flujo)
     if _mes_vacio(valores):
         return None
+    valores['detalle'] = _detalle_de(flujo)
 
     try:
         cierre, _ = CierreMensual.objects.update_or_create(
@@ -100,7 +203,8 @@ def congelar_meses_cerrados(hogar, año=None, flujos_por_mes=None):
     año a mano (el caso de la vista de Evolución)."""
     año = año or datetime.date.today().year
     pendientes = set(meses_cerrados_de(año)) - set(
-        CierreMensual.objects.filter(hogar=hogar, año=año).values_list('mes', flat=True)
+        CierreMensual.objects.filter(hogar=hogar, año=año, detalle__isnull=False)
+        .values_list('mes', flat=True)
     )
     for mes in sorted(pendientes):
         congelar_mes(hogar, año, mes,
@@ -120,6 +224,11 @@ def _aplicar_cierre_a_flujo(flujo, cierre):
         valor = getattr(cierre, campo, None)
         if valor is not None:
             flujo[clave] = valor
+
+    detalle = detalle_vivo(cierre)
+    if detalle:
+        flujo.update(detalle)
+    flujo['detalle_congelado'] = bool(detalle)
 
     ingreso = flujo['ingreso_base_hogar']
     gastos = flujo['total_gastos_all']
@@ -172,9 +281,71 @@ def flujo_del_mes(hogar, mes, anio):
     if not mes_cerrado(anio, mes):
         return flujo
 
-    cierre = (congelar_mes(hogar, anio, mes, flujo=flujo)
-              or CierreMensual.objects.filter(hogar=hogar, año=anio, mes=mes).first())
+    congelar_mes(hogar, anio, mes, flujo=flujo)
+    cierre = CierreMensual.objects.filter(hogar=hogar, año=anio, mes=mes).first()
     if cierre is None:
         # Mes cerrado sin nada que registrar (hogar aún sin configurar).
         return flujo
     return _aplicar_cierre_a_flujo(flujo, cierre)
+
+
+def corregir_ingreso_cerrado(hogar, año, mes):
+    """Declarar (o borrar) lo que se cobró en un mes ya cerrado.
+
+    Es un dato de ese mes, así que la foto se corrige, pero SOLO en el
+    ingreso: las reglas, las transferencias y los fondos fueron los que
+    fueron. Lo que alguien cobró de más o de menos va a lo que le quedó libre.
+    Si el cierre no tiene detalle se rehace entero, como antes."""
+    from .models import AjusteIngresoMensual
+
+    if not mes_cerrado(año, mes):
+        return None
+    cierre = CierreMensual.objects.filter(hogar=hogar, año=año, mes=mes).first()
+    if cierre is None or not cierre.detalle:
+        return congelar_mes(hogar, año, mes, forzar=True)
+
+    ajustes = {
+        a.fuente_id: a.importe_real
+        for a in AjusteIngresoMensual.objects.filter(año=año, mes=mes, fuente__hogar=hogar)
+    }
+    detalle = cierre.detalle
+    total_delta = Decimal('0')
+    for dm in detalle.get('datos_miembros', []):
+        nuevo = Decimal('0')
+        ajustes_mes = []
+        for f in dm.get('por_fuente', []):
+            declarado = f['id'] in ajustes
+            importe = ajustes[f['id']] if declarado else Decimal(f['previsto'])
+            f['importe'], f['declarado'] = _plano(importe), declarado
+            nuevo += importe
+            if declarado:
+                ajustes_mes.append({'fuente_id': f['id'], 'fuente': f['nombre'],
+                                    'importe_ajustado': _plano(importe),
+                                    'importe_base': f['previsto']})
+        if not dm.get('por_fuente'):
+            continue
+        delta = nuevo - Decimal(dm['ingreso_base'])
+        total_delta += delta
+        dm['ingreso_base'] = _plano(nuevo)
+        dm['libre_base'] = _plano(Decimal(dm['libre_base']) + delta)
+        dm['ajustes_mes'] = ajustes_mes
+        n_decl = len(ajustes_mes)
+        dm['origen_ingreso'] = ('declarado' if n_decl == len(dm['por_fuente'])
+                                else 'mixto' if n_decl else 'previsto')
+
+    if not total_delta:
+        cierre.detalle = detalle
+        cierre.save(update_fields=['detalle', 'actualizado_en'])
+        return cierre
+
+    cierre.ingreso += total_delta
+    if cierre.libre is not None:
+        cierre.libre += total_delta
+    detalle['libre_personal'] = _plano(Decimal(detalle.get('libre_personal') or '0') + total_delta)
+    total = cierre.ingreso
+    for dm in detalle.get('datos_miembros', []):
+        ingreso = Decimal(dm['ingreso_base'])
+        dm['pct_ingreso'] = _plano(round(ingreso / total * 100, 2) if total > 0 else Decimal('0'))
+    cierre.detalle = detalle
+    cierre.save()
+    return cierre

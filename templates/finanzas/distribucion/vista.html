@@ -25,14 +25,20 @@
 </div>
 
 {% if d.mes_cerrado %}
-<!-- Mes ya cerrado: los totales son los que quedaron registrados, no se
-     recalculan con la configuración de hoy. El desglose de abajo (fondos,
-     gastos asignados, reglas) sí es la configuración actual. -->
+<!-- Mes ya cerrado: todo sale de la foto que se guardó al cerrarlo. Lo que
+     se cambie hoy vale de ahora en adelante, nunca hacia atrás. -->
 <div class="dist-mes-cerrado">
     <strong>{{ d.mes_nombre }} {{ d.anio }} está cerrado.</strong>
-    Los totales de arriba son los que quedaron registrados ese mes: cambiar hoy
-    un ingreso o un gasto ya no los mueve. El desglose de abajo es tu
-    configuración actual.
+    {% if solo_lectura %}
+    Ves el reparto tal y como quedó ese mes: ingresos, reglas, transferencias y
+    fondos. Si cambias una regla, un fondo o un gasto, el cambio vale desde
+    {{ mes_hoy_nombre|lower }} en adelante. Solo puedes corregir lo que cobró
+    cada uno («Declarar ingreso del mes»); la diferencia va a lo que le quedó libre.
+    {% else %}
+    Los totales son los que quedaron registrados ese mes. El desglose de abajo
+    es tu configuración actual: este mes se cerró antes de que se guardara el
+    reparto completo.
+    {% endif %}
 </div>
 {% endif %}
 
@@ -204,16 +210,18 @@
             <span class="paso-titulo">Cómo se reparte</span>
             <p class="paso-sub">Las reglas se aplican en orden, de arriba abajo, sobre lo que le queda a cada uno. Debajo de cada regla ves lo que mueve este mes.</p>
         </div>
-        <button onclick="abrirModalRegla()" class="btn btn-primary btn-mini">＋ Nueva regla</button>
+        {% if not solo_lectura %}<button onclick="abrirModalRegla()" class="btn btn-primary btn-mini">＋ Nueva regla</button>{% endif %}
     </div>
 
-    {% if reglas %}
+    {% if solo_lectura %}
+    <p class="reglas-orden-hint">Las reglas tal y como se aplicaron en {{ d.mes_nombre|lower }}. Para cambiarlas, ve a {{ mes_hoy_nombre|lower }}.</p>
+    {% elif reglas %}
     <p class="reglas-orden-hint">Arrastra <svg class="icon icon-dots"><use href="#i-grip"/></svg> para cambiar el orden.</p>
     {% endif %}
     <div id="reglas-lista" data-reordenar-url="{% url 'finanzas:reordenar_reglas' %}">
     {% for regla in reglas %}
     <div class="regla-pill{% if not regla.aplica_este_mes %} regla-fuera{% endif %}" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
-        <span class="regla-drag-handle" title="Arrastrar para reordenar"><svg class="icon icon-dots"><use href="#i-grip"/></svg></span>
+        {% if not solo_lectura %}<span class="regla-drag-handle" title="Arrastrar para reordenar"><svg class="icon icon-dots"><use href="#i-grip"/></svg></span>{% endif %}
         <span class="regla-orden">{{ forloop.counter }}</span>
         <div class="regla-pill-info">
             <div class="regla-pill-nombre">{{ regla.nombre }}</div>
@@ -225,7 +233,7 @@
             </div>
             {% if regla.este_mes %}
             <div class="regla-mueve">
-                {% for m in regla.este_mes %}<span class="mueve-chip" style="--uc: {{ m.color }};"><span class="dot-uc"></span>{{ m.nombre }} €{{ m.importe|floatformat:2 }}</span>{% endfor %}
+                {% for m in regla.este_mes %}<span class="mueve-chip" style="--uc: {{ m.uid|color_usuario }};"><span class="dot-uc"></span>{{ m.nombre }} €{{ m.importe|floatformat:2 }}</span>{% endfor %}
                 {% if regla.tipo_regla == 'cubrir_fondo' %}<a href="#calculo-{{ regla.fondo_id }}" class="mueve-link">Ver cálculo</a>{% endif %}
             </div>
             {% elif not regla.aplica_este_mes %}
@@ -234,10 +242,12 @@
             <div class="regla-mueve regla-mueve-nada">Este mes no mueve nada.</div>
             {% endif %}
         </div>
+        {% if not solo_lectura %}
         <div style="display:flex; gap:6px;">
             <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
             <form method="post" action="{% url 'finanzas:eliminar_regla' regla.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
         </div>
+        {% endif %}
     </div>
     {% empty %}
     <p class="empty-msg">Sin reglas todavía: todo el dinero se queda como libre. Crea la primera con “＋ Nueva regla”.</p>
@@ -318,7 +328,7 @@
                 <span class="paso-subtitulo">Movimientos entre fondos</span>
                 <p class="paso-sub">Dinero que, una vez en un fondo, pasa a otro o se reserva dentro de él.</p>
             </div>
-            {% if fondos %}
+            {% if fondos and not solo_lectura %}
             <button onclick="abrirModalSubsobre()" class="btn btn-secondary btn-mini">＋ Nuevo movimiento</button>
             {% endif %}
         </div>
@@ -336,7 +346,7 @@
                     {% if ss.bloque %}<span class="cascada-auto" title="Sigue al presupuesto: se actualiza solo al añadir o cambiar gastos de ese bloque.">= {{ ss.bloque_display }}</span>
                     {% else %}<span class="cascada-auto fijo" title="Importe fijo que escribiste tú: NO cambia al tocar el presupuesto. Para que siga a un bloque, bórralo y créalo de nuevo eligiendo el bloque.">fijo</span>{% endif %}
                     <span class="cascada-importe">€{{ ss.importe|floatformat:2 }}</span>
-                    <form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>
+                    {% if not solo_lectura %}<form method="post" action="{% url 'finanzas:eliminar_subsobres' ss.id %}" style="margin:0;">{% csrf_token %}<button type="submit" class="r-btn" title="Eliminar" onclick="return confirm('¿Eliminar?')"><svg class="icon"><use href="#i-trash"/></svg></button></form>{% endif %}
                 </div>
             </div>
             {% endfor %}
