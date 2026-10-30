@@ -204,21 +204,40 @@
         </div>
     </div>
 
-    <!-- ═══ HERO: CAPITAL LÍQUIDO TOTAL ═══ -->
-    <a href="/finanzas/evolucion/" class="cc-hero" style="display:block; text-decoration:none;">
-        <div class="cc-hero-label">Capital líquido total</div>
-        <div class="cc-hero-value">{{ capital_liquido_total|euro:0 }}</div>
-        <div class="cc-hero-sub">
-            {% if mes_liquidez_nombre %}Fondos y depósitos · {{ mes_liquidez_nombre }} {{ anio }}{% elif capital_liquido_total > 0 %}Depósitos · {{ mes_nombre }} {{ anio }}{% else %}Sin saldos registrados aún{% endif %}
+    <!-- ═══ HERO: LO QUE TENÉIS ═══
+         El patrimonio entero de un vistazo y de qué está hecho, y al lado lo
+         que este mes se suma a él. -->
+    <section class="pt-hero">
+        <div class="pt-cabeza">
+            <div class="pt-titular">
+                <span class="pt-etiqueta">Lo que tenéis</span>
+                <span class="pt-cifra numero">{{ patrimonio_total|euro:0 }}</span>
+                <span class="pt-sub">patrimonio neto{% if mes_liquidez_nombre %} · saldos de {{ mes_liquidez_nombre|lower }}{% endif %}</span>
+            </div>
+            {% if ah.ingreso %}
+            <a class="pt-mes" href="/finanzas/distribucion/">
+                <span class="pt-mes-lbl">{% if ah.en_numeros_rojos %}Este mes falta{% else %}Este mes se suma{% endif %}</span>
+                <span class="pt-mes-val numero{% if ah.en_numeros_rojos %} neg{% endif %}">{% if not ah.en_numeros_rojos %}+{% endif %}{{ ah.ahorro|euro:0 }}</span>
+                <span class="pt-mes-sub">ahorráis el {{ ah.tasa|floatformat:0 }} % de lo que entra →</span>
+            </a>
+            {% endif %}
         </div>
-        {% if num_propiedades > 0 %}
-        <div class="cc-hero-net">
-            <span class="cc-hero-net-label">Valor neto propiedades</span>
-            <span class="cc-hero-net-value">{{ patrimonio_inmuebles|euro:0 }}</span>
-            <span class="cc-hero-net-sub">{{ num_propiedades }} inmueble{{ num_propiedades|pluralize:"s" }} · activos − pasivos</span>
+        {% if composicion %}
+        <div class="pt-barra" role="img" aria-label="Composición del patrimonio">
+            {% for c in composicion %}<i class="pt-seg pt-{{ c.clase }}" style="flex-basis:{{ c.pct|unlocalize }}%;"></i>{% endfor %}
         </div>
+        <ul class="pt-partes">
+            {% for c in composicion %}
+            <li><a href="{{ c.enlace }}">
+                <span class="pt-punto pt-{{ c.clase }}"></span>
+                <span class="pt-parte-nombre">{{ c.nombre }}</span>
+                <span class="pt-parte-val numero">{{ c.importe|euro:0 }}</span>
+                <span class="pt-parte-pct numero">{{ c.pct|floatformat:0 }} %</span>
+            </a></li>
+            {% endfor %}
+        </ul>
         {% endif %}
-    </a>
+    </section>
 
     <!-- ═══ EL MES: ENTRA, SALE, QUEDA ═══ -->
     <div class="cc-mes">

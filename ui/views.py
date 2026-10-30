@@ -315,9 +315,29 @@ def dashboard_view(request):
     # panel que Extractos para que las dos pantallas digan las mismas cifras.
     real = resumen_del_mes(hogar, request)
 
+    # Patrimonio neto del hogar entero y de qué está hecho: el dinero a mano,
+    # lo invertido y lo que vale lo que tenéis en ladrillo menos lo que se debe.
+    from finanzas.ahorro import desglose_ahorro
+    inversiones_patrimonio = max(patrimonio_real - liquidez_real, 0)
+    patrimonio_total = patrimonio_real + patrimonio_inmuebles
+    def _pct(v):
+        return round(float(v) / float(patrimonio_total) * 100, 1) if patrimonio_total > 0 else 0
+    composicion = [
+        {'clase': 'liquidez', 'nombre': 'Dinero disponible', 'importe': liquidez_real,
+         'pct': _pct(liquidez_real), 'enlace': '/finanzas/evolucion/'},
+        {'clase': 'inversion', 'nombre': 'Inversiones', 'importe': inversiones_patrimonio,
+         'pct': _pct(inversiones_patrimonio), 'enlace': '/finanzas/inversiones/'},
+        {'clase': 'inmuebles', 'nombre': 'Casas, sin la hipoteca', 'importe': patrimonio_inmuebles,
+         'pct': _pct(patrimonio_inmuebles), 'enlace': '/finanzas/propiedades/'},
+    ]
+    composicion = [c for c in composicion if c['importe'] > 0]
+
     context = {
         'hogar': hogar,
         'profile': profile,
+        'patrimonio_total': patrimonio_total,
+        'composicion': composicion,
+        'ah': desglose_ahorro(flujo),
         'ahorro': ahorro,
         'real': real,
         'saludo': _saludo(),

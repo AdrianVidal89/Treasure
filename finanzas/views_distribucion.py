@@ -82,9 +82,12 @@ def vista_distribucion(request):
 
     anios = [anio - 1, anio, anio + 1]
 
+    from .ahorro import desglose_ahorro
+
     return render(request, 'finanzas/distribucion/vista.html', {
         'hogar': hogar,
         'd': datos,
+        'ah': desglose_ahorro(datos),
         'fondos': fondos,
         'fondos_quietos': fondos_quietos,
         'reglas': reglas,
