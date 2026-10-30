@@ -31,6 +31,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    # Comprime las páginas: Extractos pasaba de 1 MB a unos 100 KB. Va antes de
+    # todo lo que lee o cambia la respuesta (orden que pide Django).
+    "django.middleware.gzip.GZipMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -93,7 +96,23 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# `STATICFILES_STORAGE` dejó de existir en Django 5.1: con él la app servía el
+# CSS y el JS sin comprimir y sin caché. Ahora se declara en STORAGES. En
+# producción, nombres con huella (main.3f2a….css) que el navegador guarda un
+# año y versiones comprimidas; en desarrollo y en las pruebas, los ficheros tal
+# cual (el manifiesto exige haber hecho collectstatic).
+import sys as _sys
+_PRUEBAS = len(_sys.argv) > 1 and _sys.argv[1] == "test"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if DEBUG or _PRUEBAS
+            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
+    },
+}
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
