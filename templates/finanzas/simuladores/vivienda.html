@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% load static %}
 {% block title %}Simulador de Vivienda - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
@@ -24,12 +25,12 @@
         <div class="ctx-grid">
             <div class="ctx-item">
                 <div class="lbl">Liquidez disponible</div>
-                <div class="val" style="color:var(--info);">€{{ capital_liquidez|floatformat:0 }}</div>
-                {% if capital_depositos %}<div class="ctx-sub">incluye €{{ capital_depositos|floatformat:0 }} en depósitos</div>{% endif %}
+                <div class="val" style="color:var(--info);">{{ capital_liquidez|euro:0 }}</div>
+                {% if capital_depositos %}<div class="ctx-sub">incluye {{ capital_depositos|euro:0 }} en depósitos</div>{% endif %}
             </div>
             <div class="ctx-item">
                 <div class="lbl">Inversiones</div>
-                <div class="val" style="color:var(--primary-color);">€{{ capital_inversiones|floatformat:0 }}</div>
+                <div class="val" style="color:var(--primary-color);">{{ capital_inversiones|euro:0 }}</div>
                 <div class="ctx-sub">no se cuentan como capital</div>
             </div>
             <div class="ctx-item">
@@ -51,7 +52,7 @@
         {% if depositos_atados %}
         <div class="aviso aviso-warn">
             <strong>Ojo con el plazo:</strong>
-            {% for d in depositos_atados %}€{{ d.valor|floatformat:0 }} de «{{ d.nombre }}» vence el {{ d.vence }}{% if not forloop.last %}; {% endif %}{% endfor %}.
+            {% for d in depositos_atados %}{{ d.valor|euro:0 }} de «{{ d.nombre }}» vence el {{ d.vence }}{% if not forloop.last %}; {% endif %}{% endfor %}.
             Cuenta como liquidez, pero no lo tendrías mañana sin romper el depósito.
         </div>
         {% endif %}
@@ -66,8 +67,8 @@
                     <input type="checkbox" class="prop-check" data-neto="{{ prop.neto }}">
                     <div>
                         <div class="prop-nombre">{{ prop.nombre }}</div>
-                        <div class="prop-neto">Neto libre: €{{ prop.neto|floatformat:0 }}</div>
-                        <div class="prop-desglose">€{{ prop.valor_actual|floatformat:0 }} − hipoteca €{{ prop.deuda|floatformat:0 }} − plusvalía €{{ prop.plusvalia|floatformat:0 }} − gastos €{{ prop.gastos_venta|floatformat:0 }}</div>
+                        <div class="prop-neto">Neto libre: {{ prop.neto|euro:0 }}</div>
+                        <div class="prop-desglose">{{ prop.valor_actual|euro:0 }} − hipoteca {{ prop.deuda|euro:0 }} − plusvalía {{ prop.plusvalia|euro:0 }} − gastos {{ prop.gastos_venta|euro:0 }}</div>
                     </div>
                 </label>
                 {% endfor %}

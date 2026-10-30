@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% load l10n %}
 
 {% block title %}Fondos — Treasure{% endblock %}
@@ -7,22 +8,33 @@
 <div class="panel">
 
 <!-- ===== CABECERA ===== -->
-<div class="fondos-head">
+<header class="cabecera-pagina">
     <div>
-        <h2 style="margin:0;"><span class="title-gradient">Fondos</span></h2>
-        <p class="fondos-sub">
-            Tus cuentas y sobres: dónde vive el dinero y qué gastos paga cada uno.
-            Cómo se reparte el dinero entre ellos se define en
-            <a href="{% url 'finanzas:vista_distribucion' %}">Distribución</a>.
-        </p>
+        <h1>Fondos</h1>
+        <p class="cp-sub">Dónde vive el dinero y qué paga cada cuenta. Cómo se reparte, en <a href="{% url 'finanzas:vista_distribucion' %}">Distribución</a>.</p>
     </div>
-    <button onclick="abrirModalFondo()" class="btn btn-primary">＋ Nuevo fondo</button>
+    <div class="cp-acciones"><button onclick="abrirModalFondo()" class="btn btn-primary">+ Nuevo fondo</button></div>
+</header>
+
+{% if liquidez_fondos %}
+<div class="cifras">
+    <div class="cifra destacada">
+        <span class="cifra-lbl">Dinero disponible</span>
+        <span class="cifra-val">{{ liquidez_fondos|euro:0 }}</span>
+        <span class="cifra-sub">cuentas, sobres y depósitos · {{ saldos_mes }}</span>
+    </div>
+    <div class="cifra">
+        <span class="cifra-lbl">Gastos sin fondo</span>
+        <span class="cifra-val{% if total_sin_asignar %} neg{% endif %}">{{ total_sin_asignar|euro:0 }}</span>
+        <span class="cifra-sub">{% if gastos_sin_asignar %}{{ gastos_sin_asignar|length }} gasto{{ gastos_sin_asignar|pluralize:"s" }} al mes sin cuenta que los pague{% else %}todos tienen quien los pague{% endif %}</span>
+    </div>
 </div>
+{% endif %}
 
 {% if gastos_sin_asignar %}
 <div class="fondos-aviso">
     <strong>{{ gastos_sin_asignar|length }} gasto{{ gastos_sin_asignar|pluralize:"s" }} del hogar sin fondo que lo cubra</strong>
-    (€{{ total_sin_asignar|floatformat:2 }}/mes):
+    ({{ total_sin_asignar|euro:2 }}/mes):
     {% for g in gastos_sin_asignar %}{{ g.nombre }}{% if not forloop.last %} · {% endif %}{% endfor %}.
     Asígnalos desde el fondo que los paga.
 </div>
@@ -42,6 +54,12 @@
             </form>
         </div>
     </div>
+    {% if fd.saldo is not None %}
+    <div class="fondo-saldo">
+        <span class="fondo-saldo-val numero">{{ fd.saldo|euro:0 }}</span>
+        <span class="fondo-saldo-sub">{% if fd.saldo_viejo %}apuntado en {{ fd.saldo_viejo }}{% else %}en {{ saldos_mes }}{% endif %}</span>
+    </div>
+    {% endif %}
     <div class="fondo-card-meta">
         <span class="tag-tipo tag-{{ fd.fondo.tipo_fondo }}">{{ fd.fondo.get_tipo_fondo_display }}</span>
         <span title="Titular del fondo (Informe Hacienda)">· {{ fd.fondo.titular_nombre }}</span>
@@ -55,7 +73,7 @@
         <div class="fondo-gastos-head">
             <span class="fondo-gastos-titulo">
                 Gastos que cubre
-                {% if fd.gastos %}<span class="fondo-gastos-total">€{{ fd.total_gastos|floatformat:2 }}/mes</span>{% endif %}
+                {% if fd.gastos %}<span class="fondo-gastos-total">{{ fd.total_gastos|euro:2 }}/mes</span>{% endif %}
             </span>
             <button onclick="abrirAsignarGastos({{ fd.fondo.id }},'{{ fd.fondo.nombre|escapejs }}')"
                     class="btn btn-secondary btn-mini">{% if fd.gastos %}Cambiar{% else %}Asignar gastos{% endif %}</button>
@@ -65,7 +83,7 @@
             {% for g in fd.gastos %}
             <li>
                 <span>{{ g.nombre }} <span class="fondo-gastos-cat">· {{ g.categoria.nombre }}</span></span>
-                <span class="fondo-gastos-importe">€{{ g.importe_mensual|floatformat:2 }}/mes</span>
+                <span class="fondo-gastos-importe">{{ g.importe_mensual|euro:2 }}/mes</span>
             </li>
             {% endfor %}
         </ul>
@@ -80,8 +98,8 @@
     <div class="fondo-cartera">
         <div class="fondo-cartera-titulo">Cartera · {{ fd.fondo.num_activos_vinculados }} activo{{ fd.fondo.num_activos_vinculados|pluralize:"s" }}</div>
         <div class="fondo-cartera-cifras">
-            <div><span class="lbl">Valor mercado</span><span class="val">€{{ fd.fondo.valor_cartera|floatformat:2 }}</span></div>
-            <div><span class="lbl">Aportado</span><span class="val">€{{ fd.fondo.total_aportado_cartera|floatformat:2 }}</span></div>
+            <div><span class="lbl">Valor mercado</span><span class="val">{{ fd.fondo.valor_cartera|euro:2 }}</span></div>
+            <div><span class="lbl">Aportado</span><span class="val">{{ fd.fondo.total_aportado_cartera|euro:2 }}</span></div>
             {% if fd.fondo.rentabilidad_cartera is not None %}
             <div><span class="lbl">Rentabilidad</span><span class="val" style="color:{% if fd.fondo.rentabilidad_cartera >= 0 %}var(--success){% else %}var(--danger){% endif %};">{% if fd.fondo.rentabilidad_cartera >= 0 %}+{% endif %}{{ fd.fondo.rentabilidad_cartera }}%</span></div>
             {% endif %}
@@ -99,7 +117,7 @@
 <div class="section-title" style="margin-top:28px;">Depósitos · liquidez</div>
 <p class="fondos-sub" style="margin-top:-6px;">
     Su valor se calcula solo (interés y aportaciones) y cuenta como liquidez en Evolución.
-    Total: <strong>€{{ depositos_total|floatformat:2 }}</strong>.
+    Total: <strong>{{ depositos_total|euro:2 }}</strong>.
 </p>
 <div class="fondos-grid">
     {% for dep in depositos_data %}
@@ -107,13 +125,13 @@
         <div class="fondo-card-head">
             <span class="fondo-card-nombre">
                 <a href="{% url 'finanzas:detalle' dep.obj.id %}">{{ dep.obj.nombre }}</a>
-                <span style="color:var(--info);">€{{ dep.valor|floatformat:2 }}</span>
+                <span style="color:var(--info);">{{ dep.valor|euro:2 }}</span>
             </span>
         </div>
         <div class="fondo-card-meta">
             <span class="tag-tipo tag-ahorro">Depósito</span>
             <span>· {{ dep.obj.deposito_tipo_interes|default:"0"|floatformat:"-3" }}% anual</span>
-            <span>· aportado €{{ dep.aportado|floatformat:2 }}</span>
+            <span>· aportado {{ dep.aportado|euro:2 }}</span>
         </div>
         <div class="fondo-deposito-vinculo">
             {% if dep.obj.fondo %}
@@ -188,7 +206,7 @@
                 <input type="checkbox" name="partida_ids" value="{{ g.id }}">
                 <span>
                     {{ g.nombre }}
-                    <span class="gasto-check-sub">· {{ g.categoria.nombre }} · €{{ g.importe_mensual|floatformat:2 }}/mes</span>
+                    <span class="gasto-check-sub">· {{ g.categoria.nombre }} · {{ g.importe_mensual|euro:2 }}/mes</span>
                     <span class="gasto-check-otro" data-otro-de="{{ g.fondo_asignado_id|default:'' }}">
                         {% if g.fondo_asignado %}· ahora lo cubre {{ g.fondo_asignado.nombre }}{% endif %}
                     </span>

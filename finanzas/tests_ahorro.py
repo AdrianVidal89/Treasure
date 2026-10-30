@@ -81,3 +81,44 @@ class DesgloseAhorroTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Lo que tenéis')
         self.assertEqual(resp.context['ah']['ahorro'], D('2900'))
+
+
+class SaldoPrevistoYSaludTests(DesgloseAhorroTests):
+    """Distribución dice cómo queda cada fondo partiendo de su saldo real, y el
+    inicio enseña los indicadores básicos de salud."""
+
+    def test_el_saldo_previsto_parte_del_mes_anterior(self):
+        import datetime
+        from .models import SaldoRealFondo
+        from .distribucion import calcular_flujos
+        from .saldo_previsto import saldos_previstos
+        hoy = datetime.date.today()
+        anio, mes = (hoy.year - 1, 12) if hoy.month == 1 else (hoy.year, hoy.month - 1)
+        SaldoRealFondo.objects.create(fondo=self.bankinter, año=anio, mes=mes, saldo=D('80000'))
+        d = calcular_flujos(self.hogar, hoy.month, hoy.year)
+        pv = saldos_previstos(self.hogar, hoy.year, hoy.month, d['fondos_aportaciones'])
+        b = pv[self.bankinter.id]
+        self.assertEqual(b['base'], D('80000'))
+        self.assertEqual(b['final'], D('80000') + b['movimiento'])
+        self.assertGreater(b['movimiento'], 0)
+
+    def test_la_pantalla_enseña_el_saldo_previsto(self):
+        import datetime
+        from .models import SaldoRealFondo
+        hoy = datetime.date.today()
+        anio, mes = (hoy.year - 1, 12) if hoy.month == 1 else (hoy.year, hoy.month - 1)
+        SaldoRealFondo.objects.create(fondo=self.bankinter, año=anio, mes=mes, saldo=D('80000'))
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('finanzas:vista_distribucion'))
+        self.assertContains(resp, 'Quedará en')
+        self.assertContains(resp, '80.000 €')
+
+    def test_indicadores_de_salud(self):
+        from .salud import indicadores
+        k = {x['clave']: x for x in indicadores(
+            self.hogar, liquidez=D('30000'), inversiones=D('10000'),
+            ingreso_mensual=D('5000'), gasto_mensual=D('2500'), tasa_ahorro=D('50'))}
+        self.assertEqual(k['colchon']['valor'], '12')
+        self.assertEqual(k['colchon']['estado'], 'bien')
+        self.assertEqual(k['ahorro']['estado'], 'bien')
+        self.assertEqual(k['invertido']['valor'], '25')

@@ -198,10 +198,7 @@
     <div class="cc-header">
         <h1 class="cc-saludo">{{ saludo }}, <span>{{ request.user.first_name|default:request.user.username }}</span></h1>
         <div class="cc-sub">{{ hogar.nombre }} · {{ mes_nombre }} {{ anio }}</div>
-        <div class="cc-semaforo {{ salud_semaforo }}">
-            <span class="dot"></span>
-            {{ salud_texto }} — Tasa de ahorro: {{ salud_tasa }}%
-        </div>
+
     </div>
 
     <!-- ═══ HERO: LO QUE TENÉIS ═══
@@ -238,6 +235,31 @@
         </ul>
         {% endif %}
     </section>
+
+    {% if salud %}
+    <!-- ═══ SALUD FINANCIERA: los cinco indicadores básicos ═══
+         Cada uno con su semáforo; al tocarlo se abre el criterio con el que se
+         valora, para saber por qué está en verde o en ámbar. -->
+    <section class="salud" aria-labelledby="salud-titulo">
+        <h2 id="salud-titulo" class="seccion-titulo">Salud financiera</h2>
+        <div class="salud-rejilla">
+            {% for k in salud %}
+            <details class="salud-kpi salud-{{ k.estado }}">
+                <summary>
+                    <span class="salud-nombre">{{ k.nombre }}</span>
+                    <span class="salud-valor numero">{{ k.valor }}<small>{{ k.unidad }}</small></span>
+                    <span class="salud-frase"><i class="salud-luz"></i>{{ k.frase }}</span>
+                </summary>
+                <div class="salud-explica">
+                    <p class="salud-detalle">{{ k.detalle }}</p>
+                    <p>{{ k.criterio }}</p>
+                    <a href="{{ k.enlace }}">Ver el detalle →</a>
+                </div>
+            </details>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     <!-- ═══ EL MES: ENTRA, SALE, QUEDA ═══ -->
     <div class="cc-mes">

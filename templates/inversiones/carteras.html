@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block title %}Carteras de Inversión - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -80,11 +81,11 @@
                 <div class="cart-metrics">
                     <div class="cart-metric">
                         <span class="l">Valor</span>
-                        <span class="v">€{{ c.valor|floatformat:2 }}</span>
+                        <span class="v">{{ c.valor|euro:2 }}</span>
                     </div>
                     <div class="cart-metric">
                         <span class="l">Invertido</span>
-                        <span class="v">€{{ c.aportado|floatformat:2 }}</span>
+                        <span class="v">{{ c.aportado|euro:2 }}</span>
                     </div>
                     <div class="cart-metric">
                         <span class="l">Rentabilidad</span>

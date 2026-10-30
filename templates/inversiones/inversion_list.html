@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load custom_filters %}
 {% block title %}Cartera de Inversiones - Treasure{% endblock %}
 {% block body_class %}dashboard-background{% endblock %}
 
@@ -211,71 +212,41 @@
 
 <div class="inv-wrap">
 
-    <!-- HEADER -->
-    <div class="inv-header">
-        <h1>Cartera de Inversiones</h1>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <a href="{% url 'finanzas:informe_hacienda' %}"
-               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
-                      border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 8px;
-                      text-decoration: none; font-weight: 600;">
-                Informe Hacienda
-            </a>
-            <a href="{% url 'finanzas:importar_csv' %}"
-               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
-                      border: 1px solid var(--warning); color: var(--warning); border-radius: 8px;
-                      text-decoration: none; font-weight: 600;">
-                Importar CSV
-            </a>
+    <!-- CABECERA: una acción principal; el resto, discretas -->
+    <header class="cabecera-pagina">
+        <div>
+            <h1>Inversiones</h1>
+            <p class="cp-sub">La cartera a precio de mercado frente a lo que pusisteis</p>
+        </div>
+        <div class="cp-acciones">
+            <a href="{% url 'finanzas:informe_hacienda' %}" class="btn btn-ghost">Informe Hacienda</a>
+            <a href="{% url 'finanzas:importar_csv' %}" class="btn btn-ghost">Importar CSV</a>
+            <a href="{% url 'finanzas:carteras' %}" class="btn btn-ghost">Carteras</a>
             <form method="post" action="{% url 'finanzas:actualizar_precios' %}" style="display:inline;">
                 {% csrf_token %}
-                <button type="submit"
-                        style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
-                               border: 1px solid var(--info); color: var(--info); border-radius: 8px;
-                               font-weight: 600; cursor: pointer;">
-                    Actualizar precios
-                </button>
+                <button type="submit" class="btn btn-secondary">↻ Actualizar precios</button>
             </form>
-            <a href="{% url 'finanzas:carteras' %}"
-               style="font-size: 0.85rem; padding: 10px 18px; background: transparent;
-                      border: 1px solid var(--success); color: var(--success); border-radius: 8px;
-                      text-decoration: none; font-weight: 600;">
-                Carteras
-            </a>
-            <a href="{% url 'finanzas:crear' %}" class="btn btn-primary"
-               style="font-size: 0.85rem; padding: 10px 18px;">
-                Nueva inversión
-            </a>
+            <a href="{% url 'finanzas:crear' %}" class="btn btn-primary">+ Nueva inversión</a>
         </div>
-    </div>
+    </header>
 
-    <!-- KPIs -->
-    <div class="inv-kpi-grid">
-        <div class="inv-kpi" style="border-color: color-mix(in srgb, var(--primary-color) 27%, transparent);">
-            <div class="label">Valor de mercado</div>
-            <div class="valor" style="color: var(--primary-color);">€{{ total_valor_actual|floatformat:2 }}</div>
-            <div class="sub">Valoración actual</div>
+    <div class="cifras">
+        <div class="cifra destacada">
+            <span class="cifra-lbl">Vale hoy</span>
+            <span class="cifra-val">{{ total_valor_actual|euro:0 }}</span>
+            <span class="cifra-sub">{{ inv_data|length }} posicion{{ inv_data|length|pluralize:"es" }} abierta{{ inv_data|length|pluralize }}</span>
         </div>
-        <div class="inv-kpi" style="border-color: var(--border);">
-            <div class="label">Capital invertido</div>
-            <div class="valor" style="color: var(--text-color);">€{{ total_coste_base|floatformat:2 }}</div>
-            <div class="sub" title="Lo que pagaste por las unidades que sigues teniendo (precio medio). Es la base de la rentabilidad. Compras totales, incluidas las vendidas: €{{ total_aportado|floatformat:2 }}.">Coste de lo que sigues teniendo</div>
+        <div class="cifra">
+            <span class="cifra-lbl">Pusisteis</span>
+            <span class="cifra-val">{{ total_coste_base|euro:0 }}</span>
+            <span class="cifra-sub" title="Lo que pagaste por las unidades que sigues teniendo (precio medio). Compras totales, incluidas las vendidas: {{ total_aportado|euro:2 }}.">coste de lo que seguís teniendo</span>
         </div>
-        <div class="inv-kpi" style="border-color: {% if rentabilidad_total >= 0 %}color-mix(in srgb, var(--success) 27%, transparent){% else %}color-mix(in srgb, var(--danger) 27%, transparent){% endif %};">
-            <div class="label">Rentabilidad total</div>
-            <div class="valor {% if rentabilidad_total >= 0 %}pos{% else %}neg{% endif %}">
-                {% if total_coste_base > 0 %}
-                    {% if rentabilidad_total >= 0 %}+{% endif %}{{ rentabilidad_total|floatformat:2 }}%
-                {% else %}
-                    —
-                {% endif %}
-            </div>
-            <div class="sub">Sobre capital invertido</div>
-        </div>
-        <div class="inv-kpi" style="border-color: var(--border);">
-            <div class="label">Activos en cartera</div>
-            <div class="valor" style="color: var(--text-color);">{{ inv_data|length }}</div>
-            <div class="sub">Posiciones abiertas</div>
+        <div class="cifra">
+            <span class="cifra-lbl">Ganancia</span>
+            {% with g=total_valor_actual|menos:total_coste_base %}
+            <span class="cifra-val {% if g >= 0 %}pos{% else %}neg{% endif %}">{% if total_coste_base > 0 %}{% if g >= 0 %}+{% endif %}{{ g|euro:0 }}{% else %}—{% endif %}</span>
+            {% endwith %}
+            <span class="cifra-sub">{% if total_coste_base > 0 %}{% if rentabilidad_total >= 0 %}+{% endif %}{{ rentabilidad_total|floatformat:1 }} % sobre lo invertido{% else %}sin inversiones{% endif %}</span>
         </div>
     </div>
 
@@ -300,16 +271,16 @@
         <div class="cp-name" style="color: {{ cartera_kpis.color }};">{{ cartera_kpis.nombre }}</div>
         <div class="cp-metric">
             <span class="l">Valor de mercado</span>
-            <span class="v">€{{ cartera_kpis.valor|floatformat:2 }}</span>
+            <span class="v">{{ cartera_kpis.valor|euro:2 }}</span>
         </div>
         <div class="cp-metric">
             <span class="l">Capital invertido</span>
-            <span class="v">€{{ cartera_kpis.aportado|floatformat:2 }}</span>
+            <span class="v">{{ cartera_kpis.aportado|euro:2 }}</span>
         </div>
         <div class="cp-metric">
             <span class="l">Ganancia/pérdida</span>
             <span class="v {% if cartera_kpis.ganancia >= 0 %}pos{% else %}neg{% endif %}">
-                {% if cartera_kpis.ganancia >= 0 %}+{% endif %}€{{ cartera_kpis.ganancia|floatformat:2 }}
+                {% if cartera_kpis.ganancia >= 0 %}+{% endif %}{{ cartera_kpis.ganancia|euro:2 }}
             </span>
         </div>
         <div class="cp-metric">
@@ -439,7 +410,7 @@
                     <td class="right c-valor">
                         {% if item.valor_total %}
                             <strong style="color: var(--primary-color); font-size: 0.95rem;">
-                                €{{ item.valor_total|floatformat:2 }}
+                                {{ item.valor_total|euro:2 }}
                             </strong>
                         {% else %}
                             <span style="color: var(--border-strong);">—</span>
@@ -538,13 +509,13 @@
                                         </td>
                                         <td class="right h-com" data-label="Comisión" style="color: var(--muted);">
                                             {% if m.comision > 0 %}
-                                                €{{ m.comision|floatformat:2 }}
+                                                {{ m.comision|euro:2 }}
                                             {% else %}
                                                 —
                                             {% endif %}
                                         </td>
                                         <td class="right h-coste" style="color: var(--warning); font-weight: 600;">
-                                            €{{ m.coste_total|floatformat:2 }}
+                                            {{ m.coste_total|euro:2 }}
                                         </td>
                                         <td class="h-edit">
                                             <a href="{% url 'finanzas:editar_movimiento' m.id %}"
@@ -572,7 +543,7 @@
                                     <span style="color: var(--muted);">
                                         Capital invertido:
                                         <strong style="color: var(--text-color);">
-                                            €{{ item.inv.valor_aportado|floatformat:2 }}
+                                            {{ item.inv.valor_aportado|euro:2 }}
                                         </strong>
                                     </span>
                                     <span style="color: var(--muted);">
@@ -645,9 +616,9 @@
         <p class="sub">
             Los depósitos no forman parte de tu cartera de mercado, pero su valor cuenta como
             capital y aparece automáticamente en Evolución.
-            Aportado: <strong style="color: var(--text-color);">€{{ deposit_total_aportado|floatformat:2 }}</strong>
-            {% if deposit_total_valor %}· Valor actual: <strong style="color: var(--text-color);">€{{ deposit_total_valor|floatformat:2 }}</strong>{% endif %}
-            {% if deposit_total_interes %}· Interés: <strong class="{% if deposit_total_interes >= 0 %}pos{% else %}neg{% endif %}">{% if deposit_total_interes >= 0 %}+{% endif %}€{{ deposit_total_interes|floatformat:2 }}</strong>{% endif %}
+            Aportado: <strong style="color: var(--text-color);">{{ deposit_total_aportado|euro:2 }}</strong>
+            {% if deposit_total_valor %}· Valor actual: <strong style="color: var(--text-color);">{{ deposit_total_valor|euro:2 }}</strong>{% endif %}
+            {% if deposit_total_interes %}· Interés: <strong class="{% if deposit_total_interes >= 0 %}pos{% else %}neg{% endif %}">{% if deposit_total_interes >= 0 %}+{% endif %}{{ deposit_total_interes|euro:2 }}</strong>{% endif %}
         </p>
         {% for item in deposit_data %}
         <div class="deposit-card">
@@ -667,29 +638,29 @@
                 {% if item.dep_valor != None %}
                 <div class="dep-metric">
                     <span class="l">Saldo restante</span>
-                    <span class="v" style="color:var(--info);">€{{ item.dep_valor|floatformat:2 }}</span>
+                    <span class="v" style="color:var(--info);">{{ item.dep_valor|euro:2 }}</span>
                 </div>
                 <div class="dep-metric">
                     <span class="l">Aportado</span>
-                    <span class="v">€{{ item.dep_aportado|floatformat:2 }}</span>
+                    <span class="v">{{ item.dep_aportado|euro:2 }}</span>
                 </div>
                 {% if item.dep_retirado %}
                 <div class="dep-metric">
                     <span class="l">Retirado</span>
-                    <span class="v">€{{ item.dep_retirado|floatformat:2 }}</span>
+                    <span class="v">{{ item.dep_retirado|euro:2 }}</span>
                 </div>
                 {% endif %}
                 <div class="dep-metric">
                     <span class="l">Rendimiento</span>
                     <span class="v {% if item.dep_interes >= 0 %}pos{% else %}neg{% endif %}">
-                        {% if item.dep_interes >= 0 %}+{% endif %}€{{ item.dep_interes|floatformat:2 }}{% if item.dep_interes_pct != None %}
+                        {% if item.dep_interes >= 0 %}+{% endif %}{{ item.dep_interes|euro:2 }}{% if item.dep_interes_pct != None %}
                         <span style="font-size:0.75rem;">({% if item.dep_interes_pct >= 0 %}+{% endif %}{{ item.dep_interes_pct }}%)</span>{% endif %}
                     </span>
                 </div>
                 {% else %}
                 <div class="dep-metric">
                     <span class="l">Aportado</span>
-                    <span class="v">€{{ item.inv.valor_aportado|floatformat:2 }}</span>
+                    <span class="v">{{ item.inv.valor_aportado|euro:2 }}</span>
                 </div>
                 <div class="dep-metric">
                     <span class="l">Movimientos</span>

@@ -1253,3 +1253,288 @@ a.ah-tag { color: var(--danger); background: color-mix(in srgb, var(--danger) 10
     .pt-mes:hover { background: color-mix(in srgb, var(--accent-color) 16%, var(--surface)); }
     .pt-partes a:hover { background: var(--surface-2); }
 }
+
+/* ── Distribución, punto 3: saldo de partida → saldo previsto ── */
+.fe-saldo {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+    margin-top: 12px; padding: 12px 14px; border-radius: 14px;
+    background: color-mix(in srgb, var(--fc, var(--accent-color)) 8%, var(--surface-2));
+}
+.fe-saldo-paso { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fe-saldo-final { text-align: right; align-items: flex-end; }
+.fe-saldo-lbl { font-size: 0.7rem; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.fe-saldo-val { font-size: 1.15rem; font-weight: 700; color: var(--text-color); }
+.fe-saldo-final .fe-saldo-val { font-size: 1.35rem; color: var(--fc, var(--accent-color)); filter: saturate(1.1); }
+.fe-saldo-flecha { font-size: 0.8rem; font-weight: 650; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fe-saldo-nota { margin: 8px 2px 0; font-size: 0.78rem; color: var(--muted); }
+
+/* ============================================================
+   REDISEÑO NOV-2026 — una sola capa encima de todo lo anterior
+   Idea: apps de finanzas modernas (cifras grandes y seguras, superficies por
+   capas en vez de cajas con borde, el color solo donde significa algo,
+   etiquetas en minúscula normal y no en versalitas diminutas). Vale para las
+   dos paletas y para TODAS las pantallas, porque toca las piezas comunes.
+   ============================================================ */
+
+/* ── Paleta clara: más aire y contraste por capas ── */
+:root {
+    --app-bg: #f3f5f4;
+    --surface: #ffffff;
+    --surface-2: #f2f4f3;
+    --surface-3: #e9edeb;
+    --border: #e4e8e6;
+    --border-strong: #d3dad6;
+    --text-color: #15201b;
+    --muted: #64716b;
+    --accent-color: #1f7a4d;
+    --primary-color: #1f7a4d;
+    --primary-strong: #19663f;
+    --accent-soft: #e5f2eb;
+    --radius-sm: 10px;
+    --radius: 14px;
+    --radius-lg: 18px;
+    --radius-xl: 22px;
+    --shadow-sm: 0 1px 2px rgba(16, 32, 24, 0.04), 0 2px 8px rgba(16, 32, 24, 0.04);
+    --shadow: 0 1px 2px rgba(16, 32, 24, 0.05), 0 10px 30px rgba(16, 32, 24, 0.07);
+    --capa: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+/* ── Paleta oscura: grafito por capas, el verde del aspecto común ──
+   Fuera el fósforo y los halos: el verde se queda para lo que significa
+   (dinero que entra, lo activo), no para pintar la pantalla. */
+:root[data-theme="black"] {
+    --app-bg: #0b0e12;
+    --dark-bg: #090b0f;
+    --surface: #12161c;
+    --surface-2: #181d24;
+    --surface-3: #1f252e;
+    --input-bg: #161b22;
+    --border: #212831;
+    --border-strong: #2e3743;
+    --text-color: #e7ecea;
+    --muted: #8c98a2;
+    --primary-color: #3fb37a;
+    --primary-strong: #52c58c;
+    --accent-color: #4cc98a;
+    --accent-soft: rgba(63, 179, 122, 0.13);
+    --on-primary: #04140c;
+    --success: #4cc98a;
+    --success-2: #7fdcab;
+    --danger: #f0705a;
+    --danger-strong: #f48a77;
+    --danger-2: #f59a88;
+    --warning: #f2b84b;
+    --warning-2: #f7cf83;
+    --info: #5fb7e5;
+    --glow: transparent;
+    --glow-soft: rgba(76, 201, 138, 0.18);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.35);
+    --shadow-glow: var(--shadow);
+    --navbar-bg: rgba(11, 14, 18, 0.82);
+    --navbar-shadow: none;
+    --menu-bg: #161b22;
+    --menu-hover: #1f252e;
+    --menu-border: #2a313b;
+    --badge-bg: rgba(255, 255, 255, 0.05);
+    --capa: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+/* Sin halos de neón. */
+:root[data-theme="black"] .sidebar-link.active,
+:root[data-theme="black"] .btn-primary,
+:root[data-theme="black"] .btn-primary:hover,
+:root[data-theme="black"] .nav-profile-avatar,
+:root[data-theme="black"] .theme-toggle { box-shadow: none; }
+
+/* ── Tipografía: títulos con peso, cifras seguras ── */
+body { font-size: 15.5px; letter-spacing: -0.003em; }
+h1, h2 { letter-spacing: -0.025em; font-weight: 720; }
+h3, h4 { letter-spacing: -0.012em; font-weight: 650; }
+.title-gradient, .titulo-glow, .section-title { color: var(--text-color); letter-spacing: -0.03em; font-weight: 750; }
+.panel > h1, .panel > h2, .dashboard-container > h1, .dashboard-container > h2,
+.dist-head h2, .page-header h1, .page-header h2 { font-size: clamp(1.5rem, 2.6vw, 1.95rem); }
+.text-muted { color: var(--muted) !important; }
+
+/* ── Contenedores de página: una hoja amplia, sin marco duro ── */
+.panel, .dashboard-container {
+    max-width: 1120px;
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm), var(--capa);
+    padding: 30px 34px;
+}
+
+/* ── Tarjetas: capas suaves en vez de bordes ── */
+.card, .card-glow, .cuenta-card, .mini-dashboard, .glass-panel, .chart-section {
+    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm), var(--capa);
+}
+.section-card { background: var(--surface-2); border: 0; border-radius: var(--radius-lg); }
+.glass-panel--accent::before { height: 0; }
+.kpi-item { background: var(--surface-2) !important; border: 0 !important; border-radius: var(--radius) !important; }
+
+/* ── Cifras clave (stat tiles): etiqueta normal, número grande ── */
+.stat-tile .stat-tile-label, .cuenta-tipo, .total-patrimonio-titulo, .sidebar-group-label {
+    text-transform: none; letter-spacing: 0; font-size: 0.8rem; font-weight: 600;
+}
+.stat-tile .stat-tile-valor { font-weight: 740; letter-spacing: -0.02em; }
+
+/* ── Botones: píldoras, el principal con presencia ── */
+.btn, .btn-glow-primary, .btn-glow-secundario {
+    border-radius: 999px; min-height: 40px; padding: 9px 18px; font-weight: 620; letter-spacing: -0.005em;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 14px color-mix(in srgb, var(--primary-color) 28%, transparent); }
+.btn-secondary { background: var(--surface-2); border-color: transparent; color: var(--text-color); }
+.btn-ghost { color: var(--muted); }
+.btn-danger { box-shadow: none; }
+
+/* ── Formularios: campos rellenos, foco claro ── */
+.form-group label { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.form-group input, .form-group select, .form-group textarea, .cyber-select,
+.fg input, .fg select, .fg textarea, .inp-sm, .sel-sm {
+    border-radius: 12px;
+    border: 1px solid transparent;
+    background-color: var(--surface-2);
+    font-size: 16px;   /* por debajo, el iPhone hace zoom al tocar */
+    transition: border-color var(--t-corto) var(--salida), box-shadow var(--t-corto) var(--salida), background-color var(--t-corto) var(--salida);
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus, .cyber-select:focus,
+.fg input:focus, .fg select:focus, .fg textarea:focus, .inp-sm:focus, .sel-sm:focus {
+    background-color: var(--surface);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent-color) 16%, transparent);
+    outline: none;
+}
+
+/* ── Tablas: sin rejilla, cabecera discreta, filas que respiran ── */
+.table th, .tabla-oscura th, .tabla-miembros th {
+    text-transform: none; letter-spacing: 0; font-size: 0.78rem; font-weight: 600;
+    background: transparent; border-bottom: 1px solid var(--border); padding: 12px 14px;
+}
+.table td, .tabla-oscura td, .tabla-miembros td {
+    padding: 13px 14px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Etiquetas: rellenas y sin borde ── */
+.badge, .rol-badge, .pill { border-color: transparent; font-weight: 620; }
+
+/* ── Barra lateral ── */
+.sidebar { background: color-mix(in srgb, var(--surface) 92%, var(--app-bg)); border-right-color: color-mix(in srgb, var(--border) 70%, transparent); }
+.sidebar-link { border-radius: 12px; padding: 10px 12px; font-weight: 550; }
+.sidebar-link.active { background: var(--accent-soft); color: var(--accent-color); font-weight: 650; }
+.sidebar-link.active .icon { color: var(--accent-color); }
+.nav-title { color: var(--text-color); font-weight: 760; letter-spacing: -0.02em; }
+.app-header { border-bottom-color: color-mix(in srgb, var(--border) 60%, transparent); }
+
+/* ── Ventanas (modales): entran desde el 96 %, el fondo se desenfoca ── */
+.modal-overlay { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.modal-box {
+    border-radius: var(--radius-xl) !important; border: 1px solid color-mix(in srgb, var(--border) 70%, transparent) !important;
+    box-shadow: var(--shadow) !important;
+}
+.modal-overlay.active .modal-box {
+    transition: transform var(--t-medio) var(--salida), opacity var(--t-medio) var(--salida);
+}
+@starting-style {
+    .modal-overlay.active .modal-box { transform: scale(0.96); opacity: 0; }
+}
+
+/* ── Estados vacíos y mensajes ── */
+.empty-state { border-style: solid; border-color: color-mix(in srgb, var(--border) 70%, transparent); background: var(--surface-2); }
+.app-mensaje { border-radius: 14px !important; box-shadow: var(--shadow-sm); }
+
+/* ── Títulos de sección comunes (panel de inicio y demás) ── */
+.seccion-titulo { font-size: 1.1rem; font-weight: 720; letter-spacing: -0.02em; margin: 0 0 12px; color: var(--text-color); }
+
+/* ── Salud financiera: cinco indicadores con semáforo ── */
+.salud { margin: 0 0 24px; }
+.salud-rejilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.salud-kpi {
+    position: relative; border-radius: var(--radius-lg); background: var(--surface);
+    border: 1px solid color-mix(in srgb, var(--border) 75%, transparent); box-shadow: var(--shadow-sm);
+    --luz: var(--muted);
+}
+.salud-bien { --luz: var(--success); }
+.salud-atencion { --luz: var(--warning); }
+.salud-mal { --luz: var(--danger); }
+.salud-info { --luz: var(--info); }
+.salud-kpi summary {
+    list-style: none; cursor: pointer; display: flex; flex-direction: column; gap: 4px;
+    padding: 16px 16px 14px; border-radius: inherit; user-select: none;
+}
+.salud-kpi summary::-webkit-details-marker { display: none; }
+.salud-kpi summary:active { transform: scale(0.98); transition: transform var(--t-pulsar) var(--salida); }
+.salud-nombre { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.salud-valor { font-size: 1.9rem; font-weight: 760; letter-spacing: -0.03em; line-height: 1.1; color: var(--text-color); }
+.salud-valor small { font-size: 0.95rem; font-weight: 650; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+.salud-frase { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; color: var(--muted); }
+.salud-luz { width: 8px; height: 8px; border-radius: 50%; background: var(--luz); flex-shrink: 0; box-shadow: 0 0 0 3px color-mix(in srgb, var(--luz) 20%, transparent); }
+.salud-explica { padding: 0 16px 16px; font-size: 0.85rem; line-height: 1.55; color: var(--text-color); }
+.salud-explica p { margin: 0 0 8px; }
+.salud-detalle { color: var(--muted); font-variant-numeric: tabular-nums; }
+.salud-kpi[open] { grid-column: span 2; }
+@media (max-width: 640px) { .salud-kpi[open] { grid-column: 1 / -1; } .salud-rejilla { grid-template-columns: 1fr 1fr; } }
+
+@media (max-width: 768px) {
+    .panel, .dashboard-container { padding: 20px 16px; border-radius: 18px; }
+}
+@media (hover: hover) and (pointer: fine) {
+    .btn-secondary:hover { background: var(--surface-3); color: var(--text-color); border-color: transparent; }
+    .btn-primary:hover { background-color: var(--primary-strong); }
+    .salud-kpi summary:hover { background: color-mix(in srgb, var(--luz) 5%, transparent); }
+    .sidebar-link:hover { background: var(--surface-2); }
+}
+
+/* ── Piezas comunes nuevas: cabecera de página y fila de cifras ──
+   Toda pantalla empieza igual: título, una línea de contexto, las acciones
+   a la derecha y debajo sus tres o cuatro cifras clave. */
+.cabecera-pagina { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.cabecera-pagina h1 { margin: 0; font-size: clamp(1.55rem, 2.8vw, 2rem); font-weight: 760; letter-spacing: -0.035em; color: var(--text-color); }
+.cabecera-pagina .cp-sub { margin: 4px 0 0; color: var(--muted); font-size: 0.95rem; }
+.cabecera-pagina .cp-acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.cifras { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 26px; }
+.cifra {
+    display: flex; flex-direction: column; gap: 3px; min-width: 0;
+    padding: 16px 18px; border-radius: var(--radius-lg); background: var(--surface-2);
+    container-type: inline-size;
+}
+.cifra-lbl { font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+.cifra-val { font-size: clamp(1.25rem, 13cqi, 1.75rem); font-weight: 760; letter-spacing: -0.03em; line-height: 1.15; color: var(--text-color); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cifra-sub { font-size: 0.8rem; color: var(--muted); }
+.cifra-sub .aviso-suave { color: var(--warning); }
+.cifra.destacada {
+    background:
+        radial-gradient(120% 160% at 0% 0%, color-mix(in srgb, var(--accent-color) 16%, transparent), transparent 60%),
+        var(--surface-2);
+}
+.cifra.destacada .cifra-val { color: var(--accent-color); }
+.cifra .pos { color: var(--success); } .cifra .neg { color: var(--danger); }
+.cifra-val.pos { color: var(--success); } .cifra-val.neg { color: var(--danger); }
+
+/* ── Fondos: lo que hay en cada uno ── */
+.fondo-saldo { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 10px; flex-wrap: wrap; }
+.fondo-saldo-val { font-size: 1.7rem; font-weight: 760; letter-spacing: -0.03em; color: var(--text-color); }
+.fondo-saldo-sub { font-size: 0.8rem; color: var(--muted); }
+/* Títulos de página sin icono delante: más limpios. */
+.page-header h1 .page-title-icon, h1 > .page-title-icon { display: none; }
+
+/* ── Botones de icono (editar, borrar): discretos hasta que se usan ── */
+.r-btn {
+    background: transparent !important; border: 0 !important; border-radius: 10px !important;
+    color: var(--muted) !important; min-width: 34px; min-height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background-color var(--t-pulsar) var(--salida), color var(--t-pulsar) var(--salida), transform var(--t-pulsar) var(--salida);
+}
+.r-btn:active { transform: scale(0.94); }
+@media (hover: hover) and (pointer: fine) {
+    .r-btn:hover { background: var(--surface-2) !important; color: var(--text-color) !important; }
+}
+/* Panel de inicio: las etiquetas antiguas en minúscula normal, como el resto. */
+.cc-flujo-lbl, .cc-ahorro-lbl, .cc-ahorro-anual-lbl, .cc-real-kpi-lbl, .cc-hero-label {
+    text-transform: none !important; letter-spacing: 0 !important; font-size: 0.85rem !important; font-weight: 600 !important;
+}
+.cc-saludo { font-size: clamp(1.5rem, 2.8vw, 2rem) !important; letter-spacing: -0.035em; font-weight: 760 !important; }

@@ -1,3 +1,4 @@
+{% load custom_filters %}
 {% load static %}
 {% comment %}
 «¿Cuánto coche me puedo permitir?», con la misma forma que el simulador de
@@ -24,7 +25,7 @@ que sí. Ahora el veredicto y el precio máximo salen de las mismas reglas.
         <p class="pv-hint" id="pv-fuente-detalle" style="margin:-4px 0 14px;"></p>
         <div class="pv-ctx">
             <div><span class="pv-lbl">Liquidez</span><b style="color:var(--info)" id="pv-ctx-liquidez">—</b>
-                {% if capital_depositos %}<small>incluye €{{ capital_depositos|floatformat:0 }} en depósitos</small>{% endif %}</div>
+                {% if capital_depositos %}<small>incluye {{ capital_depositos|euro:0 }} en depósitos</small>{% endif %}</div>
             <div><span class="pv-lbl">Ingresos/mes</span><b style="color:var(--success)" id="pv-ctx-ingresos">—</b></div>
             <div><span class="pv-lbl">Gastos/mes</span><b style="color:var(--danger)" id="pv-ctx-gastos">—</b><small>ya incluyen tus coches</small></div>
             <div><span class="pv-lbl">Libre/mes</span><b id="pv-ctx-libre">—</b></div>

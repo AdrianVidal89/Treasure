@@ -311,7 +311,7 @@
 
 <div class="dashboard-container">
 
-    <h1 style="color: var(--primary-color); text-shadow: none; margin-bottom: 8px;"> Presupuesto de Gastos</h1>
+    <h1> Presupuesto de Gastos</h1>
     <p style="color: var(--muted); margin-bottom: 24px;">{{ hogar.nombre }}</p>
 
     <!-- ═══ RESUMEN: EL TOTAL ES LA SUMA, Y SE VE ═══
@@ -447,10 +447,10 @@
     {% else %}
 
     <!-- GASTOS FIJOS -->
-    <div class="section-label" style="color: var(--warning);"> Gastos Fijos &mdash; &euro;{{ total_fijos|floatformat:2 }}/mes
+    <div class="section-label" style="color: var(--warning);"> Gastos Fijos &mdash; {{ total_fijos|euro:2 }}/mes
         <a href="{% url 'finanzas:crear_partida' %}?bloque=fijo" class="poner-techo"
            title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
-            {% if techo_fijo %}Techo: &euro;{{ techo_fijo|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+            {% if techo_fijo %}Techo: {{ techo_fijo|euro:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
         </a></div>
     {% if gastos_fijos %}
     <div class="grid-gastos">
@@ -462,7 +462,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
-                    <div class="gasto-card-monto" style="color: var(--warning);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: var(--warning);">{{ grupo.subtotal_mensual|euro:2 }}</div>
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
@@ -478,8 +478,8 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: var(--warning);">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
-                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
+                            <div class="gasto-partida-importe" style="color: var(--warning);">{{ p.importe|euro:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; {{ p.importe_mensual|euro:2 }}/mes</div>{% endif %}
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
                         <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
@@ -498,10 +498,10 @@
     {% endif %}
 
     <!-- GASTOS ANUALES -->
-    <div class="section-label" style="color: var(--info);"> Gastos Anuales &mdash; &euro;{{ total_provision|floatformat:2 }}/mes provision
+    <div class="section-label" style="color: var(--info);"> Gastos Anuales &mdash; {{ total_provision|euro:2 }}/mes provision
         <a href="{% url 'finanzas:crear_partida' %}?bloque=anual" class="poner-techo"
            title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
-            {% if techo_anual %}Techo: &euro;{{ techo_anual|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+            {% if techo_anual %}Techo: {{ techo_anual|euro:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
         </a></div>
     {% if gastos_anuales %}
     <div class="grid-gastos">
@@ -513,8 +513,8 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div class="gasto-card-monto" style="color: var(--info);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
-                    <div class="gasto-card-sub">/mes &middot; &euro;{{ grupo.subtotal_anual|floatformat:0 }}/a</div>
+                    <div class="gasto-card-monto" style="color: var(--info);">{{ grupo.subtotal_mensual|euro:2 }}</div>
+                    <div class="gasto-card-sub">/mes &middot; {{ grupo.subtotal_anual|euro:0 }}/a</div>
                 </div>
             </div>
             <div class="gasto-card-detail" onclick="event.stopPropagation()">
@@ -529,8 +529,8 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: var(--info);">&euro;{{ p.importe|floatformat:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></div>
-                            <div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>
+                            <div class="gasto-partida-importe" style="color: var(--info);">{{ p.importe|euro:2 }}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span></div>
+                            <div class="gasto-partida-equiv">&rarr; {{ p.importe_mensual|euro:2 }}/mes</div>
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
                         <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
@@ -549,10 +549,10 @@
     {% endif %}
 
     <!-- GASTOS VARIABLES -->
-    <div class="section-label" style="color: var(--primary-color);"> Gastos Variables &mdash; &euro;{{ total_variables|floatformat:2 }}/mes
+    <div class="section-label" style="color: var(--primary-color);"> Gastos Variables &mdash; {{ total_variables|euro:2 }}/mes
         <a href="{% url 'finanzas:crear_partida' %}?bloque=variable" class="poner-techo"
            title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
-            {% if techo_variable %}Techo: &euro;{{ techo_variable|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+            {% if techo_variable %}Techo: {{ techo_variable|euro:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
         </a></div>
     {% if gastos_variables %}
     <div class="grid-gastos">
@@ -564,7 +564,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
-                    <div class="gasto-card-monto" style="color: var(--primary-color);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: var(--primary-color);">{{ grupo.subtotal_mensual|euro:2 }}</div>
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
@@ -580,8 +580,8 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: var(--primary-color);">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
-                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
+                            <div class="gasto-partida-importe" style="color: var(--primary-color);">{{ p.importe|euro:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; {{ p.importe_mensual|euro:2 }}/mes</div>{% endif %}
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
                         <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
@@ -600,10 +600,10 @@
     {% endif %}
 
     <!-- GASTOS DISCRECIONALES -->
-    <div class="section-label" style="color: var(--accent-alt);"> Gastos Discrecionales &mdash; &euro;{{ total_discrecionales|floatformat:2 }}/mes
+    <div class="section-label" style="color: var(--accent-alt);"> Gastos Discrecionales &mdash; {{ total_discrecionales|euro:2 }}/mes
         <a href="{% url 'finanzas:crear_partida' %}?bloque=discrecional" class="poner-techo"
            title="Declara cuánto quieres gastar en este bloque en total, sin repartirlo por categorías">
-            {% if techo_discrecional %}Techo: &euro;{{ techo_discrecional|floatformat:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
+            {% if techo_discrecional %}Techo: {{ techo_discrecional|euro:0 }}/mes{% else %}+ Poner techo al bloque{% endif %}
         </a></div>
     {% if gastos_discrecionales %}
     <div class="grid-gastos">
@@ -615,7 +615,7 @@
                     <div class="gasto-card-count"><span class="chevron">&#9654;</span> {{ grupo.num_partidas }} partida{{ grupo.num_partidas|pluralize:"s" }}</div>
                 </div>
                 <div>
-                    <div class="gasto-card-monto" style="color: var(--accent-alt);">&euro;{{ grupo.subtotal_mensual|floatformat:2 }}</div>
+                    <div class="gasto-card-monto" style="color: var(--accent-alt);">{{ grupo.subtotal_mensual|euro:2 }}</div>
                     <div class="gasto-card-sub">/mes</div>
                 </div>
             </div>
@@ -631,8 +631,8 @@
                     </div>
                     <div class="gasto-partida-right">
                         <div class="gasto-partida-monto-box">
-                            <div class="gasto-partida-importe" style="color: var(--accent-alt);">&euro;{{ p.importe|floatformat:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
-                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; &euro;{{ p.importe_mensual|floatformat:2 }}/mes</div>{% endif %}
+                            <div class="gasto-partida-importe" style="color: var(--accent-alt);">{{ p.importe|euro:2 }}{% if p.periodicidad != 'mensual' %}<span style="font-size:0.6rem;color:var(--muted);">/{{ p.get_periodicidad_display|lower }}</span>{% endif %}</div>
+                            {% if p.periodicidad != 'mensual' %}<div class="gasto-partida-equiv">&rarr; {{ p.importe_mensual|euro:2 }}/mes</div>{% endif %}
                         </div>
                         <a href="{% url 'finanzas:editar_partida' p.id %}" class="gasto-action-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></a>
                         <form method="post" action="{% url 'finanzas:eliminar_partida' p.id %}" style="margin:0; display:flex;">
