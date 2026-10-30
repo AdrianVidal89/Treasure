@@ -83,11 +83,30 @@
     </script>
 
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    {% if request.user.is_authenticated %}
+    {% comment %}Las pantallas de consulta se piden en cuanto el dedo o el ratón se
+       apoyan en el enlace: al soltar, la página ya está. Lista cerrada a
+       propósito: nada que cierre sesión, borre o cambie datos al abrirse.{% endcomment %}
+    <script type="speculationrules">
+    {"prefetch": [{"where": {"or": [
+        {"href_matches": "/ui/dashboard/"},
+        {"href_matches": "/finanzas/ingresos/"},
+        {"href_matches": "/finanzas/gastos/"},
+        {"href_matches": "/finanzas/fondos/"},
+        {"href_matches": "/finanzas/inversiones/"},
+        {"href_matches": "/finanzas/propiedades/"},
+        {"href_matches": "/finanzas/vehiculos/"},
+        {"href_matches": "/finanzas/distribucion/"},
+        {"href_matches": "/extractos/"}
+    ]}, "eagerness": "moderate"}]}
+    </script>
+    {% endif %}
 </head>
 <body class="{% block body_class %}{% endblock %}{% if request.user.is_authenticated and not hide_navbar %} has-sidebar{% endif %}">
 
     {# ── Sprite de iconos SVG (definido una sola vez, reutilizado con <use>) ── #}
     <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+        <symbol id="i-mas" viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></symbol>
         <symbol id="i-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
         <symbol id="i-income" viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></symbol>
         <symbol id="i-expense" viewBox="0 0 24 24"><path d="M5 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1V2l-2 1-2-1-2 1-2-1-2 1-2-1z"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></symbol>
@@ -287,6 +306,16 @@
         </form>
     </div>
 
+    {% comment %}Barra inferior del móvil: las cuatro pantallas de cada día al
+       alcance del pulgar, y «Más» abre el menú completo.{% endcomment %}
+    <nav class="barra-movil" aria-label="Navegación principal">
+        <a href="{% url 'dashboard' %}" class="{% if vn == 'dashboard' %}activo{% endif %}"><svg class="icon"><use href="#i-dashboard"/></svg><span>Inicio</span></a>
+        <a href="{% url 'finanzas:vista_distribucion' %}" class="{% if vn == 'finanzas:vista_distribucion' %}activo{% endif %}"><svg class="icon"><use href="#i-distribution"/></svg><span>Reparto</span></a>
+        <a href="{% url 'extractos:listar' %}" class="{% if vn == 'extractos:listar' %}activo{% endif %}"><svg class="icon"><use href="#i-statements"/></svg><span>Movimientos</span></a>
+        <a href="{% url 'finanzas:vista_evolucion' %}" class="{% if vn == 'finanzas:vista_evolucion' %}activo{% endif %}"><svg class="icon"><use href="#i-evolution"/></svg><span>Evolución</span></a>
+        <button type="button" class="barra-movil-mas" aria-label="Abrir el menú completo"><svg class="icon"><use href="#i-mas"/></svg><span>Más</span></button>
+    </nav>
+
     <main class="app-main">
     {% endwith %}
     {% endif %}
@@ -357,6 +386,14 @@
         }
         if (sidebarBackdrop) {
             sidebarBackdrop.addEventListener("click", cerrarSidebar);
+        }
+        const botonMas = document.querySelector(".barra-movil-mas");
+        if (botonMas && sidebar) {
+            botonMas.addEventListener("click", function (e) {
+                e.stopPropagation();
+                const open = sidebar.classList.toggle("nav-open");
+                if (navToggle) navToggle.setAttribute("aria-expanded", open);
+            });
         }
 
         // --- Dropdowns ---
