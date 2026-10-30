@@ -136,7 +136,7 @@
             <div class="regla-pill-nombre">{{ regla.nombre }}</div>
             <div class="regla-pill-sub">
                 {% if regla.usuario %}{{ regla.usuario.first_name|default:regla.usuario.username }}{% else %}Hogar{% endif %}
-                · {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre{% elif regla.tipo_regla == 'cubrir_fondo' %}lo que necesita el fondo{% if not regla.usuario %}, según ingresos{% endif %}{% elif regla.tipo_regla == 'resto' %}todo lo que quede libre{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
+                · {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre{% elif regla.tipo_regla == 'cubrir_fondo' %}{% if regla.usuario %}su parte de lo que necesita el fondo{% else %}lo que necesita el fondo{% endif %}, según ingresos del mes{% elif regla.tipo_regla == 'resto' %}todo lo que quede libre{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
                 {% if regla.fondo %} → {{ regla.fondo.nombre }}{% else %} → sin fondo{% endif %}
                 {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
             </div>
@@ -367,7 +367,7 @@
                     <button type="button" id="btn-cubrir_fondo" class="btn btn-secondary" onclick="setTipoR('cubrir_fondo')" style="flex:1;">Cubrir fondo</button>
                     <button type="button" id="btn-resto" class="btn btn-secondary" onclick="setTipoR('resto')" style="flex:1;">Todo el resto</button>
                 </div>
-                <p id="ayuda-cubrir_fondo" class="paso-sub" style="display:none; margin-top:6px;">Pone lo que el fondo necesita este mes: sus gastos asignados más lo que sale de él en movimientos. Con «Aplicar a: Hogar», cada uno aporta en proporción a su ingreso.</p>
+                <p id="ayuda-cubrir_fondo" class="paso-sub" style="display:none; margin-top:6px;">Pone lo que el fondo necesita este mes: sus gastos asignados más lo que sale de él en movimientos. Cada uno aporta en proporción a lo que ingresa ese mes (lo declarado en «Ajustar ingreso»; si no hay nada, lo previsto). Con «Hogar» se reparte entre todos; con una persona, pone solo su parte.</p>
                 <p id="ayuda-resto" class="paso-sub" style="display:none; margin-top:6px;">Cada uno manda al fondo todo lo que le queda libre tras las reglas anteriores. Ponla la última.</p>
                 <input type="hidden" name="tipo_regla" id="tipo_regla_input" value="porcentaje">
             </div>

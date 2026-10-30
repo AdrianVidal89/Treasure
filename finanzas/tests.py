@@ -5944,5 +5944,31 @@ class ReglaCubrirFondoYRestoTests(TestCase):
         self.assertFalse(ReglaReparto.objects.filter(nombre='Sin fondo').exists())
 
         resp = self.client.get(reverse('finanzas:vista_distribucion'))
-        self.assertContains(resp, 'lo que necesita el fondo, según ingresos')
+        self.assertContains(resp, 'lo que necesita el fondo, según ingresos del mes')
         self.assertContains(resp, 'todo lo que quede libre')
+
+    def test_regla_por_persona_pone_solo_su_parte_segun_el_ingreso_del_mes(self):
+        """Una regla «cubrir fondo» de una sola persona no le carga todo el
+        fondo: pone su parte según lo que ha declarado ingresar ese mes."""
+        from .models import ReglaReparto, AjusteIngresoMensual, FuenteIngreso
+        from .distribucion import calcular_flujos
+
+        ReglaReparto.objects.filter(nombre='Conjunta').delete()
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.conjunta, nombre='Conjunta Adrián',
+            usuario=self.adrian, tipo_regla='cubrir_fondo', orden=-2)
+        ReglaReparto.objects.create(
+            hogar=self.hogar, fondo=self.conjunta, nombre='Conjunta Irene',
+            usuario=self.irene, tipo_regla='cubrir_fondo', orden=-1)
+
+        flujo = calcular_flujos(self.hogar, mes=6, anio=2026)
+        self.assertEqual(self._aportes(flujo, self.conjunta),
+                         {'irene': Decimal('2391.33'), 'adrian': Decimal('1195.67')})
+
+        # En julio Adrián declara 6.000 en vez de los 3.000 previstos: mitad y mitad.
+        AjusteIngresoMensual.objects.create(
+            fuente=FuenteIngreso.objects.get(usuario=self.adrian),
+            mes=7, **{'año': 2026}, importe_real=Decimal('6000'))
+        flujo = calcular_flujos(self.hogar, mes=7, anio=2026)
+        self.assertEqual(self._aportes(flujo, self.conjunta),
+                         {'irene': Decimal('1793.50'), 'adrian': Decimal('1793.50')})
