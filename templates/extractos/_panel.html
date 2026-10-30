@@ -265,6 +265,18 @@ ninguna parte. La marca de la barra es lo que va de mes: un 60 % gastado el día
     {% endif %}
 </div>
 
+{% comment %}
+Dos vistas en la misma página: los movimientos (lo que se toca cada día) y el
+análisis (en qué se va, frente a tu media, lo que se sale, los comercios…).
+Antes iba todo seguido y había que bajar siete bloques para llegar al primer
+movimiento. Se cambia sin recargar y se recuerda la última elegida.
+{% endcomment %}
+<nav class="ext-vistas" role="tablist" aria-label="Qué ver">
+    <button type="button" role="tab" class="ext-vista-btn" data-vista="movimientos" aria-selected="true">Movimientos <span class="ext-vista-num">{{ panel.kpi_num }}</span></button>
+    <button type="button" role="tab" class="ext-vista-btn" data-vista="analisis" aria-selected="false">Análisis</button>
+</nav>
+
+<div class="ext-vista" data-vista="analisis" hidden>
 {% if panel.num_compartidos %}
 {% comment %}
 Los gastos compartidos del periodo, a la vista: cuánto adelantaste por otros,
@@ -735,6 +747,9 @@ textura y etiqueta, nunca por esconder unas.
 </section>
 {% endif %}
 
+</div><!-- /análisis -->
+
+<div class="ext-vista" data-vista="movimientos">
 <!-- ══════════ MOVIMIENTOS ══════════ -->
 <div class="ext-mov-head">
     <h2 class="ext-mov-title">Movimientos</h2>
@@ -833,6 +848,45 @@ tiempo.
     {% if panel.hay_filtro %}<a href="{{ request.path }}" class="btn btn-secondary">Quitar filtros</a>{% endif %}
 </div>
 {% endfor %}
+</div><!-- /movimientos -->
+
+<script>
+/* Cambiar entre Movimientos y Análisis sin recargar. Se abre en la última
+   vista usada, o en la que pida el enlace (#analisis o el id de un bloque). */
+(function () {
+    var botones = document.querySelectorAll('.ext-vista-btn');
+    var vistas = document.querySelectorAll('.ext-vista');
+    if (!botones.length) return;
+    function mostrar(nombre, guardar) {
+        botones.forEach(function (b) { b.setAttribute('aria-selected', b.dataset.vista === nombre ? 'true' : 'false'); });
+        vistas.forEach(function (v) { v.hidden = v.dataset.vista !== nombre; });
+        if (guardar) { try { localStorage.setItem('treasure_ext_vista', nombre); } catch (e) {} }
+        if (nombre === 'analisis') window.dispatchEvent(new Event('resize'));
+    }
+    botones.forEach(function (b) {
+        b.addEventListener('click', function () { mostrar(b.dataset.vista, true); });
+    });
+    var inicial = 'movimientos';
+    try { inicial = localStorage.getItem('treasure_ext_vista') || inicial; } catch (e) {}
+    var h = location.hash.slice(1);
+    if (h === 'analisis' || h === 'movimientos') inicial = h;
+    else if (h) {
+        var dest = document.getElementById(h);
+        var caja = dest && dest.closest('.ext-vista');
+        if (caja) inicial = caja.dataset.vista;
+    }
+    mostrar(inicial, false);
+})();
+
+/* «⋯» de cada fila: abre y cierra sus acciones (para el dedo). */
+document.addEventListener('click', function (e) {
+    var b = e.target.closest('.ext-mas');
+    if (!b) return;
+    var fila = b.closest('.ext-mov');
+    var abierta = fila.classList.toggle('abierta');
+    b.setAttribute('aria-expanded', abierta ? 'true' : 'false');
+});
+</script>
 
 {% comment %}
 El modal del desglose de una categoría. La caja se rellena por AJAX con la

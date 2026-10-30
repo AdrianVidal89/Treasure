@@ -148,6 +148,10 @@ categorías por bloque, provisiones y activos).
     </button>
     {% endif %}
 
+    {% comment %}En el móvil no hay «pasar el ratón»: este botón despliega las
+    acciones de la fila (etiquetar, reserva, pago anual, repartir, borrar).{% endcomment %}
+    <button type="button" class="ext-mas" aria-label="Más acciones" aria-expanded="false">⋯</button>
+
     <button type="button" class="ext-del" data-mov-id="{{ m.id }}" title="Eliminar movimiento">
         <svg class="icon"><use href="#i-trash"/></svg>
     </button>

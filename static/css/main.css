@@ -1538,3 +1538,98 @@ h3, h4 { letter-spacing: -0.012em; font-weight: 650; }
     text-transform: none !important; letter-spacing: 0 !important; font-size: 0.85rem !important; font-weight: 600 !important;
 }
 .cc-saludo { font-size: clamp(1.5rem, 2.8vw, 2rem) !important; letter-spacing: -0.035em; font-weight: 760 !important; }
+
+/* ============================================================
+   EXTRACTOS — nov-2026
+   Dos vistas (Movimientos / Análisis) y filas limpias: a la vista solo lo
+   que dice algo (fecha, concepto, categoría, lo que ya está marcado e
+   importe). Las acciones vacías («— de la reserva —», «— pago anual —»,
+   «+ etiqueta», repartir, borrar) aparecen al pasar el ratón o con «⋯».
+   ============================================================ */
+.ext-vistas {
+    position: sticky; top: 70px; z-index: 20;
+    display: inline-flex; gap: 4px; padding: 4px; margin: 18px 0 16px;
+    border-radius: 999px; background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+}
+.ext-vista-btn {
+    border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 650; font-size: 0.92rem;
+    padding: 8px 18px; border-radius: 999px; cursor: pointer; min-height: 38px;
+    transition: background-color var(--t-corto) var(--salida), color var(--t-corto) var(--salida), transform var(--t-pulsar) var(--salida);
+}
+.ext-vista-btn[aria-selected="true"] { background: var(--surface); color: var(--text-color); box-shadow: var(--shadow-sm); }
+.ext-vista-num { font-size: 0.75rem; font-weight: 700; color: var(--muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+@media (max-width: 768px) { .ext-vistas { top: 66px; display: flex; } .ext-vista-btn { flex: 1; } }
+
+/* La fila: flexible (los botones ocultos no dejan hueco). */
+.ext-mov {
+    display: flex !important; align-items: center; gap: 14px;
+    padding: 12px 16px !important; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent) !important;
+    border-radius: 12px;
+}
+.ext-mov-check { flex: 0 0 20px; }
+.ext-mov-dia { flex: 0 0 40px; }
+.ext-mov-cuerpo { flex: 1 1 auto; min-width: 0; }
+.ext-mov-importe { flex: 0 0 auto; font-size: 1rem !important; font-weight: 720 !important; letter-spacing: -0.01em; }
+.ext-mov-concepto { font-size: 0.96rem !important; font-weight: 620 !important; letter-spacing: -0.005em; }
+.ext-mov-dd { font-size: 1.05rem !important; font-weight: 720 !important; }
+.ext-mov-mmm { text-transform: none !important; letter-spacing: 0 !important; font-size: 0.72rem !important; }
+.ext-mov-meta { gap: 6px !important; }
+.ext-cat-chip .ext-cat-boton { border-radius: 999px; }
+
+/* Acciones vacías: fuera de la vista hasta que se piden. */
+.ext-mov .ext-tag-add,
+.ext-mov .ext-provision-boton:not(.puesto),
+.ext-mov .ext-cubre-boton:not(.puesto),
+.ext-mov .ext-activo-boton:not(.puesto),
+.ext-mov .ext-compartir-boton:not(.puesto):not(.sugerido),
+.ext-mov .ext-dividir,
+.ext-mov .ext-del { display: none !important; }
+
+.ext-mov.abierta .ext-tag-add,
+.ext-mov.abierta .ext-provision-boton,
+.ext-mov.abierta .ext-cubre-boton,
+.ext-mov.abierta .ext-activo-boton,
+.ext-mov.abierta .ext-compartir-boton,
+.ext-mov:focus-within .ext-tag-add,
+.ext-mov:focus-within .ext-provision-boton,
+.ext-mov:focus-within .ext-cubre-boton,
+.ext-mov:focus-within .ext-activo-boton,
+.ext-mov:focus-within .ext-compartir-boton { display: inline-flex !important; opacity: 1 !important; }
+.ext-mov.abierta .ext-dividir, .ext-mov.abierta .ext-del,
+.ext-mov:focus-within .ext-dividir, .ext-mov:focus-within .ext-del { display: inline-flex !important; opacity: 1 !important; }
+
+/* «⋯»: solo en pantallas táctiles; con ratón basta con pasar por encima. */
+.ext-mas {
+    display: none; flex: 0 0 auto; border: 0; background: transparent; color: var(--muted);
+    font-size: 1.2rem; line-height: 1; width: 36px; height: 36px; border-radius: 10px; cursor: pointer;
+}
+.ext-mov.abierta .ext-mas { background: var(--surface-2); color: var(--text-color); }
+@media (hover: none), (pointer: coarse) { .ext-mas { display: inline-flex; align-items: center; justify-content: center; } }
+
+@media (hover: hover) and (pointer: fine) {
+    .ext-mov:hover { background: color-mix(in srgb, var(--accent-color) 5%, transparent) !important; }
+    .ext-mov:hover .ext-tag-add,
+    .ext-mov:hover .ext-provision-boton,
+    .ext-mov:hover .ext-cubre-boton,
+    .ext-mov:hover .ext-activo-boton,
+    .ext-mov:hover .ext-compartir-boton,
+    .ext-mov:hover .ext-dividir,
+    .ext-mov:hover .ext-del { display: inline-flex !important; opacity: 1 !important; }
+}
+@media (max-width: 560px) {
+    .ext-mov { gap: 10px; padding: 11px 10px !important; }
+}
+
+/* Los meses de la lista, como tarjetas. */
+.ext-mes { border-radius: var(--radius-lg) !important; border: 1px solid color-mix(in srgb, var(--border) 75%, transparent) !important; overflow: hidden; }
+.ext-mes-nombre { font-size: 1.05rem !important; font-weight: 740 !important; letter-spacing: -0.02em; }
+.ext-mes-neto { font-size: 1.1rem !important; font-weight: 760 !important; }
+
+/* Cabecera de Extractos: etiquetas en minúscula normal y cifra con peso. */
+.ext-hero-label, .ext-presu-label, .ext-gasto-head h3 + .ext-gasto-nota { text-transform: none !important; letter-spacing: 0 !important; }
+.ext-hero-label { font-size: 0.85rem !important; font-weight: 600 !important; }
+.ext-hero-cifra { font-size: clamp(2.2rem, 5vw, 3rem) !important; font-weight: 760 !important; letter-spacing: -0.035em !important; }
+.ext-hero, .ext-presu { border-radius: var(--radius-xl) !important; }
+.ext-mov-head .ext-mov-title { display: none; } .ext-mov-head { justify-content: flex-end; }
