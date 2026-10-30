@@ -187,6 +187,12 @@ def calcular_flujos(hogar, mes=None, anio=None):
             total_fuera_reparto += base
 
         fuentes_lista = [{'id': f.id, 'nombre': f.nombre} for f in fuentes]
+        if fuentes_lista and len(ajustes_mes) == len(fuentes_lista):
+            origen_ingreso = 'declarado'
+        elif ajustes_mes:
+            origen_ingreso = 'mixto'
+        else:
+            origen_ingreso = 'previsto'
 
         datos_miembros[m.user.id] = {
             'miembro': m,
@@ -195,6 +201,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
             'extras_mes': extras_mes,
             'ajustes_mes': ajustes_mes,
             'fuentes': fuentes_lista,
+            'origen_ingreso': origen_ingreso,
             'gastos_individuales': Decimal('0'),
             'aportacion_hogar_informativa': Decimal('0'),
             'proporcion': Decimal('0'),
@@ -260,20 +267,25 @@ def calcular_flujos(hogar, mes=None, anio=None):
     # una regla «cubrir fondo» necesita saber cuánto va a salir de cada fondo.
     importes_subsobres = [(ss, ss.importe_en(limites_bloque)) for ss in subsobres]
     necesidad_fondo = {fid: fa['gastos_cubiertos'] for fid, fa in fondos_aportaciones.items()}
+    desglose_necesidad = {fid: {
+        'gastos': fa['gastos_cubiertos'],
+        'num_gastos': len(fa['gastos_asignados']),
+        'salidas': [], 'entradas': [],
+    } for fid, fa in fondos_aportaciones.items()}
     for ss, importe in importes_subsobres:
         if importe <= 0:
             continue
         if ss.fondo_id in necesidad_fondo:
             necesidad_fondo[ss.fondo_id] += importe
+            desglose_necesidad[ss.fondo_id]['salidas'].append({
+                'nombre': ss.nombre, 'importe': importe,
+                'destino': ss.fondo_destino.nombre if ss.fondo_destino else 'reserva',
+            })
         if ss.fondo_destino_id in necesidad_fondo:
             necesidad_fondo[ss.fondo_destino_id] -= importe
-
-    def _necesidad_pendiente(fondo_id):
-        """Lo que le falta al fondo: sus gastos y salidas menos lo ya aportado."""
-        if fondo_id not in fondos_aportaciones:
-            return Decimal('0')
-        falta = necesidad_fondo[fondo_id] - fondos_aportaciones[fondo_id]['total_aportacion_base']
-        return max(falta, Decimal('0'))
+            desglose_necesidad[ss.fondo_destino_id]['entradas'].append({
+                'nombre': ss.nombre, 'importe': importe, 'origen': ss.fondo.nombre,
+            })
 
     def _proporcion(dm):
         # `ingreso_base` es el ingreso de ESE mes: el declarado en «Ajustar
@@ -282,28 +294,52 @@ def calcular_flujos(hogar, mes=None, anio=None):
             return dm['ingreso_base'] / total_base_hogar
         return Decimal('1') / Decimal(str(len(datos_miembros)))
 
-    def _parte_de_miembro(fondo_id, dm):
-        if fondo_id not in fondos_aportaciones:
-            return Decimal('0')
-        parte = round(max(necesidad_fondo[fondo_id], Decimal('0')) * _proporcion(dm), 2)
-        ya_puesto = sum(
+    def _ya_puesto(fondo_id, dm):
+        return sum(
             (ap['importe_base'] for ap in dm['aportaciones_fondos']
              if ap['fondo'] and ap['fondo'].id == fondo_id),
             Decimal('0'),
         )
-        return max(parte - ya_puesto, Decimal('0'))
+
+    # El cálculo de cada fondo que se cubre «según ingresos», guardado para
+    # enseñarlo: quien no se fíe puede comprobar la cuenta en pantalla.
+    calculos_cubrir = {}
+
+    def _calculo(fondo_id):
+        if fondo_id not in calculos_cubrir:
+            necesidad = max(necesidad_fondo[fondo_id], Decimal('0'))
+            calculos_cubrir[fondo_id] = {
+                'fondo': fondos_aportaciones[fondo_id]['fondo'],
+                'necesidad': necesidad,
+                'desglose': desglose_necesidad[fondo_id],
+                'filas': {uid: {
+                    'uid': uid,
+                    'nombre': dm['miembro'].user.first_name or dm['miembro'].user.username,
+                    'ingreso': dm['ingreso_base'],
+                    'origen_ingreso': dm['origen_ingreso'],
+                    'pct': round(_proporcion(dm) * 100, 2),
+                    'le_toca': round(necesidad * _proporcion(dm), 2),
+                    'con_regla': False,
+                } for uid, dm in datos_miembros.items()},
+            }
+        return calculos_cubrir[fondo_id]
+
+    def _parte_de_miembro(fondo_id, uid):
+        """Lo que le toca poner a un miembro con una regla «cubrir fondo»: su
+        parte de lo que necesita el fondo, según lo que ingresa este mes
+        frente al hogar, menos lo que ya haya puesto en ese fondo."""
+        if fondo_id not in fondos_aportaciones:
+            return Decimal('0')
+        fila = _calculo(fondo_id)['filas'][uid]
+        fila['con_regla'] = True
+        return max(fila['le_toca'] - _ya_puesto(fondo_id, datos_miembros[uid]), Decimal('0'))
 
     for regla in reglas:
         if regla.tipo_regla == 'cubrir_fondo' and not regla.usuario_id:
             # El hogar cubre lo que necesita el fondo y cada uno pone según su
             # ingreso: quien gana el doble pone el doble.
-            total = _necesidad_pendiente(regla.fondo_id)
             for uid, dm in datos_miembros.items():
-                if total_base_hogar > 0:
-                    prop = dm['ingreso_base'] / total_base_hogar
-                else:
-                    prop = Decimal('1') / Decimal(str(len(datos_miembros)))
-                importe = round(total * prop, 2)
+                importe = _parte_de_miembro(regla.fondo_id, uid)
                 dm['libre_base'] -= importe
                 dm['libre_ponderado'] -= importe
                 dm['aportaciones_fondos'].append({
@@ -349,7 +385,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
             if regla.tipo_regla == 'cubrir_fondo':
                 # Solo su parte de lo que necesita el fondo, según lo que
                 # ingresa este mes frente al hogar, menos lo que ya ha puesto.
-                importe_b = importe_p = _parte_de_miembro(regla.fondo_id, dm)
+                importe_b = importe_p = _parte_de_miembro(regla.fondo_id, regla.usuario_id)
             elif regla.tipo_regla == 'resto':
                 importe_b = max(libre_b, Decimal('0'))
                 importe_p = max(libre_p, Decimal('0'))
@@ -410,6 +446,20 @@ def calcular_flujos(hogar, mes=None, anio=None):
                         'miembro': dm['miembro'],
                         'importe_base': importe_b, 'importe_pond': importe_p,
                     })
+
+    # Cierre de cada cálculo: lo que acaba poniendo cada uno en el fondo (por
+    # esta regla o por otras) y si el fondo queda cubierto.
+    for fid, calc in calculos_cubrir.items():
+        filas = list(calc['filas'].values())
+        for fila in filas:
+            fila['aporta'] = _ya_puesto(fid, datos_miembros[fila['uid']])
+            fila['de_mas'] = max(fila['aporta'] - fila['le_toca'], Decimal('0'))
+        calc['filas'] = filas
+        calc['total_ingreso'] = total_base_hogar
+        calc['total_aporta'] = sum((f['aporta'] for f in filas), Decimal('0'))
+        calc['sin_regla'] = [f['nombre'] for f in filas if not f['con_regla'] and f['le_toca'] > 0]
+        calc['falta'] = max(calc['necesidad'] - calc['total_aporta'], Decimal('0'))
+        calc['cuadra'] = calc['falta'] <= Decimal('0.05')
 
     # =========================================================
     # PASO 4: Subsobres / cascada (ya filtrados por solo_mes)
@@ -522,11 +572,30 @@ def calcular_flujos(hogar, mes=None, anio=None):
             'concepto': tc['nombre'], 'tipo': 'cascada', 'color': tc['color'],
         })
 
-    # Total aportado a fondos por cada miembro (para la barra del resumen).
+    # Total aportado a fondos por cada miembro (para la barra del resumen) y
+    # sus transferencias juntas por destino: dos reglas que van a la misma
+    # cuenta son UNA transferencia en el banco.
     for uid, dm in datos_miembros.items():
         dm['aportaciones_total'] = sum(
             ap['importe_base'] for ap in dm['aportaciones_fondos']
         )
+        dm['pct_ingreso'] = (
+            round(dm['ingreso_base'] / total_base_hogar * 100, 2) if total_base_hogar > 0 else Decimal('0')
+        )
+        por_destino = {}
+        for ap in dm['aportaciones_fondos']:
+            if ap['importe_base'] <= 0:
+                continue
+            clave = ('f', ap['fondo'].id) if ap['fondo'] else ('r', ap['regla'].id)
+            t = por_destino.setdefault(clave, {
+                'destino': ap['fondo'].nombre if ap['fondo'] else ap['regla'].nombre,
+                'cuenta': (ap['fondo'].cuenta_asociada or '') if ap['fondo'] else '',
+                'color': ap['fondo'].color if ap['fondo'] else ap['regla'].color,
+                'importe': Decimal('0'), 'conceptos': [],
+            })
+            t['importe'] += ap['importe_base']
+            t['conceptos'].append(ap['regla'].nombre)
+        dm['transferencias'] = list(por_destino.values())
 
     return {
         'mes': mes, 'anio': anio, 'mes_nombre': _nombre_mes(mes),
@@ -535,6 +604,7 @@ def calcular_flujos(hogar, mes=None, anio=None):
         'fondos_aportaciones': list(fondos_aportaciones.values()),
         'transferencias': transferencias,
         'transferencias_cascada': transferencias_cascada,
+        'calculos_cubrir': list(calculos_cubrir.values()),
 
         'ingreso_base_hogar': total_base_hogar,
         'ingreso_base_puro_hogar': total_base_puro_hogar,

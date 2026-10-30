@@ -67,6 +67,14 @@
 </div>
 {% endif %}
 
+<!-- ===== GUÍA DE PASOS ===== -->
+<nav class="pasos-guia" aria-label="Pasos del reparto">
+    <a href="#paso-entra"><span class="pg-num">1</span><span class="pg-txt">Lo que entra</span></a>
+    <a href="#paso-reparte"><span class="pg-num">2</span><span class="pg-txt">Cómo se reparte</span></a>
+    <a href="#paso-fondos"><span class="pg-num">3</span><span class="pg-txt">Cada fondo</span></a>
+    <a href="#paso-transferencias"><span class="pg-num">4</span><span class="pg-txt">Qué transfiere cada uno</span></a>
+</nav>
+
 <!-- ===== RESUMEN GENERAL (KPIs + barra) ===== -->
 <div class="resumen-general glass-panel">
     <div class="kpi-bar">
@@ -112,34 +120,119 @@
     </div>
 </div>
 
-<!-- ═══ 1 · CÓMO SE REPARTE ═══════════════════════════════════════════════
-     Las reglas son lo único que se define aquí: cómo se reparte el dinero que
-     entra. Los fondos (y qué gastos cubre cada uno) se definen en Gestión. -->
-<div class="paso">
+
+<!-- ═══ 1 · LO QUE ENTRA ═══════════════════════════════════════════════════
+     El punto de partida y la proporción con la que se reparte «según
+     ingresos». El ingreso de cada uno se corrige aquí si este mes es otro. -->
+<section class="paso" id="paso-entra">
     <div class="paso-head">
         <div>
             <span class="paso-num">1</span>
+            <span class="paso-titulo">Lo que entra en {{ d.mes_nombre }}</span>
+            <p class="paso-sub">El ingreso neto de cada uno este mes. De aquí sale el peso de cada persona cuando algo se reparte «según ingresos».</p>
+        </div>
+    </div>
+
+    {% if d.ingreso_base_hogar > 0 %}
+    <div class="peso-bar" role="img" aria-label="Peso de cada uno en el ingreso del hogar">
+        {% for dm in d.datos_miembros %}{% if dm.pct_ingreso > 0 %}
+        <span class="peso-seg" style="width:{{ dm.pct_ingreso|unlocalize }}%; --uc: {{ dm.miembro.user.id|color_usuario }};">
+            {% if dm.pct_ingreso > 12 %}{{ dm.miembro.user.first_name|default:dm.miembro.user.username }} · {{ dm.pct_ingreso|floatformat:1 }}%{% endif %}
+        </span>
+        {% endif %}{% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="entra-lista">
+    {% for dm in d.datos_miembros %}
+    <div class="entra-fila" style="--uc: {{ dm.miembro.user.id|color_usuario }};">
+        <div class="entra-quien">
+            <span class="persona-dot"></span>
+            <span class="entra-nombre">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</span>
+            {% if dm.origen_ingreso == 'declarado' %}<span class="chip chip-ok" title="Usa lo que declaraste para este mes">declarado</span>
+            {% elif dm.origen_ingreso == 'mixto' %}<span class="chip chip-ajuste" title="Unas fuentes declaradas este mes y otras previstas">en parte declarado</span>
+            {% else %}<span class="chip chip-previsto" title="No has declarado el ingreso de este mes: se usa lo previsto">previsto</span>{% endif %}
+        </div>
+        <div class="entra-cifras">
+            <span class="entra-importe">€{{ dm.ingreso_base|floatformat:2 }}</span>
+            <span class="entra-pct">{{ dm.pct_ingreso|floatformat:2 }}% del hogar</span>
+        </div>
+        {% if dm.ajustes_mes or dm.extras_mes or dm.gastos_individuales > 0 %}
+        <div class="persona-chips">
+            {% for aj in dm.ajustes_mes %}<span class="chip chip-ajuste" title="Previsto €{{ aj.importe_base|floatformat:2 }}">{{ aj.fuente }}: €{{ aj.importe_ajustado|floatformat:2 }} (previsto €{{ aj.importe_base|floatformat:2 }})</span>{% endfor %}
+            {% for ex in dm.extras_mes %}<span class="chip chip-extra">{{ ex.fuente }}: +€{{ ex.importe|floatformat:2 }} extra</span>{% endfor %}
+            {% if dm.gastos_individuales > 0 %}<span class="chip chip-gasto">Gastos solo suyos: −€{{ dm.gastos_individuales|floatformat:2 }}</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if dm.fuentes %}
+        <button type="button" onclick="toggleEl('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary btn-mini entra-btn">Declarar ingreso del mes</button>
+        <div id="ajuste-{{ dm.miembro.user.id }}" class="entra-ajuste" style="display:none;">
+            <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" class="ajuste-form">
+                {% csrf_token %}
+                <input type="hidden" name="mes" value="{{ d.mes }}">
+                <input type="hidden" name="anio" value="{{ d.anio }}">
+                <div style="flex:1; min-width:120px;">
+                    <label class="lbl-sm">Fuente</label>
+                    <select name="fuente_id" class="inp-sm">{% for fu in dm.fuentes %}<option value="{{ fu.id }}">{{ fu.nombre }}</option>{% endfor %}</select>
+                </div>
+                <div style="min-width:110px;">
+                    <label class="lbl-sm">Neto cobrado (€)</label>
+                    <input type="number" name="importe_real" step="0.01" placeholder="Vacío = previsto" class="inp-sm">
+                </div>
+                <div style="min-width:80px;">
+                    <label class="lbl-sm">Nota</label>
+                    <input type="text" name="nota" placeholder="Opcional" class="inp-sm">
+                </div>
+                <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:8px 14px; align-self:flex-end;">Guardar</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    </div>
+    <div class="entra-total"><span>Total del hogar</span><span>€{{ d.ingreso_base_hogar|floatformat:2 }}</span></div>
+</section>
+
+
+<!-- ═══ 2 · CÓMO SE REPARTE ═══════════════════════════════════════════════
+     Las reglas son lo único que se define aquí: cómo se reparte el dinero que
+     entra. Los fondos (y qué gastos cubre cada uno) se definen en Gestión. -->
+<section class="paso" id="paso-reparte">
+    <div class="paso-head">
+        <div>
+            <span class="paso-num">2</span>
             <span class="paso-titulo">Cómo se reparte</span>
-            <p class="paso-sub">Reglas que se aplican de arriba a abajo sobre el dinero libre de cada mes.</p>
+            <p class="paso-sub">Las reglas se aplican en orden, de arriba abajo, sobre lo que le queda a cada uno. Debajo de cada regla ves lo que mueve este mes.</p>
         </div>
         <button onclick="abrirModalRegla()" class="btn btn-primary btn-mini">＋ Nueva regla</button>
     </div>
 
     {% if reglas %}
-    <p class="reglas-orden-hint">Arrastra <svg class="icon icon-dots"><use href="#i-grip"/></svg> para cambiar el orden de aplicación.</p>
+    <p class="reglas-orden-hint">Arrastra <svg class="icon icon-dots"><use href="#i-grip"/></svg> para cambiar el orden.</p>
     {% endif %}
     <div id="reglas-lista" data-reordenar-url="{% url 'finanzas:reordenar_reglas' %}">
     {% for regla in reglas %}
-    <div class="regla-pill" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
+    <div class="regla-pill{% if not regla.aplica_este_mes %} regla-fuera{% endif %}" data-regla-id="{{ regla.id }}" style="border-left-color: {{ regla.color }};">
         <span class="regla-drag-handle" title="Arrastrar para reordenar"><svg class="icon icon-dots"><use href="#i-grip"/></svg></span>
+        <span class="regla-orden">{{ forloop.counter }}</span>
         <div class="regla-pill-info">
             <div class="regla-pill-nombre">{{ regla.nombre }}</div>
             <div class="regla-pill-sub">
                 {% if regla.usuario %}{{ regla.usuario.first_name|default:regla.usuario.username }}{% else %}Hogar{% endif %}
                 · {% if regla.tipo_regla == 'porcentaje' %}{{ regla.porcentaje }}% del libre{% elif regla.tipo_regla == 'cubrir_fondo' %}{% if regla.usuario %}su parte de lo que necesita el fondo{% else %}lo que necesita el fondo{% endif %}, según ingresos del mes{% elif regla.tipo_regla == 'resto' %}todo lo que quede libre{% else %}€{{ regla.importe_fijo }}/mes{% endif %}
                 {% if regla.fondo %} → {{ regla.fondo.nombre }}{% else %} → sin fondo{% endif %}
-                {% if regla.solo_mes %} · solo mes {{ regla.solo_mes }}{% endif %}
+                {% if regla.solo_mes %} · solo {{ regla.get_solo_mes_display|lower }}{% endif %}
             </div>
+            {% if regla.este_mes %}
+            <div class="regla-mueve">
+                {% for m in regla.este_mes %}<span class="mueve-chip" style="--uc: {{ m.color }};"><span class="dot-uc"></span>{{ m.nombre }} €{{ m.importe|floatformat:2 }}</span>{% endfor %}
+                {% if regla.tipo_regla == 'cubrir_fondo' %}<a href="#calculo-{{ regla.fondo_id }}" class="mueve-link">Ver cálculo</a>{% endif %}
+            </div>
+            {% elif not regla.aplica_este_mes %}
+            <div class="regla-mueve regla-mueve-nada">No aplica en {{ d.mes_nombre|lower }}.</div>
+            {% else %}
+            <div class="regla-mueve regla-mueve-nada">Este mes no mueve nada.</div>
+            {% endif %}
         </div>
         <div style="display:flex; gap:6px;">
             <button onclick="editarRegla({{ regla.id }},'{{ regla.nombre|escapejs }}','{{ regla.tipo_regla }}','{{ regla.porcentaje }}','{{ regla.importe_fijo }}','{{ regla.fondo_id|default:"" }}','{{ regla.usuario_id|default:"" }}','{{ regla.color }}','{{ regla.solo_mes|default:"" }}')" class="r-btn" title="Editar"><svg class="icon"><use href="#i-edit"/></svg></button>
@@ -150,6 +243,73 @@
     <p class="empty-msg">Sin reglas todavía: todo el dinero se queda como libre. Crea la primera con “＋ Nueva regla”.</p>
     {% endfor %}
     </div>
+
+    {% for c in d.calculos_cubrir %}
+    <!-- La prueba del reparto según ingresos: la cuenta entera, a la vista,
+         para que cualquiera pueda comprobar que es proporcional. -->
+    <div class="calculo" id="calculo-{{ c.fondo.id }}" style="--fc: {{ c.fondo.color }};">
+        <div class="calculo-head">
+            <span class="calculo-icono" aria-hidden="true">÷</span>
+            <div>
+                <div class="calculo-titulo">Así se reparte {{ c.fondo.nombre }}</div>
+                <div class="calculo-sub">Cada uno pone en proporción a lo que ingresa en {{ d.mes_nombre|lower }}.</div>
+            </div>
+        </div>
+
+        <ol class="calculo-pasos">
+            <li>
+                <div class="cp-titulo">Lo que necesita {{ c.fondo.nombre }}</div>
+                <div class="cp-lineas">
+                    <div class="cp-linea"><span>{{ c.desglose.num_gastos }} gasto{{ c.desglose.num_gastos|pluralize:"s" }} que paga</span><span>€{{ c.desglose.gastos|floatformat:2 }}</span></div>
+                    {% for s in c.desglose.salidas %}<div class="cp-linea"><span>+ {{ s.nombre }} <em>(→ {{ s.destino }})</em></span><span>€{{ s.importe|floatformat:2 }}</span></div>{% endfor %}
+                    {% for e in c.desglose.entradas %}<div class="cp-linea"><span>− {{ e.nombre }} <em>(llega de {{ e.origen }})</em></span><span>−€{{ e.importe|floatformat:2 }}</span></div>{% endfor %}
+                    <div class="cp-linea cp-resultado"><span>Necesita</span><span>€{{ c.necesidad|floatformat:2 }}</span></div>
+                </div>
+            </li>
+            <li>
+                <div class="cp-titulo">El peso de cada uno</div>
+                <div class="cp-lineas">
+                    {% for f in c.filas %}
+                    <div class="cp-ecuacion" style="--uc: {{ f.uid|color_usuario }};">
+                        <span class="cp-quien"><span class="dot-uc"></span>{{ f.nombre }}</span>
+                        <span class="cp-op">€{{ f.ingreso|floatformat:2 }} <small>{% if f.origen_ingreso == 'declarado' %}declarado{% elif f.origen_ingreso == 'mixto' %}en parte declarado{% else %}previsto{% endif %}</small> ÷ €{{ c.total_ingreso|floatformat:2 }}</span>
+                        <span class="cp-igual">= <strong>{{ f.pct|floatformat:2 }}%</strong></span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </li>
+            <li>
+                <div class="cp-titulo">Lo que pone cada uno</div>
+                <div class="cp-lineas">
+                    {% for f in c.filas %}
+                    <div class="cp-ecuacion" style="--uc: {{ f.uid|color_usuario }};">
+                        <span class="cp-quien"><span class="dot-uc"></span>{{ f.nombre }}</span>
+                        <span class="cp-op">€{{ c.necesidad|floatformat:2 }} × {{ f.pct|floatformat:2 }}%</span>
+                        <span class="cp-igual">= <strong>€{{ f.le_toca|floatformat:2 }}</strong></span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </li>
+        </ol>
+
+        <div class="calculo-check {% if c.cuadra %}ok{% else %}ko{% endif %}">
+            {% if c.cuadra %}
+            <span>✓</span>
+            <span>
+                {% for f in c.filas %}€{{ f.aporta|floatformat:2 }}{% if not forloop.last %} + {% endif %}{% endfor %}
+                = <strong>€{{ c.total_aporta|floatformat:2 }}</strong>: {{ c.fondo.nombre }} queda cubierta.
+            </span>
+            {% else %}
+            <span>!</span>
+            <span>Faltan <strong>€{{ c.falta|floatformat:2 }}</strong> para cubrir {{ c.fondo.nombre }}.
+            {% if c.sin_regla %}{{ c.sin_regla|join:" y " }} no tiene{{ c.sin_regla|length|pluralize:"n" }} regla para este fondo: crea una «Cubrir fondo» para {% if c.sin_regla|length > 1 %}ellos{% else %}su parte{% endif %}, o usa una sola con «Aplicar a: Hogar».{% endif %}</span>
+            {% endif %}
+        </div>
+        {% for f in c.filas %}{% if f.de_mas > 0 %}
+        <p class="calculo-nota">{{ f.nombre }} pone €{{ f.de_mas|floatformat:2 }} más de lo que le toca por otras reglas que mandan dinero a {{ c.fondo.nombre }}.</p>
+        {% endif %}{% endfor %}
+    </div>
+    {% endfor %}
 
     <!-- Movimientos entre fondos (cascada) -->
     <div class="paso-sub-bloque">
@@ -182,20 +342,19 @@
             {% endfor %}
         {% endfor %}
     </div>
-</div>
+</section>
 
 
-<!-- ═══ 2 · CÓMO QUEDA CADA FONDO ═════════════════════════════════════════
+<!-- ═══ 3 · CÓMO QUEDA CADA FONDO ═════════════════════════════════════════
      Resultado, no formulario: lo que entra, lo que paga y lo que sobra. -->
-<div class="paso">
+<section class="paso" id="paso-fondos">
     <div class="paso-head">
         <div>
-            <span class="paso-num">2</span>
+            <span class="paso-num">3</span>
             <span class="paso-titulo">Cómo queda cada fondo</span>
             <p class="paso-sub">Resultado de aplicar las reglas a {{ d.mes_nombre }}. Para cambiar un fondo o los gastos que cubre, ve a <a href="{% url 'finanzas:listar_fondos' %}">Gestión → Fondos</a>.</p>
         </div>
     </div>
-
     <div class="fondos-estado">
     {% for fa in d.fondos_aportaciones %}{% if fa.total_aportacion_base or fa.gastos_cubiertos or fa.total_cascada_saliente %}
     <div class="fondo-estado" style="--fc: {{ fa.fondo.color }};">
@@ -239,115 +398,90 @@
         </div>
     </details>
     {% endif %}
-</div>
+</section>
 
 
-<!-- ═══ 3 · TRANSFERENCIAS DEL MES ════════════════════════════════════════
-     Lo único accionable: los traspasos que hay que hacer este mes. -->
-<div class="paso">
+<!-- ═══ 4 · QUÉ TRANSFIERE CADA UNO ═══════════════════════════════════════
+     Lo accionable: cada persona ve sus transferencias, juntas por cuenta. -->
+<section class="paso" id="paso-transferencias">
     <div class="paso-head">
         <div>
-            <span class="paso-num">3</span>
-            <span class="paso-titulo">Transferencias de {{ d.mes_nombre }}</span>
-            <p class="paso-sub">Los traspasos que hay que hacer para que el reparto de arriba sea real.</p>
+            <span class="paso-num">4</span>
+            <span class="paso-titulo">Qué transfiere cada uno en {{ d.mes_nombre|lower }}</span>
+            <p class="paso-sub">Las transferencias que hay que hacer para que el reparto sea real. Si dos reglas van a la misma cuenta, salen juntas.</p>
         </div>
     </div>
-    <div class="transfer-lista">
-    {% for t in d.transferencias %}
-    <div class="transfer-card" style="border-left-color: {{ t.color }};">
-        <div class="transfer-left">
-            <div style="font-size:0.9rem; font-weight:600;">{{ t.origen }} → {{ t.destino }}</div>
-            <div class="transfer-sub">{{ t.concepto }}{% if t.tipo == 'cascada' %} · movimiento entre fondos{% endif %}</div>
-            {% if t.cuenta %}<div style="font-size:0.68rem; color:var(--info); margin-top:2px;">{{ t.cuenta }}</div>{% endif %}
+
+    <div class="persona-grid">
+    {% for dm in d.datos_miembros %}
+    <div class="persona-card glass-panel glass-panel--accent" style="--uc: {{ dm.miembro.user.id|color_usuario }}; --accent: {{ dm.miembro.user.id|color_usuario }};">
+        <div class="persona-top">
+            <div class="persona-id">
+                <span class="persona-dot"></span>
+                <span class="persona-nombre">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</span>
+            </div>
+            <div class="persona-libre">
+                <span class="persona-libre-lbl">Transfiere</span>
+                <span class="persona-libre-val" style="color:var(--uc);">€{{ dm.aportaciones_total|floatformat:2 }}</span>
+            </div>
         </div>
-        <div style="font-size:1.1rem; font-weight:700; color:{{ t.color }};">€{{ t.importe_base|floatformat:2 }}</div>
+
+        {% if dm.ingreso_base > 0 %}
+        <div class="persona-bar" title="Gastos solo suyos · transferencias · le queda">
+            {% with g=dm.gastos_individuales|pct_de:dm.ingreso_base a=dm.aportaciones_total|pct_de:dm.ingreso_base l=dm.libre_base|pct_de:dm.ingreso_base %}
+            {% if g > 0 %}<span class="pbar-seg" style="width:{{ g|unlocalize }}%; background:var(--danger);"></span>{% endif %}
+            {% if a > 0 %}<span class="pbar-seg" style="width:{{ a|unlocalize }}%; background:var(--uc);"></span>{% endif %}
+            {% if l > 0 %}<span class="pbar-seg" style="width:{{ l|unlocalize }}%; background:var(--success);"></span>{% endif %}
+            {% endwith %}
+        </div>
+        {% endif %}
+
+        <div class="transfer-lista">
+        {% for t in dm.transferencias %}
+        <div class="transfer-card" style="border-left-color: {{ t.color }};">
+            <div class="transfer-left">
+                <div class="transfer-destino">→ {{ t.destino }}</div>
+                {% if t.cuenta %}<div class="transfer-cuenta">{{ t.cuenta }}</div>{% endif %}
+                <div class="transfer-sub">{{ t.conceptos|join:" + " }}</div>
+            </div>
+            <div class="transfer-importe" style="color:{{ t.color }};">€{{ t.importe|floatformat:2 }}</div>
+        </div>
+        {% empty %}
+        <p class="empty-msg">No tiene que transferir nada este mes.</p>
+        {% endfor %}
+        </div>
+
+        <div class="persona-rows">
+            <div class="resumen-row"><span class="rl">Ingreso de {{ d.mes_nombre|lower }}</span><span style="color:var(--success);">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
+            {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos solo suyos</span><span style="color:var(--danger);">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
+            <div class="resumen-row"><span class="rl">Transferencias</span><span style="color:var(--uc);">−€{{ dm.aportaciones_total|floatformat:2 }}</span></div>
+            <div class="resumen-row resumen-total"><span class="rl">Le queda en su cuenta</span><span style="color:{% if dm.libre_base >= 0 %}var(--success){% else %}var(--danger){% endif %};">€{{ dm.libre_base|floatformat:2 }}</span></div>
+        </div>
     </div>
-    {% empty %}
-    <p class="empty-msg">Ninguna: con las reglas de arriba no hay que mover dinero este mes.</p>
     {% endfor %}
     </div>
-</div>
 
-
-<!-- ===== RESUMEN POR PERSONA (lo principal, siempre visible) ===== -->
-<div class="section-title persona-section-title">Resumen por persona</div>
-<div class="persona-grid">
-{% for dm in d.datos_miembros %}
-<div class="persona-card glass-panel glass-panel--accent" style="--uc: {{ dm.miembro.user.id|color_usuario }}; --accent: {{ dm.miembro.user.id|color_usuario }};">
-    <div class="persona-top">
-        <div class="persona-id">
-            <span class="persona-dot"></span>
-            <span class="persona-nombre">{{ dm.miembro.user.first_name|default:dm.miembro.user.username }}</span>
+    {% if d.transferencias_cascada %}
+    <div class="paso-sub-bloque">
+        <span class="paso-subtitulo">Entre fondos</span>
+        <p class="paso-sub">Una vez llegue el dinero, desde las cuentas de los fondos:</p>
+        <div class="transfer-lista" style="margin-top:10px;">
+        {% for tc in d.transferencias_cascada %}
+        <div class="transfer-card" style="border-left-color: {{ tc.color }};">
+            <div class="transfer-left">
+                <div class="transfer-destino">{{ tc.origen }} → {{ tc.destino }}</div>
+                <div class="transfer-sub">{{ tc.nombre }}</div>
+            </div>
+            <div class="transfer-importe" style="color:{{ tc.color }};">€{{ tc.importe|floatformat:2 }}</div>
         </div>
-        <div class="persona-libre">
-            <span class="persona-libre-lbl">Libre personal</span>
-            <span class="persona-libre-val" style="color:{% if dm.libre_base >= 0 %}var(--success){% else %}var(--danger){% endif %};">€{{ dm.libre_base|floatformat:2 }}</span>
+        {% endfor %}
         </div>
     </div>
-
-    {% if dm.ajustes_mes or dm.extras_mes %}
-    <div class="persona-chips">
-        {% for aj in dm.ajustes_mes %}
-        <span class="chip chip-ajuste" title="Base €{{ aj.importe_base|floatformat:2 }}">{{ aj.fuente }}: €{{ aj.importe_ajustado|floatformat:2 }}</span>
-        {% endfor %}
-        {% for ex in dm.extras_mes %}
-        <span class="chip chip-extra">{{ ex.fuente }}: +€{{ ex.importe|floatformat:2 }}</span>
-        {% endfor %}
-    </div>
     {% endif %}
-
-    <!-- Barra de reparto personal -->
-    {% if dm.ingreso_base > 0 %}
-    <div class="persona-bar">
-        {% with g=dm.gastos_individuales|pct_de:dm.ingreso_base a=dm.aportaciones_total|pct_de:dm.ingreso_base l=dm.libre_base|pct_de:dm.ingreso_base %}
-        {% if g > 0 %}<span class="pbar-seg" style="width:{{ g|unlocalize }}%; background:var(--danger);"></span>{% endif %}
-        {% if a > 0 %}<span class="pbar-seg" style="width:{{ a|unlocalize }}%; background:var(--uc);"></span>{% endif %}
-        {% if l > 0 %}<span class="pbar-seg" style="width:{{ l|unlocalize }}%; background:var(--success);"></span>{% endif %}
-        {% endwith %}
-    </div>
-    {% endif %}
-
-    <!-- Desglose -->
-    <div class="persona-rows">
-        <div class="resumen-row"><span class="rl">Ingreso neto {{ d.mes_nombre }}</span><span style="color:var(--success);">+€{{ dm.ingreso_base|floatformat:2 }}</span></div>
-        {% if dm.gastos_individuales > 0 %}<div class="resumen-row"><span class="rl">Gastos individuales</span><span style="color:var(--danger);">−€{{ dm.gastos_individuales|floatformat:2 }}</span></div>{% endif %}
-        {% for ap in dm.aportaciones_fondos %}{% if ap.importe_base > 0 %}
-        <div class="resumen-row"><span class="rl"><span class="dot-uc"></span>{{ ap.regla.nombre }}{% if ap.fondo %} → {{ ap.fondo.nombre }}{% endif %}</span><span style="color:var(--uc);">−€{{ ap.importe_base|floatformat:2 }}</span></div>
-        {% endif %}{% endfor %}
-    </div>
-
-    <div class="resumen-info">ℹParte proporcional gastos hogar ({{ dm.proporcion }}%): €{{ dm.aportacion_hogar_informativa|floatformat:2 }}/mes</div>
-
-    {% if dm.fuentes %}
-    <div class="persona-actions">
-        <button onclick="toggleEl('ajuste-{{ dm.miembro.user.id }}')" class="btn btn-secondary" style="font-size:0.72rem; padding:6px 12px;">Ajustar ingreso</button>
-    </div>
-    <div id="ajuste-{{ dm.miembro.user.id }}" style="display:none;">
-        <form method="post" action="{% url 'finanzas:ajustar_ingreso_mes' %}" class="ajuste-form">
-            {% csrf_token %}
-            <input type="hidden" name="mes" value="{{ d.mes }}">
-            <input type="hidden" name="anio" value="{{ d.anio }}">
-            <div style="flex:1; min-width:120px;">
-                <label class="lbl-sm">Fuente</label>
-                <select name="fuente_id" class="inp-sm">{% for fu in dm.fuentes %}<option value="{{ fu.id }}">{{ fu.nombre }}</option>{% endfor %}</select>
-            </div>
-            <div style="min-width:110px;">
-                <label class="lbl-sm">Neto real (€)</label>
-                <input type="number" name="importe_real" step="0.01" placeholder="Vacío = reset" class="inp-sm">
-            </div>
-            <div style="min-width:80px;">
-                <label class="lbl-sm">Nota</label>
-                <input type="text" name="nota" placeholder="Opcional" class="inp-sm">
-            </div>
-            <button type="submit" class="btn btn-primary" style="font-size:0.78rem; padding:8px 14px; align-self:flex-end;">OK</button>
-        </form>
-    </div>
-    {% endif %}
-</div>
-{% endfor %}
-</div>
+</section>
 
 </div><!-- /panel -->
+
 
 
 <!-- ===== MODAL REGLA (crear/editar) ===== -->
@@ -359,16 +493,14 @@
             <div class="fg"><label>Nombre</label><input type="text" name="nombre" id="regla-nombre" required></div>
             <div class="fg">
                 <label>Tipo</label>
-                <div style="display:flex; gap:8px; margin-top:4px;">
-                    <button type="button" id="btn-pct" class="btn btn-secondary active" onclick="setTipoR('porcentaje')" style="flex:1;">%</button>
-                    <button type="button" id="btn-fijo" class="btn btn-secondary" onclick="setTipoR('fijo')" style="flex:1;">€ fijo</button>
+                <div class="tipo-grid">
+                    <button type="button" id="btn-pct" class="tipo-opt active" onclick="setTipoR('porcentaje')"><strong>% del libre</strong><span>Un porcentaje de lo que le queda</span></button>
+                    <button type="button" id="btn-fijo" class="tipo-opt" onclick="setTipoR('fijo')"><strong>€ fijo</strong><span>La misma cifra cada mes</span></button>
+                    <button type="button" id="btn-cubrir_fondo" class="tipo-opt" onclick="setTipoR('cubrir_fondo')"><strong>Cubrir fondo</strong><span>Lo que necesita, según ingresos</span></button>
+                    <button type="button" id="btn-resto" class="tipo-opt" onclick="setTipoR('resto')"><strong>Todo el resto</strong><span>Lo que quede libre</span></button>
                 </div>
-                <div style="display:flex; gap:8px; margin-top:8px;">
-                    <button type="button" id="btn-cubrir_fondo" class="btn btn-secondary" onclick="setTipoR('cubrir_fondo')" style="flex:1;">Cubrir fondo</button>
-                    <button type="button" id="btn-resto" class="btn btn-secondary" onclick="setTipoR('resto')" style="flex:1;">Todo el resto</button>
-                </div>
-                <p id="ayuda-cubrir_fondo" class="paso-sub" style="display:none; margin-top:6px;">Pone lo que el fondo necesita este mes: sus gastos asignados más lo que sale de él en movimientos. Cada uno aporta en proporción a lo que ingresa ese mes (lo declarado en «Ajustar ingreso»; si no hay nada, lo previsto). Con «Hogar» se reparte entre todos; con una persona, pone solo su parte.</p>
-                <p id="ayuda-resto" class="paso-sub" style="display:none; margin-top:6px;">Cada uno manda al fondo todo lo que le queda libre tras las reglas anteriores. Ponla la última.</p>
+                <p id="ayuda-cubrir_fondo" class="fg-nota" style="display:none;">Pone lo que el fondo necesita este mes: sus gastos asignados más lo que sale de él en movimientos. Cada uno aporta en proporción a lo que ingresa ese mes (lo declarado; si no hay nada, lo previsto). Con «Hogar» se reparte entre todos; con una persona, pone solo su parte.</p>
+                <p id="ayuda-resto" class="fg-nota" style="display:none;">Cada uno manda al fondo todo lo que le queda libre tras las reglas anteriores. Ponla la última.</p>
                 <input type="hidden" name="tipo_regla" id="tipo_regla_input" value="porcentaje">
             </div>
             <div id="campo-pct" class="fg"><label>Porcentaje (%)</label><input type="number" name="porcentaje" id="regla-pct" step="0.01" min="0" max="100" value="0"></div>
@@ -660,6 +792,138 @@
 .modal-close:hover { border-color:var(--danger); color:var(--danger); }
 .btn.active { border-color:var(--primary-color); color:var(--primary-color); }
 .msg-toast { background:var(--accent-soft); border:1px solid var(--success); color:var(--success); border-radius:10px; padding:10px 16px; margin-bottom:12px; font-size:0.85rem; }
+
+/* ── Guía de pasos ── */
+.pasos-guia { display:flex; gap:6px; margin:0 0 16px; overflow-x:auto; scrollbar-width:none; }
+.pasos-guia::-webkit-scrollbar { display:none; }
+.pasos-guia a {
+    display:flex; align-items:center; gap:7px; flex:1 0 auto; text-decoration:none;
+    padding:8px 12px; border:1px solid var(--border); border-radius:999px;
+    background:var(--surface); color:var(--muted); font-size:0.78rem; font-weight:600;
+    transition:border-color .15s, color .15s;
+}
+.pasos-guia a:hover { border-color:var(--primary-color); color:var(--primary-color); }
+.pg-num {
+    display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px;
+    border-radius:50%; background:color-mix(in srgb, var(--primary-color) 14%, transparent);
+    color:var(--primary-color); font-size:0.7rem; font-weight:700; flex-shrink:0;
+}
+.paso { scroll-margin-top:16px; }
+section.paso { border-top:1px solid var(--border); padding-top:22px; }
+
+/* ── Paso 1: lo que entra ── */
+.peso-bar { display:flex; height:30px; border-radius:10px; overflow:hidden; margin:4px 0 14px; background:var(--app-bg); border:1px solid var(--border); }
+.peso-seg {
+    display:flex; align-items:center; justify-content:center; white-space:nowrap; overflow:hidden;
+    background:color-mix(in srgb, var(--uc) 85%, transparent); color:#fff;
+    font-size:0.74rem; font-weight:700; font-variant-numeric:tabular-nums;
+}
+.peso-seg + .peso-seg { border-left:2px solid var(--surface); }
+.entra-lista { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:10px; }
+.entra-fila { border:1px solid var(--border); border-left:4px solid var(--uc); border-radius:12px; padding:12px 14px; background:var(--surface); }
+.entra-quien { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.entra-nombre { font-weight:700; color:var(--text-color); }
+.entra-cifras { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:8px 0 4px; flex-wrap:wrap; }
+.entra-importe { font-size:1.3rem; font-weight:800; color:var(--text-color); font-variant-numeric:tabular-nums; }
+.entra-pct { font-size:0.8rem; font-weight:600; color:var(--uc); }
+.entra-fila .persona-chips { margin:6px 0 0; }
+.entra-btn { margin-top:10px; }
+.entra-total { display:flex; justify-content:space-between; margin-top:10px; padding:10px 14px; border-radius:10px; background:var(--surface-2); font-size:0.86rem; font-weight:700; color:var(--text-color); font-variant-numeric:tabular-nums; }
+.chip-ok { background:color-mix(in srgb, var(--success) 12%, transparent); color:var(--success); border:1px solid color-mix(in srgb, var(--success) 25%, transparent); }
+.chip-previsto { background:var(--surface-2); color:var(--muted); border:1px dashed var(--border-strong); }
+.chip-gasto { background:color-mix(in srgb, var(--danger) 10%, transparent); color:var(--danger); border:1px solid color-mix(in srgb, var(--danger) 20%, transparent); }
+
+/* ── Paso 2: reglas ── */
+.regla-orden {
+    display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; flex-shrink:0;
+    border-radius:6px; background:var(--surface-2); color:var(--muted); font-size:0.72rem; font-weight:700;
+}
+.regla-fuera { opacity:.6; }
+.regla-mueve { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:8px; }
+.regla-mueve-nada { font-size:0.72rem; color:var(--muted); font-style:italic; }
+.mueve-chip {
+    display:inline-flex; align-items:center; gap:5px; font-size:0.74rem; font-weight:600;
+    padding:3px 9px; border-radius:999px; font-variant-numeric:tabular-nums; color:var(--text-color);
+    background:color-mix(in srgb, var(--uc) 10%, transparent); border:1px solid color-mix(in srgb, var(--uc) 25%, transparent);
+}
+.mueve-link { font-size:0.74rem; color:var(--primary-color); font-weight:600; text-decoration:none; }
+.mueve-link:hover { text-decoration:underline; }
+
+/* La prueba del cálculo según ingresos */
+.calculo {
+    margin:14px 0 6px; border:1px solid color-mix(in srgb, var(--fc) 35%, var(--border));
+    border-radius:14px; padding:16px 18px; scroll-margin-top:16px;
+    background:linear-gradient(180deg, color-mix(in srgb, var(--fc) 7%, var(--surface)), var(--surface));
+}
+.calculo:target { box-shadow:0 0 0 2px var(--fc); }
+.calculo-head { display:flex; align-items:center; gap:12px; margin-bottom:14px; }
+.calculo-icono {
+    display:flex; align-items:center; justify-content:center; width:36px; height:36px; flex-shrink:0;
+    border-radius:10px; background:var(--fc); color:#fff; font-size:1.25rem; font-weight:700;
+}
+.calculo-titulo { font-weight:700; color:var(--text-color); font-size:0.95rem; }
+.calculo-sub { font-size:0.76rem; color:var(--muted); margin-top:2px; }
+.calculo-pasos { list-style:none; margin:0; padding:0; counter-reset:cp; display:flex; flex-direction:column; gap:12px; }
+.calculo-pasos > li { counter-increment:cp; position:relative; padding-left:32px; }
+.calculo-pasos > li::before {
+    content:counter(cp); position:absolute; left:0; top:0; width:22px; height:22px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:700;
+    border:1.5px solid var(--fc); color:var(--fc); background:var(--surface);
+}
+.calculo-pasos > li:not(:last-child)::after {
+    content:''; position:absolute; left:10.5px; top:26px; bottom:-10px; width:1px; background:var(--border-strong);
+}
+.cp-titulo { font-size:0.8rem; font-weight:700; color:var(--text-color); margin:2px 0 6px; }
+.cp-lineas { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:6px 12px; }
+.cp-linea { display:flex; justify-content:space-between; gap:10px; padding:4px 0; font-size:0.8rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+.cp-linea em { font-style:normal; opacity:.8; }
+.cp-resultado { border-top:1px solid var(--border); margin-top:4px; padding-top:7px; color:var(--text-color); font-weight:700; }
+.cp-ecuacion {
+    display:grid; grid-template-columns:minmax(70px, auto) 1fr auto; align-items:baseline; gap:4px 10px;
+    padding:6px 0; font-size:0.8rem; font-variant-numeric:tabular-nums;
+}
+.cp-ecuacion + .cp-ecuacion { border-top:1px dashed var(--border); }
+.cp-quien { display:flex; align-items:center; gap:6px; font-weight:600; color:var(--text-color); }
+.cp-op { color:var(--muted); }
+.cp-op small { font-size:0.66rem; padding:1px 6px; border-radius:999px; background:var(--surface-2); margin:0 2px; }
+.cp-igual { text-align:right; color:var(--muted); white-space:nowrap; }
+.cp-igual strong { color:var(--uc); font-size:0.9rem; }
+@media (max-width:480px){
+    .cp-ecuacion { grid-template-columns:1fr auto; }
+    .cp-op { grid-column:1 / -1; grid-row:2; font-size:0.74rem; }
+}
+.calculo-check {
+    display:flex; gap:10px; align-items:flex-start; margin-top:14px; padding:10px 12px; border-radius:10px;
+    font-size:0.8rem; line-height:1.5; font-variant-numeric:tabular-nums;
+}
+.calculo-check > span:first-child {
+    display:flex; align-items:center; justify-content:center; width:20px; height:20px; flex-shrink:0;
+    border-radius:50%; color:#fff; font-size:0.75rem; font-weight:700; margin-top:1px;
+}
+.calculo-check.ok { background:color-mix(in srgb, var(--success) 10%, transparent); color:var(--text-color); }
+.calculo-check.ok > span:first-child { background:var(--success); }
+.calculo-check.ko { background:color-mix(in srgb, var(--danger) 10%, transparent); color:var(--text-color); }
+.calculo-check.ko > span:first-child { background:var(--danger); }
+.calculo-nota { font-size:0.74rem; color:var(--muted); margin:8px 0 0; }
+
+/* ── Paso 4: transferencias por persona ── */
+.persona-card .transfer-lista { margin-bottom:10px; }
+.transfer-destino { font-size:0.9rem; font-weight:700; color:var(--text-color); }
+.transfer-cuenta { font-size:0.7rem; color:var(--info); margin-top:2px; }
+.transfer-importe { font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.resumen-total { font-weight:700; }
+.resumen-total .rl { color:var(--text-color); }
+
+/* ── Selector de tipo de regla ── */
+.tipo-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
+.tipo-opt {
+    display:flex; flex-direction:column; align-items:flex-start; gap:2px; text-align:left; cursor:pointer;
+    padding:10px 12px; border-radius:10px; border:1px solid var(--border-strong);
+    background:var(--app-bg); color:var(--text-color); font-family:inherit; transition:border-color .15s, background .15s;
+}
+.tipo-opt strong { font-size:0.84rem; }
+.tipo-opt span { font-size:0.7rem; color:var(--muted); }
+.tipo-opt.active { border-color:var(--primary-color); background:color-mix(in srgb, var(--primary-color) 8%, var(--app-bg)); box-shadow:inset 0 0 0 1px var(--primary-color); }
 </style>
 
 <!-- ===== JAVASCRIPT ===== -->
