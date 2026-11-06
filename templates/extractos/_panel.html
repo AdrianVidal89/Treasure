@@ -1712,6 +1712,36 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .mc-lista { border:1px solid var(--border); border-radius:10px; }
 .mc-lista .ext-mov { padding:10px 12px; }
 .mc-vacio { color:var(--muted); font-style:italic; font-size:0.83rem; padding:14px; margin:0; }
+.ext-modal-cuerpo.cargando { opacity:.55; transition:opacity .15s; pointer-events:none; }
+.mc-vistas { display:inline-flex; gap:2px; padding:3px; margin-bottom:14px; background:var(--app-bg); border-radius:999px; }
+.mc-vista { border:0; background:transparent; color:var(--muted); font:inherit; font-size:0.78rem; font-weight:600; padding:5px 13px; border-radius:999px; cursor:pointer; }
+.mc-vista.activa { background:var(--surface); color:var(--text-color); box-shadow:0 1px 3px rgba(0,0,0,.12); cursor:default; }
+.mc-ev { margin-top:18px; }
+.mc-ev-grafico { position:relative; display:flex; align-items:stretch; gap:4px; height:170px; padding-top:18px; border-bottom:1px solid var(--border); }
+.mc-ev-barra { position:relative; flex:1 1 0; min-width:0; display:flex; flex-direction:column; border:0; background:transparent; padding:0; font:inherit; color:inherit; cursor:pointer; border-radius:6px 6px 0 0; }
+.mc-ev-barra:hover { background:color-mix(in srgb, var(--text-color) 5%, transparent); }
+.mc-ev-col { position:relative; flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; }
+.mc-ev-col i { display:block; width:72%; max-width:34px; min-height:2px; border-radius:4px 4px 0 0; background:var(--cc, var(--primary-color)); opacity:.4; transition:opacity .15s; }
+.mc-ev-barra:hover .mc-ev-col i { opacity:.65; }
+.mc-ev-barra.foco .mc-ev-col i { opacity:1; }
+.mc-ev-barra.fuera .mc-ev-col i { background:var(--danger); }
+.mc-ev-barra.sin-datos .mc-ev-col i { background:transparent; border:1px dashed var(--border); border-bottom:0; height:12px !important; opacity:1; }
+.mc-ev-val { margin-bottom:3px; white-space:nowrap; font-size:0.7rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.mc-ev-lbl { position:absolute; top:100%; left:0; right:0; padding-top:4px; display:flex; flex-direction:column; align-items:center; line-height:1.15; font-size:0.66rem; color:var(--muted); white-space:nowrap; }
+.mc-ev-barra.foco .mc-ev-lbl { color:var(--text-color); font-weight:700; }
+.mc-ev-lbl em { font-style:normal; font-size:0.6rem; opacity:.7; }
+.mc-ev-capa { position:absolute; top:18px; bottom:0; left:0; right:0; pointer-events:none; z-index:1; }
+.mc-ev-linea { position:absolute; left:0; right:0; height:0; border-top:1.5px dashed var(--text-color); opacity:.45; pointer-events:none; z-index:1; }
+.mc-ev-linea-limite { border-top:1.5px solid var(--danger); opacity:.55; }
+.mc-ev-leyenda { display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:36px; font-size:0.74rem; color:var(--muted); }
+.mc-ev-leyenda i { display:inline-block; width:14px; height:0; vertical-align:middle; margin-right:6px; }
+.mc-ev-leyenda .ley-media { border-top:1.5px dashed var(--text-color); opacity:.6; }
+.mc-ev-leyenda .ley-limite { border-top:1.5px solid var(--danger); }
+.mc-ev-foco { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; margin-bottom:10px; }
+.mc-ev-foco h4 { margin:0; }
+.mc-ev-foco-total { font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; }
+.mc-ev-foco-vs { font-size:0.78rem; font-weight:700; font-variant-numeric:tabular-nums; }
+.mc-ev-detalle .mc-comercios { margin-bottom:12px; }
 @media (max-width:640px){
     .mc-comercio { grid-template-columns:1fr auto; }
     .mc-comercio-barra, .mc-comercio-veces { display:none; }
@@ -3118,21 +3148,33 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         if (focoPrevio) { focoPrevio.focus(); focoPrevio = null; }
     }
 
+    /* La categoría abierta, para poder cambiar de vista (el mes o su
+       evolución) y de mes dentro de la evolución sin volver a la pantalla. */
+    var modalClave = null;
+    var modalComparar = false;
+
     function abrirModal(clave, nombre, disparador, comparar) {
         if (!modal) return;
         focoPrevio = disparador || null;
+        modalClave = clave;
+        modalComparar = !!comparar;
         modalTitulo.textContent = nombre || 'Desglose';
         modalCuerpo.innerHTML = '<p class="ext-modal-cargando">Cargando el desglose…</p>';
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
+        cargarDesglose({});
+    }
 
+    function cargarDesglose(extra) {
         /* Los filtros de la pantalla viajan tal cual y solo se cambia la
            categoría: lo que se ve dentro tiene que sumar exactamente lo que
            decía la fila de la que se ha entrado. */
         var params = new URLSearchParams(window.location.search);
-        params.set('categoria', clave);
+        params.set('categoria', modalClave);
         params.delete('bloque');
-        if (comparar) params.set('comparar', '1');
+        if (modalComparar) params.set('comparar', '1');
+        Object.keys(extra).forEach(function(k){ params.set(k, extra[k]); });
+        modalCuerpo.classList.add('cargando');
         fetch(URL_DESGLOSE + '?' + params.toString(), {
             headers: {'X-Requested-With': 'XMLHttpRequest'}
         }).then(function(r){
@@ -3142,6 +3184,8 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             modalCuerpo.innerHTML = html;
         }).catch(function(){
             modalCuerpo.innerHTML = '<p class="ext-modal-cargando">No se ha podido cargar el desglose.</p>';
+        }).then(function(){
+            modalCuerpo.classList.remove('cargando');
         });
     }
 
@@ -3157,6 +3201,22 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         var fila = e.target.closest('.an-dv-abrir');
         if (fila) {
             abrirModal(fila.dataset.categoria, fila.dataset.nombre, fila, true);
+            return;
+        }
+        /* Dentro del modal: cambiar entre el mes y su evolución, y en la
+           evolución pinchar una barra para ver el desglose de ese mes. */
+        var vista = e.target.closest('.mc-vista');
+        if (vista && modalClave !== null) {
+            if (!vista.classList.contains('activa')) {
+                cargarDesglose(vista.dataset.vista === 'evolucion' ? {vista: 'evolucion'} : {});
+            }
+            return;
+        }
+        var barraMes = e.target.closest('.mc-ev-barra');
+        if (barraMes && modalClave !== null) {
+            if (!barraMes.classList.contains('foco')) {
+                cargarDesglose({vista: 'evolucion', foco: barraMes.dataset.foco});
+            }
             return;
         }
         if (e.target.closest('[data-cerrar-modal]')) cerrarModal();

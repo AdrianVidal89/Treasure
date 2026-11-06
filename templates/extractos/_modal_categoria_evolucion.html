@@ -1,0 +1,80 @@
+{% load custom_filters %}{% load l10n %}
+{% comment %}
+La evolución de una categoría: barras de los últimos meses y, debajo, el
+desglose del mes que se pinche. Responde a «¿este mes fue raro o siempre gasto
+esto?», que el desglose de un solo mes no puede contestar.
+{% endcomment %}
+{% include "extractos/_modal_categoria_vistas.html" with vista="evolucion" %}
+<div class="mc-cabecera" style="--cc:{{ color }};">
+    <div class="mc-identidad">
+        <span class="mc-bloque">{{ bloque_etiqueta }}</span>
+        <h3 class="mc-nombre">{{ nombre }}</h3>
+        <span class="mc-periodo">Últimos {{ barras|length }} mes{{ barras|length|pluralize:"es" }}{% if es_anual %} · recibos enteros, cuando se pagaron{% endif %}</span>
+    </div>
+    <div class="mc-cifras">
+        <span class="mc-total">{{ media|euro }}</span>
+        <span class="mc-media">de media al mes{% if num_meses %} en {{ num_meses }} mes{{ num_meses|pluralize:"es" }}{% endif %}</span>
+    </div>
+</div>
+
+<div class="mc-ev" style="--cc:{{ color }};">
+    <div class="mc-ev-grafico">
+        <span class="mc-ev-capa" aria-hidden="true">
+        {% if media > 0 %}
+        <span class="mc-ev-linea mc-ev-linea-media" style="bottom:{{ pct_media|unlocalize }}%;" title="Media {{ media|euro:0 }}"></span>
+        {% endif %}
+        {% if limite_mensual %}
+        <span class="mc-ev-linea mc-ev-linea-limite" style="bottom:{{ pct_limite|unlocalize }}%;" title="Presupuesto {{ limite_mensual|euro:0 }}"></span>
+        {% endif %}
+        </span>
+        {% for b in barras %}
+        <button type="button" class="mc-ev-barra{% if b.foco %} foco{% endif %}{% if b.sin_datos %} sin-datos{% endif %}{% if b.fuera %} fuera{% endif %}"
+                data-foco="{{ b.clave }}" aria-pressed="{% if b.foco %}true{% else %}false{% endif %}"
+                title="{{ b.etiqueta }}: {% if b.sin_datos %}sin extractos{% else %}{{ b.total|euro:0 }}{% endif %}">
+            <span class="mc-ev-col">
+                {% if b.foco %}<b class="mc-ev-val">{{ b.total|euro:0 }}</b>{% endif %}
+                <i style="height:{{ b.pct|unlocalize }}%;"></i>
+            </span>
+            <span class="mc-ev-lbl">{{ b.corta }}{% if b.anio %}<em>{{ b.anio }}</em>{% endif %}</span>
+        </button>
+        {% endfor %}
+    </div>
+    <div class="mc-ev-leyenda">
+        {% if media > 0 %}<span><i class="ley-media"></i>Media {{ media|euro:0 }}</span>{% endif %}
+        {% if limite_mensual %}<span><i class="ley-limite"></i>Presupuesto {{ limite_mensual|euro:0 }}/mes</span>{% endif %}
+        {% if mes_max and num_meses > 1 %}<span>Máximo: {{ mes_max.etiqueta }} ({{ mes_max.total|euro:0 }})</span>{% endif %}
+    </div>
+</div>
+
+<div class="mc-seccion mc-ev-detalle">
+    <div class="mc-ev-foco">
+        <h4>{{ foco_etiqueta }}</h4>
+        <span class="mc-ev-foco-total">{{ foco_total|euro }}</span>
+        {% if num_meses > 1 %}
+        <span class="mc-ev-foco-vs {% if foco_desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
+            {% if foco_desviacion > 0 %}+{% endif %}{{ foco_desviacion|euro:0 }} frente a la media
+        </span>
+        {% endif %}
+    </div>
+
+    {% if comercios.filas|length > 1 %}
+    <div class="mc-comercios">
+        {% for c in comercios.filas %}
+        <div class="mc-comercio">
+            <span class="mc-comercio-nombre" title="{{ c.etiqueta }}">{{ c.etiqueta }}</span>
+            <span class="mc-comercio-barra"><i style="width:{{ c.pct|unlocalize }}%;"></i></span>
+            <span class="mc-comercio-val">{{ c.total|euro:0 }}</span>
+            <span class="mc-comercio-veces">{{ c.num }} × {{ c.ticket_medio|euro }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="ext-lista mc-lista">
+        {% for m in movimientos %}
+        {% include "extractos/_movimiento.html" with m=m panel=contexto_edicion %}
+        {% empty %}
+        <p class="mc-vacio">Ningún gasto de esta categoría en {{ foco_etiqueta }}.</p>
+        {% endfor %}
+    </div>
+</div>
