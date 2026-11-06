@@ -3018,6 +3018,82 @@ class MediaMensualDelFiltroTests(TestCase):
         self.assertEqual(media['limite'], Decimal('50'))
 
 
+class EvolucionDeCategoriaTests(TestCase):
+    """La vista «Evolución» del modal de una categoría: barras mes a mes y el
+    desglose del mes que se pinche."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.super = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        self.ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+
+    def gasto(self, categoria, importe, anio, mes, concepto='Mercadona'):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(anio, mes, 5),
+            concepto=concepto, importe=Decimal(importe), categoria=categoria,
+        )
+
+    def evolucion(self, **params):
+        params.setdefault('vista', 'evolucion')
+        return self.client.get(reverse('extractos:desglose_categoria'), params)
+
+    def test_barras_hasta_el_mes_de_la_pantalla_y_media(self):
+        self.gasto(self.super, '-100', 2026, 6)
+        self.gasto(self.super, '-200', 2026, 7)
+        self.gasto(self.super, '-300', 2026, 8)
+        self.gasto(self.super, '-999', 2026, 9)  # posterior al mes mirado
+        self.gasto(self.ocio, '-50', 2026, 8)
+
+        r = self.evolucion(categoria=self.super.id, anio=2026, mes=8)
+        self.assertEqual(r.status_code, 200)
+        self.assertTemplateUsed(r, 'extractos/_modal_categoria_evolucion.html')
+        barras = r.context['barras']
+        # No hay meses inventados antes del primer extracto.
+        self.assertEqual([b['clave'] for b in barras], ['2026-06', '2026-07', '2026-08'])
+        self.assertEqual([b['total'] for b in barras], [Decimal('100'), Decimal('200'), Decimal('300')])
+        self.assertEqual(r.context['media'], Decimal('200'))
+        self.assertTrue(barras[-1]['foco'])
+
+    def test_pinchar_una_barra_trae_el_desglose_de_ese_mes(self):
+        self.gasto(self.super, '-100', 2026, 6, concepto='Lidl')
+        self.gasto(self.super, '-300', 2026, 8)
+
+        r = self.evolucion(categoria=self.super.id, anio=2026, mes=8, foco='2026-06')
+        self.assertEqual(r.context['foco_total'], Decimal('100'))
+        self.assertEqual([m.concepto for m in r.context['movimientos']], ['Lidl'])
+        self.assertTrue(r.context['barras'][0]['foco'])
+
+    def test_un_foco_fuera_de_la_ventana_se_ignora(self):
+        self.gasto(self.super, '-300', 2026, 8)
+        r = self.evolucion(categoria=self.super.id, anio=2026, mes=8, foco='2020-01')
+        self.assertEqual(r.context['foco_etiqueta'], 'Agosto 2026')
+
+    def test_sin_mes_en_pantalla_llega_hasta_el_ultimo_extracto(self):
+        for mes in range(1, 13):
+            self.gasto(self.super, '-10', 2025, mes)
+        self.gasto(self.super, '-10', 2026, 2)
+
+        r = self.evolucion(categoria=self.super.id)
+        claves = [b['clave'] for b in r.context['barras']]
+        self.assertEqual(len(claves), 12)
+        self.assertEqual(claves[-1], '2026-02')
+        self.assertEqual(claves[0], '2025-03')
+
+    def test_el_desglose_normal_ofrece_cambiar_a_evolucion(self):
+        self.gasto(self.super, '-300', 2026, 8)
+        r = self.client.get(reverse('extractos:desglose_categoria'), {
+            'categoria': self.super.id, 'anio': 2026, 'mes': 8,
+        })
+        self.assertContains(r, 'data-vista="evolucion"')
+
+
 class DesgloseDeCategoriaTests(TestCase):
     """El modal que se abre al pinchar una categoría dentro de su pilar: tiene
     que enseñar lo mismo que decía la fila y dejar cambiarlo ahí mismo."""

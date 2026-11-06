@@ -1,0 +1,11 @@
+{% comment %}
+Las dos caras del modal de una categoría: lo que hay dentro del periodo que se
+mira y cómo ha ido mes a mes. Es un selector y no dos pestañas fijas porque
+cada cara se pide al servidor al pulsarla.
+{% endcomment %}
+<div class="mc-vistas" role="tablist">
+    <button type="button" class="mc-vista{% if vista != 'evolucion' %} activa{% endif %}" role="tab"
+            aria-selected="{% if vista != 'evolucion' %}true{% else %}false{% endif %}" data-vista="mes">{{ periodo_etiqueta }}</button>
+    <button type="button" class="mc-vista{% if vista == 'evolucion' %} activa{% endif %}" role="tab"
+            aria-selected="{% if vista == 'evolucion' %}true{% else %}false{% endif %}" data-vista="evolucion">Evolución</button>
+</div>
