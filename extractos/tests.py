@@ -3094,6 +3094,80 @@ class EvolucionDeCategoriaTests(TestCase):
         self.assertContains(r, 'data-vista="evolucion"')
 
 
+
+class EvolucionDeBloqueTests(TestCase):
+    """La evolución de un bloque entero: barras mes a mes partidas por
+    categoría y, al pinchar un mes, en qué categorías se repartió."""
+
+    def setUp(self):
+        self.hogar = Hogar.objects.create(nombre='Hogar de prueba')
+        self.user = User.objects.create_user(username='tester', password='clave-de-prueba')
+        perfil = self.user.userprofile
+        perfil.hogar = self.hogar
+        perfil.save()
+        _crear_categorias_predefinidas(self.hogar)
+        self.extracto = ExtractoBancario.objects.create(hogar=self.hogar, usuario=self.user)
+        self.client.force_login(self.user)
+        self.super = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Alimentacion')
+        self.combustible = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Gasolina')
+        self.ocio = CategoriaGasto.objects.get(hogar=self.hogar, nombre='Ocio')
+        self.assertEqual(self.super.tipo, 'variable')
+        self.assertEqual(self.combustible.tipo, 'variable')
+        self.assertNotEqual(self.ocio.tipo, 'variable')
+
+    def gasto(self, categoria, importe, anio, mes, concepto='Mercadona'):
+        return MovimientoBancario.objects.create(
+            extracto=self.extracto, hogar=self.hogar, fecha=date(anio, mes, 5),
+            concepto=concepto, importe=Decimal(importe), categoria=categoria,
+        )
+
+    def evolucion(self, **params):
+        return self.client.get(reverse('extractos:evolucion_bloque'), params)
+
+    def test_barras_del_bloque_suman_sus_categorias(self):
+        self.gasto(self.super, '-100', 2026, 6)
+        self.gasto(self.combustible, '-50', 2026, 6, concepto='Repsol')
+        self.gasto(self.super, '-200', 2026, 7)
+        self.gasto(self.super, '-300', 2026, 8)
+        self.gasto(self.combustible, '-150', 2026, 8, concepto='Repsol')
+        self.gasto(self.ocio, '-999', 2026, 8, concepto='Cine')  # otro bloque
+
+        r = self.evolucion(bloque='variable', anio=2026, mes=8)
+        self.assertEqual(r.status_code, 200)
+        self.assertTemplateUsed(r, 'extractos/_modal_bloque_evolucion.html')
+        barras = r.context['barras']
+        self.assertEqual([b['clave'] for b in barras], ['2026-06', '2026-07', '2026-08'])
+        self.assertEqual([b['total'] for b in barras],
+                         [Decimal('150'), Decimal('200'), Decimal('450')])
+        self.assertEqual(sum(t['importe'] for t in barras[-1]['tramos']), Decimal('450'))
+        self.assertEqual(r.context['media'], Decimal('800') / 3)
+        self.assertTrue(barras[-1]['foco'])
+
+    def test_el_mes_pinchado_se_reparte_por_categorias_con_su_media(self):
+        self.gasto(self.super, '-100', 2026, 6)
+        self.gasto(self.combustible, '-50', 2026, 6, concepto='Repsol')
+        self.gasto(self.super, '-300', 2026, 8)
+
+        r = self.evolucion(bloque='variable', anio=2026, mes=8, foco='2026-06')
+        self.assertEqual(r.context['foco_total'], Decimal('150'))
+        filas = {f['nombre']: f for f in r.context['filas']}
+        self.assertEqual(filas['Alimentacion']['importe'], Decimal('100'))
+        self.assertEqual(filas['Gasolina']['importe'], Decimal('50'))
+        # Medias sobre los meses con extracto de la ventana (junio y agosto).
+        self.assertEqual(filas['Alimentacion']['media'], Decimal('200'))
+        self.assertEqual(filas['Alimentacion']['desviacion'], Decimal('-100'))
+        self.assertEqual(filas['Gasolina']['pct_mes'], 33.3)
+        self.assertContains(r, 'data-categoria="%s"' % self.super.id)
+
+    def test_un_bloque_que_no_es_de_gasto_no_existe(self):
+        self.assertEqual(self.evolucion(bloque='ingreso').status_code, 404)
+        self.assertEqual(self.evolucion(bloque='').status_code, 404)
+
+    def test_el_pilar_ofrece_ver_la_evolucion_del_bloque(self):
+        self.gasto(self.super, '-300', 2026, 8)
+        r = self.client.get(reverse('extractos:listar'), {'anio': 2026, 'mes': 8})
+        self.assertContains(r, 'class="ext-bloque-evo" data-bloque="variable"')
+
 class DesgloseDeCategoriaTests(TestCase):
     """El modal que se abre al pinchar una categoría dentro de su pilar: tiene
     que enseñar lo mismo que decía la fila y dejar cambiarlo ahí mismo."""
