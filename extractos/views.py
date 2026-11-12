@@ -3123,6 +3123,44 @@ def movimientos_de_categoria(request):
 MESES_EVOLUCION = 12
 
 
+def _ventana_evolucion(todos, pantalla):
+    """Los meses que se pintan en una evolución: hasta el que se mira en la
+    pantalla (o el último extracto) y hacia atrás, sin pasar del primero.
+
+    Devuelve los meses con extracto, la ventana en orden cronológico y el mes
+    ancla. La comparten la evolución de una categoría y la de un bloque, para
+    que las dos enseñen exactamente los mismos meses.
+    """
+    con_datos = {(m.fecha.year, m.fecha.month) for m in todos}
+    ultimo = max(con_datos) if con_datos else (date.today().year, date.today().month)
+    anio_sel, mes_sel = _entero_o_none(pantalla['anio']), _entero_o_none(pantalla['mes'])
+    if anio_sel and mes_sel and 1 <= mes_sel <= 12:
+        ancla = (anio_sel, mes_sel)
+    elif anio_sel:
+        # Un año entero: hasta diciembre, o hasta el último extracto si es el
+        # año en curso.
+        ancla = min((anio_sel, 12), ultimo)
+    else:
+        ancla = ultimo
+    # Los meses anteriores al primer extracto no son meses sin gasto, son
+    # meses de los que no se sabe nada: pintarlos a cero falsearía la media.
+    primero = min(con_datos) if con_datos else ancla
+    ventana = [ancla] + [c for c in _meses_previos(ancla, MESES_EVOLUCION - 1) if c >= primero]
+    ventana.reverse()
+    return con_datos, ventana, ancla
+
+
+def _foco_pedido(request, en_ventana, por_defecto):
+    """El mes pinchado (`foco=2026-08`), si está dentro de la ventana."""
+    pedido = request.GET.get('foco') or ''
+    if '-' in pedido:
+        anio_txt, _, mes_txt = pedido.partition('-')
+        candidato = (_entero_o_none(anio_txt), _entero_o_none(mes_txt))
+        if candidato in en_ventana:
+            return candidato
+    return por_defecto
+
+
 def _evolucion_de_categoria(request, hogar, todos, categoria):
     """La otra cara del modal de una categoría: cómo ha ido mes a mes.
 
@@ -3143,22 +3181,7 @@ def _evolucion_de_categoria(request, hogar, todos, categoria):
     f = _leer_filtros(request, categoria=cat_clave, bloque='', anio='all', mes='all')
     es_anual = bool(categoria and categoria.tipo == 'anual')
 
-    con_datos = {(m.fecha.year, m.fecha.month) for m in todos}
-    ultimo = max(con_datos) if con_datos else (date.today().year, date.today().month)
-    anio_sel, mes_sel = _entero_o_none(pantalla['anio']), _entero_o_none(pantalla['mes'])
-    if anio_sel and mes_sel and 1 <= mes_sel <= 12:
-        ancla = (anio_sel, mes_sel)
-    elif anio_sel:
-        # Un año entero: hasta diciembre, o hasta el último extracto si es el
-        # año en curso.
-        ancla = min((anio_sel, 12), ultimo)
-    else:
-        ancla = ultimo
-    # Los meses anteriores al primer extracto no son meses sin gasto, son
-    # meses de los que no se sabe nada: pintarlos a cero falsearía la media.
-    primero = min(con_datos) if con_datos else ancla
-    ventana = [ancla] + [c for c in _meses_previos(ancla, MESES_EVOLUCION - 1) if c >= primero]
-    ventana.reverse()
+    con_datos, ventana, ancla = _ventana_evolucion(todos, pantalla)
 
     def peso_de(m):
         if es_anual:
@@ -3184,13 +3207,7 @@ def _evolucion_de_categoria(request, hogar, todos, categoria):
     )
     tope = max(list(totales.values()) + [media, limite_mensual, Decimal('1')])
 
-    foco = ancla
-    pedido = request.GET.get('foco') or ''
-    if '-' in pedido:
-        anio_txt, _, mes_txt = pedido.partition('-')
-        candidato = (_entero_o_none(anio_txt), _entero_o_none(mes_txt))
-        if candidato in en_ventana:
-            foco = candidato
+    foco = _foco_pedido(request, en_ventana, ancla)
 
     def pct(valor):
         return float(max(valor, Decimal('0')) / tope * 100)
@@ -3243,6 +3260,183 @@ def _evolucion_de_categoria(request, hogar, todos, categoria):
             [m for m in movs_foco if es_anual or not m.se_saca_del_mes],
             1, tope=8, vista_de_mes=not es_anual),
         'contexto_edicion': _contexto_edicion(hogar),
+    })
+
+
+# Cuántas categorías se pintan con color propio dentro de la barra de un
+# bloque. Más allá, los colores dejan de distinguirse y la barra es confeti:
+# el resto se agrupa en «Otras», que el desglose del mes sí abre una a una.
+CATEGORIAS_APILADAS = 6
+COLOR_OTRAS = '#9aa5a0'
+# Colores bien separados entre sí: apilados unos encima de otros, dos verdes
+# parecidos (la paleta del donut tiene varios) se leían como una sola categoría.
+_PALETA_APILADA = ['#2c5f7a', '#e07a5f', '#d4a017', '#40916c', '#9d4edd', '#d16ba5']
+
+
+@login_required
+def evolucion_de_bloque(request):
+    """La evolución de un bloque entero —fijos, variables, discrecionales—
+    mes a mes, con cada barra partida por categorías.
+
+    Es la misma pregunta que la evolución de una categoría, un escalón más
+    arriba: «¿los variables de agosto fueron raros o siempre gasto eso?». Y al
+    pinchar un mes, en qué categorías se fue ese dinero y cómo está cada una
+    frente a su propia media, que es lo que dice POR QUÉ el mes salió así.
+
+    Cada mes pesa lo mismo que en la evolución de cada una de sus categorías,
+    para que la suma de las partes cuadre con la barra.
+    """
+    profile, hogar = _get_hogar(request)
+    if not hogar:
+        return JsonResponse({'ok': False, 'error': 'sin_hogar'}, status=403)
+
+    tipo = request.GET.get('bloque') or ''
+    if tipo not in TIPOS_GASTO:
+        return JsonResponse({'ok': False, 'error': 'bloque_invalido'}, status=404)
+
+    todos = cargar(MovimientoBancario.objects.filter(hogar=hogar))
+    pantalla = _leer_filtros(request)
+    # Lo de la pantalla vale (etiqueta, activo, buscador) salvo el periodo y la
+    # categoría: se mira el bloque entero, fuera del mes que hay puesto.
+    f = _leer_filtros(request, categoria='all', bloque=tipo, anio='all', mes='all')
+    es_anual = tipo == 'anual'
+
+    con_datos, ventana, ancla = _ventana_evolucion(todos, pantalla)
+    en_ventana = set(ventana)
+
+    def peso_de(m):
+        if es_anual:
+            return -m.importe_neto
+        return Decimal('0') if m.se_saca_del_mes else m.impacto_real
+
+    # (mes) -> {categoria_id: importe}, y los datos de cada categoría.
+    por_mes = defaultdict(lambda: defaultdict(lambda: Decimal('0')))
+    num_por_mes = defaultdict(lambda: defaultdict(int))
+    info_cat = {}
+    for m in todos:
+        clave_mes = (m.fecha.year, m.fecha.month)
+        if clave_mes not in en_ventana or not m.cuenta_como_gasto or not _pasa_filtro(m, f):
+            continue
+        cat_id = m.categoria_id
+        por_mes[clave_mes][cat_id] += peso_de(m)
+        num_por_mes[clave_mes][cat_id] += 1
+        if cat_id not in info_cat:
+            info_cat[cat_id] = m.categoria.nombre if m.categoria else 'Sin categorizar'
+
+    medibles_meses = [c for c in ventana if c in con_datos]
+    n_medibles = len(medibles_meses)
+
+    # Las categorías se ordenan por lo que pesan en toda la ventana: así el
+    # color de cada una es el mismo en todas las barras y en el desglose.
+    total_cat = defaultdict(lambda: Decimal('0'))
+    for c in ventana:
+        for cat_id, importe in por_mes.get(c, {}).items():
+            total_cat[cat_id] += importe
+    orden = sorted(total_cat, key=lambda k: total_cat[k], reverse=True)
+    principales = [k for k in orden if total_cat[k] > 0][:CATEGORIAS_APILADAS]
+    color_cat = {k: _PALETA_APILADA[i] for i, k in enumerate(principales)}
+
+    totales = {c: sum(por_mes.get(c, {}).values(), Decimal('0')) for c in ventana}
+    medibles = [totales[c] for c in medibles_meses]
+    media = sum(medibles, Decimal('0')) / n_medibles if n_medibles else Decimal('0')
+    limite_mensual = (
+        Decimal('0') if es_anual
+        else presupuesto.por_bloque(hogar).get(tipo, Decimal('0'))
+    )
+    tope = max(list(totales.values()) + [media, limite_mensual, Decimal('1')])
+
+    def pct(valor):
+        return float(max(valor, Decimal('0')) / tope * 100)
+
+    foco = _foco_pedido(request, en_ventana, ancla)
+
+    barras = []
+    for i, (anio, mes) in enumerate(ventana):
+        total = totales[(anio, mes)]
+        del_mes = por_mes.get((anio, mes), {})
+        tramos = [
+            {'nombre': info_cat[k], 'color': color_cat[k], 'importe': del_mes[k],
+             'pct': pct(del_mes[k])}
+            for k in principales if del_mes.get(k, Decimal('0')) > 0
+        ]
+        resto = sum(
+            (v for k, v in del_mes.items() if k not in color_cat and v > 0), Decimal('0'),
+        )
+        if resto > 0:
+            tramos.append({'nombre': 'Otras', 'color': COLOR_OTRAS,
+                           'importe': resto, 'pct': pct(resto)})
+        # Se apilan de abajo arriba: la categoría que más pesa, en la base.
+        tramos.reverse()
+        barras.append({
+            'clave': f"{anio}-{mes:02d}",
+            'corta': MESES_ES[mes][:3].lower(),
+            'anio': str(anio) if i == 0 or mes == 1 else '',
+            'etiqueta': f"{MESES_ES[mes]} {anio}",
+            'total': total,
+            'pct': pct(total),
+            'tramos': tramos,
+            'foco': (anio, mes) == foco,
+            'sin_datos': (anio, mes) not in con_datos,
+            'fuera': bool(limite_mensual) and total > limite_mensual,
+        })
+
+    # El reparto del mes pinchado: cada categoría con su peso en el mes, su
+    # media en la ventana y lo que se separa de ella. La desviación es la que
+    # explica el mes: si los variables suben 300 €, aquí se ve cuál los puso.
+    del_foco = por_mes.get(foco, {})
+    total_foco = totales.get(foco, Decimal('0'))
+    filas = []
+    for cat_id in orden:
+        importe = del_foco.get(cat_id, Decimal('0'))
+        media_cat = (
+            sum((por_mes.get(c, {}).get(cat_id, Decimal('0')) for c in medibles_meses),
+                Decimal('0')) / n_medibles
+            if n_medibles else Decimal('0')
+        )
+        if importe == 0 and media_cat == 0:
+            continue
+        filas.append({
+            'clave': str(cat_id) if cat_id else 'sin',
+            'nombre': info_cat[cat_id],
+            'color': color_cat.get(cat_id, COLOR_OTRAS),
+            'importe': importe,
+            'num': num_por_mes.get(foco, {}).get(cat_id, 0),
+            'pct_mes': round(float(importe / total_foco * 100), 1) if total_foco > 0 else 0,
+            'media': media_cat,
+            'desviacion': importe - media_cat,
+        })
+    filas.sort(key=lambda x: (x['importe'], x['media']), reverse=True)
+    tope_filas = max([x['importe'] for x in filas] + [x['media'] for x in filas] + [Decimal('1')])
+    for x in filas:
+        x['pct_barra'] = float(max(x['importe'], Decimal('0')) / tope_filas * 100)
+        x['pct_media'] = float(max(x['media'], Decimal('0')) / tope_filas * 100)
+
+    leyenda = [{'nombre': info_cat[k], 'color': color_cat[k]} for k in principales]
+    if any(k not in color_cat and total_cat[k] > 0 for k in total_cat):
+        leyenda.append({'nombre': 'Otras', 'color': COLOR_OTRAS})
+
+    maximo = max(medibles) if medibles else Decimal('0')
+    mes_max = next((b for b in barras if b['total'] == maximo and not b['sin_datos']), None)
+
+    return render(request, 'extractos/_modal_bloque_evolucion.html', {
+        'tipo': tipo,
+        'nombre': ETIQUETAS_TIPO.get(tipo, tipo),
+        'color': COLOR_TIPO.get(tipo, '#9aa5a0'),
+        'es_anual': es_anual,
+        'barras': barras,
+        'leyenda': leyenda,
+        'num_meses': n_medibles,
+        'media': media,
+        'pct_media': pct(media),
+        'limite_mensual': limite_mensual,
+        'pct_limite': pct(limite_mensual),
+        'mes_max': mes_max,
+        'foco_clave': f"{foco[0]}-{foco[1]:02d}",
+        'foco_etiqueta': f"{MESES_ES[foco[1]]} {foco[0]}",
+        'foco_total': total_foco,
+        'foco_desviacion': total_foco - media,
+        'foco_limite_desviacion': total_foco - limite_mensual if limite_mensual else None,
+        'filas': filas,
     })
 
 

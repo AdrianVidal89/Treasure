@@ -422,6 +422,15 @@ entiende por qué: parecería que la pantalla se ha comido mil euros.
                 </summary>
 
                 <div class="ext-pilar-detalle">
+                    {% if b.tipo != 'sin' %}
+                    {% comment %}La misma pregunta que la evolución de una categoría, un
+                       escalón más arriba: ¿este mes el bloque fue raro, y por
+                       culpa de qué categoría?{% endcomment %}
+                    <button type="button" class="ext-bloque-evo" data-bloque="{{ b.tipo }}" data-nombre="{{ b.etiqueta }}"
+                            title="Ver cómo ha ido {{ b.etiqueta|lower }} mes a mes, y en qué categorías se repartió cada mes">
+                        <span aria-hidden="true">📊</span> Evolución de {{ b.etiqueta|lower }}
+                    </button>
+                    {% endif %}
                     {% for c in b.categorias %}
                     <div class="ext-cat-fila">
                         {% comment %}El nombre abre el desglose en un modal: ver qué hay
@@ -1429,6 +1438,12 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     font-size:0.67rem; padding:1px 5px; border-radius:7px; cursor:pointer; max-width:120px;
 }
 .ext-bloque-select:hover, .ext-bloque-select:focus { border-color:var(--primary-color); color:var(--primary-color); }
+.ext-bloque-evo {
+    align-self:flex-start; background:color-mix(in srgb, var(--bc) 10%, transparent);
+    border:1px solid color-mix(in srgb, var(--bc) 35%, transparent); color:var(--text-color);
+    font:inherit; font-size:0.74rem; font-weight:600; padding:3px 11px; border-radius:999px; cursor:pointer;
+}
+.ext-bloque-evo:hover { background:color-mix(in srgb, var(--bc) 20%, transparent); }
 .ext-pilares-pie { margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:0.75rem; color:var(--muted); }
 @media (max-width:640px){
     .ext-pilar > summary { grid-template-columns:16px 1fr auto; }
@@ -1742,8 +1757,35 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
 .mc-ev-foco-total { font-size:1.1rem; font-weight:800; font-variant-numeric:tabular-nums; }
 .mc-ev-foco-vs { font-size:0.78rem; font-weight:700; font-variant-numeric:tabular-nums; }
 .mc-ev-detalle .mc-comercios { margin-bottom:12px; }
+/* Evolución de un bloque: cada barra apilada por categorías. */
+.mc-bl-pila { display:flex; flex-direction:column; width:72%; max-width:34px; min-height:2px; border-radius:4px 4px 0 0; overflow:hidden; opacity:.55; transition:opacity .15s; }
+.mc-bl-pila s { display:block; flex-basis:0; min-height:1px; text-decoration:none; }
+.mc-ev-barra:hover .mc-bl-pila { opacity:.8; }
+.mc-ev-barra.foco .mc-bl-pila { opacity:1; }
+.mc-ev-barra.fuera .mc-bl-pila { box-shadow:0 -2px 0 var(--danger); }
+.mc-bl .mc-ev-leyenda .ley-cat { width:10px; height:10px; border-radius:3px; }
+.mc-bl-lineas { margin-top:6px; }
+.mc-bl-ayuda { margin:0 0 9px; font-size:0.75rem; color:var(--muted); }
+.mc-bl-cats { display:flex; flex-direction:column; gap:2px; }
+.mc-bl-cat {
+    display:grid; grid-template-columns:minmax(100px,1.2fr) 1.5fr auto 46px 64px; gap:10px; align-items:center;
+    border:0; background:transparent; color:inherit; font:inherit; font-size:0.79rem; text-align:left;
+    padding:6px 6px; border-radius:7px; cursor:pointer;
+}
+.mc-bl-cat:hover { background:color-mix(in srgb, var(--text-color) 5%, transparent); }
+.mc-bl-cat-nombre { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:underline dotted; text-underline-offset:3px; }
+.mc-bl-cat-nombre i { display:inline-block; width:9px; height:9px; border-radius:3px; margin-right:7px; vertical-align:0; }
+.mc-bl-cat-barra { position:relative; height:7px; background:var(--app-bg); border-radius:999px; }
+.mc-bl-cat-barra s { display:block; height:100%; border-radius:999px; text-decoration:none; }
+.mc-bl-cat-media { position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; background:var(--text-color); opacity:.6; border-radius:2px; }
+.mc-bl-cat-val { font-variant-numeric:tabular-nums; font-weight:700; text-align:right; }
+.mc-bl-cat-pct, .mc-bl-cat-vs { font-variant-numeric:tabular-nums; text-align:right; font-size:0.74rem; color:var(--muted); }
+.mc-bl-cat-vs.text-negative, .mc-bl-cat-vs.text-positive { font-weight:700; }
+.mc-bl-volver { border:0; background:transparent; color:var(--primary-color); font:inherit; font-size:0.78rem; font-weight:600; cursor:pointer; padding:0; margin:0 0 10px; display:block; }
 @media (max-width:640px){
     .mc-comercio { grid-template-columns:1fr auto; }
+    .mc-bl-cat { grid-template-columns:1fr auto auto; }
+    .mc-bl-cat-barra, .mc-bl-cat-pct { display:none; }
     .mc-comercio-barra, .mc-comercio-veces { display:none; }
     .mc-mes { grid-template-columns:1fr auto; }
     .mc-mes-barra { display:none; }
@@ -3135,6 +3177,7 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
        desglose se abre encima y trae las MISMAS filas editables del listado:
        lo que se ve mal se arregla ahí mismo. */
     var URL_DESGLOSE = "{% url 'extractos:desglose_categoria' %}";
+    var URL_EVOLUCION_BLOQUE = "{% url 'extractos:evolucion_bloque' %}";
     var modal = document.getElementById('ext-modal');
     var modalCuerpo = document.getElementById('ext-modal-cuerpo');
     var modalTitulo = document.getElementById('ext-modal-titulo');
@@ -3144,6 +3187,8 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         if (!modal || modal.hidden) return;
         modal.hidden = true;
         modalCuerpo.innerHTML = '';
+        modalBloque = null;
+        bloqueOrigen = null;
         document.body.style.overflow = '';
         if (focoPrevio) { focoPrevio.focus(); focoPrevio = null; }
     }
@@ -3152,17 +3197,37 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
        evolución) y de mes dentro de la evolución sin volver a la pantalla. */
     var modalClave = null;
     var modalComparar = false;
+    /* El modal enseña una categoría o la evolución de un bloque entero. Si se
+       ha llegado a una categoría desde su bloque, se recuerda el bloque (y su
+       mes) para poder volver a él sin cerrar. */
+    var modalBloque = null;
+    var bloqueOrigen = null;
 
-    function abrirModal(clave, nombre, disparador, comparar) {
+    function abrirModal(clave, nombre, disparador, comparar, extra) {
         if (!modal) return;
-        focoPrevio = disparador || null;
+        if (disparador) focoPrevio = disparador;
         modalClave = clave;
+        modalBloque = null;
         modalComparar = !!comparar;
         modalTitulo.textContent = nombre || 'Desglose';
         modalCuerpo.innerHTML = '<p class="ext-modal-cargando">Cargando el desglose…</p>';
         modal.hidden = false;
         document.body.style.overflow = 'hidden';
-        cargarDesglose({});
+        cargarDesglose(extra || {});
+    }
+
+    function abrirBloque(tipo, nombre, disparador, foco) {
+        if (!modal) return;
+        if (disparador) focoPrevio = disparador;
+        modalBloque = {tipo: tipo, nombre: nombre};
+        modalClave = null;
+        bloqueOrigen = null;
+        modalComparar = false;
+        modalTitulo.textContent = 'Evolución de ' + (nombre || 'bloque').toLowerCase();
+        modalCuerpo.innerHTML = '<p class="ext-modal-cargando">Cargando la evolución…</p>';
+        modal.hidden = false;
+        document.body.style.overflow = 'hidden';
+        cargarDesglose(foco ? {foco: foco} : {});
     }
 
     function cargarDesglose(extra) {
@@ -3170,18 +3235,33 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
            categoría: lo que se ve dentro tiene que sumar exactamente lo que
            decía la fila de la que se ha entrado. */
         var params = new URLSearchParams(window.location.search);
-        params.set('categoria', modalClave);
-        params.delete('bloque');
+        var url = URL_DESGLOSE;
+        if (modalBloque) {
+            url = URL_EVOLUCION_BLOQUE;
+            params.set('bloque', modalBloque.tipo);
+            params.delete('categoria');
+            params.delete('vista');
+        } else {
+            params.set('categoria', modalClave);
+            params.delete('bloque');
+        }
         if (modalComparar) params.set('comparar', '1');
         Object.keys(extra).forEach(function(k){ params.set(k, extra[k]); });
         modalCuerpo.classList.add('cargando');
-        fetch(URL_DESGLOSE + '?' + params.toString(), {
+        fetch(url + '?' + params.toString(), {
             headers: {'X-Requested-With': 'XMLHttpRequest'}
         }).then(function(r){
             if (!r.ok) throw new Error('respuesta ' + r.status);
             return r.text();
         }).then(function(html){
             modalCuerpo.innerHTML = html;
+            if (!modalBloque && bloqueOrigen) {
+                var volver = document.createElement('button');
+                volver.type = 'button';
+                volver.className = 'mc-bl-volver';
+                volver.textContent = '← Volver a ' + bloqueOrigen.nombre.toLowerCase();
+                modalCuerpo.insertBefore(volver, modalCuerpo.firstChild);
+            }
         }).catch(function(){
             modalCuerpo.innerHTML = '<p class="ext-modal-cargando">No se ha podido cargar el desglose.</p>';
         }).then(function(){
@@ -3193,7 +3273,28 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         var abrir = e.target.closest('.ext-cat-abrir');
         if (abrir) {
             e.preventDefault();
+            bloqueOrigen = null;
             abrirModal(abrir.dataset.categoria, abrir.dataset.nombre, abrir);
+            return;
+        }
+        /* La evolución de un bloque entero, y desde ella cada categoría con
+           el mismo mes en foco; «volver» regresa al bloque en ese mes. */
+        var evoBloque = e.target.closest('.ext-bloque-evo');
+        if (evoBloque) {
+            e.preventDefault();
+            abrirBloque(evoBloque.dataset.bloque, evoBloque.dataset.nombre, evoBloque);
+            return;
+        }
+        var catBloque = e.target.closest('.mc-bl-cat');
+        if (catBloque && modalBloque) {
+            bloqueOrigen = {tipo: modalBloque.tipo, nombre: modalBloque.nombre, foco: catBloque.dataset.foco};
+            abrirModal(catBloque.dataset.categoria, catBloque.dataset.nombre, null, false,
+                       {vista: 'evolucion', foco: catBloque.dataset.foco});
+            return;
+        }
+        if (e.target.closest('.mc-bl-volver') && bloqueOrigen) {
+            var origen = bloqueOrigen;
+            abrirBloque(origen.tipo, origen.nombre, null, origen.foco);
             return;
         }
         /* Una fila de «Frente a tu media» abre el mismo desglose, y además
@@ -3206,16 +3307,17 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         /* Dentro del modal: cambiar entre el mes y su evolución, y en la
            evolución pinchar una barra para ver el desglose de ese mes. */
         var vista = e.target.closest('.mc-vista');
-        if (vista && modalClave !== null) {
+        if (vista && modalClave !== null && !modalBloque) {
             if (!vista.classList.contains('activa')) {
                 cargarDesglose(vista.dataset.vista === 'evolucion' ? {vista: 'evolucion'} : {});
             }
             return;
         }
         var barraMes = e.target.closest('.mc-ev-barra');
-        if (barraMes && modalClave !== null) {
+        if (barraMes && (modalClave !== null || modalBloque)) {
             if (!barraMes.classList.contains('foco')) {
-                cargarDesglose({vista: 'evolucion', foco: barraMes.dataset.foco});
+                cargarDesglose(modalBloque ? {foco: barraMes.dataset.foco}
+                                           : {vista: 'evolucion', foco: barraMes.dataset.foco});
             }
             return;
         }

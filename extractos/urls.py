@@ -16,6 +16,7 @@ urlpatterns = [
     path('conciliacion/', views.conciliacion, name='conciliacion'),
     path('analisis/', views.analisis, name='analisis'),
     path('categoria/desglose/', views.movimientos_de_categoria, name='desglose_categoria'),
+    path('bloque/evolucion/', views.evolucion_de_bloque, name='evolucion_bloque'),
     path('mes/filas/', views.filas_del_mes, name='filas_mes'),
     path('cuadre/', views.cuadre, name='cuadre'),
     path('movimiento/<int:pk>/cubrir/', views.cubrir_con_reserva, name='cubrir_con_reserva'),

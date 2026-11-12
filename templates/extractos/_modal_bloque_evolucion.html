@@ -1,0 +1,98 @@
+{% load custom_filters %}{% load l10n %}
+{% comment %}
+La evolución de un bloque del presupuesto (fijos, variables, discrecionales…):
+barras de los últimos meses partidas por categoría y, debajo, en qué
+categorías se fue el dinero del mes que se pinche y cómo está cada una frente
+a su media. Cada categoría abre su propia evolución, con el mismo mes en foco.
+{% endcomment %}
+<div class="mc-cabecera" style="--cc:{{ color }};">
+    <div class="mc-identidad">
+        <span class="mc-bloque">Bloque del presupuesto</span>
+        <h3 class="mc-nombre">{{ nombre }}</h3>
+        <span class="mc-periodo">Últimos {{ barras|length }} mes{{ barras|length|pluralize:"es" }}{% if es_anual %} · recibos enteros, cuando se pagaron{% endif %}</span>
+    </div>
+    <div class="mc-cifras">
+        <span class="mc-total">{{ media|euro }}</span>
+        <span class="mc-media">de media al mes{% if num_meses %} en {{ num_meses }} mes{{ num_meses|pluralize:"es" }}{% endif %}</span>
+    </div>
+</div>
+
+<div class="mc-ev mc-bl" style="--cc:{{ color }};">
+    <div class="mc-ev-grafico">
+        <span class="mc-ev-capa" aria-hidden="true">
+        {% if media > 0 %}
+        <span class="mc-ev-linea mc-ev-linea-media" style="bottom:{{ pct_media|unlocalize }}%;" title="Media {{ media|euro:0 }}"></span>
+        {% endif %}
+        {% if limite_mensual %}
+        <span class="mc-ev-linea mc-ev-linea-limite" style="bottom:{{ pct_limite|unlocalize }}%;" title="Presupuesto {{ limite_mensual|euro:0 }}"></span>
+        {% endif %}
+        </span>
+        {% for b in barras %}
+        <button type="button" class="mc-ev-barra{% if b.foco %} foco{% endif %}{% if b.sin_datos %} sin-datos{% endif %}{% if b.fuera %} fuera{% endif %}"
+                data-foco="{{ b.clave }}" aria-pressed="{% if b.foco %}true{% else %}false{% endif %}"
+                title="{{ b.etiqueta }}: {% if b.sin_datos %}sin extractos{% else %}{{ b.total|euro:0 }}{% for t in b.tramos %}&#10;· {{ t.nombre }}: {{ t.importe|euro:0 }}{% endfor %}{% endif %}">
+            <span class="mc-ev-col">
+                {% if b.foco %}<b class="mc-ev-val">{{ b.total|euro:0 }}</b>{% endif %}
+                {% if b.sin_datos or not b.tramos %}
+                <i style="height:{{ b.pct|unlocalize }}%;"></i>
+                {% else %}
+                <span class="mc-bl-pila" style="height:{{ b.pct|unlocalize }}%;">
+                    {% for t in b.tramos %}<s style="flex-grow:{{ t.pct|unlocalize }};background:{{ t.color }};"></s>{% endfor %}
+                </span>
+                {% endif %}
+            </span>
+            <span class="mc-ev-lbl">{{ b.corta }}{% if b.anio %}<em>{{ b.anio }}</em>{% endif %}</span>
+        </button>
+        {% endfor %}
+    </div>
+    <div class="mc-ev-leyenda">
+        {% for l in leyenda %}<span><i class="ley-cat" style="background:{{ l.color }};"></i>{{ l.nombre }}</span>{% endfor %}
+    </div>
+    <div class="mc-ev-leyenda mc-bl-lineas">
+        {% if media > 0 %}<span><i class="ley-media"></i>Media {{ media|euro:0 }}</span>{% endif %}
+        {% if limite_mensual %}<span><i class="ley-limite"></i>Presupuesto {{ limite_mensual|euro:0 }}/mes</span>{% endif %}
+        {% if mes_max and num_meses > 1 %}<span>Máximo: {{ mes_max.etiqueta }} ({{ mes_max.total|euro:0 }})</span>{% endif %}
+    </div>
+</div>
+
+<div class="mc-seccion mc-ev-detalle">
+    <div class="mc-ev-foco">
+        <h4>{{ foco_etiqueta }}</h4>
+        <span class="mc-ev-foco-total">{{ foco_total|euro }}</span>
+        {% if num_meses > 1 %}
+        <span class="mc-ev-foco-vs {% if foco_desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
+            {% if foco_desviacion > 0 %}+{% endif %}{{ foco_desviacion|euro:0 }} frente a la media
+        </span>
+        {% endif %}
+        {% if foco_limite_desviacion is not None %}
+        <span class="mc-ev-foco-vs {% if foco_limite_desviacion > 0 %}text-negative{% else %}text-positive{% endif %}">
+            · {% if foco_limite_desviacion > 0 %}{{ foco_limite_desviacion|euro:0 }} por encima{% else %}{{ foco_limite_desviacion|absoluto|euro:0 }} por debajo{% endif %} del presupuesto
+        </span>
+        {% endif %}
+    </div>
+
+    {% if filas %}
+    <p class="mc-bl-ayuda">Cómo se repartió por categorías. La raya vertical es la media de cada una; pincha una para ver su evolución y sus movimientos.</p>
+    <div class="mc-bl-cats">
+        {% for c in filas %}
+        <button type="button" class="mc-bl-cat" data-categoria="{{ c.clave }}" data-nombre="{{ c.nombre }}" data-foco="{{ foco_clave }}"
+                title="{{ c.nombre }}: {{ c.importe|euro }} en {{ foco_etiqueta }} ({{ c.num }} movimiento{{ c.num|pluralize:"s" }}), media {{ c.media|euro }}">
+            <span class="mc-bl-cat-nombre"><i style="background:{{ c.color }};"></i>{{ c.nombre }}</span>
+            <span class="mc-bl-cat-barra">
+                <s style="width:{{ c.pct_barra|unlocalize }}%;background:{{ c.color }};"></s>
+                {% if num_meses > 1 and c.media > 0 %}<b class="mc-bl-cat-media" style="left:{{ c.pct_media|unlocalize }}%;"></b>{% endif %}
+            </span>
+            <span class="mc-bl-cat-val">{{ c.importe|euro:0 }}</span>
+            <span class="mc-bl-cat-pct">{{ c.pct_mes }}%</span>
+            {% if num_meses > 1 %}
+            <span class="mc-bl-cat-vs {% if c.desviacion > 0 %}text-negative{% elif c.desviacion < 0 %}text-positive{% endif %}">
+                {% if c.desviacion > 0 %}+{% endif %}{{ c.desviacion|euro:0 }}
+            </span>
+            {% endif %}
+        </button>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="mc-vacio">Ningún gasto de {{ nombre|lower }} en {{ foco_etiqueta }}.</p>
+    {% endif %}
+</div>
