@@ -2162,15 +2162,100 @@ def eliminar_movimiento(request, pk):
     return JsonResponse({'ok': True})
 
 
+def _pagos_que_cubre(ingreso):
+    """Los pagos que cubre un ingreso de la reserva, por orden de reparto."""
+    if ingreso.cubre_id:
+        return [ingreso.cubre]
+    if ingreso.es_reparto_reserva:
+        return [p.cubre for p in ingreso.partes.select_related('cubre').order_by('orden_parte')]
+    return []
+
+
+def _repartir_reserva(ingreso, pagos):
+    """Deja `ingreso` cubriendo exactamente `pagos`, ni más ni menos.
+
+    Un pago: el enlace va en el propio ingreso, como siempre. Varios: el
+    ingreso se parte en un trozo por pago —con la misma maquinaria que el
+    reparto de un recibo— y cada trozo cubre el suyo. Sacas 1.200 € de la
+    hucha para los cuatro plazos del IRPF: cada plazo se lleva lo que le falta
+    por cubrir, por orden de fecha, y el último lo que sobre, para que el
+    dinero del ingreso quede entero emparejado y no vuelva a contar como
+    ingreso por la puerta de atrás.
+
+    Devuelve los pagos que han recibido dinero: si el ingreso no llega para
+    todos, los últimos se quedan fuera y la pantalla lo dice.
+    """
+    with transaction.atomic():
+        if ingreso.es_reparto_reserva:
+            ingreso.partes.all().delete()
+        ingreso.cubre = None
+        ingreso.save(update_fields=['cubre'])
+        if '_prefetched_objects_cache' in ingreso.__dict__:
+            ingreso.__dict__['_prefetched_objects_cache'].pop('partes', None)
+
+        if len(pagos) <= 1:
+            if pagos:
+                ingreso.cubre = pagos[0]
+                ingreso.save(update_fields=['cubre'])
+            return list(pagos)
+
+        # Lo que falta por cubrir se mira ya sin lo que ponía este ingreso.
+        frescos = {
+            p.pk: p for p in MovimientoBancario.objects.filter(pk__in=[p.pk for p in pagos])
+            .select_related('dividido_de')
+        }
+        ordenados = sorted((frescos[p.pk] for p in pagos), key=lambda p: (p.fecha, p.pk))
+
+        restante = ingreso.importe
+        trozos = []
+        for i, pago in enumerate(ordenados):
+            if restante <= 0:
+                break
+            ultimo = i == len(ordenados) - 1
+            cuanto = restante if ultimo else min(max(pago.impacto_real, Decimal('0')), restante)
+            if cuanto <= 0:
+                continue
+            trozos.append([pago, cuanto])
+            restante -= cuanto
+        if not trozos:
+            # Todos estaban ya cubiertos por otro lado: el dinero va al primero.
+            trozos = [[ordenados[0], ingreso.importe]]
+        elif restante > 0:
+            trozos[-1][1] += restante
+
+        if len(trozos) == 1:
+            ingreso.cubre = trozos[0][0]
+            ingreso.save(update_fields=['cubre'])
+            return [trozos[0][0]]
+
+        reparto.crear_partes(ingreso, [
+            {
+                'importe': cuanto,
+                'categoria': ingreso.categoria,
+                'concepto': f'{ingreso.concepto} → {pago.concepto}'[:300],
+            }
+            for pago, cuanto in trozos
+        ])
+        for parte, (pago, _) in zip(ingreso.partes.order_by('orden_parte'), trozos):
+            parte.cubre = pago
+            parte.save(update_fields=['cubre'])
+        return [pago for pago, _ in trozos]
+
+
 @login_required
 def cubrir_con_reserva(request, pk):
-    """Dice que un movimiento aporta dinero de la reserva a un pago concreto.
+    """Dice que un movimiento aporta dinero de la reserva a uno o varios pagos.
 
     Ahorras todo el año para la revisión del coche y, cuando llega, metes esa
     reserva en la cuenta. El golpe real del mes no son los 1.200 € del recibo:
     son los 272 € que la reserva no cubrió. Emparejarlo con el pago —y no
     limitarse a mirar el saldo de un fondo— es lo que permite decir exactamente
     cuánto puso el ahorro y cuánto el bolsillo.
+
+    Un mismo ingreso puede cubrir varios pagos: los cuatro plazos del IRPF que
+    se pagan con un solo traspaso desde la hucha. `cubre` puede venir varias
+    veces y es la lista COMPLETA de pagos; con `anadir=1` se suman a los que ya
+    tenía, que es lo que se quiere al emparejar desde la fila de un pago.
     """
     profile, hogar = _get_hogar(request)
     if not hogar:
@@ -2180,36 +2265,83 @@ def cubrir_con_reserva(request, pk):
 
     mov = get_object_or_404(MovimientoBancario, pk=pk, hogar=hogar)
 
-    crudo = request.POST.get('cubre') or ''
-    if not crudo:
-        mov.cubre = None
-        mov.save(update_fields=['cubre'])
+    ids = []
+    for crudo in request.POST.getlist('cubre'):
+        for trozo in (crudo or '').split(','):
+            trozo = trozo.strip()
+            if not trozo:
+                continue
+            if not trozo.isdigit():
+                return JsonResponse({'ok': False, 'error': 'pago_invalido'}, status=400)
+            if int(trozo) not in ids:
+                ids.append(int(trozo))
+
+    # Un trozo de un ingreso repartido entre varios pagos: soltarlo vuelve a
+    # repartir el ingreso entre los que quedan, o el dinero de ese trozo
+    # contaría como ingreso.
+    if mov.es_parte and mov.es_cobertura and not ids:
+        padre = mov.dividido_de
+        if padre.es_reparto_reserva:
+            quedan = [p for p in _pagos_que_cubre(padre) if p.pk != mov.cubre_id]
+            _repartir_reserva(padre, quedan)
+            return JsonResponse({'ok': True, 'cubre': [p.pk for p in quedan]})
+
+    if not ids:
+        _repartir_reserva(mov, [])
         return JsonResponse({'ok': True, 'cubre': None})
 
-    pago = MovimientoBancario.objects.filter(hogar=hogar, pk=crudo or 0).first()
-    if not pago:
-        return JsonResponse({'ok': False, 'error': 'pago_invalido'}, status=400)
-    if pago.pk == mov.pk:
-        return JsonResponse({'ok': False, 'error': 'a_si_mismo'}, status=400)
     # Un reembolso de un gasto compartido ya rebaja su gasto: si además
     # cubriera otro, el mismo dinero descontaría dos veces.
     if mov.es_reembolso:
         return JsonResponse({'ok': False, 'error': 'es_reembolso'}, status=400)
-    # Una reserva cubre GASTOS. Dejar que cubra otra reposición encadenaría
-    # coberturas y el impacto real dejaría de significar nada.
-    if pago.es_cobertura:
-        return JsonResponse({'ok': False, 'error': 'ya_es_cobertura'}, status=400)
-    if pago.importe >= 0:
-        return JsonResponse({'ok': False, 'error': 'no_es_un_gasto'}, status=400)
 
-    mov.cubre = pago
-    mov.save(update_fields=['cubre'])
+    pagos = []
+    for pago_id in ids:
+        pago = MovimientoBancario.objects.filter(hogar=hogar, pk=pago_id).first()
+        if not pago:
+            return JsonResponse({'ok': False, 'error': 'pago_invalido'}, status=400)
+        if pago.pk == mov.pk:
+            return JsonResponse({'ok': False, 'error': 'a_si_mismo'}, status=400)
+        # Una reserva cubre GASTOS. Dejar que cubra otra reposición encadenaría
+        # coberturas y el impacto real dejaría de significar nada.
+        if pago.es_cobertura:
+            return JsonResponse({'ok': False, 'error': 'ya_es_cobertura'}, status=400)
+        if pago.importe >= 0:
+            return JsonResponse({'ok': False, 'error': 'no_es_un_gasto'}, status=400)
+        pagos.append(pago)
+
+    # Un trozo de un ingreso ya repartido puede cambiar de pago, pero no
+    # partirse a su vez: lo que se reparte es el ingreso entero.
+    if mov.es_parte:
+        if len(pagos) > 1:
+            return JsonResponse({'ok': False, 'error': 'es_parte'}, status=400)
+        mov.cubre = pagos[0]
+        mov.save(update_fields=['cubre'])
+        padre = mov.dividido_de
+        return JsonResponse({
+            'ok': True, 'cubre': [pagos[0].pk],
+            'ingreso': padre.pk if padre.es_reparto_reserva else mov.pk,
+        })
+
+    # Un ingreso repartido por otro motivo (no entre pagos) no se toca: el
+    # reparto lo hizo alguien a mano y deshacerlo sin avisar lo perdería.
+    if mov.esta_dividido and not mov.es_reparto_reserva:
+        return JsonResponse({'ok': False, 'error': 'ya_dividido'}, status=400)
+
+    if request.POST.get('anadir') == '1':
+        ya = _pagos_que_cubre(mov)
+        pagos = ya + [p for p in pagos if p.pk not in {y.pk for y in ya}]
+
+    if len(pagos) > 1 and (mov.importe is None or mov.importe <= 0):
+        return JsonResponse({'ok': False, 'error': 'no_es_un_ingreso'}, status=400)
+
+    cubiertos = _repartir_reserva(mov, pagos)
+    fuera = [p for p in pagos if p.pk not in {c.pk for c in cubiertos}]
     return JsonResponse({
         'ok': True,
-        'cubre': pago.pk,
-        'concepto': pago.concepto,
-        'cubierto': float(pago.cubierto_por_reserva),
-        'impacto': float(pago.impacto_real),
+        'ingreso': mov.pk,
+        'cubre': [p.pk for p in cubiertos],
+        'sin_dinero': [p.concepto for p in fuera],
     })
 
 
@@ -2276,29 +2408,52 @@ def candidatos_reserva(request):
         }
 
     if mov.importe is not None and mov.importe < 0:
-        # Desde el gasto: quién le puede meter dinero. Se descartan los ingresos
-        # que ya están puestos en OTRO pago, para no robárselo sin avisar.
-        candidatos = cerca.filter(importe__gte=0, reembolsa__isnull=True).filter(
-            Q(cubre__isnull=True) | Q(cubre=mov),
-        )[:60]
+        # Desde el gasto: quién le puede meter dinero. Un ingreso que ya cubre
+        # OTRO pago también vale: no se le quita, se le suma este (los cuatro
+        # plazos del IRPF salen de un único traspaso de la hucha). Lo que no se
+        # ofrece son los trozos de un ingreso repartido: se elige el ingreso.
+        candidatos = (
+            cerca.filter(importe__gte=0, reembolsa__isnull=True)
+            .filter(Q(dividido_de__isnull=True) | Q(cubre=mov))
+            .exclude(partes__cubre=mov)
+            .select_related('cubre')
+            .distinct()[:60]
+        )
+
+        def fila_ingreso(m):
+            datos = fila(m)
+            otros = [p for p in _pagos_que_cubre(m) if p.pk != mov.pk]
+            if otros:
+                datos['ya_cubre'] = ', '.join(p.concepto[:30] for p in otros)
+            if m.esta_dividido and not m.es_reparto_reserva:
+                datos['bloqueado'] = True
+            return datos
+
         return JsonResponse({
             'ok': True,
             'sentido': 'gasto',
             'pendiente': float(mov.impacto_real),
-            'candidatos': [fila(m) for m in candidatos],
+            'candidatos': [fila_ingreso(m) for m in candidatos],
             'puestos': [fila(c) for c in mov.coberturas.all()],
         })
 
-    # Desde el ingreso: qué gasto cubre. Una reposición no cubre otra, o las
+    # Desde el ingreso: qué gastos cubre. Una reposición no cubre otra, o las
     # coberturas se encadenarían y el impacto real dejaría de significar nada.
     # Se ofrecen tanto el cobro entero como sus partes: hay quien empareja la
     # hucha con el recibo de Norauto y quien la empareja con la revisión de
     # dentro. Cubrir el cobro reparte el dinero entre sus partes a prorrata.
-    candidatos = cerca.filter(importe__lt=0, cubre__isnull=True)[:60]
+    # Puede elegir varios: un traspaso de la hucha para varios pagos.
+    puestos = _pagos_que_cubre(mov)
+    ids_puestos = {p.pk for p in puestos}
+    candidatos = list(cerca.filter(importe__lt=0, cubre__isnull=True)[:60])
+    faltan = [p for p in puestos if p.pk not in {c.pk for c in candidatos}]
     return JsonResponse({
         'ok': True,
         'sentido': 'ingreso',
-        'candidatos': [fila(m) for m in candidatos],
+        'importe': float(mov.importe or 0),
+        'puede_varios': not mov.es_parte,
+        'candidatos': [fila(m) for m in faltan + candidatos],
+        'elegidos': sorted(ids_puestos),
         'puestos': [],
     })
 

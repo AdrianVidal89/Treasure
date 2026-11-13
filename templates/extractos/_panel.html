@@ -1040,6 +1040,15 @@ puede decir exactamente que de los 1.200 € puso 928 la reserva.
             <button type="button" class="ext-cubrir-quitar" id="ext-cubrir-sin-reserva" hidden></button>
             <h5 class="ext-cubrir-titulillo" id="ext-cubrir-titulillo"></h5>
             <div id="ext-cubrir-lista" class="ext-cubrir-lista"></div>
+            {% comment %}
+            Un ingreso de la reserva puede cubrir varios pagos (los plazos del
+            IRPF que salen de un solo traspaso): se marcan todos y se guarda.
+            {% endcomment %}
+            <div id="ext-cubrir-pie" class="ext-cubrir-pie" hidden>
+                <span id="ext-cubrir-resumen" class="ext-cubrir-resumen"></span>
+                <button type="button" class="ext-cubrir-listo" id="ext-cubrir-no-mas" hidden>No, ya está</button>
+                <button type="button" class="ext-cubrir-guardar" id="ext-cubrir-guardar">Asignar</button>
+            </div>
         </div>
     </div>
 </div>
@@ -2027,6 +2036,15 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     font-size:0.78rem; padding:7px 11px; margin-bottom:12px; cursor:pointer; width:100%;
 }
 .ext-cubrir-quitar:hover { border-color:var(--danger); color:var(--danger); }
+.ext-cubrir-pie { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.ext-cubrir-resumen { flex:1; min-width:0; font-size:0.8rem; color:var(--muted); font-variant-numeric:tabular-nums; }
+.ext-cubrir-guardar, .ext-cubrir-listo { border-radius:8px; padding:6px 14px; font-size:0.85rem; cursor:pointer; border:1px solid var(--border); background:transparent; color:inherit; }
+.ext-cubrir-guardar { background:var(--primary-color); border-color:var(--primary-color); color:#fff; font-weight:600; }
+.ext-cubrir-guardar:disabled { opacity:.5; cursor:not-allowed; }
+.ext-cubrir-opcion .ext-cubrir-marca { width:16px; height:16px; flex:none; border:1.5px solid var(--border); border-radius:4px; display:inline-flex; align-items:center; justify-content:center; font-size:11px; line-height:1; }
+.ext-cubrir-opcion.elegida .ext-cubrir-marca { background:var(--success, #4f8a5b); border-color:var(--success, #4f8a5b); color:#fff; }
+.ext-cubrir-opcion.elegida .ext-cubrir-marca::after { content:'✓'; }
+.ext-cubrir-ya { font-size:0.72rem; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40%; }
 .ext-cubrir-vacio { color:var(--muted); font-style:italic; font-size:0.83rem; padding:16px 0; text-align:center; }
 .ext-cubrir-titulillo {
     font-size:0.7rem; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
@@ -4185,14 +4203,27 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     /* El enlace lo guarda SIEMPRE el ingreso: es el que lleva el campo. Da
        igual desde qué fila se haya abierto el diálogo, aquí se traduce a
        «este ingreso cubre este gasto». */
-    function guardarCobertura(ingresoId, pagoId) {
+    function postCobertura(ingresoId, pagos, anadir) {
         var body = new URLSearchParams();
-        body.append('cubre', pagoId || '');
-        fetch(URL_CUBRIR.replace('__ID__', ingresoId), {
+        if (!pagos.length) body.append('cubre', '');
+        pagos.forEach(function (id) { body.append('cubre', id); });
+        if (anadir) body.append('anadir', '1');
+        return fetch(URL_CUBRIR.replace('__ID__', ingresoId), {
             method: 'POST',
             headers: {'X-CSRFToken': getCsrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
             body: body.toString()
-        }).then(function (r) { return r.json(); }).then(function (data) {
+        }).then(function (r) { return r.json(); });
+    }
+
+    function avisarSinDinero(data) {
+        if (data.sin_dinero && data.sin_dinero.length) {
+            alert('El ingreso no llega para todos: se han quedado sin cubrir ' +
+                  data.sin_dinero.join(', ') + '.');
+        }
+    }
+
+    function guardarCobertura(ingresoId, pagoId) {
+        postCobertura(ingresoId, pagoId ? [pagoId] : [], false).then(function (data) {
             if (!data.ok) { alert('No se ha podido emparejar ese movimiento.'); return; }
             /* Recarga: emparejar cambia el peso del mes, los pilares y los KPI.
                Dejarlos como estaban haría mentir a la pantalla justo después
@@ -4201,10 +4232,16 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         }).catch(function () {});
     }
 
-    function filaCandidato(p, elegida) {
+    function filaCandidato(p, elegida, conMarca) {
         var op = document.createElement('button');
         op.type = 'button';
         op.className = 'ext-cubrir-opcion' + (elegida ? ' elegida' : '');
+
+        if (conMarca) {
+            var marca = document.createElement('span');
+            marca.className = 'ext-cubrir-marca';
+            op.appendChild(marca);
+        }
 
         var que = document.createElement('span');
         que.className = 'ext-cubrir-que';
@@ -4215,6 +4252,13 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         cuanto.textContent = euroTexto(p.importe);
 
         op.append(que, cuanto);
+        if (p.ya_cubre) {
+            var ya = document.createElement('span');
+            ya.className = 'ext-cubrir-ya';
+            ya.textContent = 'ya cubre: ' + p.ya_cubre;
+            ya.title = 'Ya pone dinero en ' + p.ya_cubre + '. Elegirlo AÑADE este pago, no le quita el otro.';
+            op.appendChild(ya);
+        }
         /* Si ya le habías metido dinero antes, lo que importa no es lo que
            costó sino lo que queda por cubrir. */
         if (p.cubierto > 0) {
@@ -4224,28 +4268,141 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
                 ' · falta ' + euroTexto(p.pendiente);
             op.appendChild(resto);
         }
+        if (p.bloqueado) {
+            op.disabled = true;
+            op.title = 'Este ingreso está repartido a mano en partes: deshaz el reparto para emparejarlo.';
+        }
         return op;
     }
 
+    var pieCubrir = document.getElementById('ext-cubrir-pie');
+    var btnGuardarCubrir = document.getElementById('ext-cubrir-guardar');
+    var btnNoMas = document.getElementById('ext-cubrir-no-mas');
+    var elegidosCubrir = null;   /* id -> importe del pago, en modo varios */
+    var importeIngreso = 0;
+    var inicialesCubrir = '';
+    var huboCambioCubrir = false;
+
+    function pintarResumen() {
+        var ids = Object.keys(elegidosCubrir || {});
+        var suma = ids.reduce(function (a, id) { return a + Math.max(elegidosCubrir[id], 0); }, 0);
+        var texto = ids.length
+            ? ids.length + (ids.length === 1 ? ' pago' : ' pagos') + ' · suman ' + euroTexto(suma) +
+              ' · el ingreso es de ' + euroTexto(importeIngreso)
+            : 'Marca los pagos que cubre este dinero.';
+        if (ids.length && suma > importeIngreso + 0.005) texto += ' — no llega para todo: se reparte por fecha';
+        document.getElementById('ext-cubrir-resumen').textContent = texto;
+        var cambiado = ids.slice().sort().join(',') !== inicialesCubrir;
+        btnGuardarCubrir.disabled = !cambiado;
+        btnGuardarCubrir.textContent = ids.length ? 'Asignar ' + ids.length : 'Quitar emparejamiento';
+    }
+
+    /* Desde el ingreso: la lista se marca entera —varios pagos a la vez— y se
+       guarda de una vez. `pregunta` es el paso que sigue a emparejar desde la
+       fila de un pago: «¿hay más movimientos que asignar a este ingreso?». */
+    function abrirIngreso(ingresoId, concepto, importe, pregunta) {
+        movCubriendo = ingresoId;
+        importeIngreso = importe;
+        document.getElementById('ext-cubrir-concepto').textContent = concepto || '';
+        document.getElementById('ext-cubrir-importe').textContent = euroTexto(importe);
+        document.getElementById('ext-cubrir-titulo').textContent = pregunta
+            ? '¿Hay más movimientos que quieras asignar a este ingreso?'
+            : '¿Qué pagos cubre este dinero?';
+        document.getElementById('ext-cubrir-ayuda').textContent = pregunta
+            ? '— emparejado. Si este dinero de la reserva también pagó otros movimientos, márcalos y pulsa «Asignar».'
+            : '— si es dinero que tenías apartado, marca los pagos a los que va (pueden ser varios) y el mes solo cargará lo que la reserva no cubra.';
+        document.getElementById('ext-cubrir-titulillo').textContent = 'Gastos cercanos';
+        document.getElementById('ext-cubrir-quitar').hidden = true;
+        document.getElementById('ext-cubrir-puestos').hidden = true;
+        document.getElementById('ext-cubrir-sin-reserva').hidden = true;
+        btnNoMas.hidden = !pregunta;
+        pieCubrir.hidden = true;
+        listaCubrir.innerHTML = '<div class="ext-modal-cargando">Buscando movimientos cercanos…</div>';
+        cajaCubrir.hidden = false;
+        document.body.style.overflow = 'hidden';
+
+        fetch(URL_CANDIDATOS + '?mov=' + encodeURIComponent(ingresoId), {
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).then(function (r) { return r.json(); }).then(function (data) {
+            if (!data.ok) throw new Error('mal');
+            listaCubrir.innerHTML = '';
+            if (!data.candidatos.length) {
+                listaCubrir.innerHTML = '<div class="ext-cubrir-vacio">No hay gastos en los dos meses de alrededor a los que emparejar esto.</div>';
+                if (pregunta) { pieCubrir.hidden = false; btnGuardarCubrir.hidden = true; }
+                return;
+            }
+            var elegidos = (data.elegidos || []).map(String);
+            var varios = data.puede_varios !== false;
+            document.getElementById('ext-cubrir-quitar').hidden = varios || !elegidos.length;
+            elegidosCubrir = {};
+            data.candidatos.forEach(function (p) {
+                if (elegidos.indexOf(String(p.id)) >= 0) elegidosCubrir[p.id] = Math.abs(p.importe);
+            });
+            inicialesCubrir = Object.keys(elegidosCubrir).sort().join(',');
+
+            data.candidatos.forEach(function (p) {
+                var op = filaCandidato(p, elegidos.indexOf(String(p.id)) >= 0, varios);
+                op.addEventListener('click', function () {
+                    /* Un trozo de un ingreso ya repartido solo cambia de pago. */
+                    if (!varios) { guardarCobertura(ingresoId, p.id); return; }
+                    if (elegidosCubrir[p.id] !== undefined) {
+                        delete elegidosCubrir[p.id];
+                        op.classList.remove('elegida');
+                    } else {
+                        elegidosCubrir[p.id] = Math.abs(p.importe);
+                        op.classList.add('elegida');
+                    }
+                    pintarResumen();
+                });
+                listaCubrir.appendChild(op);
+            });
+            if (varios) {
+                btnGuardarCubrir.hidden = false;
+                pieCubrir.hidden = false;
+                pintarResumen();
+            }
+        }).catch(function () {
+            listaCubrir.innerHTML = '<div class="ext-cubrir-vacio">No se ha podido cargar la lista.</div>';
+        });
+    }
+
+    btnGuardarCubrir.addEventListener('click', function () {
+        if (!movCubriendo || !elegidosCubrir) return;
+        btnGuardarCubrir.disabled = true;
+        postCobertura(movCubriendo, Object.keys(elegidosCubrir), false).then(function (data) {
+            if (!data.ok) {
+                btnGuardarCubrir.disabled = false;
+                alert('No se ha podido emparejar: ' + (data.error || 'error'));
+                return;
+            }
+            avisarSinDinero(data);
+            window.location.reload();
+        }).catch(function () { btnGuardarCubrir.disabled = false; });
+    });
+    btnNoMas.addEventListener('click', function () { window.location.reload(); });
+
     function abrirCubrir(boton) {
-        movCubriendo = boton.dataset.movId;
         var importe = parseFloat(boton.dataset.importe) || 0;
         var esGasto = importe < 0;
+        if (!esGasto) {
+            abrirIngreso(boton.dataset.movId, boton.dataset.concepto, importe, false);
+            return;
+        }
+        movCubriendo = boton.dataset.movId;
+        btnNoMas.hidden = true;
+        pieCubrir.hidden = true;
+        elegidosCubrir = null;
 
         document.getElementById('ext-cubrir-concepto').textContent = boton.dataset.concepto || '';
         document.getElementById('ext-cubrir-importe').textContent = euroTexto(importe);
-        document.getElementById('ext-cubrir-titulo').textContent = esGasto
-            ? '¿Pagaste parte de esto con la reserva?'
-            : '¿Qué pago cubre este dinero?';
-        document.getElementById('ext-cubrir-ayuda').textContent = esGasto
-            ? '— elige el ingreso con el que metiste el dinero de la hucha. Lo que la reserva no cubra es lo que le pesará al mes.'
-            : '— si es dinero que tenías apartado, dime a qué pago va y el mes solo cargará lo que la reserva no cubra.';
-        document.getElementById('ext-cubrir-titulillo').textContent = esGasto
-            ? 'Ingresos cercanos' : 'Gastos cercanos';
-        document.getElementById('ext-cubrir-quitar').hidden = esGasto || !boton.dataset.valor;
+        document.getElementById('ext-cubrir-titulo').textContent = '¿Pagaste parte de esto con la reserva?';
+        document.getElementById('ext-cubrir-ayuda').textContent =
+            '— elige el ingreso con el que metiste el dinero de la hucha. Lo que la reserva no cubra es lo que le pesará al mes.';
+        document.getElementById('ext-cubrir-titulillo').textContent = 'Ingresos cercanos';
+        document.getElementById('ext-cubrir-quitar').hidden = true;
         document.getElementById('ext-cubrir-puestos').hidden = true;
         var btnSin = document.getElementById('ext-cubrir-sin-reserva');
-        btnSin.hidden = !(esGasto && boton.dataset.anual);
+        btnSin.hidden = !boton.dataset.anual;
         btnSin.dataset.valor = boton.dataset.sinReserva ? '0' : '1';
         btnSin.textContent = boton.dataset.sinReserva
             ? 'Sí salió de la reserva: volver a repartirlo en el año'
@@ -4254,8 +4411,8 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
         cajaCubrir.hidden = false;
         document.body.style.overflow = 'hidden';
 
-        var yaPuesto = boton.dataset.valor || '';
-        fetch(URL_CANDIDATOS + '?mov=' + encodeURIComponent(movCubriendo), {
+        var gastoId = movCubriendo;
+        fetch(URL_CANDIDATOS + '?mov=' + encodeURIComponent(gastoId), {
             headers: {'X-Requested-With': 'XMLHttpRequest'}
         }).then(function (r) { return r.json(); }).then(function (data) {
             if (!data.ok) throw new Error('mal');
@@ -4287,19 +4444,22 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
             listaCubrir.innerHTML = '';
             if (!data.candidatos.length) {
                 listaCubrir.innerHTML = '<div class="ext-cubrir-vacio">' +
-                    (esGasto
-                        ? 'No hay ingresos en los dos meses de alrededor. Importa el traspaso con el que sacaste el dinero y vuelve aquí.'
-                        : 'No hay gastos en los dos meses de alrededor a los que emparejar esto.') +
+                    'No hay ingresos en los dos meses de alrededor. Importa el traspaso con el que sacaste el dinero y vuelve aquí.' +
                     '</div>';
                 return;
             }
             data.candidatos.forEach(function (p) {
-                var elegida = !esGasto && String(p.id) === String(yaPuesto);
-                var op = filaCandidato(p, elegida);
+                var op = filaCandidato(p, false, false);
                 op.addEventListener('click', function () {
-                    /* Desde el gasto, el que guarda es el ingreso elegido. */
-                    if (esGasto) guardarCobertura(p.id, movCubriendo);
-                    else guardarCobertura(movCubriendo, p.id);
+                    /* El que guarda es el ingreso elegido, y este pago se SUMA
+                       a los que ya cubriera. Luego se pregunta si hay más. */
+                    postCobertura(p.id, [gastoId], true).then(function (res) {
+                        if (!res.ok) { alert('No se ha podido emparejar ese movimiento.'); return; }
+                        avisarSinDinero(res);
+                        huboCambioCubrir = true;
+                        var concepto = p.etiqueta.replace(/^\d\d\/\d\d · /, '');
+                        abrirIngreso(res.ingreso || p.id, concepto, p.importe, true);
+                    }).catch(function () {});
                 });
                 listaCubrir.appendChild(op);
             });
@@ -4309,6 +4469,9 @@ a.ext-chip:hover { border-color:var(--primary-color); color:var(--primary-color)
     }
 
     function cerrarCubrir() {
+        /* Si ya se emparejó algo (el primer paso desde la fila de un pago), la
+           pantalla tiene que enseñarlo aunque se cierre sin asignar más. */
+        if (huboCambioCubrir) { window.location.reload(); return; }
         cajaCubrir.hidden = true;
         document.body.style.overflow = '';
         movCubriendo = null;

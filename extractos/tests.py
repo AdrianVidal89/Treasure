@@ -23,6 +23,7 @@ from finanzas.models import CategoriaGasto, PartidaGasto
 from finanzas.parsing import es_excel, leer_tabla
 from finanzas.views_gastos import CATEGORIA_TRASPASO, _crear_categorias_predefinidas
 
+from . import reparto
 from .analisis import analizar_mes
 from .categorizacion import categorizar_por_codigo
 from .models import Etiqueta, ExtractoBancario, MovimientoBancario, ReglaCategorizacion
@@ -5991,15 +5992,129 @@ class ReservaQueCubreUnPagoTests(TestCase):
         self.assertEqual(datos['sentido'], 'ingreso')
         self.assertEqual({c['id'] for c in datos['candidatos']}, {pago.id})
 
-    def test_un_ingreso_ya_puesto_en_otro_pago_no_se_ofrece(self):
-        """Si no, emparejarlo aquí se lo robaría al otro pago sin avisar."""
+    def test_un_ingreso_ya_puesto_en_otro_pago_se_sigue_ofreciendo(self):
+        """Los cuatro plazos del IRPF salen de un solo traspaso de la hucha.
+
+        Antes se escondía para no robárselo al otro pago, y eso impedía
+        emparejar más de un plazo. Ahora elegirlo SUMA este pago a los que ya
+        cubría, y la fila dice a cuál."""
         otro_pago = self.mov('-500', 3, self.mantenimiento, concepto='Otro pago')
         hucha = self.mov('928', 10, concepto='Hucha')
         self.emparejar(hucha, otro_pago)
 
         pago = self.mov('-1200', 12, self.mantenimiento)
-        ids = {c['id'] for c in self.candidatos(pago)['candidatos']}
-        self.assertNotIn(hucha.id, ids)
+        filas = {c['id']: c for c in self.candidatos(pago)['candidatos']}
+        self.assertIn(hucha.id, filas)
+        self.assertIn('Otro pago', filas[hucha.id]['ya_cubre'])
+
+    def cubrir_varios(self, reposicion, pagos, anadir=False):
+        datos = {'cubre': [str(p.id) for p in pagos]}
+        if anadir:
+            datos['anadir'] = '1'
+        return self.client.post(
+            reverse('extractos:cubrir_con_reserva', args=[reposicion.id]), datos,
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest',
+        )
+
+    def test_un_ingreso_cubre_varios_pagos(self):
+        """Cuatro plazos de 300 € y un traspaso de 1.200 €: los cuatro a cero."""
+        plazos = [self.mov('-300', d, self.mantenimiento, concepto='IRPF') for d in (2, 3, 4, 6)]
+        hucha = self.mov('1200', 10, concepto='Hucha')
+
+        r = self.cubrir_varios(hucha, plazos)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()['cubre'], [p.id for p in plazos])
+
+        hucha.refresh_from_db()
+        self.assertTrue(hucha.es_reparto_reserva)
+        self.assertFalse(hucha.cuenta_como_ingreso)
+        self.assertEqual(sorted(p.importe for p in hucha.partes.all()), [Decimal('300')] * 4)
+        for parte in hucha.partes.all():
+            self.assertTrue(parte.es_cobertura)
+            self.assertFalse(parte.cuenta_como_ingreso)
+        for plazo in plazos:
+            plazo = MovimientoBancario.objects.get(pk=plazo.pk)
+            self.assertEqual(plazo.cubierto_por_reserva, Decimal('300'))
+            self.assertEqual(plazo.impacto_real, Decimal('0'))
+        self.assertEqual([p.pk for p in hucha.pagos_cubiertos], [p.pk for p in plazos])
+
+    def test_desde_cada_pago_se_van_sumando_al_mismo_ingreso(self):
+        """El camino del fallo: emparejar plazo a plazo desde la fila del pago."""
+        plazos = [self.mov('-300', d, self.mantenimiento, concepto='IRPF') for d in (2, 3, 4, 6)]
+        hucha = self.mov('1200', 10, concepto='Hucha')
+
+        for plazo in plazos:
+            self.assertIn(hucha.id, {c['id'] for c in self.candidatos(plazo)['candidatos']})
+            r = self.cubrir_varios(hucha, [plazo], anadir=True)
+            self.assertEqual(r.status_code, 200, r.content)
+            self.assertEqual(r.json()['ingreso'], hucha.id)
+
+        for plazo in plazos:
+            self.assertEqual(MovimientoBancario.objects.get(pk=plazo.pk).impacto_real, Decimal('0'))
+        # Los trozos no se ofrecen sueltos: se elige el ingreso.
+        partes = set(hucha.partes.values_list('id', flat=True))
+        otro = self.mov('-50', 7, self.mantenimiento)
+        self.assertFalse(partes & {c['id'] for c in self.candidatos(otro)['candidatos']})
+
+    def test_lo_que_sobra_va_al_ultimo_y_lo_que_falta_se_queda_sin_cubrir(self):
+        a = self.mov('-300', 2, self.mantenimiento, concepto='A')
+        b = self.mov('-300', 3, self.mantenimiento, concepto='B')
+        hucha = self.mov('700', 10, concepto='Hucha')
+        self.cubrir_varios(hucha, [b, a])
+        self.assertEqual(MovimientoBancario.objects.get(pk=a.pk).cubierto_por_reserva, Decimal('300'))
+        self.assertEqual(MovimientoBancario.objects.get(pk=b.pk).cubierto_por_reserva, Decimal('400'))
+
+        d = self.mov('-300', 4, self.mantenimiento, concepto='D')
+        e = self.mov('-300', 5, self.mantenimiento, concepto='E')
+        f = self.mov('-300', 6, self.mantenimiento, concepto='F')
+        corta = self.mov('400', 11, concepto='Corta')
+        r = self.cubrir_varios(corta, [d, e, f]).json()
+        self.assertEqual(r['sin_dinero'], ['F 6'])
+        self.assertEqual(MovimientoBancario.objects.get(pk=e.pk).cubierto_por_reserva, Decimal('100'))
+        self.assertEqual(MovimientoBancario.objects.get(pk=f.pk).cubierto_por_reserva, Decimal('0'))
+
+    def test_quitar_un_trozo_reparte_el_ingreso_entre_los_que_quedan(self):
+        a = self.mov('-300', 2, self.mantenimiento, concepto='A')
+        b = self.mov('-300', 3, self.mantenimiento, concepto='B')
+        c = self.mov('-300', 4, self.mantenimiento, concepto='C')
+        hucha = self.mov('900', 10, concepto='Hucha')
+        self.cubrir_varios(hucha, [a, b, c])
+
+        trozo_b = hucha.partes.get(cubre=b)
+        self.emparejar(trozo_b, None)
+        hucha.refresh_from_db()
+        self.assertEqual(sorted(p.cubre_id for p in hucha.partes.all()), [a.id, c.id])
+        self.assertEqual(MovimientoBancario.objects.get(pk=b.pk).cubierto_por_reserva, Decimal('0'))
+        # Todo el dinero sigue emparejado: lo que era de B se lo lleva C.
+        self.assertEqual(sum(p.importe for p in hucha.partes.all()), Decimal('900'))
+
+        # Hasta quedarse con uno: vuelve al enlace de siempre, sin trozos.
+        self.emparejar(hucha.partes.get(cubre=a), None)
+        hucha.refresh_from_db()
+        self.assertFalse(hucha.esta_dividido)
+        self.assertEqual(hucha.cubre_id, c.id)
+
+        self.emparejar(hucha, None)
+        hucha.refresh_from_db()
+        self.assertIsNone(hucha.cubre_id)
+
+    def test_desde_el_ingreso_se_ven_marcados_los_que_ya_cubre(self):
+        a = self.mov('-300', 2, self.mantenimiento, concepto='A')
+        b = self.mov('-300', 3, self.mantenimiento, concepto='B')
+        hucha = self.mov('600', 10, concepto='Hucha')
+        self.cubrir_varios(hucha, [a, b])
+        datos = self.candidatos(hucha)
+        self.assertEqual(datos['elegidos'], sorted([a.id, b.id]))
+        self.assertTrue(datos['puede_varios'])
+
+    def test_un_ingreso_repartido_a_mano_no_se_reparte_entre_pagos(self):
+        a = self.mov('-300', 2, self.mantenimiento, concepto='A')
+        b = self.mov('-300', 3, self.mantenimiento, concepto='B')
+        ingreso = self.mov('600', 10, concepto='Nómina')
+        reparto.crear_partes(ingreso, [{'importe': Decimal('100')}, {'importe': Decimal('500')}])
+        r = self.cubrir_varios(ingreso, [a, b])
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(ingreso.partes.count(), 2)
 
     def test_el_gasto_ve_lo_que_ya_tiene_puesto_para_poder_quitarlo(self):
         pago = self.mov('-1200', 12, self.mantenimiento)

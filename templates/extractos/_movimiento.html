@@ -47,6 +47,7 @@ categorías por bloque, provisiones y activos).
             {% endif %}
             {% if m.manual %}<span class="ext-badge-manual" title="Lo apuntaste tú: no viene de ningún extracto. Suele ser un pago en efectivo.">a mano</span>{% endif %}
             {% if m.es_cobertura %}<span class="ext-badge-reserva" title="Dinero sacado de la reserva para pagar «{{ m.cubre.concepto }}». No cuenta como ingreso: rebaja ese pago.">de la reserva</span>
+            {% elif m.es_reparto_reserva %}<span class="ext-badge-reserva" title="Dinero sacado de la reserva y repartido entre {{ m.partes.all|length }} pagos (los trozos van debajo). No cuenta como ingreso: rebaja esos pagos.">de la reserva</span>
             {% elif m.es_reembolso %}<button type="button" class="ext-badge-reembolso ext-compartir-abrir" data-mov-id="{{ m.reembolsa_id }}"
                 title="Te devuelve tu parte de «{{ m.reembolsa.concepto }}» ({{ m.reembolsa.fecha|date:'d/m' }}). No cuenta como ingreso: rebaja ese gasto. Pulsa para verlo o deshacerlo."><svg class="icon"><use href="#i-users"/></svg> reembolso · {{ m.reembolsa.concepto|truncatechars:26 }}</button>
             {% elif m.es_traspaso %}<button type="button" class="ext-badge-neutro ext-traspaso-boton" data-mov-id="{{ m.id }}"
@@ -103,11 +104,11 @@ categorías por bloque, provisiones y activos).
             partes, a prorrata.
             {% endcomment %}
             {% if not m.es_reembolso %}
-            <button type="button" class="ext-cubre-boton {% if m.es_cobertura or m.cubierto_por_reserva or m.pagado_sin_reserva %}puesto{% endif %}"
+            <button type="button" class="ext-cubre-boton {% if m.es_cobertura or m.es_reparto_reserva or m.cubierto_por_reserva or m.pagado_sin_reserva %}puesto{% endif %}"
                     data-mov-id="{{ m.id }}" data-importe="{{ m.importe|unlocalize }}"
                     data-concepto="{{ m.concepto }}" data-valor="{{ m.cubre_id|default_if_none:'' }}"
                     data-anual="{% if m.es_pago_provision or m.esta_dividido %}1{% endif %}" data-sin-reserva="{% if m.sin_reserva %}1{% endif %}"
-                    title="{% if m.importe < 0 %}¿Pagaste parte de esto con dinero que tenías apartado? Dilo aquí y el mes solo cargará la diferencia.{% else %}¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.{% endif %}">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% elif m.cubierto_por_reserva %}reserva puesta{% elif m.pagado_sin_reserva %}sin reserva{% else %}— de la reserva —{% endif %}</button>
+                    title="{% if m.importe < 0 %}¿Pagaste parte de esto con dinero que tenías apartado? Dilo aquí y el mes solo cargará la diferencia.{% else %}¿Sacaste este dinero de lo que tenías apartado? Emparéjalo con el pago que cubre.{% endif %}">{% if m.es_cobertura %}cubre: {{ m.cubre.concepto|truncatechars:24 }}{% elif m.es_reparto_reserva %}cubre {{ m.partes.all|length }} pagos{% elif m.cubierto_por_reserva %}reserva puesta{% elif m.pagado_sin_reserva %}sin reserva{% else %}— de la reserva —{% endif %}</button>
             {% endif %}
 
             {% if panel.grupos_activos.0.opciones or panel.grupos_activos.1.opciones %}
