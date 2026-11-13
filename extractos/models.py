@@ -582,6 +582,28 @@ class MovimientoBancario(ImputableAActivo):
         return self.cubre_id is not None
 
     @property
+    def es_reparto_reserva(self):
+        """Un ingreso de la reserva repartido entre varios pagos.
+
+        Pagas el IRPF en cuatro plazos y sacas de la hucha una sola vez para
+        los cuatro. El enlace de la reserva es uno por movimiento, así que el
+        ingreso se parte en trozos —uno por pago— y cada trozo cubre el suyo.
+        Es un reparto como el de Norauto: el apunte del banco se queda y dejan
+        de contar él y sus trozos, que son todos reposiciones."""
+        if self.es_parte or not self.esta_dividido:
+            return False
+        return all(p.cubre_id for p in self.partes.all())
+
+    @property
+    def pagos_cubiertos(self):
+        """Los pagos a los que este ingreso pone dinero de la reserva."""
+        if self.cubre_id:
+            return [self.cubre]
+        if self.es_reparto_reserva:
+            return [p.cubre for p in sorted(self.partes.all(), key=lambda p: p.orden_parte or 0)]
+        return []
+
+    @property
     def es_reembolso(self):
         return self.reembolsa_id is not None
 
