@@ -1,0 +1,14 @@
+# Lo que no entra en la imagen: datos, copias y secretos. El código se monta
+# además por volumen, así que aquí solo importa que la construcción sea ligera
+# y que no lea postgres_data (es de otro usuario y la haría fallar).
+.git
+.env
+.env.*
+postgres_data/
+media/
+staticfiles/
+pg_dump_*.sql
+*.sqlite3
+db.sqlite3.backup_*
+__pycache__/
+*.pyc

@@ -53,9 +53,15 @@ echo "=== [5/6] Reiniciar contenedores ==="
 # En QNAP, borrar la red del proyecto (treasure_default) y volver a crearla
 # falla de forma intermitente en Container Station (qnetwork-tool / dnsmasq:
 # "AddNATrule ... dnsmasq add fail"), y deja el sitio caído sin red.
-# Como el código va montado por volumen (no hay imagen que reconstruir),
-# basta con recrear los contenedores REUTILIZANDO la red existente: así
-# recogen el código nuevo y los cambios del docker-compose.yml sin tocar la red.
+# El código va montado por volumen, así que basta con recrear los contenedores
+# REUTILIZANDO la red existente: recogen el código nuevo y los cambios del
+# docker-compose.yml sin tocar la red.
+# Antes se reconstruye la imagen propia (treasure-app), que lleva el cliente de
+# PostgreSQL y las dependencias de Python. Si no han cambiado requirements.txt
+# ni el Dockerfile, Docker reutiliza la caché y tarda segundos. Se construye
+# desde «web», que es el único servicio con `build:`; precios y copias usan la
+# misma imagen.
+docker compose -f "$APP_DIR/docker-compose.yml" build web
 docker compose -f "$APP_DIR/docker-compose.yml" up -d --force-recreate --remove-orphans
 
 echo "=== [6/6] Deploy completado ==="
